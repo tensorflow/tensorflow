@@ -7630,6 +7630,7 @@ cc_library(
         ":metrics_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

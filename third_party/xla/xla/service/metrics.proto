@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 // Defines pass specific metrics.
 message PassMetrics {
   // Unique ID of the module on which the pass was run.
-  int64 module_id = 1;
+  uint64 module_id = 1;
   // The name of the pass.
   string pass_name = 2;
   // Duration of the pass.
@@ -41,4 +41,6 @@ message CompilationLogEntry {
   int32 task_index = 4;
   // Pass specific metrics.
   repeated PassMetrics pass_metrics = 5;
+  // IDs of modules on which the compilation stage was run.
+  repeated uint64 module_ids = 6;
 }
