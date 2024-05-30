@@ -303,12 +303,13 @@ class StreamExecutorInterface {
 
   // Retrieves device pointer and size for a symbol. To use
   // constant memory in CUDA, GetSymbol has to be used. Returns DeviceMemoryBase
-  // describing the symbol in memory if symbol is found.
+  // describing the symbol in memory if symbol is found, and an empty
+  // std::optional otherwise.
   //
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual absl::StatusOr<DeviceMemoryBase> GetSymbol(
+  virtual absl::StatusOr<std::optional<DeviceMemoryBase>> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) {
     return absl::UnimplementedError("Not implemented");
   }

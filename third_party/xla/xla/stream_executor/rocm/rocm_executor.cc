@@ -787,7 +787,7 @@ bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }
 
-absl::StatusOr<DeviceMemoryBase> GpuExecutor::GetSymbol(
+absl::StatusOr<std::optional<DeviceMemoryBase>> GpuExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   void* mem = nullptr;
   size_t bytes = 0;
@@ -810,12 +810,7 @@ absl::StatusOr<DeviceMemoryBase> GpuExecutor::GetSymbol(
       return DeviceMemoryBase(mem, bytes);
     }
   }
-
-  LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
-  return absl::NotFoundError(
-      absl::StrCat("Check if module containing symbol ", symbol_name,
-                   " is loaded (module_handle = ",
-                   reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
+  return std::nullopt;
 }
 
 absl::Status FillBlockDimLimit(GpuDeviceHandle device,

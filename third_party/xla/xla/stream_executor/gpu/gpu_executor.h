@@ -245,7 +245,7 @@ class GpuExecutor : public StreamExecutor {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+  absl::StatusOr<std::optional<DeviceMemoryBase>> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
