@@ -60,7 +60,7 @@ struct PrepareForExportPass
 
 // Materializes some splat before export because it may be more efficient in
 // HLOInstruction.
-void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
+static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   // Arbitrarily chosen "small" number. This could be chosen based on the proto
   // size too.
   if (attr.getNumElements() < 32) return;
@@ -88,7 +88,7 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
 }
 
 // Ensure that there aren't any implicit capture before exporting.
-void prepareWhileOp(WhileOp whileOp) {
+static void prepareWhileOp(WhileOp whileOp) {
   llvm::SetVector<Value> implicitInputs;
   getUsedValuesDefinedAbove(whileOp->getRegions(), implicitInputs);
   if (implicitInputs.empty()) return;
@@ -137,7 +137,7 @@ void prepareWhileOp(WhileOp whileOp) {
   whileOp->erase();
 }
 
-void prepareBroadcastInDim(BroadcastInDimOp bcast) {
+static void prepareBroadcastInDim(BroadcastInDimOp bcast) {
   DenseIntElementsAttr dims = bcast.getBroadcastDimensions();
   // If dimensions aren't sorted, there is a transpose fused into the op, which
   // XLA Builder does not support, we unfuse here.
@@ -166,7 +166,7 @@ void prepareBroadcastInDim(BroadcastInDimOp bcast) {
 }
 
 // Make implicitly captured constant explicit before exporting
-void prepareExplicitCapturedConstants(Operation *op) {
+static void prepareExplicitCapturedConstants(Operation *op) {
   for (Region &region : op->getRegions()) {
     assert(region.getBlocks().size() == 1 &&
            "Only OPs with single block regions are allowed");
