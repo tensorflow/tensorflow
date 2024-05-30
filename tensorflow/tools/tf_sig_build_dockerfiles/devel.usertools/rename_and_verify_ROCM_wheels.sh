@@ -22,7 +22,7 @@ set -euxo pipefail
 for wheel in /tf/pkg/*.whl; do
   echo "Checking and renaming $wheel..."
   if [[ "${wheel}" != *"manylinux"* ]]; then
-      NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
+      NEW_TF_WHEEL=${wheel/linux/"manylinux_2_28"}
       echo "Rename ${wheel} to ${NEW_TF_WHEEL}"
       mv $wheel $NEW_TF_WHEEL
   else
