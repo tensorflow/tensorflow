@@ -628,7 +628,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // The CUDA driver isn't able to load a PTX and a binary which are both empty.
   // It's okay if we skip loading in this case; if the module isn't loaded, all
   // symbol lookups will fail, just as they should for an empty module.
-  if (!(executor->GetPlatform()->id() == se::cuda::kCudaPlatformId &&
+  if (!(executor->GetPlatform()->id() ==
+            stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
@@ -638,22 +639,23 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   int submitted_mem_copies = 0;
 
   for (const ConstantInfo& info : constants_) {
-    std::optional<se::DeviceMemoryBase> global;
+    absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
-      TF_ASSIGN_OR_RETURN(global,
-                          executor->GetSymbol(info.symbol_name, module_handle));
+      global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
-    if (static_cast<bool>(module_handle) && global.has_value()) {
+    se::DeviceMemoryBase global;
+    if (static_cast<bool>(module_handle) && global_status.ok()) {
       // The constant was defined in the PTX and has been allocated by the CUDA
       // driver.
+      global = *global_status;
       VLOG(3) << "Resolved global " << info.symbol_name << " to "
-              << global->opaque();
+              << global.opaque();
 
       if (!info.content.span().empty()) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
-        TF_RETURN_IF_ERROR(stream->Memcpy(&*global, info.content.span().data(),
+        TF_RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
                                           info.content.span().size()));
         submitted_mem_copies = true;
       }
@@ -664,9 +666,9 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
       TF_ASSIGN_OR_RETURN(auto shared, executor->CreateOrShareConstant(
                                            stream, info.content.span()));
-      *global = *shared;
+      global = *shared;
       VLOG(3) << "Allocated (or shared) global " << info.symbol_name << " at "
-              << global->opaque();
+              << global.opaque();
       // XLA will continue to own this global at least until this executable is
       // destroyed (longer if another, longer-lived executable shares the same
       // constant).
@@ -674,7 +676,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     }
 
     if (info.allocation_index != -1) {
-      InsertOrDie(globals.get(), info.allocation_index, *global);
+      InsertOrDie(globals.get(), info.allocation_index, global);
     }
   }
 
