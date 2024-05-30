@@ -34,6 +34,8 @@
 * Add TensorFlow to StableHLO converter to TensorFlow pip package.
 * TensorRT support: this is the last release supporting TensorRT. It will be
 removed in the next release.
+* NumPy 2.0 support: TensorFlow is going to support NumPy 2.0 in the next
+release. It may break some edge cases of TensorFlow API usage.
 
 ## Keras
 
