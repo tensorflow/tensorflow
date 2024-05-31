@@ -175,6 +175,18 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
+--- stablehlo/stablehlo/api/PortableApi.h
++++ stablehlo/stablehlo/api/PortableApi.h
+@@ -27,7 +27,7 @@
+ 
+ /// Return the current version for portable API.
+ /// Increments on all meaningful changes to this file.
+-inline int64_t getApiVersion() { return 6; }
++inline int64_t getApiVersion() { return 7; }
+ 
+ // Get the current StableHLO version.
+ //
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
