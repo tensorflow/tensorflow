@@ -254,16 +254,6 @@ CodegenDecision CanTritonHandleGEMM(
     return "Multiple batch dimensions.";
   }
 
-  // Cases where lhs or rhs have no non-contracting dims are not handled.
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
-    return "No non-contracting dimensions.";
-  }
-
   return CodegenDecision{};
 }
 
@@ -314,6 +304,19 @@ CodegenDecision CanTritonHandleReduce(
   return "Reduction is not a row-reduction of a single operand.";
 }
 
+bool NoNonContractingDimension(const HloDotInstruction& dot) {
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  if (dim_numbers.lhs_batch_dimensions().size() +
+              dim_numbers.lhs_contracting_dimensions().size() ==
+          dot.operand(0)->shape().rank() ||
+      dim_numbers.rhs_batch_dimensions().size() +
+              dim_numbers.rhs_contracting_dimensions().size() ==
+          dot.operand(1)->shape().rank()) {
+    return true;
+  }
+  return false;
+}
+
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (instr.IsElementwise()) {
@@ -322,7 +325,12 @@ CodegenDecision IsTritonSupportedInstruction(
 
   switch (instr.opcode()) {
     case HloOpcode::kDot: {
-      return CanTritonHandleGEMM(*Cast<HloDotInstruction>(&instr), gpu_version);
+      auto* dot = Cast<HloDotInstruction>(&instr);
+      // Cases where lhs or rhs have no non-contracting dims are not handled.
+      if (NoNonContractingDimension(*dot)) {
+        return "No non-contracting dimensions.";
+      }
+      return CanTritonHandleGEMM(*dot, gpu_version);
     }
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),

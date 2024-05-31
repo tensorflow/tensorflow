@@ -58,7 +58,8 @@ ENTRY entry {
   p0 = f32[32, 5, 7] parameter(0)
   p1 = f32[32, 5] parameter(1)
   ROOT dot = f32[32,7] dot(p0, p1), lhs_batch_dims={0},
-    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1},
+    algorithm=dot_bf16_bf16_f32_x6
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -47,6 +48,9 @@ bool IsTritonSupportedDataType(PrimitiveType, const se::GpuComputeCapability&);
 
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
+
+CodegenDecision CanTritonHandleGEMM(
+    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version);
 
 // Checks instruction against requirements of triton emitter.
 CodegenDecision IsTritonSupportedInstruction(

@@ -15,57 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_algebraic_simplifier.h"
 
-#include <variant>
-
-#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/triton_support.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
-bool IsDotSupportedByGemmFusion(const HloInstruction* dot,
-                                se::GpuComputeCapability compute_capability) {
-  auto supported_output_type = [&](const PrimitiveType t) {
-    auto cuda_compute_capability =
-        std::get_if<se::CudaComputeCapability>(&compute_capability);
-    auto rocm_compute_capability =
-        std::get_if<se::RocmComputeCapability>(&compute_capability);
-
-    CHECK(cuda_compute_capability || rocm_compute_capability);
-
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        if (cuda_compute_capability) {
-          return true;
-        }
-        if (rocm_compute_capability) {
-          return rocm_compute_capability->has_bf16_dtype_support();
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-
-  if (!supported_output_type(dot->shape().element_type())) {
-    return false;
-  }
-
-  if (!IsTritonSupportedDataType(dot->operand(0)->shape().element_type(),
-                                 compute_capability) ||
-      !IsTritonSupportedDataType(dot->operand(1)->shape().element_type(),
-                                 compute_capability)) {
-    return false;
-  }
-  return true;
-}
 
 bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
     const HloInstruction* hlo) {
@@ -95,7 +51,7 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
 
   // If GemmFusion cannot handle this dot, we should strength-reduce it so that
   // it can be handled by the fusion pipeline.
-  return !IsDotSupportedByGemmFusion(dot, compute_capability_);
+  return !CanTritonHandleGEMM(*dot, compute_capability_);
 }
 
 }  // namespace xla::gpu
