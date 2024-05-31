@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -87,14 +88,21 @@ LocalService::CompileExecutables(
   // TODO(cjfj): Investigate why there are a couple of test failures when the
   // single partition computations are built using `BuildExecutables`, fix it,
   // and remove this special case (provided the performance if similar).
+  const Compiler::CompileOptions compile_options{
+      build_options.device_allocator(),
+      build_options.compile_thread_pool(),
+      build_options.layout_canonicalization_callback(),
+      false,
+      {},
+      nullptr,
+      build_options.process_index(),
+      build_options.process_count(),
+      build_options.key_value_store()};
   if (build_options.num_partitions() == 1) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         BuildExecutable(computation.proto(), std::move(module_config),
-                        execute_backend_.get(), executor,
-                        {build_options.device_allocator(),
-                         build_options.compile_thread_pool(),
-                         build_options.layout_canonicalization_callback()},
+                        execute_backend_.get(), executor, compile_options,
                         build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
@@ -109,11 +117,7 @@ LocalService::CompileExecutables(
 
     return BuildExecutables(
         /*module_protos=*/{&computation.proto()}, std::move(module_configs),
-        execute_backend_.get(), {executors},
-        Compiler::CompileOptions{
-            build_options.device_allocator(),
-            build_options.compile_thread_pool(),
-            build_options.layout_canonicalization_callback()},
+        execute_backend_.get(), {executors}, compile_options,
         build_options.run_backend_only());
   }
 }

@@ -484,14 +484,16 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       topology_(xla::StreamExecutorGpuTopologyDescription::Create(
           tsl::Fingerprint64(platform_name), platform_name,
-          devices_.back()->device_kind(), devices_)) {
+          devices_.back()->device_kind(), devices_)),
+      kv_store_(std::move(kv_store)) {
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
@@ -718,6 +720,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::Compile(const XlaComputation& computation,
                                  CompileOptions options) {
+  options.executable_build_options.set_key_value_store(kv_store_);
   auto executable = PjRtStreamExecutorClient::Compile(computation, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -1166,8 +1169,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(devices), options.node_id,
       std::move(allocator), std::move(host_memory_allocator),
-      options.should_stage_host_to_device_transfers,
-      std::move(gpu_run_options)));
+      options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
+      std::move(kv_store)));
 }
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
