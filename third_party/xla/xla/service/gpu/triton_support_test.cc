@@ -34,8 +34,10 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
@@ -473,6 +475,116 @@ INSTANTIATE_TEST_SUITE_P(DotTestTestSuite, DotTest,
                          ::testing::Combine(::testing::Values(F16, F32, BF16),
                                             ::testing::Values(HloOpcode::kDot)),
                          TestParamsToString);
+
+struct DynamicSliceTestParam {
+  PrimitiveType data_type;
+  PrimitiveType index_type;
+  bool is_the_majormost_dim_being_sliced;
+
+  using TupleType = std::tuple<PrimitiveType, PrimitiveType, bool>;
+
+  explicit DynamicSliceTestParam(const TupleType& tuple)
+      : data_type(std::get<0>(tuple)),
+        index_type(std::get<1>(tuple)),
+        is_the_majormost_dim_being_sliced(std::get<2>(tuple)) {}
+};
+
+std::string DynamicSliceTestParamToString(
+    const ::testing::TestParamInfo<DynamicSliceTestParam::TupleType>& info) {
+  const DynamicSliceTestParam param(info.param);
+  return absl::StrCat(
+      primitive_util::LowercasePrimitiveTypeName(param.data_type), "_",
+      primitive_util::LowercasePrimitiveTypeName(param.index_type), "_",
+      param.is_the_majormost_dim_being_sliced ? "majormost" : "not_majormost");
+}
+
+// We pass the tuple type here instead of the struct, to avoid the usage of
+// ::testing::ConvertGenerator, which broke the build in some OSS
+// configurations.
+class DynamicSliceTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType> {};
+
+TEST_P(DynamicSliceTest, IsTritonSupportedExecutesCorrectlyForDynamicSlice) {
+  const DynamicSliceTestParam param(GetParam());
+
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE) &&
+      param.data_type == BF16) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+
+  constexpr absl::string_view kHloTestTemplate =
+      R"(
+HloModule m
+
+triton_gemm {
+  dynamic_slice_input = $0[$2,$3] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = $1[] parameter(2)
+  start_index1 = $1[] parameter(3)
+  dynamic_slice = $0[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={5,2}
+  convert = f32[5,2] convert(dynamic_slice)
+  ROOT dot = f32[5, 4] dot(convert, dot_rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  dynamic_slice_input = $0[$2,$3] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = $1[] constant($4)
+  start_index1 = $1[] constant($5)
+  ROOT fusion = f32[5,4] fusion(dynamic_slice_input, dot_rhs, start_index0, start_index1),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate,
+      primitive_util::LowercasePrimitiveTypeName(param.data_type),
+      primitive_util::LowercasePrimitiveTypeName(param.index_type),
+      param.is_the_majormost_dim_being_sliced ? 7 : 5,  // input dim0
+      param.is_the_majormost_dim_being_sliced ? 2 : 4,  // input dim1
+      param.is_the_majormost_dim_being_sliced ? 1 : 0,  // start_index0
+      param.is_the_majormost_dim_being_sliced ? 0 : 1   // start_index1
+  );
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_test));
+  const HloComputation* computation =
+      module->GetComputationWithName("triton_gemm");
+  ASSERT_NE(computation, nullptr);
+  const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kDynamicSlice);
+
+  const bool is_supported_instruction =
+      IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())
+          .CanFuse();
+  const bool is_supported_dynamic_slice =
+      IsTritonSupportedDynamicSlice(*Cast<HloDynamicSliceInstruction>(instr))
+          .CanFuse();
+  EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
+
+  if (is_supported_instruction) {
+    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        std::move(module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
+  } else {
+    EXPECT_THAT(TritonFusionAnalysis::Execute(*computation),
+                tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All, DynamicSliceTest,
+    ::testing::Combine(::testing::Values(F16, BF16, F32),
+                       ::testing::Values(S8, S16, S32, S64, U8, U16, U32, U64),
+                       ::testing::Bool()),
+    DynamicSliceTestParamToString);
 
 TEST_F(TritonSupportTest, UnsupportedDotOutputTypeFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
