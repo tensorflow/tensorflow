@@ -182,12 +182,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
     const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(auto source_buffer,
-                      GetAllocationSlice(instruction->operand(0)));
+  const HloInstruction* source = instruction->operand(0);
+  TF_ASSIGN_OR_RETURN(auto source_buffer, GetAllocationSlice(source));
   TF_ASSIGN_OR_RETURN(auto destination_buffer, GetAllocationSlice(instruction));
-  return ThunkSequence::Of<CopyThunk>(
-      source_buffer, destination_buffer,
-      ShapeUtil::ByteSizeOf(instruction->shape()));
+  return ThunkSequence::Of<CopyThunk>(source_buffer, source->shape(),
+                                      destination_buffer, instruction->shape());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(

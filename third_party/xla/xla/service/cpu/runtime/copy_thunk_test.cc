@@ -18,10 +18,13 @@ limitations under the License.
 #include <cstddef>
 #include <vector>
 
+#include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
@@ -29,7 +32,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(CopyThunkTest, Copy) {
+TEST(CopyThunkTest, CopySameShape) {
   std::vector<MaybeOwningDeviceMemory> buffers;
   std::vector<float> src = {1.0, 2.0, 3.0, 4.0};
   std::vector<float> dst(4, 0.0);
@@ -46,12 +49,42 @@ TEST(CopyThunkTest, Copy) {
   BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
   BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
 
-  CopyThunk thunk(src_slice, dst_slice, size_in_bytes);
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  CopyThunk thunk(src_slice, shape, dst_slice, shape);
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   TF_ASSERT_OK(thunk.Execute(params));
 
   EXPECT_EQ(src, dst);
+}
+
+TEST(CopyThunkTest, CopyTransposed) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> src = {1.0, 2.0, 3.0, 4.0};
+  std::vector<float> dst(4, 0.0);
+
+  size_t size_in_bytes = src.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(src.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(dst.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation src_alloc(0, size_in_bytes, 0);
+  BufferAllocation dst_alloc(1, size_in_bytes, 0);
+
+  BufferAllocation::Slice src_slice(&src_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
+
+  Shape src_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  Shape dst_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  CopyThunk thunk(src_slice, src_shape, dst_slice, dst_shape);
+
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+  TF_ASSERT_OK(thunk.Execute(params));
+
+  std::vector<float> expected = {1.0, 3.0, 2.0, 4.0};
+  EXPECT_EQ(expected, dst);
 }
 
 }  // namespace
