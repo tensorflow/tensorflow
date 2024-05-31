@@ -60,8 +60,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         value->quantization.params);
     TF_LITE_ENSURE(context, qparams->scale != nullptr);
     TF_LITE_ENSURE(context, qparams->zero_point != nullptr);
-    // Only support symmetric quantization for now.
-    TF_LITE_ENSURE(context, qparams->zero_point->data[0] == 0);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    if ((value->type == kTfLiteUInt8 || value->type == kTfLiteInt8) &&
+        (output->type == kTfLiteFloat32)) {
+      // Only support symmetric quantization for hybrid mode for now.
+      TF_LITE_ENSURE(context, qparams->zero_point->data[0] == 0);
+    }
     if (qparams->scale->size > 1 || qparams->zero_point->size > 1) {
       // Per-axis quantization must have quantized_dimension == 0 and correct
       // sizes for scale and zero_point.
