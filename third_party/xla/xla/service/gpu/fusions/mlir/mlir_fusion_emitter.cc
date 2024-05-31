@@ -577,10 +577,8 @@ absl::Status MlirFusionEmitterBase::RunPassPipeline(
   }
 
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  if (pm.run(module).failed()) {
-    return diagnostic_handler.consumeStatus();
-  }
-  return absl::OkStatus();
+  (void)pm.run(module);
+  return diagnostic_handler.consumeStatus();
 }
 
 }  // namespace gpu
