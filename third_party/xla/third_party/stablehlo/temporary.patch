@@ -447,7 +447,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,505 @@
+@@ -0,0 +1,633 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -465,6 +465,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +
 +#include "stablehlo/experimental/dialect/StablehloOps.h"
 +
++#include <cstddef>
 +#include <cstdint>
 +#include <optional>
 +
@@ -950,13 +951,140 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return DynamicTopKOpAdaptor(op);
 +}
 +
++LogicalResult DynamicApproxTopKOpAdaptor::verify() {
++  auto isSupportedAttrName = [](NamedAttribute attr) {
++    auto name = attr.getName();
++    return name == "call_target_name" || name == "mhlo.backend_config" ||
++           name == "backend_config" || name == "api_version" ||
++           name == "called_computations" || name == "has_side_effect";
++  };
++  for (const auto& attr : op_->getAttrs()) {
++    if (!isSupportedAttrName(attr))
++      return op_.emitOpError()
++             << attr.getName().getValue()
++             << " is not a supported attribute for DynamicApproxTopK";
++  }
++
++  if (op_.getCallTargetName() != "stablehlo.dynamic_approx_top_k")
++    return op_.emitError() << "expects @stablehlo.dynamic_approx_top_k";
++
++  auto called_computations = op_.getCalledComputations();
++  if (called_computations.size() != 1) {
++    return op_.emitOpError()
++           << "DynamicApproxTopK must take 1 called_computations";
++  }
++
++  auto backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
++      op_->getAttr("mhlo.backend_config"));
++  if (!backend_config)
++    return op_.emitOpError() << "Missing mhlo.backend_config attribute";
++
++  // C1
++  if (backend_config.contains("top_k"))
++    return op_.emitOpError("mhlo.backend_config attribute contains top_k");
++
++  // C2
++  if (!backend_config.contains("reduction_dim"))
++    return op_.emitOpError(
++        "mhlo.backend_config attribute does not contain "
++        "reduction_dim");
++  auto reduction_dim_attr = backend_config.getAs<IntegerAttr>("reduction_dim");
++  if (!reduction_dim_attr || !reduction_dim_attr.getType().isInteger(64))
++    return op_.emitOpError()
++           << "mhlo.backend_config attribute reduction_dim must be i64";
++  int64_t reduction_dim = reduction_dim_attr.getInt();
++
++  // C3
++  int num_operands = op_->getNumOperands();
++  if (num_operands < 3 || num_operands % 2 != 1)
++    return op_.emitError() << "size(operands) is even or less than 3";
++  size_t num_inputs = getNumInputs();
++
++  if (op_->getNumResults() != num_inputs)
++    return op_.emitError()
++           << "size(results) is not the same as the number of inputs";
++
++  for (size_t i = 0; i < num_inputs; ++i) {
++    // C4
++    if (!getInput(i).getType().hasRank())
++      return op_.emitError() << "input " << i << " is unranked";
++    if (getInput(i).getType().getShape() != getInput(0).getType().getShape())
++      return op_.emitError()
++             << "input " << i << " shape does not match input 0 shape";
++    // C5
++    if (!getInitialValue(i).getType().hasRank())
++      return op_.emitError() << "initial value " << i << " is unranked";
++    if (0 != getInitialValue(i).getType().getRank())
++      return op_.emitError()
++             << "initial value " << i << " does not have rank 0";
++    // C6
++    if (getInitialValue(i).getType().getElementType() !=
++        getInput(i).getType().getElementType())
++      return op_.emitError() << "initial value " << i
++                             << " element type does not match input type";
++    // C7
++    if (!getOutput(i).getType().hasRank())
++      return op_.emitError() << "output " << i << " is unranked";
++    if (getOutput(i).getType().getShape() != getOutput(0).getType().getShape())
++      return op_.emitError()
++             << "output " << i << " shape does not match output 0 shape";
++    // C8
++    if (getOutput(i).getType().getElementType() !=
++        getInput(i).getType().getElementType())
++      return op_.emitError() << "output " << i
++                             << " element type does not match input type";
++  }
++
++  // C9
++  auto inputShape = getInput(0).getType().getShape();
++  auto outputShape = getOutput(0).getType().getShape();
++  if (reduction_dim < 0 || (size_t)reduction_dim >= inputShape.size())
++    return op_.emitError() << "reduction_dim is out of range";
++
++  // C10
++  for (size_t i = 0; i < inputShape.size(); ++i) {
++    if (i != (size_t)reduction_dim && inputShape[i] != outputShape[i])
++      return op_.emitError()
++             << "output values dimension " << i << " has size "
++             << outputShape[i] << " different than operand dimension size "
++             << inputShape[i];
++  }
++  return success();
++}
++
++size_t DynamicApproxTopKOpAdaptor::getNumInputs() {
++  return (op_->getNumOperands() - 1) / 2;
++}
++
++TypedValue<ShapedType> DynamicApproxTopKOpAdaptor::getInput(size_t idx) {
++  return cast<TypedValue<ShapedType>>(op_.getInputs()[idx]);
++}
++
++TypedValue<ShapedType> DynamicApproxTopKOpAdaptor::getInitialValue(size_t idx) {
++  return cast<TypedValue<ShapedType>>(op_.getInputs()[getNumInputs() + idx]);
++}
++
++TypedValue<ShapedType> DynamicApproxTopKOpAdaptor::getK() {
++  return cast<TypedValue<ShapedType>>(op_.getInputs()[2 * getNumInputs()]);
++}
++
++TypedValue<ShapedType> DynamicApproxTopKOpAdaptor::getOutput(size_t idx) {
++  return cast<TypedValue<ShapedType>>(op_.getResults()[idx]);
++}
++
++std::optional<DynamicApproxTopKOpAdaptor> getDynamicApproxTopKOp(
++    CustomCallOp op) {
++  if (op.getCallTargetName() != "stablehlo.dynamic_approx_top_k") return {};
++  return DynamicApproxTopKOpAdaptor(op);
++}
++
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,305 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1181,6 +1309,81 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +// Fails if the call_target_name of the custom call doesn't match
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
++
++// The DynamicApproxTopKOp experiment provides a dynamic version of
++// ApproxTopKOp.
++//
++// Within this experiment, DynamicApproxTopKOp is represented via the
++// `stablehlo.custom_call @stablehlo.dynamic_approx_top_k` custom call.
++// This custom call has the regular operands of ApproxTopKOp plus an
++// additional `k` operand that determines the shape of the output.
++//
++// Semantics of DynamicApproTopKOp are inherited from semantics of ApproxTopKOp.
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `inputs`        | N tensors of integer or floating-point type   |
++// | (I2)  | `initial_values`| N 0-dimensional tensors of same element type |
++// |       |                 | as the corresponding input element type      |
++// | (I3)  | `k`             | 0-dimensional tensor of integer or index type|
++//
++// #### Attributes
++//
++// * api_version: always 2 if present
++// * has_side_effect: always False if present
++// * called_computations: the comparator for scoring entries
++// * mhlo.backend_config: does not include `top_k` and includes:
++//   * `reduction_dim`
++//
++// #### Outputs
++//
++// | Name           | Type                                                |
++// |----------------|-----------------------------------------------------|
++// | `outputs`      | N tensor of same type as the corresponding input    |
++//
++// #### Constraints
++//
++// * (C1) the `mhlo.backend_config` attribute does not contain `top_k`
++// * (C2) the `mhlo.backend_config` attribute contains `reduction_dim`
++// * (C3) len(inputs) == len(initial_values) == len(outputs)
++// * (C4) inputs have ranked type and have the same shape
++// * (C5) initial_values have ranked type and have rank 0
++// * (C6) initial_values have the same element type as the corresponding input
++// * (C7) outputs have same shape
++// * (C8) outputs have the same element type as the corresponding input
++// * (C9) 0 <= reduction_dim < rank(inputs[0])
++// * (C10) shape(inputs[0])[i] == shape(outputs[0])[i] except for i == reduction_dim
++
++class DynamicApproxTopKOpAdaptor {
++ public:
++  DynamicApproxTopKOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  size_t getNumInputs();
++  TypedValue<ShapedType> getInput(size_t idx);
++  TypedValue<ShapedType> getInitialValue(size_t idx);
++  TypedValue<ShapedType> getK();
++
++  TypedValue<ShapedType> getOutput(size_t idx);
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a DynamicApproxTopKOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "stablehlo.dynamic_approx_top_k".
++std::optional<DynamicApproxTopKOpAdaptor> getDynamicApproxTopKOp(
++    CustomCallOp op);
 +
 +}  // namespace experimental
 +}  // namespace stablehlo
@@ -1416,7 +1619,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in b/stableh
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
-@@ -0,0 +1,344 @@
+@@ -0,0 +1,475 @@
 +// RUN: experimental-stablehlo-opt --experimental-stablehlo-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
@@ -1760,6 +1963,137 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +  %k = stablehlo.constant dense<3> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<4xi32>)
 +  return %1#0, %1#1 : tensor<3xf32>, tensor<4xi32>
++}
++
++// -----
++
++// approx_dynamic_top_k success
++// CHECK-LABEL: func @approx_dynamic_top_k_success
++func.func @approx_dynamic_top_k_success(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
++  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %init1 = stablehlo.constant dense<-1> : tensor<i32>
++  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  // CHECK: ApproxTopK{{.*}}top_k = 3
++  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
++    called_computations = [@top_k_gt_f32_comparator],
++    mhlo.backend_config = {
++      aggregate_to_topk = true,
++      is_fallback = true,
++      recall_target = 0.95 : f32,
++      reduction_dim = 1 : i64,
++      reduction_input_size_override = -1 : i64
++    }
++  } : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>, tensor<ui64>) -> (tensor<3x4xf32>, tensor<3x4xi32>)
++  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
++}
++
++func.func private @top_k_gt_f32_comparator(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
++  %0 = stablehlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
++  return %0 : tensor<i1>
++}
++
++// -----
++
++// CHECK-LABEL: func @approx_dynamic_top_k_error_no_called_computation
++func.func @approx_dynamic_top_k_error_no_called_computation(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
++  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %init1 = stablehlo.constant dense<-1> : tensor<i32>
++  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  // expected-error@+1{{must take 1 called_computations}}
++  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
++    mhlo.backend_config = {
++      aggregate_to_topk = true,
++      is_fallback = true,
++      recall_target = 0.95 : f32,
++      reduction_dim = 1 : i64,
++      reduction_input_size_override = -1 : i64
++    }
++  } : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>, tensor<ui64>) -> (tensor<3x4xf32>, tensor<3x4xi32>)
++  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @approx_dynamic_top_k_error_backend_config_includes_top_k
++func.func @approx_dynamic_top_k_error_backend_config_includes_top_k(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
++  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %init1 = stablehlo.constant dense<-1> : tensor<i32>
++  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  // expected-error@+1{{mhlo.backend_config attribute contains top_k}}
++  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1, %k) {
++    called_computations = [@top_k_gt_f32_comparator],
++    mhlo.backend_config = {
++      top_k = 3,
++      aggregate_to_topk = true,
++      is_fallback = true,
++      recall_target = 0.95 : f32,
++      reduction_dim = 1 : i64,
++      reduction_input_size_override = -1 : i64
++    }
++  } : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>, tensor<ui64>) -> (tensor<3x4xf32>, tensor<3x4xi32>)
++  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
++}
++
++func.func private @top_k_gt_f32_comparator(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
++  %0 = stablehlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
++  return %0 : tensor<i1>
++}
++
++// -----
++
++// CHECK-LABEL: func @approx_dynamic_top_k_error_even_operands
++func.func @approx_dynamic_top_k_error_even_operands(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
++  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %init1 = stablehlo.constant dense<-1> : tensor<i32>
++  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  // expected-error@+1{{size(operands) is even or less than 3}}
++  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k(%arg0, %inp1, %init0, %init1) {
++    called_computations = [@top_k_gt_f32_comparator],
++    mhlo.backend_config = {
++      aggregate_to_topk = true,
++      is_fallback = true,
++      recall_target = 0.95 : f32,
++      reduction_dim = 1 : i64,
++      reduction_input_size_override = -1 : i64
++    }
++  } : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<3x4xf32>, tensor<3x4xi32>)
++  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
++}
++
++func.func private @top_k_gt_f32_comparator(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
++  %0 = stablehlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
++  return %0 : tensor<i1>
++}
++
++// -----
++
++// CHECK-LABEL: func @approx_dynamic_top_k_error_few_operands
++func.func @approx_dynamic_top_k_error_few_operands(%arg0: tensor<3x8xf32>) -> (tensor<3x4xf32>, tensor<3x4xi32>) {
++  %init0 = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %init1 = stablehlo.constant dense<-1> : tensor<i32>
++  %inp1 = stablehlo.iota dim = 1 : tensor<3x8xi32>
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  // expected-error@+1{{size(operands) is even or less than 3}}
++  %2:2 = stablehlo.custom_call @stablehlo.dynamic_approx_top_k() {
++    called_computations = [@top_k_gt_f32_comparator],
++    mhlo.backend_config = {
++      aggregate_to_topk = true,
++      is_fallback = true,
++      recall_target = 0.95 : f32,
++      reduction_dim = 1 : i64,
++      reduction_input_size_override = -1 : i64
++    }
++  } : () -> (tensor<3x4xf32>, tensor<3x4xi32>)
++  return %2#0, %2#1 : tensor<3x4xf32>, tensor<3x4xi32>
++}
++
++func.func private @top_k_gt_f32_comparator(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
++  %0 = stablehlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
++  return %0 : tensor<i1>
 +}
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
@@ -2218,7 +2552,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/s
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,214 @@
 +/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 +   Copyright 2023 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2356,6 +2690,48 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +  }
 +};
 +
++struct CanonicalizeApproxDynamicTopKOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicApproxTopKOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicApproxTopKOpAdaptor op = *maybeOp;
++
++    SmallVector<int64_t> k;
++    if (failed(hlo::matchInts(op.getK(), k))) {
++      return rewriter.notifyMatchFailure(impl, "expected constant k");
++    }
++
++    SmallVector<Value> newOperands;
++    for (size_t i = 0; i < op.getNumInputs(); ++i) {
++      newOperands.push_back(op.getInput(i));
++    }
++    for (size_t i = 0; i < op.getNumInputs(); ++i) {
++      newOperands.push_back(op.getInitialValue(i));
++    }
++
++    auto stablehloBackendConfig = "mhlo.backend_config";
++    auto backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
++        impl->getAttr(stablehloBackendConfig));
++    if (!backend_config)
++      return rewriter.notifyMatchFailure(op,
++                                         "Missing backend_config attribute");
++    SmallVector<NamedAttribute> backend_config_attrs{backend_config.begin(),
++                                                     backend_config.end()};
++    backend_config_attrs.push_back(
++        rewriter.getNamedAttr("top_k", rewriter.getI64IntegerAttr(k[0])));
++
++    auto newOp = rewriter.replaceOpWithNewOp<CustomCallOp>(
++        op, op->getResultTypes(), newOperands, op->getAttrs());
++    newOp.setCallTargetName("ApproxTopK");
++    newOp->setAttr(stablehloBackendConfig,
++                   rewriter.getDictionaryAttr(backend_config_attrs));
++    return success();
++  }
++};
++
 +struct StablehloCanonicalizeDynamismPass
 +    : public impl::StablehloCanonicalizeDynamismPassBase<
 +          StablehloCanonicalizeDynamismPass> {
@@ -2375,6 +2751,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
++    patterns.add<CanonicalizeApproxDynamicTopKOpPattern>(&getContext());
 +
 +    auto funcOp = getOperation();
 +    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns),
