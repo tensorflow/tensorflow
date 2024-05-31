@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLOCATE_PREDECESSOR_TREES_PASS_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 // Colocate a tree of unplaced constants with its placed root. Identify a
 // dangling tree of ops whose root op is assigned but rest of ops are not

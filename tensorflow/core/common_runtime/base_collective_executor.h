@@ -19,9 +19,16 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 class CollectiveImplementation;
