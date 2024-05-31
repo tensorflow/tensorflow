@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -49,10 +50,12 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffers_data;
   buffers_data.reserve(buffers_.size());
 
+  int64_t arg_num = 0;
   for (BufferAllocation::Slice& buffer : buffers_) {
     TF_ASSIGN_OR_RETURN(buffers_data.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(buffer));
-    VLOG(3) << absl::StreamFormat(" - arg: %s (%p)", buffer.ToString(),
+    VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", arg_num++,
+                                  buffer.ToString(),
                                   buffers_data.back().opaque());
   }
 

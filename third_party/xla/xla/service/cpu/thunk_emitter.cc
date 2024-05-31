@@ -51,7 +51,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
   if (!module.has_schedule()) {
     return absl::InternalError("HLO module must be scheduled to emit thunks");
   }
-  VLOG(0) << module.ToString();
   return EmitHloComputation(module.entry_computation());
 }
 
@@ -114,6 +113,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
     case HloOpcode::kCompare:
@@ -123,6 +124,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
@@ -139,6 +141,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:

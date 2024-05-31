@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -201,6 +203,35 @@ bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
 
+static absl::Status EmitElementalLoops(
+    llvm::IRBuilder<>& b, const HloInstruction* instr,
+    const llvm_ir::ElementGenerator& element_generator,
+    absl::Span<const llvm_ir::IrArray> results) {
+  // We can emit loops for instruction with multiple results only if it is a
+  // fusion, reduce or reduce window.
+  bool multiple_results = results.size() > 1;
+  bool support_multiple_results = instr->opcode() == HloOpcode::kFusion ||
+                                  instr->opcode() == HloOpcode::kReduce ||
+                                  instr->opcode() == HloOpcode::kReduceWindow;
+
+  if (multiple_results && !support_multiple_results) {
+    return Internal(
+        "Multi-output host kernels are not supported for %s instruction",
+        HloOpcodeString(instr->opcode()));
+  }
+
+  if (multiple_results) {
+    TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, results, &b)
+                           .EmitLoop(llvm_ir::IrName(instr)));
+  } else {
+    TF_RETURN_IF_ERROR(
+        llvm_ir::LoopEmitter(element_generator, results.front(), &b)
+            .EmitLoop(llvm_ir::IrName(instr)));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit elemental host kernel: " << instr->name();
@@ -218,19 +249,13 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     };
   }
 
-  if (kernel_prototype.results.size() > 1) {
-    return absl::InternalError("Multi-output host kernels are not supported");
-  }
-
   ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
                                        nested_ir_emitter_, fast_min_max());
   llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
 
-  TF_RETURN_IF_ERROR(
-      llvm_ir::LoopEmitter(element_generator, kernel_prototype.results[0], &b)
-          .EmitLoop(llvm_ir::IrName(instr)));
-
+  TF_RETURN_IF_ERROR(EmitElementalLoops(b, instr, element_generator,
+                                        kernel_prototype.results));
   return kernels_.emplace_back(kernel_prototype.function->getName().str());
 }
 
@@ -263,10 +288,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
       auto element_generator,
       fused_emitter.GetGenerator(*fusion->fused_expression_root()));
 
-  TF_RETURN_IF_ERROR(
-      llvm_ir::LoopEmitter(element_generator, kernel_prototype.results[0], &b)
-          .EmitLoop(llvm_ir::IrName(fusion)));
-
+  TF_RETURN_IF_ERROR(EmitElementalLoops(b, fusion, element_generator,
+                                        kernel_prototype.results));
   return kernels_.emplace_back(kernel_prototype.function->getName().str());
 }
 
@@ -328,7 +351,7 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
           << ", #arguments=" << arguments.size()
           << ", #results=" << results.size();
   for (const Shape& argument : arguments) {
-    VLOG(3) << "  arguments: " << argument.ToString(true);
+    VLOG(3) << "  argument: " << argument.ToString(true);
   }
   for (const Shape& result : results) {
     VLOG(3) << "  result: " << result.ToString(true);
