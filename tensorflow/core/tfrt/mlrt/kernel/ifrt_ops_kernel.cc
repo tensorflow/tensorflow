@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -94,6 +95,10 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
     return attributes().GetAs<mlrt::bc::Vector<tensorflow::DataType>>(0);
   }
 
+  mlrt::bc::Vector<bool> truncate_in_cast() const {
+    return attributes().GetAs<mlrt::bc::Vector<bool>>(1);
+  }
+
   std::vector<tensorflow::tfrt_stub::FallbackTensor> var_handles() const {
     DCHECK_GT(arguments().size(), 3);
     std::vector<tensorflow::tfrt_stub::FallbackTensor> result;
@@ -120,6 +125,8 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
     tensorflow::Tensor shape_and_slices;
     std::vector<tensorflow::tfrt_stub::FallbackTensor> var_handles;
     tensorflow::AttrValue dtypes_attr_value;
+    std::vector<tensorflow::DataType> restored_dtypes;
+    std::vector<bool> truncate_in_cast;
   };
 
   absl::Status InvokeHelper();
@@ -134,6 +141,53 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
     execution_context().Fail(std::move(status));
     return;
   }
+}
+
+// Returns a casted tensor if successful.
+absl::StatusOr<tensorflow::Tensor> Cast(
+    tensorflow::Tensor& in_tensor, tensorflow::DataType restored_dtype,
+    tensorflow::DataType cast_dtype, bool truncate_in_cast,
+    const tensorflow::DeviceMgr& device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime,
+    OpKernelContext::Params& params) {
+  auto runner =
+      tfrt_stub::OpKernelRunner::Create(
+          /*op_name=*/
+          "Cast", /*node_name=*/"Cast", params.device->name(),
+          /*num_args=*/1,
+          [&](tensorflow::AttrValueMap* attr_value_map) {
+            tensorflow::AttrValue restored_dtype_attr_value;
+            restored_dtype_attr_value.set_type(restored_dtype);
+            attr_value_map->insert({"SrcT", restored_dtype_attr_value});
+
+            tensorflow::AttrValue cast_dtype_attr_value;
+            cast_dtype_attr_value.set_type(cast_dtype);
+            attr_value_map->insert({"DstT", cast_dtype_attr_value});
+
+            tensorflow::AttrValue truncate_attr_value;
+            truncate_attr_value.set_b(truncate_in_cast);
+            attr_value_map->insert({"Truncate", truncate_attr_value});
+            return absl::OkStatus();
+          },
+          device_manager, process_function_library_runtime)
+          .value();
+
+  std::vector<tensorflow::TensorValue> input_tf_tensor_values;
+  input_tf_tensor_values.push_back(tensorflow::TensorValue(&in_tensor));
+
+  SetUpParams(runner, input_tf_tensor_values, params);
+  // Use persistent device instead of the per request device.
+
+  OpKernelContext op_kernel_context(&params, /*num_outputs=*/1);
+
+  runner.Run(&op_kernel_context);
+
+  if (!op_kernel_context.status().ok()) {
+    return op_kernel_context.status();
+  }
+  DCHECK_EQ(op_kernel_context.num_outputs(), 1);
+  return *(op_kernel_context.mutable_output(0));
 }
 
 absl::Status MlrtIfrtRestoreVariableKernel::RunShard(
@@ -186,18 +240,27 @@ absl::Status MlrtIfrtRestoreVariableKernel::RunShard(
   struct AsyncState {
     explicit AsyncState(
         const std::vector<tensorflow::TensorValue>& input_tf_tensor_values,
-        const OpKernelContext::Params& params, int num_outputs)
+        const OpKernelContext::Params& params, int num_outputs,
+        const tensorflow::DeviceMgr& device_manager,
+        const tensorflow::ProcessFunctionLibraryRuntime&
+            process_function_library_runtime)
         : run_state(input_tf_tensor_values, params),
-          context(&run_state.params, num_outputs) {}
+          context(&run_state.params, num_outputs),
+          device_manager(device_manager),
+          process_function_library_runtime(process_function_library_runtime) {}
 
     tfrt_stub::OpKernelRunState run_state;
     OpKernelContext context;
+    const tensorflow::DeviceMgr& device_manager;
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime;
+
     std::vector<xla::ifrt::Promise<tensorflow::Tensor>> results;
   };
-  auto async_state =
-      std::make_unique<AsyncState>(input_tf_tensor_values, params, num_outputs);
-
-  async_state->results.reserve(num_outputs);
+  auto async_state = std::make_unique<AsyncState>(
+      input_tf_tensor_values, params, num_outputs,
+      fallback_request_state.device_manager(),
+      fallback_request_state.process_function_library_runtime());
 
   ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
       (*ifrt_model_context)->GetRestoreTensorRegistry();
@@ -247,10 +310,46 @@ absl::Status MlrtIfrtRestoreVariableKernel::RunShard(
           }
           return;
         }
+        DCHECK_EQ(shard.var_handles.size(), op_kernel_context.num_outputs());
+        DCHECK_EQ(shard.truncate_in_cast.size(),
+                  op_kernel_context.num_outputs());
+
+        // TODO(b/343964091): consider to run multiple casts in parallel.
         for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
           DCHECK(op_kernel_context.mutable_output(i));
-          std::move(async_state->results[i])
-              .Set(std::move(*op_kernel_context.mutable_output(i)));
+
+          if (op_kernel_context.mutable_output(i)->dtype() !=
+              shard.restored_dtypes[i]) {
+            std::move(async_state->results[i])
+                .Set(absl::InvalidArgumentError(absl::StrCat(
+                    "The restored tensor has a different dtype than the "
+                    "variable handle: ",
+                    op_kernel_context.mutable_output(i)->dtype(), " vs. ",
+                    shard.restored_dtypes[i])));
+            return;
+          }
+          const ResourceHandle& var_handle =
+              shard.var_handles[i]
+                  .tensor()
+                  .scalar<tensorflow::ResourceHandle>()();
+
+          if (shard.restored_dtypes[i] ==
+              var_handle.dtypes_and_shapes()[0].dtype) {
+            std::move(async_state->results[i])
+                .Set(*std::move(op_kernel_context.mutable_output(i)));
+          } else {
+            absl::StatusOr<tensorflow::Tensor> cast_output = Cast(
+                *op_kernel_context.mutable_output(i), shard.restored_dtypes[i],
+                var_handle.dtypes_and_shapes()[0].dtype,
+                shard.truncate_in_cast[i], async_state->device_manager,
+                async_state->process_function_library_runtime,
+                async_state->run_state.params);
+            if (!cast_output.ok()) {
+              std::move(async_state->results[i]).Set(cast_output.status());
+            } else {
+              std::move(async_state->results[i]).Set(*std::move(cast_output));
+            }
+          }
         }
       });
   return absl::OkStatus();
@@ -288,6 +387,12 @@ absl::Status MlrtIfrtRestoreVariableKernel::ValidateInput() {
         "elements.");
   }
 
+  if (tensor_names().tensor().NumElements() != truncate_in_cast().size()) {
+    return absl::InvalidArgumentError(
+        "The tensor_names and truncate_in_cast must have the same number of "
+        "elements.");
+  }
+
   return absl::OkStatus();
 }
 
@@ -322,14 +427,23 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
   shards.reserve(sharded_indices.size());
   for (auto& sharded_index : sharded_indices) {
     RestoreVariableShard shard;
+    shard.var_handles.reserve(sharded_index.size());
+    shard.truncate_in_cast.reserve(sharded_index.size());
+    shard.restored_dtypes.reserve(sharded_index.size());
+
     std::vector<tsl::tstring> tensor_names;
     std::vector<tsl::tstring> shape_and_slices;
+    shape_and_slices.reserve(sharded_index.size());
+    tensor_names.reserve(sharded_index.size());
     for (int index : sharded_index) {
       tensor_names.push_back(tensor_names_flat(index));
       shape_and_slices.push_back(shape_and_slices_flat(index));
-      shard.var_handles.push_back(var_handles()[index]);
       shard.dtypes_attr_value.mutable_list()->add_type(
           restored_dtypes()[index]);
+
+      shard.var_handles.push_back(var_handles()[index]);
+      shard.restored_dtypes.push_back(restored_dtypes()[index]);
+      shard.truncate_in_cast.push_back(truncate_in_cast()[index]);
     }
 
     shard.prefix = prefix().tensor();

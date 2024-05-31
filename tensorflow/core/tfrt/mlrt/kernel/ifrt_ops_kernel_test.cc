@@ -99,6 +99,18 @@ std::string EncodeRestoreDtypesInt32(int num_outputs) {
   return std::string(buffer.data(), buffer.size());
 }
 
+std::string EncodeTruncateInCast(int num_outputs) {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto ctor = mlrt::bc::New<mlrt::bc::Vector<bool>>(&allocator, num_outputs);
+
+  for (int i = 0; i < num_outputs; ++i) {
+    ctor.ConstructAt(i, false);
+  }
+  return std::string(buffer.data(), buffer.size());
+}
+
 mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
     int num_variables = 1) {
   mlrt::bc::Buffer buffer;
@@ -116,12 +128,14 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
   kernels.Def(kernel_names);
 
   static constexpr int kNumAttributes =
-      4;  // Size of attributes when there are 1 variable.
+      5;  // Size of attributes when there are 1 variable.
   mlrt::testing::AttributeTable attributes(executable_ctor.construct_attributes(
       kNumAttributes + 2 * (num_variables - 1)));
 
   std::string restore_dtypes = EncodeRestoreDtypesInt32(num_variables);
   attributes.Add("restore_dtypes", restore_dtypes);
+  std::vector<bool> truncate_in_cast(num_variables, false);
+  attributes.Add("truncate_in_cast", EncodeTruncateInCast(num_variables));
 
   for (int i = 0; i < num_variables; ++i) {
     attributes.Add(
@@ -140,11 +154,11 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
                  }
                  attr {
                    key: "dtype"
-                   value { type: DT_INT32 }
+                   value { type: DT_INT16 }
                  }
                  attr {
                    key: "shape"
-                   value { shape { dim { size: 1 } } }
+                   value { shape { dim { size: 3 } } }
                  }
             )pb",
             absl::StrCat("VarHandleOp", i), kContainer,
@@ -215,8 +229,9 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
       restore_ctor.set_code(kernels.Use("tf_mlrt.ifrt_restore_variable"));
       restore_ctor.construct_arguments(args.size()).Assign(regs.Use(args));
       restore_ctor.construct_results(0);
-      restore_ctor.construct_attributes(1).Assign(
-          {attributes.GetHandle("restore_dtypes")});
+      restore_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("restore_dtypes"),
+           attributes.GetHandle("truncate_in_cast")});
       kernel_index++;
     }
     {
@@ -565,7 +580,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp) {
           absl::StrCat(kVariableRuntimeName, 0));
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
   TF_ASSERT_OK(restored_tensor.status());
-  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int32_t>({1, 2, 3}, {3})));
+  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
 }
 
 TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
@@ -632,7 +647,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
           absl::StrCat(kVariableRuntimeName, 0));
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
   TF_ASSERT_OK(restored_tensor.status());
-  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int32_t>({1, 2, 3}, {3})));
+  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
 
   xla::ifrt::Future<tensorflow::Tensor> restored_future1 =
       ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
@@ -640,7 +655,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
   absl::StatusOr<tensorflow::Tensor> restored_tensor1 =
       restored_future1.Await();
   TF_ASSERT_OK(restored_tensor1.status());
-  EXPECT_THAT(*restored_tensor1, TensorEq(AsTensor<int32_t>({4, 5, 6}, {3})));
+  EXPECT_THAT(*restored_tensor1, TensorEq(AsTensor<int16_t>({4, 5, 6}, {3})));
 
   xla::ifrt::Future<tensorflow::Tensor> restored_future2 =
       ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
@@ -648,7 +663,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
   absl::StatusOr<tensorflow::Tensor> restored_tensor2 =
       restored_future2.Await();
   TF_ASSERT_OK(restored_tensor2.status());
-  EXPECT_THAT(*restored_tensor2, TensorEq(AsTensor<int32_t>({7, 8, 9}, {3})));
+  EXPECT_THAT(*restored_tensor2, TensorEq(AsTensor<int16_t>({7, 8, 9}, {3})));
 
   xla::ifrt::Future<tensorflow::Tensor> restored_future3 =
       ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
@@ -657,7 +672,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
       restored_future3.Await();
   TF_ASSERT_OK(restored_tensor3.status());
   EXPECT_THAT(*restored_tensor3,
-              TensorEq(AsTensor<int32_t>({10, 11, 12}, {3})));
+              TensorEq(AsTensor<int16_t>({10, 11, 12}, {3})));
 }
 
 }  // namespace
