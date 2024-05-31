@@ -4,7 +4,7 @@ load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
-load("//xla/tsl:tsl.bzl", "internal_visibility", "transitive_hdrs")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -652,15 +652,6 @@ cc_library(
 )
 
 #===--------------------------------------------------------------------------------------------===#
-
-transitive_hdrs(
-    name = "stream_executor_install_hdrs",
-    tags = [
-        "alt_dep=:stream_executor_headers",
-        "avoid_dep",
-    ],
-    deps = [":stream_executor_headers"],
-)
 
 # TODO(ezhulenev): This should be merged into regular `stream_executor` target and `stream.cc` moved
 # into its own target, however today we have problems with backward references when we try to link

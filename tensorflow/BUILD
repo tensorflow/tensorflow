@@ -1614,7 +1614,6 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
-        "@local_xla//xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
