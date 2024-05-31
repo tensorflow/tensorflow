@@ -121,10 +121,10 @@ static llvm::FunctionType* KernelFunctionTy(llvm::LLVMContext& ctx) {
 class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
  public:
   ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
-                     const HloSchedule* schedule, IrEmitter* nested_ir_emitter,
+                     const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
                      bool fast_min_max)
       : xla::ElementalIrEmitter(module, b),
-        schedule_(schedule),
+        hlo_module_(hlo_module),
         nested_ir_emitter_(nested_ir_emitter),
         fast_min_max_(fast_min_max) {}
 
@@ -148,16 +148,21 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {
+    // Module must be scheduled to emit thread local computation.
+    if (!hlo_module_ || !hlo_module_->has_schedule()) {
+      return absl::InternalError(
+          "HLO module must be scheduled to emit thread local computation.");
+    }
     // Create a nested function for thread local computation if it is not
     // already created. Nested functions are created with internal linkage.
     if (!nested_ir_emitter_->is_computation_emitted(callee, is_reducer)) {
       VLOG(2) << "Emit nested computation: " << callee.name();
       TF_RETURN_IF_ERROR(
           nested_ir_emitter_
-              ->EmitComputation(const_cast<HloComputation*>(&callee), name,
-                                false,
-                                schedule_->sequence(&callee).instructions(),
-                                /*allow_reassociation=*/is_reducer)
+              ->EmitComputation(
+                  const_cast<HloComputation*>(&callee), name, false,
+                  hlo_module_->schedule().sequence(&callee).instructions(),
+                  /*allow_reassociation=*/is_reducer)
               .status());
     }
 
@@ -173,7 +178,7 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
   bool fast_min_max() override { return fast_min_max_; }
 
  private:
-  const HloSchedule* schedule_;
+  const HloModule* hlo_module_;
   IrEmitter* nested_ir_emitter_;
   bool fast_min_max_;
 };
@@ -217,7 +222,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     return absl::InternalError("Multi-output host kernels are not supported");
   }
 
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_.schedule(),
+  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
                                        nested_ir_emitter_, fast_min_max());
   llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
@@ -243,7 +248,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_.schedule(),
+  ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
                                        nested_ir_emitter_, fast_min_max());
   FusedIrEmitter fused_emitter(elemental_emitter);
 
