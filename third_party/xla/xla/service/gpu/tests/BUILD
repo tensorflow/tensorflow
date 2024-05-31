@@ -966,6 +966,25 @@ xla_test(
 )
 
 xla_test(
+    name = "gpu_cub_sort_test",
+    srcs = ["gpu_cub_sort_test.cc"],
+    backends = ["gpu"],
+    shard_count = 10,
+    deps = [
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_sort_rewriter",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backend_tags = {"gpu": [
