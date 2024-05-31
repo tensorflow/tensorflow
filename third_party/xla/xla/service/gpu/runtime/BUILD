@@ -570,7 +570,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu/runtime:thunk",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

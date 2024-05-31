@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -205,7 +204,7 @@ ENTRY %main {
 }
 
 // Only 1D shapes are supported.
-TEST_F(GpuSortRewriterTest, NoRewriteManyDimensions) {
+TEST_F(GpuSortRewriterTest, NoRewriteNonMinorSortDimension) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -307,6 +306,58 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunPass(module.get()));
+}
+
+// Basic sort: with batch dimension.
+TEST_F(GpuSortRewriterTest, SortWithBatchDim) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[100,1000] parameter(0)
+  ROOT %sort = f32[100,1000] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+  ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
+                  /*descending=*/false);
+}
+
+// Basic sort: with multiple batch dimensions.
+TEST_F(GpuSortRewriterTest, SortWithMultipleBatchDims) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[10,10,1000] parameter(0)
+  ROOT %sort = f32[10,10,1000] sort(%input), dimensions={2}, to_apply=%compare
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+  ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
+                  /*descending=*/false);
 }
 
 }  // namespace
