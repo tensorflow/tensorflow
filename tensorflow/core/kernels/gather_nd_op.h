@@ -150,18 +150,6 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
             "are currently supported.  Requested rank: ",
             indices_nd);
     }
-
-    // bad_i will only return >= 0 on CPUs right now.
-    if (bad_i >= 0) {
-      auto shape = indices.shape();
-      shape.RemoveLastDims(1);
-      return errors::InvalidArgument(
-          "indices", SliceDebugString(shape, bad_i), " = [",
-          str_util::Join(
-              gtl::ArraySlice<Index>(&indices_mat(bad_i, 0), indices_nd), ", "),
-          "] does not index into param shape ", params.shape().DebugString(),
-          ", node name: ", c->op_kernel().name());
-    }
   }
   return absl::OkStatus();
 }

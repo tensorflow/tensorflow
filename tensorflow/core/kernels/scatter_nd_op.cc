@@ -947,15 +947,6 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
             slice_dim);
     }
   }
-  if (bad_i >= 0) {
-    auto slice_shape = indices.shape();
-    slice_shape.RemoveLastDims(1);
-    return errors::InvalidArgument(
-        "indices", SliceDebugString(slice_shape, bad_i), " = [",
-        absl::StrJoin(
-            gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
-        "] does not index into shape ", shape.DebugString());
-  }
   return absl::OkStatus();
 }
 
