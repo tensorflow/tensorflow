@@ -62,7 +62,7 @@ pytype_strict_library(
     deps = [
         ":_pywrap_tensorflow_lite_metrics_wrapper",
         ":converter_error_data_proto_py",
-        "//tensorflow/lite/python:wrap_toco",
+        "//tensorflow/compiler/mlir/lite/python:wrap_converter",
     ],
 )
 

@@ -453,19 +453,6 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "wrap_toco",
-    srcs = [
-        "wrap_toco.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
-        "//tensorflow/python:_pywrap_toco_api",
-        "//tensorflow/python:pywrap_tensorflow",
-    ],
-)
-
-py_strict_library(
     name = "lite_constants",
     srcs = ["lite_constants.py"],
     srcs_version = "PY3",
@@ -486,7 +473,7 @@ pytype_strict_library(
         ":convert_phase",
         ":lite_constants",
         ":util",
-        ":wrap_toco",
+        "//tensorflow/compiler/mlir/lite/python:wrap_converter",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
         "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
@@ -643,7 +630,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":wrap_toco",
+        "//tensorflow/compiler/mlir/lite/python:wrap_converter",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/python/util:tf_export",
     ],

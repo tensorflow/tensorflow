@@ -257,6 +257,14 @@ tensorflow::ExperimentalTFLiteToTosaBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
+[//tensorflow/compiler/mlir/lite/python:converter_python_api] # converter_python_api
+tflite::Convert
+tflite::MlirQuantizeModel
+tflite::MlirSparsifyModel
+tflite::RegisterCustomOpdefs
+tflite::RetrieveCollectedErrors
+tflite::FlatBufferFileToMlir
+
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
 
