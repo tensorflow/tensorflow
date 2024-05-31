@@ -39,6 +39,7 @@ class ReconfigBatchOpPass
       : mlir::PassWrapper<ReconfigBatchOpPass,
                           mlir::OperationPass<mlir::ModuleOp>>() {
     min_num_batch_threads_ = options.min_num_batch_threads;
+    min_max_enqueued_batches_ = options.min_max_enqueued_batches;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -55,26 +56,34 @@ class ReconfigBatchOpPass
   llvm::StringRef getArgument() const final { return "tfrt-reconfig-batch-op"; }
 
   llvm::StringRef getDescription() const final {
-    return "Reconfig batch op such as num_batch_threads.";
+    return "Reconfig batch op such as num_batch_threads and "
+           "max_enqueued_batches.";
   }
 
   void runOnOperation() override {
-    if (min_num_batch_threads_ > 0) {
-      mlir::ModuleOp module = getOperation();
-      module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
-        int64_t num_batch_threads = batch_op.getNumBatchThreads();
-        num_batch_threads =
-            std::max(num_batch_threads, min_num_batch_threads_.getValue());
-        batch_op.setNumBatchThreads(num_batch_threads);
-      });
-    }
+    if (min_num_batch_threads_ == 0 && min_max_enqueued_batches_ == 0) return;
+    mlir::ModuleOp module = getOperation();
+    module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
+      int64_t num_batch_threads = batch_op.getNumBatchThreads();
+      num_batch_threads =
+          std::max(num_batch_threads, min_num_batch_threads_.getValue());
+      batch_op.setNumBatchThreads(num_batch_threads);
+
+      int64_t max_enqueued_batches = batch_op.getMaxEnqueuedBatches();
+      max_enqueued_batches =
+          std::max(max_enqueued_batches, min_max_enqueued_batches_.getValue());
+      batch_op.setMaxEnqueuedBatches(max_enqueued_batches);
+    });
   }
 
  protected:
   mlir::Pass::Option<int64_t> min_num_batch_threads_{
       *this, "tfrt-min-num-batch-threads", llvm::cl::init(1),
       llvm::cl::desc("Minimum number of batch threads")};
-  ;
+  mlir::Pass::Option<int64_t> min_max_enqueued_batches_{
+      *this, "tfrt-min-max-enqueued-batches", llvm::cl::init(1),
+      llvm::cl::desc(
+          "Minimum of the maximum number of outstanding enqueued batches")};
 };
 
 }  // namespace
