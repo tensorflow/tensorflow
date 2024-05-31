@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -66,7 +66,7 @@ constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 constexpr int kPendingTaskLogLimit = 20;
 constexpr int kPendingStragglerLogLimit = 3;
 
-std::string GetTaskName(absl::string_view job_name, int task_id) {
+std::string GetTaskName(std::string_view job_name, int task_id) {
   return absl::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
 }
 
@@ -74,7 +74,7 @@ std::string GetTaskName(const CoordinatedTask& task) {
   return GetTaskName(task.job_name(), task.task_id());
 }
 
-CoordinatedTask GetTaskFromName(absl::string_view task_name) {
+CoordinatedTask GetTaskFromName(std::string_view task_name) {
   DeviceNameUtils::ParsedName parsed;
   DeviceNameUtils::ParseFullName(task_name, &parsed);
   CoordinatedTask task;
@@ -123,19 +123,21 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                                absl::Status error) override;
   std::vector<CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
-  absl::Status InsertKeyValue(const std::string& key,
-                              const std::string& value) override;
-  void GetKeyValueAsync(const std::string& key,
+  absl::Status InsertKeyValue(std::string_view key,
+                              std::string_view value) override;
+  absl::Status InsertKeyValue(std::string_view key, std::string_view value,
+                              bool allow_overwrite) override;
+  void GetKeyValueAsync(std::string_view key,
                         StatusOrValueCallback done) override;
-  absl::StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
+  absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
   std::vector<KeyValueEntry> GetKeyValueDir(
-      absl::string_view directory_key) override;
-  absl::Status DeleteKeyValue(const std::string& key) override;
-  void BarrierAsync(const std::string& barrier_id, absl::Duration timeout,
+      std::string_view directory_key) override;
+  absl::Status DeleteKeyValue(std::string_view key) override;
+  void BarrierAsync(std::string_view barrier_id, absl::Duration timeout,
                     const CoordinatedTask& task,
                     const std::vector<CoordinatedTask>& participating_tasks,
                     StatusCallback done) override;
-  absl::Status CancelBarrier(const std::string& barrier_id,
+  absl::Status CancelBarrier(std::string_view barrier_id,
                              const CoordinatedTask& task) override;
 
  private:
@@ -154,7 +156,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void PropagateError(const CoordinatedTask& source_task,
                       bool is_reported_by_task = false)
       ABSL_LOCKS_EXCLUDED(state_mu_);
-  void SetTaskError(absl::string_view task_name, absl::Status error)
+  void SetTaskError(std::string_view task_name, absl::Status error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void AggregateClusterDevices() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   absl::Status DisconnectTask(const CoordinatedTask& task)
@@ -172,7 +174,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
         tasks_at_barrier;
     std::vector<StatusCallback> done_callbacks;
   };
-  void PassBarrier(absl::string_view barrier_id, absl::Status result,
+  void PassBarrier(std::string_view barrier_id, absl::Status result,
                    BarrierState* barrier)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Check if participating tasks are specified correctly across barrier calls.
@@ -181,7 +183,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                                 CoordinatedTaskEqual>& tasks_at_barrier,
       int64_t cluster_size);
-  bool isRecoverableJob(absl::string_view task_name) const;
+  bool isRecoverableJob(std::string_view task_name) const;
 
   class TaskState {
    public:
@@ -214,8 +216,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     bool DeviceInfoIsCollected() { return devices_.device_size() != 0; }
 
     absl::flat_hash_set<std::string> GetOngoingBarriers();
-    void JoinBarrier(absl::string_view barrier_id);
-    void ExitBarrier(absl::string_view barrier_id);
+    void JoinBarrier(std::string_view barrier_id);
+    void ExitBarrier(std::string_view barrier_id);
 
    private:
     // Incarnation ID for CPU:0 on remote task.
@@ -334,12 +336,12 @@ CoordinationServiceStandaloneImpl::TaskState::GetOngoingBarriers() {
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::JoinBarrier(
-    absl::string_view barrier_id) {
+    std::string_view barrier_id) {
   ongoing_barriers_for_task_.emplace(barrier_id);
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::ExitBarrier(
-    absl::string_view barrier_id) {
+    std::string_view barrier_id) {
   ongoing_barriers_for_task_.erase(barrier_id);
 }
 
@@ -382,7 +384,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
       env_.StartThread({}, kHealthCheckThread, [this]() {
         const bool has_service_to_client_connection = client_cache_ != nullptr;
         // Used to store stale tasks and barriers.
-        std::vector<absl::string_view> stale_task_names;
+        std::vector<std::string_view> stale_task_names;
         absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
         while (true) {
           {
@@ -448,7 +450,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           {
             absl::MutexLock l(&state_mu_);
             // Gather barriers which have timed out.
-            for (const std::string& barrier_id : ongoing_barriers_) {
+            for (std::string_view barrier_id : ongoing_barriers_) {
               auto* barrier = &barriers_[barrier_id];
               if (current_time_micros > barrier->deadline_in_micros) {
                 expired_barriers[barrier_id] = barrier;
@@ -879,7 +881,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   call_opts.SetTimeout(kServiceToClientTimeoutMs);
   std::vector<std::shared_ptr<absl::Notification>> notifications;
 
-  std::vector<absl::string_view> task_names;
+  std::vector<std::string_view> task_names;
   {
     absl::ReaderMutexLock l(&state_mu_);
     task_names.reserve(cluster_state_.size());
@@ -887,7 +889,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
       task_names.emplace_back(pair.first);
     }
   }
-  for (absl::string_view task : task_names) {
+  for (std::string_view task : task_names) {
     {
       absl::MutexLock l(&state_mu_);
       // Propagate error only to tasks that are connected
@@ -928,7 +930,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
 // The normalized key will not have leading or trailing slashes, and all parts
 // in the key path are separated by exactly one slack ('/').
 // E.g., ///a//b/c// --> a/b/c
-std::string NormalizeKey(absl::string_view orig_key) {
+std::string NormalizeKey(std::string_view orig_key) {
   std::string norm_key = std::string(orig_key);
   const char* src = norm_key.c_str();
   std::string::iterator dst = norm_key.begin();
@@ -953,15 +955,21 @@ std::string NormalizeKey(absl::string_view orig_key) {
 }
 
 absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
-    const std::string& key, const std::string& value) {
-  VLOG(3) << "InsertKeyValue(): " << key << ": " << value;
+    std::string_view key, std::string_view value) {
+  return InsertKeyValue(key, value, /*allow_overwrite=*/false);
+}
+
+absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
+    std::string_view key, std::string_view value, bool allow_overwrite) {
+  VLOG(3) << "InsertKeyValue(): " << key << ": " << value
+          << " allow_overwrite: " << allow_overwrite;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
-  if (kv_store_.find(norm_key) != kv_store_.end()) {
+  if (!allow_overwrite && kv_store_.find(norm_key) != kv_store_.end()) {
     return MakeCoordinationError(absl::AlreadyExistsError(
         absl::StrCat("Config key ", key, " already exists.")));
   }
-  kv_store_.emplace(norm_key, value);
+  kv_store_.insert_or_assign(norm_key, value);
   auto iter = get_cb_.find(norm_key);
   if (iter != get_cb_.end()) {
     for (const auto& cb : iter->second) {
@@ -973,7 +981,7 @@ absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
 }
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
-    const std::string& key, StatusOrValueCallback done) {
+    std::string_view key, StatusOrValueCallback done) {
   VLOG(3) << "GetKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -991,7 +999,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
 }
 
 absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
-    const std::string& key) {
+    std::string_view key) {
   VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -1003,7 +1011,7 @@ absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
 }
 
 std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
-    absl::string_view directory_key) {
+    std::string_view directory_key) {
   VLOG(3) << "TryGetKeyValueDir(): " << directory_key;
   std::vector<KeyValueEntry> kvs_in_directory;
   const std::string norm_key = NormalizeKey(directory_key);
@@ -1031,7 +1039,7 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
 }
 
 absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
-    const std::string& key) {
+    std::string_view key) {
   VLOG(3) << "DeleteKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -1052,8 +1060,8 @@ absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   return absl::OkStatus();
 }
 
-void CoordinationServiceStandaloneImpl::SetTaskError(
-    absl::string_view task_name, absl::Status error) {
+void CoordinationServiceStandaloneImpl::SetTaskError(std::string_view task_name,
+                                                     absl::Status error) {
   cluster_state_[task_name]->SetError(error);
   for (const auto& barrier_id :
        cluster_state_[task_name]->GetOngoingBarriers()) {
@@ -1068,7 +1076,7 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
-    const std::string& barrier_id, absl::Duration timeout,
+    std::string_view barrier_id, absl::Duration timeout,
     const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
     StatusCallback done) {
@@ -1087,8 +1095,9 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
                    }) != participating_tasks.end();
 
   if (!participating_tasks.empty() && !among_participating_tasks) {
+    const std::string task_name = GetTaskName(task);
     absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
-        absl::StrCat("A non-participating task (", source_task_name,
+        absl::StrCat("A non-participating task (", GetTaskName(task),
                      ") called the barrier: ", barrier_id)));
     {
       absl::MutexLock l(&state_mu_);
@@ -1123,14 +1132,12 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
   auto* barrier = &it->second;
   // Create barrier for the first time.
   if (inserted) {
-    LOG(INFO) << "Barrier(" << barrier_id
-              << ") has been created by task: " << source_task_name;
     // Initialize barrier state.
     barrier->passed = false;
     // Assume barrier is for entire cluster if no tasks are specified.
     if (participating_tasks.empty()) {
       for (const auto& task_state : cluster_state_) {
-        absl::string_view task_name = task_state.first;
+        std::string_view task_name = task_state.first;
         barrier->tasks_at_barrier[GetTaskFromName(task_name)] = false;
       }
     } else {
@@ -1229,7 +1236,7 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 }
 
 absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
-    const std::string& barrier_id, const CoordinatedTask& task) {
+    std::string_view barrier_id, const CoordinatedTask& task) {
   absl::MutexLock l(&state_mu_);
   if (ServiceHasStopped()) {
     return MakeCoordinationError(absl::InternalError(
@@ -1260,12 +1267,12 @@ absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
 }
 
 // Mark barrier as passed.
-void CoordinationServiceStandaloneImpl::PassBarrier(
-    absl::string_view barrier_id, absl::Status result, BarrierState* barrier) {
+void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
+                                                    absl::Status result,
+                                                    BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
-  LOG(INFO) << "Barrier(" << barrier_id
-            << ") has passed with status: " << result;
+  VLOG(3) << "Barrier(" << barrier_id << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier_id == device_propagation_barrier_id_) {
     AggregateClusterDevices();
@@ -1374,7 +1381,7 @@ std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
 }
 
 bool CoordinationServiceStandaloneImpl::isRecoverableJob(
-    const absl::string_view task_name) const {
+    const std::string_view task_name) const {
   return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
 }
 
