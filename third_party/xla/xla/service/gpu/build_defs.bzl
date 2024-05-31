@@ -177,7 +177,7 @@ def gen_gpu_hlo_compile_tests(
                     "--num_replicas=%d" % num_replicas,
                     "--num_partitions=%d" % num_partitions,
                     "--use_spmd_partitioning=true",
-                    hlo_path,
+                    "--hlo_file=%s" % hlo_path,
                 ] + xla_flags,
                 data = ["//xla/tools/multihost_hlo_runner:cuda_hlo_runner_main", data_label],
                 tags = backend_tags[backend] + ["requires-mem:16g"],
