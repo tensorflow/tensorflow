@@ -25,6 +25,7 @@ limitations under the License.
 #include <map>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -48,16 +49,6 @@ namespace {
 
 using testing::ElementsAreArray;
 using testing::Ge;
-
-#if defined(XNN_TEST_WEIGHT_CACHE_TMP_DIR)
-constexpr const char kTempFileTemplate[] =
-    XNN_TEST_WEIGHT_CACHE_TMP_DIR "/weight_cache_test_file.XXXXXX";
-#elif defined(__ANDROID__)
-constexpr const char kTempFileTemplate[] =
-    "/data/local/tmp/weight_cache_test_file.XXXXXX";
-#else
-constexpr const char kTempFileTemplate[] = "/tmp/weight_cache_test_file.XXXXXX";
-#endif  // XNN_TEST_WEIGHT_CACHE_TMP_DIR
 
 // Wraps a call to `mkstemp` to create temporary files.
 class TempFileDesc {
@@ -122,7 +113,7 @@ class TempFileDesc {
   bool IsOpen() const { return fd_ >= 0; }
 
  private:
-  std::string path_ = kTempFileTemplate;
+  std::string path_ = testing::TempDir() + "/weight_cache_test_file.XXXXXX";
   int fd_ = -1;
 };
 
@@ -198,6 +189,8 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   const PackIdentifier dummy_id{1, 2, 3};
 
   WeightCacheBuilder builder;
+  const std::string cache_path = testing::TempDir() + "/cache";
+  ASSERT_TRUE(builder.Start(cache_path.c_str()));
 
   const size_t payload_size = size(payload);
   void* buffer = builder.Reserve(payload_size);
@@ -205,38 +198,53 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   auto loc = builder.Append(dummy_id, buffer, payload_size);
 
   EXPECT_EQ(loc.size, payload_size);
-  EXPECT_EQ(builder.BufferData().size(), payload_size);
-  EXPECT_TRUE(builder.ShouldWrite());
+  EXPECT_GE(builder.capacity(), payload_size);
+  EXPECT_TRUE(builder.ShouldFinalize());
 
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  tmp_file.Close();
-
-  ASSERT_TRUE(builder.Write(tmp_file.GetCPath()));
+  ASSERT_TRUE(builder.Finalize());
 
   MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
 
-  const cache::schema::PackedWeights* const packed_weights =
-      cache::schema::GetPackedWeights(handle.data());
+  const XNNPackCacheHeader& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+
+  ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_NE(header.buffer_list_offset, 0);
+  ASSERT_NE(header.buffer_list_size, 0);
+  ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
+
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+
   ASSERT_NE(packed_weights, nullptr);
-  EXPECT_LE(packed_weights->flatbuffer_size(), size(handle) - size(payload));
   ASSERT_NE(packed_weights->buffers(), nullptr);
   ASSERT_EQ(packed_weights->buffers()->size(), 1);
   ASSERT_NE(packed_weights->buffers()->Get(0), nullptr);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->size(), size(payload));
-  EXPECT_EQ(packed_weights->buffers()->Get(0)->offset(), 0);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->packing_algorithm_id(),
             dummy_id.pack_algorithm_id);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->weights_id(),
             dummy_id.weights_id);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->bias_id(), dummy_id.bias_id);
 
-  flatbuffers::Verifier verifier(handle.data(), handle.size());
-  EXPECT_TRUE(cache::schema::VerifyPackedWeightsBuffer(verifier))
-      << packed_weights->flatbuffer_size() << " " << handle.size() << " "
-      << packed_weights->buffers()->size() << "\n"
-      << tmp_file.GetPath();
+  flatbuffers::Verifier verifier(handle.data() + header.buffer_list_offset,
+                                 header.buffer_list_size);
+  EXPECT_TRUE(cache::schema::VerifyBufferListBuffer(verifier));
+
+  ASSERT_LE(packed_weights->base_offset() +
+                packed_weights->buffers()->Get(0)->offset(),
+            size(handle));
+  ASSERT_LE(packed_weights->base_offset() +
+                packed_weights->buffers()->Get(0)->offset() +
+                packed_weights->buffers()->Get(0)->size(),
+            size(handle));
+  std::tuple<const char*, size_t> cache_data(
+      reinterpret_cast<const char*>(
+          handle.data() + packed_weights->base_offset() +
+          packed_weights->buffers()->Get(0)->offset()),
+      packed_weights->buffers()->Get(0)->size());
+  EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
 TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
@@ -245,63 +253,66 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   const std::string payload = "This is some data in the file.";
   const PackIdentifier dummy_id{1, 2, 3};
 
+  const std::string cache_path = testing::TempDir() + "/cache";
   WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str()));
 
   const size_t payload_size = size(payload);
   auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
 
   EXPECT_EQ(loc.size, payload_size);
-  EXPECT_EQ(builder.BufferData().size(), payload_size);
-  EXPECT_TRUE(builder.ShouldWrite());
+  EXPECT_TRUE(builder.ShouldFinalize());
 
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  tmp_file.Close();
-
-  ASSERT_TRUE(builder.Write(tmp_file.GetCPath()));
+  ASSERT_TRUE(builder.Finalize());
 
   MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
 
-  const cache::schema::PackedWeights* const packed_weights =
-      cache::schema::GetPackedWeights(handle.data());
+  const XNNPackCacheHeader& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+
+  ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_NE(header.buffer_list_offset, 0);
+  ASSERT_NE(header.buffer_list_size, 0);
+  ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
+
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
   ASSERT_NE(packed_weights, nullptr);
-  EXPECT_LE(packed_weights->flatbuffer_size(), size(handle) - size(payload));
   ASSERT_NE(packed_weights->buffers(), nullptr);
   ASSERT_EQ(packed_weights->buffers()->size(), 1);
   ASSERT_NE(packed_weights->buffers()->Get(0), nullptr);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->size(), size(payload));
-  EXPECT_EQ(packed_weights->buffers()->Get(0)->offset(), 0);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->packing_algorithm_id(),
             dummy_id.pack_algorithm_id);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->weights_id(),
             dummy_id.weights_id);
   ASSERT_EQ(packed_weights->buffers()->Get(0)->bias_id(), dummy_id.bias_id);
 
-  flatbuffers::Verifier verifier(handle.data(), handle.size());
-  EXPECT_TRUE(cache::schema::VerifyPackedWeightsBuffer(verifier))
-      << packed_weights->flatbuffer_size() << " " << handle.size() << " "
-      << packed_weights->buffers()->size() << "\n"
-      << tmp_file.GetPath();
+  flatbuffers::Verifier verifier(handle.data() + header.buffer_list_offset,
+                                 header.buffer_list_size);
+  EXPECT_TRUE(cache::schema::VerifyBufferListBuffer(verifier));
+
+  ASSERT_LE(packed_weights->base_offset() +
+                packed_weights->buffers()->Get(0)->offset(),
+            size(handle));
+  ASSERT_LE(packed_weights->base_offset() +
+                packed_weights->buffers()->Get(0)->offset() +
+                packed_weights->buffers()->Get(0)->size(),
+            size(handle));
+  std::tuple<const char*, size_t> cache_data(
+      reinterpret_cast<const char*>(
+          handle.data() + packed_weights->base_offset() +
+          packed_weights->buffers()->Get(0)->offset()),
+      packed_weights->buffers()->Get(0)->size());
+  EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
 TEST(WeightCacheBuilderTest, NonExistingPathFails) {
   using std::size;
-
-  const std::string payload = "This is some data in the file.";
-  const PackIdentifier dummy_id{1, 2, 3};
-
   WeightCacheBuilder builder;
-
-  const size_t payload_size = size(payload);
-  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
-
-  EXPECT_EQ(loc.size, payload_size);
-  EXPECT_EQ(builder.BufferData().size(), payload_size);
-  EXPECT_TRUE(builder.ShouldWrite());
-
-  EXPECT_FALSE(builder.Write(""));
-  EXPECT_FALSE(builder.Write("/selkt/jdsljf"));
+  EXPECT_FALSE(builder.Start(""));
+  EXPECT_FALSE(builder.Start("/seldf/sedsft"));
 }
 
 struct FakeContext {
@@ -410,6 +421,8 @@ struct BuildMMapWeightCacheProviderTest : testing::Test {
     ctx.FinalizeTensors();
     cache_provider.MapTensorIdentifiers(ctx.tensors.data(), ctx.tensors.size(),
                                         ctx.tensor_buffer_identifiers);
+    const std::string cache_path = testing::TempDir() + "/cache";
+    ASSERT_TRUE(cache_provider.StartBuild(cache_path.c_str()));
   }
 
   FakeContext ctx;
@@ -503,15 +516,13 @@ TEST_F(BuildMMapWeightCacheProviderTest,
 
 TEST_F(BuildMMapWeightCacheProviderTest, FinalizeWorks) {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
-  TempFileDesc tmp_file;
+  TempFileDesc tmp_file(TempFileDesc::kAutoCLose);
+  ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
 
   ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1, kWeightIndex1,
                   kBiasIndex);
   ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed2,
                   kWeightIndex2);
-
-  EXPECT_FALSE(cache_provider.Finalize());
-  cache_provider.SetFilePath(tmp_file.GetCPath());
 
   EXPECT_TRUE(cache_provider.IsActive());
   EXPECT_TRUE(cache_provider.IsBuilding());
@@ -525,7 +536,7 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
 
   void SetUp() override {
     BuildMMapWeightCacheProviderTest::SetUp();
-    cache_provider.SetFilePath(tmp_file.GetCPath());
+    ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
 
     pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1,
                                 kWeightIndex1, kBiasIndex);
@@ -562,8 +573,22 @@ class LightSpan {
   LightSpan(const void* data, const size_t size)
       : ptr_(reinterpret_cast<T*>(data)), size_(size) {}
 
+  size_t size() const { return size(); }
   const T* begin() const { return ptr_; }
   const T* end() const { return ptr_ + size_; }
+
+  friend std::ostream& operator<<(std::ostream& os, const LightSpan<T>& s) {
+    os << '[';
+    auto it = s.begin();
+    if (it != s.end()) {
+      os << +*it;
+    }
+    ++it;
+    for (; it != s.end(); ++it) {
+      os << ", " << +*it;
+    }
+    return os << ']';
+  }
 
  private:
   T* ptr_;
@@ -599,8 +624,8 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
   TempFileDesc temp_fd(TempFileDesc::kAutoCLose);
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
-  const char packed_data_ref_1[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  const char packed_data_ref_2[] = {26, 32, 43, 59, 34, 65, 80, 101};
+  const char packed_data_ref_1[] = "abcdefghij";
+  const char packed_data_ref_2[] = "klmnopqr";
   auto bytes = [](const auto& array) { return size(array) * sizeof(array[0]); };
 
   constexpr int kBufferCount = 10;
@@ -617,7 +642,7 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     }
 
     MMapWeightCacheProvider cache_provider;
-    cache_provider.SetFilePath(temp_fd.GetCPath());
+    ASSERT_TRUE(cache_provider.StartBuild(temp_fd.GetCPath()));
 
     xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
     cache_provider.MapTensorIdentifiers(tensors, size(tensors),
@@ -717,6 +742,7 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
         ElementsAreArray(packed_data_ref_1));
 
     const size_t offset_2 = cache->look_up(cache, &look_up_key_2);
+    ASSERT_NE(offset_2, SIZE_MAX);
     const void* const loaded_packed_data_2 =
         cache->offset_to_addr(cache, offset_2);
     ASSERT_NE(loaded_packed_data_2, nullptr);
