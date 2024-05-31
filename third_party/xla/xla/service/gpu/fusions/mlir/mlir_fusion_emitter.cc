@@ -304,7 +304,10 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
-  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
+    // CSE after inlining because inlining can introduce duplicates.
+    pm.addPass(mlir::createCSEPass());
+  }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
