@@ -37,51 +37,52 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-// TfLiteOperator is an opaque version of TfLiteRegistration,
-// and is used for registering custom ops.  It represents a definition of a
-// custom op or a builtin op.
-//
-// \warning This is an experimental type and subject to change.
+/// TfLiteOperator is an opaque version of TfLiteRegistration,
+/// and is used for registering custom ops.  It represents a definition of a
+/// custom op or a builtin op.
+///
+/// \warning This is an experimental type and subject to change.
 typedef struct TfLiteOperator TfLiteOperator;
 
-// Returns a new TfLiteOperator instance.
-//
-// The returned TfLiteOperator instance represents a definition
-// of an operator with the identity (builtin_code/custom_name and
-// version) specified by the parameters, but with all callbacks initially unset.
-//
-// Evaluation of any operation using this operator will be done using
-// the "prepare" and "invoke" callbacks, which can be set using
-// `TfLiteOperatorSetPrepare` and
-// `TfLiteOperatorSetInvoke`, or for async execution
-// the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
-// which can be set using `TfLiteOperatorSetAsyncKernel`.
-// If the relevant callbacks are not set, then such evaluation will result
-// in an error status.  So normally any use of this function should be followed
-// by appropriate calls to set those callbacks.
-//
-// \note The caller retains ownership and should ensure that
-// the lifetime of the `TfLiteOperator` must be at least as long as
-// the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
-// used in.
-//
-// \param builtin_code Enumeration code specifying which builtin operator this
-//                     defines, or `TfLiteBuiltinCustom` to define a custom op.
-// \param custom_name  Name of the custom op, or `nullptr` for a builtin op.
-//                     If `custom_name` is non-null, then `builtin_code` should
-//                     be `TfLiteBuiltinCustom`.
-// \param version      Version of the op.  See
-//                     https://www.tensorflow.org/lite/guide/ops_version
-//
+/// Returns a new TfLiteOperator instance.
+///
+/// The returned TfLiteOperator instance represents a definition
+/// of an operator with the identity (builtin_code/custom_name and
+/// version) specified by the parameters, but with all callbacks initially
+/// unset.
+///
+/// Evaluation of any operation using this operator will be done using
+/// the "prepare" and "invoke" callbacks, which can be set using
+/// `TfLiteOperatorSetPrepare` and
+/// `TfLiteOperatorSetInvoke`, or for async execution
+/// the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
+/// which can be set using `TfLiteOperatorSetAsyncKernel`.
+/// If the relevant callbacks are not set, then such evaluation will result
+/// in an error status.  So normally any use of this function should be followed
+/// by appropriate calls to set those callbacks.
+///
+/// \note The caller retains ownership and should ensure that
+/// the lifetime of the `TfLiteOperator` must be at least as long as
+/// the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
+/// used in.
+///
+/// \param builtin_code Enumeration code specifying which builtin operator this
+///                     defines, or `TfLiteBuiltinCustom` to define a custom op.
+/// \param custom_name  Name of the custom op, or `nullptr` for a builtin op.
+///                     If `custom_name` is non-null, then `builtin_code` should
+///                     be `TfLiteBuiltinCustom`.
+/// \param version      Version of the op.  See
+///                     https://www.tensorflow.org/lite/guide/ops_version
+///
 TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version);
 
-// Destroys the TfLiteOperator instance.
-//
+/// Destroys the TfLiteOperator instance.
+///
 TFL_CAPI_EXPORT extern void TfLiteOperatorDelete(TfLiteOperator* registration);
 
-// Return the builtin op code of the provided external 'registration'.
-//
+/// Return the builtin op code of the provided external 'registration'.
+///
 TFL_CAPI_EXPORT extern TfLiteBuiltinOperator TfLiteOperatorGetBuiltInCode(
     const TfLiteOperator* registration);
 
@@ -97,42 +98,42 @@ TFL_CAPI_EXPORT extern const char* TfLiteOperatorGetCustomName(
 TFL_CAPI_EXPORT extern int TfLiteOperatorGetVersion(
     const TfLiteOperator* registration);
 
-// Sets the initialization callback for the registration.
-//
-// The callback is called to initialize the op from serialized data.
-// Please refer `init` of `TfLiteRegistration` for the detail.
-//
+/// Sets the initialization callback for the registration.
+///
+/// The callback is called to initialize the op from serialized data.
+/// Please refer `init` of `TfLiteRegistration` for the detail.
+///
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
     TfLiteOperator* registration,
     void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                   size_t length));
 
-// Sets the deallocation callback for the registration.
-//
-// This callback is called to deallocate the data returned by the init callback.
-// The value passed in the `data` parameter is the value that was returned by
-// the `init` callback.
-// Please refer `free` of `TfLiteRegistration` for the detail.
-//
+/// Sets the deallocation callback for the registration.
+///
+/// This callback is called to deallocate the data returned by the init
+/// callback. The value passed in the `data` parameter is the value that was
+/// returned by the `init` callback. Please refer `free` of `TfLiteRegistration`
+/// for the detail.
+///
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
     TfLiteOperator* registration,
     void (*free)(TfLiteOpaqueContext* context, void* data));
 
-// Sets the preparation callback for the registration.
-//
-// The callback is called when the inputs of operator have been resized.
-// Please refer `prepare` of `TfLiteRegistration` for the detail.
-//
+/// Sets the preparation callback for the registration.
+///
+/// The callback is called when the inputs of operator have been resized.
+/// Please refer `prepare` of `TfLiteRegistration` for the detail.
+///
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
     TfLiteOperator* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
                             TfLiteOpaqueNode* node));
 
-// Sets the invocation callback for the registration.
-//
-// The callback is called when the operator is executed.
-// Please refer `invoke` of `TfLiteRegistration` for the detail.
-//
+/// Sets the invocation callback for the registration.
+///
+/// The callback is called when the operator is executed.
+/// Please refer `invoke` of `TfLiteRegistration` for the detail.
+///
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInvoke(
     TfLiteOperator* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
