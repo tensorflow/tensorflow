@@ -108,6 +108,10 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
       const HloFusionInstruction* fusion);
 
+  // Emits a host kernel for the given reduction instruction.
+  absl::StatusOr<KernelInfo> EmitReductionHostKernel(
+      const HloInstruction* instr);
+
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   KernelPrototype EmitKernelPrototype(std::string_view name,

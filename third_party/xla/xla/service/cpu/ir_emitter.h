@@ -144,6 +144,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer, bool in_compute_function = true);
 
+  // Returns true if given computation has been emitted.
+  bool is_computation_emitted(const HloComputation& callee,
+                              bool allow_reassociation) {
+    return emitted_functions_.contains({&callee, allow_reassociation});
+  }
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.

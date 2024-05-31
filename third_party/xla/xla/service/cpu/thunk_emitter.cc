@@ -124,6 +124,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kImag:
+    case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog1p:
     case HloOpcode::kLog:
@@ -153,6 +154,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kFusion:
       return EmitFusionKernelThunk(instruction);
+
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return EmitReductionKernelThunk(instruction);
 
     case HloOpcode::kCall:
       return EmitCallThunk(instruction);
@@ -200,6 +205,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_->EmitFusionHostKernel(fusion));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetLeafAllocationSlices(instruction));
+
+  // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
+  // invocation, for now we assume that we always emit a full loop.
+  return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      ir_emitter_->EmitReductionHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetLeafAllocationSlices(instruction));
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel

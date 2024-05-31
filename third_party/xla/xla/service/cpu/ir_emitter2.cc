@@ -148,15 +148,21 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {
-    // Create a nested function for thread local computation.
-    TF_RETURN_IF_ERROR(
-        nested_ir_emitter_
-            ->EmitComputation(const_cast<HloComputation*>(&callee), name, false,
-                              schedule_->sequence(&callee).instructions(),
-                              /*allow_reassociation=*/is_reducer)
-            .status());
+    // Create a nested function for thread local computation if it is not
+    // already created. Nested functions are created with internal linkage.
+    if (!nested_ir_emitter_->is_computation_emitted(callee, is_reducer)) {
+      VLOG(2) << "Emit nested computation: " << callee.name();
+      TF_RETURN_IF_ERROR(
+          nested_ir_emitter_
+              ->EmitComputation(const_cast<HloComputation*>(&callee), name,
+                                false,
+                                schedule_->sequence(&callee).instructions(),
+                                /*allow_reassociation=*/is_reducer)
+              .status());
+    }
 
     // Add a thread local call to the nested computation.
+    VLOG(2) << "Emit thread local call to: " << callee.name();
     nested_ir_emitter_->b()->SetInsertPoint(b()->GetInsertPoint());
     auto values = nested_ir_emitter_->EmitThreadLocalCall(
         callee, parameters, name, is_reducer, /*in_compute_function=*/false);
@@ -257,6 +263,14 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
           .EmitLoop(llvm_ir::IrName(fusion)));
 
   return kernels_.emplace_back(kernel_prototype.function->getName().str());
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
+    const HloInstruction* instr) {
+  VLOG(2) << "Emit reduction host kernel: " << instr->name();
+
+  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
+  return EmitElementalHostKernel(instr);
 }
 
 //===----------------------------------------------------------------------===//
