@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/random/random.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/test.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -1822,7 +1822,7 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
   absl::Status status =
       literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
           .status();
-  EXPECT_NE(OkStatus(), status);
+  EXPECT_NE(absl::OkStatus(), status);
   EXPECT_TRUE(
       absl::StrContains(status.message(), "to a shape of different size"));
 }

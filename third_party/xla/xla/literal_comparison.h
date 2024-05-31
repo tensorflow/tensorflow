@@ -25,11 +25,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace literal_comparison {

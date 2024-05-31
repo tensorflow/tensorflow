@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/status.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/status.h"

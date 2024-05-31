@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

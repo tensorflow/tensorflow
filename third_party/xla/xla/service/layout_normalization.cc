@@ -380,7 +380,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // Scatter is layout-preserving regarding the scatter operands, so we only
   // have to permute values inside the ScatterDimensionNumbers.
-  Status HandleScatter(HloInstruction* hlo) override {
+  absl::Status HandleScatter(HloInstruction* hlo) override {
     auto* scatter = Cast<HloScatterInstruction>(hlo);
     std::vector<HloInstruction*> normalized_operands;
     normalized_operands.reserve(scatter->scatter_operand_count());

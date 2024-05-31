@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace sharding_op_util {

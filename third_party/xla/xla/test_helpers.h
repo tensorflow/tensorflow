@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TEST_HELPERS_H_
 #define XLA_TEST_HELPERS_H_
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/test.h"
 

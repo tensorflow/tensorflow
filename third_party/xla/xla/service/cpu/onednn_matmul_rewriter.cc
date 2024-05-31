@@ -649,7 +649,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     return Match(instr, pattern);
   }
 
-  Status HandleSelect(HloInstruction* instr) override {
+  absl::Status HandleSelect(HloInstruction* instr) override {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* optional_bitcast = nullptr;
@@ -667,7 +667,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleTanh(HloInstruction* instr) override {
+  absl::Status HandleTanh(HloInstruction* instr) override {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* optional_bitcast = nullptr;
@@ -683,7 +683,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleClamp(HloInstruction* instr) override {
+  absl::Status HandleClamp(HloInstruction* instr) override {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* optional_bitcast = nullptr;
@@ -769,7 +769,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                                           m::Exp(m::Negate(m::Op(src))))));
   }
 
-  Status HandleDivide(HloInstruction* instr) override {
+  absl::Status HandleDivide(HloInstruction* instr) override {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* optional_bitcast = nullptr;
@@ -783,7 +783,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                               intermediate_instr, optional_bitcast);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status FuseActivation(OneDnnMatMulConfig_FusionKind kind,

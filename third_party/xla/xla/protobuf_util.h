@@ -19,7 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
