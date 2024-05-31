@@ -142,6 +142,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog1p:
     case HloOpcode::kLog:
+    case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
@@ -167,6 +168,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
+      return EmitElementalKernelThunk(instruction);
+
+    // TODO(ezhulenev): Implement slice operations as separate Thunks because
+    // it's much easier to get peak performance from hand written code.
+    case HloOpcode::kSlice:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
       return EmitElementalKernelThunk(instruction);
 
     case HloOpcode::kFusion:
