@@ -383,7 +383,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.index_castui %[[PID]] : i32 to index
@@ -437,7 +437,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:            arith.index_castui %[[PID]] : i32 to index
@@ -494,13 +494,13 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK:            %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:            %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:            %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:            %[[ARG0:.*]] = tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:       tt.make_tensor_ptr
@@ -561,13 +561,13 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK:            %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:            %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:            %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:            %[[ARG1:.*]] = tt.addptr %[[P1]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:       tt.make_tensor_ptr
@@ -626,13 +626,13 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK:            %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:            %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:            %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:            %[[ARG0:.*]] = tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:       tt.make_tensor_ptr
@@ -695,13 +695,13 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
-CHECK:            %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:            %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:            %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:            %[[ARG0:.*]] = tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:       tt.make_tensor_ptr
@@ -769,13 +769,13 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK-DAG:        %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK-DAG:        %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:            %[[ARG0:.*]] = tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:       tt.make_tensor_ptr
@@ -844,7 +844,7 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK: #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 16)>
+CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
 CHECK-SAME:        %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -857,7 +857,7 @@ CHECK:           %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
 CHECK:           %[[PID_i64:.*]] = arith.index_castui %[[PID_INDEX]] : index to i64
 CHECK:           tt.addptr %[[P1]], %[[PID_i64]] : !tt.ptr<f32>, i64
 CHECK:           tt.splat
-CHECK:           %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:           %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:           %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK:           tt.make_tensor_ptr
@@ -961,7 +961,7 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-CHECK: #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 32)>
+CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 32)>
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
 CHECK-SAME:        %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -976,7 +976,7 @@ CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      <tensor<32xf32>>
 CHECK:           tt.load
 CHECK-SAME:      !tt.ptr<tensor<32xf32>>
-CHECK:           %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+CHECK:           %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK:           %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 CHECK-NEXT:      tt.make_tensor_ptr
@@ -1035,7 +1035,7 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-// CHECK:         #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 16)>
+// CHECK:         #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
 // CHECK-SAME:                       %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -1049,7 +1049,7 @@ ENTRY main {
 // CHECK:           tt.addptr %[[P1]], %[[ZERO_OFFSET_i64]] : !tt.ptr<f32>, i64
 // CHECK-NEXT:      tt.load
 // CHECK-SAME:      : !tt.ptr<f32>
-// CHECK:           %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+// CHECK:           %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 // CHECK:           %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 // CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 // CHECK:           tt.make_tensor_ptr
@@ -1108,7 +1108,7 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
                                           /*output_tile_sizes=*/{}, EmitSoftMax,
                                           "triton_softmax_computation", R"(
-// CHECK: #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 16)>
+// CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
 // CHECK-SAME:                       %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -1124,7 +1124,7 @@ ENTRY main {
 // CHECK-SAME:      <tensor<16xf32>>
 // CHECK:           tt.load
 // CHECK-SAME:      !tt.ptr<tensor<16xf32>>
-// CHECK:           %[[ROW_OFFSET_INDEX:.*]] = affine.apply #[[MAP]]()[%[[PID_INDEX]]]
+// CHECK:           %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
 // CHECK:           %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
 // CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
 // CHECK-NEXT:      tt.make_tensor_ptr
@@ -5576,7 +5576,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, output_tile_sizes,
                                           EmitGeneric,
                                           "triton_reduction_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.index_castui %[[PID]] : i32 to index
@@ -5638,7 +5638,7 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, output_tile_sizes,
                                           EmitGeneric,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 127)>
+CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.index_castui %[[PID]] : i32 to index

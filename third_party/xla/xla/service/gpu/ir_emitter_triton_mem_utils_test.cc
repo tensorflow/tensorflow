@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -61,8 +62,9 @@ using ::testing::ElementsAre;
 class TritonMakeTensorPtrTest : public HloTestBase {
  public:
   void SetUp() override {
-    mlir_context_.loadDialect<mt::TritonDialect, mlir::arith::ArithDialect,
-                              mlir::affine::AffineDialect>();
+    mlir_context_
+        .loadDialect<mt::TritonDialect, mlir::arith::ArithDialect,
+                     mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
   }
 
  protected:
