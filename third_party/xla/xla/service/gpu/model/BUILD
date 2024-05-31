@@ -587,6 +587,9 @@ cc_library(
         ":indexing_analysis",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:name_uniquer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -614,10 +617,16 @@ xla_cc_test(
 
 cc_library(
     name = "tiled_hlo_computation",
+    srcs = ["tiled_hlo_computation.cc"],
     hdrs = ["tiled_hlo_computation.h"],
     deps = [
         ":tiled_hlo_instruction",
         "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:name_uniquer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/gtl:iterator_range",
     ],
 )
@@ -627,6 +636,7 @@ cc_library(
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
     deps = [
+        ":affine_map_printer",
         ":indexing_analysis",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
@@ -634,9 +644,11 @@ cc_library(
         ":tiled_hlo_instruction",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",
+        "//xla/service:name_uniquer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

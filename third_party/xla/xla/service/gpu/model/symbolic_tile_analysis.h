@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
@@ -66,6 +68,11 @@ class SymbolicTileAnalysis {
 
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
+
+  // Returns a string representation of the analysis. Used only for error
+  // messages and debugging.
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
 
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>

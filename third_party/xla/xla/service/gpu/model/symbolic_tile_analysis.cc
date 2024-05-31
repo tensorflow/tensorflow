@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,9 +28,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -37,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
@@ -44,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/name_uniquer.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -313,6 +319,30 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
 
   return TiledHloComputation::FromSortedTiledHloInstructions(
       std::move(tiled_hlo_instructions));
+}
+
+std::string SymbolicTileAnalysis::ToString(
+    const AffineMapPrinter& printer) const {
+  std::stringstream ss;
+  NameUniquer name_uniquer("_");
+  absl::flat_hash_map<SymbolicTiledHloInstruction*, std::string> tile_names;
+
+  for (const auto& tiled_hlo : symbolic_tiled_hlo_instructions_) {
+    std::string tile_name = name_uniquer.GetUniqueName(
+        absl::StrCat(tiled_hlo->hlo()->name(), ".tile_0"));
+    tile_names[tiled_hlo.get()] = tile_name;
+
+    absl::InlinedVector<std::string, 4> operand_names;
+    for (const auto& operand : tiled_hlo->operands()) {
+      operand_names.push_back(tile_names.at(operand));
+    }
+
+    ss << tile_name << " = " << HloOpcodeString(tiled_hlo->hlo()->opcode())
+       << "(" << absl::StrJoin(operand_names, ", ") << ")\n";
+
+    ss << tiled_hlo->ToString();
+  }
+  return ss.str();
 }
 
 }  // namespace gpu

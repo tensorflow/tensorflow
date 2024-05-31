@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -68,6 +69,10 @@ class SymbolicTiledHloInstruction {
   void AppendOperand(SymbolicTiledHloInstruction* operand) {
     operands_.push_back(operand);
   }
+
+  // Returns a string representation of the instruction. Used only for error
+  // messages and debugging.
+  std::string ToString() const;
 
  private:
   // Pointer to the original HLO instruction.
