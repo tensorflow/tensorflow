@@ -122,7 +122,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
-  pipeline.AddPass<GpuConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>(gpu_version);
   pipeline.AddPass<GpuConvPaddingLegalization>();
   auto rcc = std::get<se::RocmComputeCapability>(gpu_version);
   pipeline.AddPass<CudnnFusedConvRewriter>(rcc, dnn_version,
