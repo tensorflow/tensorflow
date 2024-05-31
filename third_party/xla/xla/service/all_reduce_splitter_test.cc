@@ -18,17 +18,21 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -62,8 +66,20 @@ class AllReduceSplitterTest : public HloTestBase {
   }
 };
 
+class AllReduceSplitterFilecheckTest : public AllReduceSplitterTest {
+ public:
+  absl::Status FileCheck(const std::string &hlo_text,
+                         absl::string_view pattern) {
+    TF_ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
+    if (!matched) {
+      return absl::InternalError("Filecheck failed.");
+    }
+    return absl::OkStatus();
+  }
+};
+
 TEST_F(
-    AllReduceSplitterTest,
+    AllReduceSplitterFilecheckTest,
     MatchBasicPatternIfDynamicSliceIsRootAndThereExistsAllReduceWithSameReplicaGroups) {  // NOLINT
   absl::string_view hlo_string = R"(
 HloModule m
@@ -95,8 +111,19 @@ ENTRY main {
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
   EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(true));
-
-  EXPECT_EQ(AllReduceCount(*module), 3);
+  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
+    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
+    CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[AR0]], bf16[] %[[ZERO]])
+    CHECK:        %[[AR1:.*]] = bf16[4096]{0} all-reduce(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
+    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(bf16[4096]{0} %[[AR1]], s32[] %[[_:.*]])
+    CHECK-SAME:   dynamic_slice_sizes={1024}
+    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[DS]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
+    )"));
 }
 
 TEST_F(
@@ -136,7 +163,7 @@ ENTRY main {
 }
 
 TEST_F(
-    AllReduceSplitterTest,
+    AllReduceSplitterFilecheckTest,
     MatchBasicPatternIfDynamicSliceIsNotRootAndThereExistsAllReduceWithSameReplicaGroups) {  // NOLINT
   absl::string_view hlo_string = R"(
 HloModule m
@@ -170,7 +197,22 @@ ENTRY main {
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
   EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(true));
-  EXPECT_EQ(AllReduceCount(*module), 3);
+  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
+    CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[P0]], bf16[] %[[ZERO]])
+    CHECK:        %[[AR0:.*]] = bf16[4096]{0} all-reduce(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
+    CHECK:        %[[DS:.*]] = bf16[1024]{0} dynamic-slice(bf16[4096]{0} %[[AR0]], s32[] %[[_:.*]])
+    CHECK-SAME:   dynamic_slice_sizes={1024}
+    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[DS]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
+    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
+    CHECK:        ROOT
+    CHECK-NOT:    %[[AR1]]
+    CHECK-SAME:   %[[EXISTING_AR]]
+    )"));
 }
 
 TEST_F(
