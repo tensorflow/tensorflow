@@ -69,6 +69,55 @@ absl::StatusOr<tsl::RCReference<BasicStringArray>> CreateTestArray(
                                   std::move(on_done_with_buffer));
 }
 
+// Makes a single-sharded `BasicStringArray::Buffers` and its associated
+// `BasicStringArray::OnDoneWithBuffer` from the given span of strings.
+std::pair<BasicStringArray::Buffers, BasicStringArray::OnDoneWithBuffer>
+MakeBuffersAndOnDoneWithBuffer(
+    absl::Span<const absl::string_view> input_strings) {
+  BasicStringArray::Buffers buffers;
+  auto string_holder = std::make_shared<std::vector<std::string>>();
+  string_holder->reserve(input_strings.size());
+  auto string_view_holder = std::make_shared<std::vector<absl::string_view>>();
+  string_view_holder->reserve(input_strings.size());
+  for (const auto str : input_strings) {
+    string_holder->push_back(std::string(str));
+  }
+  for (const auto& str : *string_holder) {
+    string_view_holder->push_back(absl::string_view(str));
+  }
+  buffers.push_back(*string_view_holder);
+
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
+      [string_holder = std::move(string_holder),
+       string_view_holder = std::move(string_view_holder)]() {};
+
+  return std::make_pair(std::move(buffers), std::move(on_done_with_buffer));
+}
+
+// Makes a simple single device sharded `BasicStringArray` that is not ready at
+// the time of creation. Returns a promise that can be set to make the array
+// ready. If the callers set this promise with buffers (i.e., not an error),
+// then they must ensure that the underlying strings live until the
+// `on-host-buffer-done` callback they provided is run.
+absl::StatusOr<std::pair<tsl::RCReference<BasicStringArray>,
+                         Promise<BasicStringArray::Buffers>>>
+CreateNonReadyTestArray(
+    Client* client, Device* const device,
+    BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
+  auto buffers_promise = Future<BasicStringArray::Buffers>::CreatePromise();
+  auto buffers_future = Future<BasicStringArray::Buffers>(buffers_promise);
+  Shape shape({1});
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device, MemoryKind());
+
+  TF_ASSIGN_OR_RETURN(auto array,
+                      BasicStringArray::Create(client, shape, sharding,
+                                               std::move(buffers_future),
+                                               std::move(on_done_with_buffer)));
+
+  return std::make_pair(std::move(array), std::move(buffers_promise));
+}
+
 TEST(BasicStringArrayTest, CreateSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   BasicStringArray::Buffers buffers;
@@ -82,7 +131,7 @@ TEST(BasicStringArrayTest, CreateSuccess) {
                                /*on_done_with_buffer=*/nullptr));
 }
 
-TEST(BasicStringArrayTest, CreateFailure) {
+TEST(BasicStringArrayTest, CreateFailureWithInvalidFuture) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Create fails if with invalid future.
   EXPECT_THAT(CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(),
@@ -117,6 +166,41 @@ TEST(BasicStringArrayTest, Destruction) {
   // Destruction must release the buffer. That is, the `on_done_with_buffer`
   // callback must be called.
   on_done_with_buffer_called.WaitForNotification();
+}
+
+TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  auto devices = client->addressable_devices();
+  ASSERT_GE(devices.size(), 1);
+
+  // Make a BasicStringArray::Buffer with two shards.
+  auto shard0_data = std::make_shared<std::vector<absl::string_view>>();
+  shard0_data->push_back("abc");
+  auto shard1_data = std::make_shared<std::vector<absl::string_view>>();
+  shard1_data->push_back("def");
+  BasicStringArray::Buffers buffers;
+  buffers.push_back(*shard0_data);
+  buffers.push_back(*shard1_data);
+
+  auto on_done_with_buffer = [shard0_data = std::move(shard0_data),
+                              shard1_data = std::move(shard1_data)]() {};
+
+  // Make a single device array that is not ready at the time of creation.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ret, CreateNonReadyTestArray(client.get(), devices[0],
+                                        std::move(on_done_with_buffer)));
+  auto array = ret.first;
+  auto promise = ret.second;
+  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+
+  // Buffers with two shards and a single-device array are inconsistent.
+  tsl::Env::Default()->SchedClosure([&]() { promise.Set(buffers); });
+
+  EXPECT_THAT(basic_string_array->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  EXPECT_THAT(basic_string_array->buffers().Await(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(BasicStringArrayTest, Delete) {
@@ -380,55 +464,6 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
                   Shape({2}), std::move(opaque_sharding),
                   absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy),
               StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-// Makes a `BasicStringArray::Buffers` and its associated
-// `BasicStringArray::OnDoneWithBuffer` from the given span of strings.
-std::pair<BasicStringArray::Buffers, BasicStringArray::OnDoneWithBuffer>
-MakeBuffersAndOnDoneWithBuffer(
-    absl::Span<const absl::string_view> input_strings) {
-  BasicStringArray::Buffers buffers;
-  auto string_holder = std::make_shared<std::vector<std::string>>();
-  string_holder->reserve(input_strings.size());
-  auto string_view_holder = std::make_shared<std::vector<absl::string_view>>();
-  string_view_holder->reserve(input_strings.size());
-  for (const auto str : input_strings) {
-    string_holder->push_back(std::string(str));
-  }
-  for (const auto& str : *string_holder) {
-    string_view_holder->push_back(absl::string_view(str));
-  }
-  buffers.push_back(*string_view_holder);
-
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [string_holder = std::move(string_holder),
-       string_view_holder = std::move(string_view_holder)]() {};
-
-  return std::make_pair(std::move(buffers), std::move(on_done_with_buffer));
-}
-
-// Makes a simple single device sharded `BasicStringArray` that is not ready at
-// the time of creation. Returns a promise that can be set to make the array
-// ready. If the callers set this promise with buffers (i.e., not an error),
-// then they must ensure that the underlying strings live until the
-// `on-host-buffer-done` callback they provided is run.
-absl::StatusOr<std::pair<tsl::RCReference<BasicStringArray>,
-                         Promise<BasicStringArray::Buffers>>>
-CreateNonReadyTestArray(
-    Client* client, Device* const device,
-    BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
-  auto buffers_promise = Future<BasicStringArray::Buffers>::CreatePromise();
-  auto buffers_future = Future<BasicStringArray::Buffers>(buffers_promise);
-  Shape shape({1});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
-
-  TF_ASSIGN_OR_RETURN(auto array,
-                      BasicStringArray::Create(client, shape, sharding,
-                                               std::move(buffers_future),
-                                               std::move(on_done_with_buffer)));
-
-  return std::make_pair(std::move(array), std::move(buffers_promise));
 }
 
 TEST(AssembleArrayFromSingleDeviceArraysTest,

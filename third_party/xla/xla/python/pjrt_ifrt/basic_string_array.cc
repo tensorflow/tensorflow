@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -47,19 +48,60 @@ absl::StatusOr<tsl::RCReference<BasicStringArray>> BasicStringArray::Create(
   if (!buffers.IsValid()) {
     return absl::InvalidArgumentError("Got buffers_ future is invalid");
   }
-  return tsl::MakeRef<BasicStringArray>(client, std::move(shape),
-                                        std::move(sharding), std::move(buffers),
-                                        std::move(on_done_with_buffer));
+
+  auto buffers_promise = Future<Buffers>::CreatePromise();
+  auto buffers_future = Future<Buffers>(buffers_promise);
+
+  auto ready_promise = Future<>::CreatePromise();
+  auto ready_future = Future<>(ready_promise);
+
+  // Buffers when the become ready must be consistent with the sharding. For
+  // instance, Buffers.size() (the number of per-shard spans of string_views)
+  // and the devices in the sharding that was used to create an array must
+  // match. If they do not, the array's ready future and buffers future should
+  // become ready with an appropriate error status.
+
+  auto buffer_validator =
+      [buffers_promise = std::move(buffers_promise),
+       ready_promise = std::move(ready_promise),
+       sharding = sharding](absl::StatusOr<Buffers> buffers) mutable {
+        if (!buffers.ok()) {
+          buffers_promise.Set(buffers.status());
+          ready_promise.Set(buffers.status());
+          return;
+        }
+
+        if (sharding->devices().size() != (*buffers).size()) {
+          auto error = absl::FailedPreconditionError(absl::StrCat(
+              "Number of buffers: ", (*buffers).size(),
+              " does not match the number of devices in sharding: ",
+              sharding->devices().size()));
+          buffers_promise.Set(error);
+          ready_promise.Set(error);
+          return;
+        }
+
+        buffers_promise.Set(std::move(buffers));
+        ready_promise.Set(absl::OkStatus());
+      };
+
+  buffers.OnReady(std::move(buffer_validator));
+
+  return tsl::MakeRef<BasicStringArray>(
+      client, std::move(shape), std::move(sharding), std::move(buffers_future),
+      std::move(ready_future), std::move(on_done_with_buffer));
 }
 
 BasicStringArray::BasicStringArray(Client* client, Shape shape,
                                    std::shared_ptr<const Sharding> sharding,
                                    Future<Buffers> buffers,
+                                   Future<> ready_future,
                                    OnDoneWithBuffer on_done_with_buffer)
     : client_(client),
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
       buffers_(std::move(buffers)),
+      ready_future_(std::move(ready_future)),
       on_done_with_buffer_(std::move(on_done_with_buffer)) {}
 
 BasicStringArray::~BasicStringArray() { DeleteInternal(); }
@@ -92,20 +134,6 @@ Future<> BasicStringArray::GetReadyFuture() const {
     return Future<>(
         absl::FailedPreconditionError("Array has already been deleted"));
   }
-  if (ready_future_.IsValid()) {
-    return ready_future_;
-  }
-
-  // TODO(b/337922817) The ready future returned should capture the status
-  // of consistency checks across the buffers, shape and sharding. These checks
-  // will run when the buffers become available - i.e., when the `buffers_`
-  // future becomes ready.
-  auto promise = Future<>::CreatePromise();
-  ready_future_ = Future<>(promise);
-  buffers_.OnReady(
-      [promise = std::move(promise)](absl::StatusOr<Buffers> buffers) mutable {
-        promise.Set(buffers.status());
-      });
   return ready_future_;
 }
 
