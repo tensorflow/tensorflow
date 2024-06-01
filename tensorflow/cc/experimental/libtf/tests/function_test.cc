@@ -158,7 +158,7 @@ TEST_P(FunctionTest, Square) {
   Status s = tf_function.RegisterTrace(std::move(trace), signature, signature);
   ASSERT_TRUE(s.ok()) << s.message();
   TaggedValue args(std::move(x));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   AbstractTensorHandle* t = result.tensor().get();
@@ -182,7 +182,7 @@ TEST_P(FunctionTest, Add) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   ExpectEquals(result.tensor().get(), 4.0f);
@@ -204,7 +204,7 @@ TEST_P(FunctionTest, IdentityN) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(y));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().message();
   const TaggedValue& result = v.value();
   ExpectEquals(result.tuple()[0].tensor().get(), 2.0f);
@@ -224,7 +224,7 @@ TEST_P(FunctionTest, UnaryFuncCalledWithMultipleArgsFails) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInvalidArgument(v.status()));
   ASSERT_TRUE(absl::StrContains(v.status().message(), "No match"));
 }
@@ -252,7 +252,7 @@ TEST_P(FunctionTest, IncorrectArityOfOutputSignatureFails) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(y));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInvalidArgument(v.status())) << v.status();
   ASSERT_TRUE(absl::StrContains(v.status().message(),
                                 "Expecting 2 outputs, but *num_retvals is 1"));
@@ -277,7 +277,7 @@ TEST_P(FunctionTest, IncorrectDtypeInOutputSignatureFails) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(x));
   args.tuple().emplace_back(TaggedValue(x));
-  StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
+  absl::StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(tensorflow::errors::IsInternal(v.status())) << v.status();
   ASSERT_TRUE(
       absl::StrContains(v.status().message(), "Shape and dtype of tensor"));
