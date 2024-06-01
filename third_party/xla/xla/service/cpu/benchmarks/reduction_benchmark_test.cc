@@ -29,36 +29,35 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_AddF32(benchmark::State& state) {
+static void BM_ReduceAddF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
   std::string_view hlo = R"(
-    HloModule add_f32_$d0
+    HloModule reduce_add_f32_$d0
 
     add {
-      p0 = f32[$d0] parameter(0)
-      p1 = f32[$d0] parameter(1)
-      ROOT add = f32[$d0] add(p0, p1)
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
     }
 
     ENTRY e {
-      p0 = f32[$d0] parameter(0)
-      p1 = f32[$d0] parameter(1)
-      ROOT fusion = f32[$d0] fusion(p0, p1), kind=kLoop, calls=add
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT reduce = f32[1,2] reduce(p0, c0), dimensions={2,3,4}, to_apply=add
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {d0});
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
-  auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
 
-  std::vector<const Literal*> args = {&p0, &p1};
+  std::vector<const Literal*> args = {&p0};
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
-BENCHMARK(BM_AddF32)
+BENCHMARK(BM_ReduceAddF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -37,7 +38,8 @@ namespace xla::cpu {
 
 absl::Status RunHloBenchmark(benchmark::State& state,
                              std::string_view hlo_module,
-                             absl::Span<const Literal* const> args) {
+                             absl::Span<const Literal* const> args,
+                             StrToStrMapping replacements) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       GetTfrtCpuClient(CpuClientOptions()));
   PjRtDevice* device = client->devices().front();
@@ -45,7 +47,8 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   HloModuleConfig config;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      ParseAndReturnUnverifiedModule(hlo_module, HloModuleConfig()));
+      ParseAndReturnUnverifiedModule(
+          absl::StrReplaceAll(hlo_module, replacements), HloModuleConfig()));
 
   XlaComputation computation(module->ToProto());
 
