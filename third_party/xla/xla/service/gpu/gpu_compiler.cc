@@ -1026,9 +1026,7 @@ absl::Status RunPostFusionPasses(
       /*combine_threshold_count=*/256,
       opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
 
-  if (opts.xla_gpu_all_reduce_contiguous()) {
-    pipeline.AddPass<AllReduceContiguous>();
-  }
+  pipeline.AddPass<AllReduceContiguous>();
 
   TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(&pipeline, opts));
 
