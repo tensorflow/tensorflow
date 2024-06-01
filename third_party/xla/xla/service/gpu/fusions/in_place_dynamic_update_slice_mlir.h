@@ -61,7 +61,7 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* mlir_context) const override;
+      mlir::MLIRContext* indexing_context) const override;
 
  protected:
   absl::Status EmitEntryFunction(
