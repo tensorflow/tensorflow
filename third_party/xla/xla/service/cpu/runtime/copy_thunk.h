@@ -32,7 +32,8 @@ namespace xla::cpu {
 // destination buffers have different layouts it will transpose the data.
 class CopyThunk final : public Thunk {
  public:
-  CopyThunk(BufferAllocation::Slice source_buffer, const Shape& source_shape,
+  CopyThunk(Info info, BufferAllocation::Slice source_buffer,
+            const Shape& source_shape,
             BufferAllocation::Slice destination_buffer,
             const Shape& destination_shape);
 

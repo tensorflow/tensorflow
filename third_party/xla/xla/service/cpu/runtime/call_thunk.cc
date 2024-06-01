@@ -19,13 +19,16 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
-CallThunk::CallThunk(ThunkSequence called_sequence)
-    : Thunk(Kind::kCall), called_sequence_(std::move(called_sequence)) {}
+CallThunk::CallThunk(Info info, ThunkSequence called_sequence)
+    : Thunk(Kind::kCall, std::move(info)),
+      called_sequence_(std::move(called_sequence)) {}
 
 absl::Status CallThunk::Execute(const ExecuteParams& params) {
+  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
   return called_sequence_.Execute(params);
 }
 

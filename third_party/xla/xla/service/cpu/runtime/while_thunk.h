@@ -31,8 +31,8 @@ namespace xla::cpu {
 // Condition buffer must be a i1 (bool) buffer that holds a loop predicate.
 class WhileThunk final : public Thunk {
  public:
-  WhileThunk(BufferAllocation::Slice cond_buffer, ThunkSequence cond_sequence,
-             ThunkSequence body_sequence);
+  WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
+             ThunkSequence cond_sequence, ThunkSequence body_sequence);
 
   absl::Status Execute(const ExecuteParams& params) final;
 

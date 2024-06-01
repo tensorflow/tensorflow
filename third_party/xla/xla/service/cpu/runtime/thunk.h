@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -53,14 +55,21 @@ class Thunk {
     kWhile,
   };
 
+  struct Info {
+    std::string op_name;
+    std::string module_name;
+    int64_t module_id;
+  };
+
   virtual ~Thunk() = default;
 
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
-  explicit Thunk(Kind kind) : kind_(kind) {}
+  explicit Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
 
   Kind kind() const { return kind_; }
+  const Info& info() const { return info_; }
 
   static std::string_view KindToString(Kind kind);
 
@@ -91,8 +100,13 @@ class Thunk {
 
   virtual absl::Status Execute(const ExecuteParams& params) = 0;
 
+ protected:
+  // Encodes thunk info into the TraceMe compatible format.
+  std::string TraceMeEncode() const;
+
  private:
   Kind kind_;
+  Info info_;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

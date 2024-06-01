@@ -23,17 +23,20 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
-WhileThunk::WhileThunk(BufferAllocation::Slice cond_buffer,
+WhileThunk::WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
                        ThunkSequence cond_sequence, ThunkSequence body_sequence)
-    : Thunk(Kind::kWhile),
+    : Thunk(Kind::kWhile, std::move(info)),
       cond_buffer_(cond_buffer),
       cond_sequence_(std::move(cond_sequence)),
       body_sequence_(std::move(body_sequence)) {}
 
 absl::Status WhileThunk::Execute(const ExecuteParams& params) {
+  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
+
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase cond_data,
       params.buffer_allocations->GetDeviceAddress(cond_buffer_));

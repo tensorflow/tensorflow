@@ -25,7 +25,7 @@ namespace xla::cpu {
 // sequence emitted from the called computation.
 class CallThunk final : public Thunk {
  public:
-  explicit CallThunk(ThunkSequence called_sequence);
+  CallThunk(Info info, ThunkSequence called_sequence);
 
   absl::Status Execute(const ExecuteParams& params) final;
 

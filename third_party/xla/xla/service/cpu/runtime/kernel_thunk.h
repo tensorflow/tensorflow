@@ -30,7 +30,7 @@ namespace xla::cpu {
 // Launches compiled host kernel on the caller thread.
 class KernelThunk final : public Thunk {
  public:
-  KernelThunk(absl::Span<const BufferAllocation::Slice> buffers,
+  KernelThunk(Info info, absl::Span<const BufferAllocation::Slice> buffers,
               std::string kernel_name, se::ThreadDim thread_dim);
 
   absl::Status Execute(const ExecuteParams& params) final;

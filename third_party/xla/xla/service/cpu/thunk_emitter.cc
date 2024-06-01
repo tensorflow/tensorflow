@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -45,6 +46,12 @@ namespace xla::cpu {
 ThunkEmitter::ThunkEmitter(IrEmitter2* ir_emitter,
                            const BufferAssignment* buffer_assignment)
     : ir_emitter_(ir_emitter), buffer_assignment_(buffer_assignment) {}
+
+static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
+  const HloModule* module = instruction->GetModule();
+  return Thunk::Info{std::string(instruction->name()),
+                     std::string(module->name()), module->unique_id()};
+}
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
     const HloModule& module) {
@@ -181,7 +188,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
   TF_ASSIGN_OR_RETURN(
       ThunkSequence called_sequence,
       EmitHloComputation(instruction->called_computations().front()));
-  return ThunkSequence::Of<CallThunk>(std::move(called_sequence));
+  return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
+                                      std::move(called_sequence));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
@@ -189,8 +197,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
   const HloInstruction* source = instruction->operand(0);
   TF_ASSIGN_OR_RETURN(auto source_buffer, GetAllocationSlice(source));
   TF_ASSIGN_OR_RETURN(auto destination_buffer, GetAllocationSlice(instruction));
-  return ThunkSequence::Of<CopyThunk>(source_buffer, source->shape(),
-                                      destination_buffer, instruction->shape());
+  return ThunkSequence::Of<CopyThunk>(ThunkInfo(instruction), source_buffer,
+                                      source->shape(), destination_buffer,
+                                      instruction->shape());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
@@ -201,7 +210,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+                                        kernel.name, se::ThreadDim());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
@@ -212,7 +222,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+                                        kernel.name, se::ThreadDim());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -223,7 +234,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+                                        kernel.name, se::ThreadDim());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
@@ -236,7 +248,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
   TF_ASSIGN_OR_RETURN(ThunkSequence body_thunk,
                       EmitHloComputation(instruction->while_body()));
 
-  return ThunkSequence::Of<WhileThunk>(cond_buffer, std::move(cond_thunk),
+  return ThunkSequence::Of<WhileThunk>(ThunkInfo(instruction), cond_buffer,
+                                       std::move(cond_thunk),
                                        std::move(body_thunk));
 }
 

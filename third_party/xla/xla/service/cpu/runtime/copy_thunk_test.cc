@@ -50,7 +50,7 @@ TEST(CopyThunkTest, CopySameShape) {
   BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  CopyThunk thunk(src_slice, shape, dst_slice, shape);
+  CopyThunk thunk({"copy"}, src_slice, shape, dst_slice, shape);
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   TF_ASSERT_OK(thunk.Execute(params));
@@ -78,7 +78,7 @@ TEST(CopyThunkTest, CopyTransposed) {
   Shape src_shape = ShapeUtil::MakeShape(F32, {2, 2});
   *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   Shape dst_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  CopyThunk thunk(src_slice, src_shape, dst_slice, dst_shape);
+  CopyThunk thunk({"copy"}, src_slice, src_shape, dst_slice, dst_shape);
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   TF_ASSERT_OK(thunk.Execute(params));
