@@ -411,8 +411,8 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
   // Extract a and b contraction dimensions from dnums
   auto a_batch_dims = dnums.lhs_batch_dimensions();
   auto b_batch_dims = dnums.rhs_batch_dimensions();
-  auto a_contracting_dims = dnums.lhs_contracting_dimensions();
-  auto b_contracting_dims = dnums.rhs_contracting_dimensions();
+  const auto& a_contracting_dims = dnums.lhs_contracting_dimensions();
+  const auto& b_contracting_dims = dnums.rhs_contracting_dimensions();
   // First add the batch dimensions
   for (int64_t i = 0; i < a_batch_dims.size(); i++) {
     map_a_ab[a_batch_dims[i]] = ab_index;
@@ -727,7 +727,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (old_instruction->control_predecessors().size() > 0) {
+  if (!old_instruction->control_predecessors().empty()) {
     VLOG(3) << old_instruction->ToString()
             << " has control predecessors, skipping.";
     return false;
@@ -748,7 +748,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (old_instruction->control_predecessors().size() > 0) {
+  if (!old_instruction->control_predecessors().empty()) {
     VLOG(3) << old_instruction->ToString()
             << " has control predecessors, skipping.";
     return false;
@@ -1181,7 +1181,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (bitcast->control_predecessors().size() > 0) {
+  if (!bitcast->control_predecessors().empty()) {
     VLOG(3) << bitcast->ToString() << " has control predecessors, skipping.";
     return absl::OkStatus();
   }
@@ -7223,8 +7223,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
 
       // Construct dot dimension numbers for new dot
-      auto a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
-      auto b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
+      const auto& a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
+      const auto& b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
       DotDimensionNumbers new_dot_dnums;
       for (int64_t reduce_a_index = 0;
            reduce_a_index < reduce_a->shape().rank(); ++reduce_a_index) {
