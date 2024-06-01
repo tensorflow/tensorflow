@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -155,18 +156,33 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
       return absl::InternalError(
           "HLO module must be scheduled to emit thread local computation.");
     }
-    // Create a nested function for thread local computation if it is not
+
+    // Create a nested function for thread local computation(s) if it is not
     // already created. Nested functions are created with internal linkage.
-    if (!nested_ir_emitter_->is_computation_emitted(callee, is_reducer)) {
-      VLOG(2) << "Emit nested computation: " << callee.name();
-      TF_RETURN_IF_ERROR(
-          nested_ir_emitter_
-              ->EmitComputation(
-                  const_cast<HloComputation*>(&callee), name, false,
-                  hlo_module_->schedule().sequence(&callee).instructions(),
-                  /*allow_reassociation=*/is_reducer)
-              .status());
+    auto emit_computation = [&](const HloComputation* computation) {
+      if (!nested_ir_emitter_->is_computation_emitted(*computation,
+                                                      is_reducer)) {
+        VLOG(2) << "Emit nested computation: " << computation->name();
+        TF_RETURN_IF_ERROR(
+            nested_ir_emitter_
+                ->EmitComputation(const_cast<HloComputation*>(computation),
+                                  name, false,
+                                  hlo_module_->schedule()
+                                      .sequence(computation)
+                                      .instructions(),
+                                  /*allow_reassociation=*/is_reducer)
+                .status());
+      }
+      return absl::OkStatus();
+    };
+
+    // We emit all embedded computations reachable through the `callee` to
+    // support nested thread local call, i.e., nested map computations.
+    for (HloComputation* embedded : callee.MakeEmbeddedComputationsList()) {
+      if (embedded->IsFusionComputation()) continue;
+      TF_RETURN_IF_ERROR(emit_computation(embedded));
     }
+    TF_RETURN_IF_ERROR(emit_computation(&callee));
 
     // Add a thread local call to the nested computation.
     VLOG(2) << "Emit thread local call to: " << callee.name();
