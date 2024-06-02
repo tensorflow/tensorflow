@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/full_type_inference_util.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/full_type_util.h"  // IWYU pragma: export
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/registration/registration.h"
