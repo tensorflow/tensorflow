@@ -17,10 +17,17 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/tsl/util/device_name_utils.h"
+#include "tsl/framework/device_id.h"
 #include "tsl/framework/device_id_manager.h"
+#include "tsl/framework/device_type.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 namespace {

@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tsl/framework/tracking_allocator.h"
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
+#include "tsl/framework/allocator.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
 
 namespace tsl {
 
