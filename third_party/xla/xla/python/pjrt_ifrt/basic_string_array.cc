@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -141,7 +143,97 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  return absl::UnimplementedError("Not implemented");
+  absl::MutexLock lock(&mu_);
+  if (is_deleted_) {
+    return absl::FailedPreconditionError("Array has already been deleted");
+  }
+
+  int num_shards = sharding_->devices().size();
+
+  // For each single device array we are going to pre-make:
+  //   (1) a Promise-Future pair for passing the buffers,
+  //
+  //   (2) a Per-shard buffer backing store and the corresponding
+  //   on-done-with-buffer callback.
+  //
+  //   (3) shape and sharding by disassembing the source array's sharding.
+  //
+  // The Futures, the on-done-with-host-buffer callbacks, shapes and shardings
+  // are used to make the arrays. The promises and the buffer backing stores are
+  // passed onto the OnReady callback that populates them when the buffers of
+  // the source array become ready.
+  std::vector<Promise<Buffers>> buffer_promises;
+  buffer_promises.reserve(num_shards);
+  std::vector<Future<Buffers>> buffer_futures;
+  buffer_futures.reserve(num_shards);
+
+  struct PerShardBufferBackingStore {  // Data (strings) for a single shard.
+    void CopyFrom(absl::Span<const absl::string_view> input_buffer) {
+      strings.reserve(input_buffer.size());
+      string_views.reserve(input_buffer.size());
+      for (absl::string_view buf : input_buffer) {
+        strings.push_back(std::string(buf.data(), buf.size()));
+        string_views.push_back(strings.back());
+      }
+    }
+    std::vector<std::string> strings;
+    std::vector<absl::string_view> string_views;
+  };
+  std::vector<std::shared_ptr<PerShardBufferBackingStore>>
+      per_shard_buffer_backing_stores;
+  per_shard_buffer_backing_stores.reserve(num_shards);
+  std::vector<OnDoneWithBuffer> on_done_with_buffer_callbacks;
+  on_done_with_buffer_callbacks.reserve(num_shards);
+
+  for (int i = 0; i < num_shards; ++i) {
+    buffer_promises.push_back(Future<Buffers>::CreatePromise());
+    buffer_futures.push_back(Future<Buffers>(buffer_promises.back()));
+
+    auto backing_store = std::make_shared<PerShardBufferBackingStore>();
+    per_shard_buffer_backing_stores.push_back(backing_store);
+    on_done_with_buffer_callbacks.push_back(
+        [backing_store = std::move(backing_store)]() {});
+  }
+
+  // Copy each of the per-shard data into the its per-shard buffer backing
+  // store, make a Buffers object and set the corresponding promise.
+  buffers_.OnReady([buffer_promises = std::move(buffer_promises),
+                    per_shard_buffer_backing_stores =
+                        std::move(per_shard_buffer_backing_stores)](
+                       absl::StatusOr<Buffers> buffers) mutable {
+    if (!buffers.ok()) {
+      for (auto& promise : buffer_promises) {
+        promise.Set(buffers.status());
+      }
+      per_shard_buffer_backing_stores.clear();
+      return;
+    }
+    auto num_shards = buffers->size();
+    for (int i = 0; i < num_shards; ++i) {
+      per_shard_buffer_backing_stores[i]->CopyFrom((*buffers)[i]);
+      Buffers buffers;
+      buffers.push_back(per_shard_buffer_backing_stores[i]->string_views);
+      buffer_promises[i].Set(std::move(buffers));
+    }
+  });
+
+  // Make and return the individual single device arrays. These will become
+  // ready when the this (source) array becomes ready and the callback we set up
+  // above runs.
+  TF_ASSIGN_OR_RETURN(auto shapes_and_shadings, sharding_->Disassemble(shape_));
+
+  std::vector<tsl::RCReference<Array>> arrays;
+  arrays.reserve(num_shards);
+  for (int i = 0; i < num_shards; ++i) {
+    TF_ASSIGN_OR_RETURN(auto array,
+                        BasicStringArray::Create(
+                            client_, std::move(shapes_and_shadings[i].first),
+                            std::move(shapes_and_shadings[i].second),
+                            std::move(buffer_futures[i]),
+                            std::move(on_done_with_buffer_callbacks[i])));
+    arrays.push_back(array);
+  }
+  return arrays;
 }
 
 Future<> BasicStringArray::CopyToHostBuffer(
