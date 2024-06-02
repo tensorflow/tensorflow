@@ -14,6 +14,15 @@ exports_files(
     srcs = ["schema.fbs"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":schema_fbs_srcs",
+        ":schema_utils.h",
+    ],
+    visibility = ["//tensorflow/lite:__pkg__"],
+)
+
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
