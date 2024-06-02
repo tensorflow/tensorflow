@@ -4,6 +4,9 @@ How to synchonize TensorFlow ROCm port with upstream TensorFlow
 This article shows the step to synchronize TensorFlow with upstream. The
 process is currently carried out manually but it could and should be automated.
 
+**Important:** Synchronization should be performed on a weekly basis. Even if it has taken more than 2 weeks (>2) to merge the PR, the next weekly sync should first sync in the middle week between the last one and current one, and then sync the current week.
+For example, if the last weekly-sync PR was 3 weeks ago (e.g. 2024-04-29), this weekly-sync (supposed to be 2024-05-13) should start from 2024-05-06, and then do another weekly-sync at 2024-05-13.
+
 Useful github remote repositories (For reference)
 -------------------------------------------------
 
@@ -159,3 +162,13 @@ git push origin upstream
 ```
 
 Upon reaching here, the process is now complete.
+
+# Tips for debugging
+
+Bisecting between two weekly syncs is often necessary for debugging. The process should look like this:
+* Check out `merge-YYMMDD-prev` tag
+* Select a commit in the middle of the sync (between `merge-YYMMDD-prev` and `merge-YYMMDD`)
+* Merge to that commit point (i.e. perform a "mini sync")
+* Resolve merge conflicts based on what was done in that weekly sync. In case of build braking, cherry-pick neccessary hot-fixes listed here: [XLA hotfix track](https://confluence.amd.com/display/~cchen104/XLA+hotfix+track)
+* Test
+* Repeat until the required commit is found
