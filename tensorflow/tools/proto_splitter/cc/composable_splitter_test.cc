@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/message_lite.h"
 #include "riegeli/base/maker.h"  // from @riegeli
 #include "riegeli/bytes/cord_reader.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
