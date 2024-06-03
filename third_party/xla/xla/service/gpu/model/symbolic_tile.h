@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
@@ -138,8 +140,12 @@ namespace gpu {
 // size_map():   ()[sizes...] -> sizes'
 // stride_map(): ()[sizes...] -> strides'
 //
-// Other than this, the SymbolicTile object also contains a vector of RTVars
-// (rt_vars()) which describe how to evaluate the runtime value of rt_vars.
+// The size parameters of the projections may be arbitrarily constrained, in
+// order to ensure that applying the symbolic tile on an input tile yields a
+// valid tile. Such constraints are exposed through the constraints() method.
+// It may happen that constraints are unsatisfiable; in that case, the boolean
+// is_satisfiable() is set to false. This boolean should always be checked
+// before using the content of constraints().
 //
 // To correctly evaluate the RTVars for a given tile, we have to feed an
 // index from the original tile (a tile of the output tensor) to the RTVar's
@@ -154,6 +160,8 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(
       const IndexingMap& indexing_map);
 
+  using ConstraintMap = llvm::DenseMap<mlir::AffineExpr, Interval>;
+
   // For printing in tests.
   std::string RtVarsToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -165,6 +173,18 @@ class SymbolicTile {
   mlir::AffineMap offset_map() const;
   mlir::AffineMap size_map() const;
   mlir::AffineMap stride_map() const;
+
+  // Constraints on the `sizes` of the input tile. The variable names in this
+  // map correspond to the parameter names of `offset_map()`, `size_map()`, and
+  // `stride_map()`. Contents are irrelevant when `is_satisfiable()` is false.
+  const ConstraintMap& constraints() const {
+    CHECK(is_satisfiable_);
+    return constraints_;
+  }
+
+  // Whether the `SymbolicTile` constraints can be satisfied. When this is set
+  // to true, the domain of the `SymbolicTile` must be considered empty.
+  bool is_satisfiable() const { return is_satisfiable_; }
 
   // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
   // and strides.
@@ -192,8 +212,17 @@ class SymbolicTile {
   // See the comment of tile_map().
   IndexingMap tile_map_;
 
-  explicit SymbolicTile(IndexingMap tile_map)
-      : tile_map_(std::move(tile_map)) {}
+  // See the comment of constraints().
+  ConstraintMap constraints_;
+
+  // See the comment of is_satisfiable().
+  bool is_satisfiable_ = true;
+
+  explicit SymbolicTile(IndexingMap tile_map, ConstraintMap constraints,
+                        bool is_satisfiable = true)
+      : tile_map_(std::move(tile_map)),
+        constraints_(std::move(constraints)),
+        is_satisfiable_(is_satisfiable) {}
 };
 
 }  // namespace gpu

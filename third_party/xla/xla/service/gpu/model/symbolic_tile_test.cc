@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/platform/test.h"
 
@@ -126,6 +127,12 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
+  // TODO(bchetioui): support expanding one dimension to more than two
+  // dimensions and constrain accordingly.
+  // TODO(b/334043867): add disjunctions in order to relax some of these
+  // constraints. Currently we only support the reshaped tile size to be a
+  // multiple of the smaller collapsed axes---we also need to support the case
+  // where the tile size is a divisor of the collapsed axis.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
@@ -133,6 +140,8 @@ TEST_F(SymbolicTileTest,
         offset_map: ()[s0, s1] -> (0, 0, 0, 0)
         size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, s1)
         stride_map: ()[s0, s1] -> (0, 1, 1, 1)
+        constraints:
+          s0 mod 6 in [0, 0]
       )")));
 }
 
@@ -366,9 +375,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
-      p0 = f32[4, 4] parameter(0)
-      p1 = f32[] parameter(1)
-      ROOT pad = f32[8,8] pad(p0, p1), padding=2_2_0x1_3_0
+      input = f32[4, 4] parameter(0)
+      padding_value = f32[] parameter(1)
+      ROOT pad = f32[8,8] pad(input, padding_value), padding=2_2_0x1_3_0
     }
   )"));
 
@@ -682,6 +691,53 @@ TEST_F(SymbolicTileTest,
   EXPECT_EQ(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
       std::nullopt);
+}
+
+TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,8,6,4,8]{4,3,2,1,0} parameter(0)
+      ROOT bitcast = f32[48,32]{1,0} bitcast(p0)
+    }
+  )"));
+
+  // TODO(b/334043867): add disjunctions in order to relax some of these
+  // constraints. Currently we only support the reshaped axis to be a multiple
+  // of the smaller collapsed axes.
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: ()[s0, s1] -> (0, 0, 0, 0, 0)
+        size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, (s1 + 7) floordiv 8, s1 - ((s1 - 1) floordiv 8) * 8)
+        stride_map: ()[s0, s1] -> (0, 1, 1, 1, 1)
+        constraints:
+          s0 mod 6 in [0, 0]
+          s1 mod 8 in [0, 0]
+      )")));
+}
+
+TEST_F(SymbolicTileTest,
+       DerivesUnsatisfiableConstraintWhenMergingOfConstraintsIsUnsupported) {
+  // This is kind of an artificial test case that we could easily support---we
+  // assume here that we can't merge two constraints that are the same.
+  // Nevertheless, there doesn't seem to be an obvious way to produce other
+  // constraints that would trigger this particular failure at the moment. This
+  // will change as we support more constraints, disjunctions, etc...
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0) -> (d0 mod 6, d0 mod 6)", &mlir_context_),
+      /*dimensions=*/{DimVar{0, 10}}, /*range_vars=*/{}, /*rt_vars=*/{});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+              Symbolic tile with
+              offset_map: ()[s0] -> (0, 0)
+              size_map: ()[s0] -> (s0 - ((s0 - 1) floordiv 6) * 6, s0 - ((s0 - 1) floordiv 6) * 6)
+              stride_map: ()[s0] -> (1, 1)
+              constraints:
+                unsatisfiable
+              )")));
 }
 
 }  // namespace
