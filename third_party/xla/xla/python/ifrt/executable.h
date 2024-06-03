@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,6 +40,7 @@ namespace xla {
 namespace ifrt {
 
 class Client;
+class CompileOptions;
 struct DeserializeExecutableOptions;
 
 // Wraps a computation that has been partially compiled and can be loaded.
@@ -84,6 +84,13 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
 
+  // Returns a list of lists of memory kind strings for output. The returned
+  // value is `[num_programs, num_output]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetOutputMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const = 0;
+
   using CostAnalysisValue = xla::PjRtValueType;
 
   // Returns named values for cost properties of this executable (such as
@@ -91,6 +98,11 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // differ for different implementations and platforms.
   virtual absl::StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
   GetCostAnalysis() const = 0;
+
+  // Returns the compile options used to compile this executable.
+  // TODO(phawkins): consider removing this API and having the client remember
+  // the compile options used to create the executable.
+  virtual const CompileOptions* GetCompileOptions() const = 0;
 
   static char ID;  // NOLINT
 };

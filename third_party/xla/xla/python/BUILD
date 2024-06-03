@@ -1380,6 +1380,7 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ] + select({
         # gloo transport only builds on linux

@@ -32,7 +32,9 @@
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -141,6 +143,13 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       std::move(addressable_devices), std::move(fingerprint),
       std::move(ready_future), std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> Compiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
+  return absl::UnimplementedError(
+      "IFRT service compiler does not support `Compile` with a topology");
 }
 
 absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>

@@ -26,12 +26,14 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/nb_defs.h"
 #include "third_party/nanobind/include/nanobind/stl/function.h"  // IWYU pragma: keep
@@ -52,6 +54,9 @@ limitations under the License.
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
@@ -93,6 +98,8 @@ limitations under the License.
 #include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pmap_lib.h"
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/profiler.h"
@@ -387,45 +394,44 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def("get_default_c_api_topology",
            [](std::string platform_name, std::string topology_name,
               const absl::flat_hash_map<std::string, PjRtValueType>& options)
-               -> std::shared_ptr<PjRtTopologyDescription> {
-             return xla::ValueOrThrow(
-                 GetCApiTopology(platform_name, topology_name, options));
+               -> std::shared_ptr<ifrt::Topology> {
+             return std::make_shared<ifrt::PjRtTopology>(xla::ValueOrThrow(
+                 GetCApiTopology(platform_name, topology_name, options)));
            });
   m_nb.def(
       "get_c_api_topology",
       [](nb::capsule c_api, std::string topology_name,
          const absl::flat_hash_map<std::string, PjRtValueType>& options)
-          -> std::shared_ptr<PjRtTopologyDescription> {
+          -> std::shared_ptr<ifrt::Topology> {
         if (absl::string_view(c_api.name()) != "pjrt_c_api") {
           throw nb::value_error(
               "Argument to get_c_api_topology was not a pjrt_c_api capsule.");
         }
-        return xla::ValueOrThrow(
+        return std::make_shared<ifrt::PjRtTopology>(xla::ValueOrThrow(
             GetCApiTopology(static_cast<const PJRT_Api*>(c_api.data()),
-                            topology_name, options));
+                            topology_name, options)));
       });
-  m_nb.def(
-      "get_topology_for_devices",
-      [](const std::vector<nb_class_ptr<PyDevice>>& py_devices) {
-        if (py_devices.empty()) {
-          throw nb::value_error(
-              "get_topology_for_devices requires >= 1 devices.");
-        }
-        auto client = py_devices[0]->client();
-        ifrt::DeviceList::Devices ifrt_devices;
-        ifrt_devices.reserve(py_devices.size());
-        for (const auto& py_device : py_devices) {
-          if (py_device->client().get() != client.get()) {
-            throw nb::value_error(
-                "devices passed to get_topology_for_devices come from "
-                "different clients.");
-          }
-          ifrt_devices.push_back(py_device->device());
-        }
-        ifrt::DeviceList device_list(std::move(ifrt_devices));
-        return xla::ValueOrThrow(
-            client->ifrt_client()->GetTopologyForDevices(device_list));
-      });
+  m_nb.def("get_topology_for_devices",
+           [](const std::vector<nb_class_ptr<PyDevice>>& py_devices) {
+             if (py_devices.empty()) {
+               throw nb::value_error(
+                   "get_topology_for_devices requires >= 1 devices.");
+             }
+             auto client = py_devices[0]->client();
+             ifrt::DeviceList::Devices ifrt_devices;
+             ifrt_devices.reserve(py_devices.size());
+             for (const auto& py_device : py_devices) {
+               if (py_device->client().get() != client.get()) {
+                 throw nb::value_error(
+                     "devices passed to get_topology_for_devices come from "
+                     "different clients.");
+               }
+               ifrt_devices.push_back(py_device->device());
+             }
+             ifrt::DeviceList device_list(std::move(ifrt_devices));
+             return xla::ValueOrThrow(
+                 client->ifrt_client()->GetTopologyForDevices(device_list));
+           });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m_nb));
   jax::RegisterDeviceList(m_nb);
@@ -817,27 +823,29 @@ NB_MODULE(xla_extension, m_nb) {
            "representation");
 
   RegisterCompileOnlyClient(m_nb);
-  nb::class_<PjRtTopologyDescription>(m_nb, "DeviceTopology")
+  nb::class_<ifrt::Topology>(m_nb, "DeviceTopology")
       .def("_make_compile_only_devices",
-           [](std::shared_ptr<PjRtTopologyDescription> topology) {
-             return MakeCompileOnlyClient(topology)->Devices();
+           [](std::shared_ptr<ifrt::Topology> topology) {
+             if (!llvm::isa<ifrt::PjRtTopology>(*topology)) {
+               throw xla::XlaRuntimeError("Only PjRtTopologies are supported.");
+             }
+             return MakeCompileOnlyClient(
+                        std::dynamic_pointer_cast<ifrt::PjRtTopology>(topology))
+                 ->Devices();
            })
-      .def_prop_ro("platform",
-                   [](PjRtTopologyDescription& topology) {
-                     return topology.platform_name();
-                   })
-      .def_prop_ro("platform_version",
-                   [](PjRtTopologyDescription& topology) {
-                     return topology.platform_version();
-                   })
+      .def_prop_ro(
+          "platform",
+          [](ifrt::Topology& topology) { return topology.platform_name(); })
+      .def_prop_ro(
+          "platform_version",
+          [](ifrt::Topology& topology) { return topology.platform_version(); })
       .def("serialize",
-           [](PjRtTopologyDescription& topology) -> nb::bytes {
+           [](ifrt::Topology& topology) -> nb::bytes {
              std::string serialized = ValueOrThrow(topology.Serialize());
              return nb::bytes(serialized.data(), serialized.size());
            })
       .def("__getattr__",
-           [](PjRtTopologyDescription& topology,
-              std::string_view name) -> nb::object {
+           [](ifrt::Topology& topology, std::string_view name) -> nb::object {
              const auto& attrs = topology.Attributes();
              auto it = attrs.find(name);
              if (it != attrs.end()) {
@@ -848,27 +856,26 @@ NB_MODULE(xla_extension, m_nb) {
                  absl::StrCat("Unknown attribute ", name).c_str());
            });
 
-  nb::class_<PjRtExecutable>(m_nb, "Executable")
-      .def("hlo_modules", ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
+  nb::class_<ifrt::Executable>(m_nb, "Executable")
+      .def("hlo_modules", ValueOrThrowWrapper(&ifrt::Executable::GetHloModules))
       .def("get_output_memory_kinds",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
-      .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+           xla::ValueOrThrowWrapper(&ifrt::Executable::GetOutputMemoryKinds))
+      .def("get_output_shardings", &ifrt::Executable::GetOutputShardings)
       .def("get_parameter_layouts",
-           ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
+           ValueOrThrowWrapper(&ifrt::Executable::GetParameterLayouts))
       .def("get_output_layouts",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts))
-      .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
+           xla::ValueOrThrowWrapper(&ifrt::Executable::GetOutputLayouts))
+      .def("get_parameter_shardings", &ifrt::Executable::GetParameterShardings)
       .def("get_compiled_memory_stats",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
-      .def("compile_options",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
+           xla::ValueOrThrowWrapper(&ifrt::Executable::GetCompiledMemoryStats))
+      .def("compile_options", &ifrt::Executable::GetCompileOptions)
       .def("serialize",
-           [](const PjRtExecutable& exec) -> nb::bytes {
-             std::string serialized = ValueOrThrow(exec.SerializeExecutable());
+           [](const ifrt::Executable& exec) -> nb::bytes {
+             std::string serialized = ValueOrThrow(exec.Serialize());
              return nb::bytes(serialized.data(), serialized.size());
            })
       .def("cost_analysis",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCostAnalysis));
+           xla::ValueOrThrowWrapper(&ifrt::Executable::GetCostAnalysis));
 
   m_nb.def("is_asan", IsAsan);
   m_nb.def("is_msan", IsMsan);

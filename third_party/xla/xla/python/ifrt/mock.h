@@ -25,19 +25,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -53,11 +47,11 @@ limitations under the License.
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/framework/allocator.h"
 
 namespace xla {
 namespace ifrt {
@@ -154,10 +148,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
-  MOCK_METHOD(
-      absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
-      GetTopologyForDevices, (const xla::ifrt::DeviceList& devices),
-      (const, final));
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
+              (const xla::ifrt::DeviceList& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
               GetDefaultLayoutForDevice,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
@@ -179,6 +171,10 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>, Compile,
               (std::unique_ptr<Program> program,
+               std::unique_ptr<CompileOptions> options),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, Compile,
+              (std::unique_ptr<Program> program, const Topology& topology,
                std::unique_ptr<CompileOptions> options),
               (final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>,

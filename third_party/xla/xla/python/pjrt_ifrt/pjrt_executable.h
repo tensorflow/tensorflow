@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -81,7 +82,8 @@ class PjRtExecutable final
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
   static absl::StatusOr<std::unique_ptr<Executable>> Create(
-      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+      std::unique_ptr<XlaCompileOptions> compile_options);
 
   // PjRtCompatibleExecutable implementation.
 
@@ -152,13 +154,25 @@ class PjRtExecutable final
     return pjrt_executable_->GetCostAnalysis();
   }
 
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
+    return pjrt_executable_->GetOutputMemoryKinds();
+  }
+
+  const XlaCompileOptions* GetCompileOptions() const override {
+    return compile_options_.get();
+  }
+
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
-      : pjrt_executable_(std::move(pjrt_executable)) {}
+  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+                          std::unique_ptr<XlaCompileOptions> compile_options)
+      : pjrt_executable_(std::move(pjrt_executable)),
+        compile_options_(std::move(compile_options)) {}
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
+  std::unique_ptr<XlaCompileOptions> compile_options_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.

@@ -193,6 +193,7 @@ cc_library(
         "pjrt_host_callback.cc",
         "pjrt_memory.cc",
         "pjrt_remap.cc",
+        "pjrt_topology.cc",
         "pjrt_tuple.cc",
     ],
     hdrs = [
@@ -204,6 +205,7 @@ cc_library(
         "pjrt_host_callback.h",
         "pjrt_memory.h",
         "pjrt_remap.h",
+        "pjrt_topology.h",
         "pjrt_tuple.h",
     ],
     compatible_with = get_compatible_with_portable(),
