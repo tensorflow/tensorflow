@@ -71,12 +71,14 @@ TEST(TestOpaqueDelegate, AddDelegate) {
     // Test that an unnamed delegate kernel can be passed to the TF Lite
     // runtime.
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
-                             /*name*/ nullptr,
-                             /*version=*/1);
-    TfLiteOperatorSetInit(registration_external,
-                          [](TfLiteOpaqueContext* context, const char* buffer,
-                             size_t length) -> void* { return nullptr; });
+        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
+                                     /*name*/ nullptr,
+                                     /*version=*/1,
+                                     /*user_data=*/nullptr);
+    TfLiteOperatorSetInitWithData(
+        registration_external,
+        [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
+           size_t length) -> void* { return nullptr; });
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
@@ -127,12 +129,14 @@ TEST(TestOpaqueDelegate, ModelWithCustomOpAndInitData) {
                                        TfLiteOpaqueDelegate* opaque_delegate,
                                        void* data) -> TfLiteStatus {
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
-                             /*name*/ nullptr,
-                             /*version=*/1);
-    TfLiteOperatorSetInit(registration_external,
-                          [](TfLiteOpaqueContext* context, const char* buffer,
-                             size_t length) -> void* { return nullptr; });
+        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
+                                     /*name*/ nullptr,
+                                     /*version=*/1,
+                                     /*user_data=*/nullptr);
+    TfLiteOperatorSetInitWithData(
+        registration_external,
+        [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
+           size_t length) -> void* { return nullptr; });
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));

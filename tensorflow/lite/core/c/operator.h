@@ -74,8 +74,53 @@ typedef struct TfLiteOperator TfLiteOperator;
 /// \param version      Version of the op.  See
 ///                     https://www.tensorflow.org/lite/guide/ops_version
 ///
+/// \return \a newly created TfLiteOperator on success, \a nullptr on failure
+///
+/// Deprecated: Use `TfLiteOperatorCreateWithData`
 TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version);
+
+/// Returns a new TfLiteOperator instance.
+///
+/// The returned TfLiteOperator instance represents a definition
+/// of an operator with the identity (builtin_code/custom_name and
+/// version) specified by the parameters, but with all callbacks initially
+/// unset.
+///
+/// Evaluation of any operation using this operator will be done using
+/// the "prepare" and "invoke" callbacks, which can be set using
+/// `TfLiteOperatorSetPrepare` and
+/// `TfLiteOperatorSetInvoke`, or for async execution
+/// the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
+/// which can be set using `TfLiteOperatorSetAsyncKernel`.
+/// If the relevant callbacks are not set, then such evaluation will result
+/// in an error status.  So normally any use of this function should be followed
+/// by appropriate calls to set those callbacks.
+///
+/// \note The caller retains ownership and should ensure that
+/// the lifetime of the `TfLiteOperator` must be at least as long as
+/// the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
+/// used in.
+///
+/// \param builtin_code Enumeration code specifying which builtin operator this
+///                     defines, or `TfLiteBuiltinCustom` to define a custom op.
+/// \param custom_name  Name of the custom op, or `nullptr` for a builtin op.
+///                     If `custom_name` is non-null, then `builtin_code` should
+///                     be `TfLiteBuiltinCustom`.
+/// \param version      Version of the op.  See
+///                     https://www.tensorflow.org/lite/guide/ops_version
+/// \param user_data    Opaque pointer passed to the operator's callbacks set
+///                     with functions such as `TfLiteOperatorSetXXXWithData`.
+///                     The user is expected to manage the memory pointed by
+///                     this field and the lifetime of that memory should extend
+///                     at least from the call to `TfLiteOperatorCreateWithData`
+///                     to the invocation of the callback set with
+///                     `TfLiteOperatorSetFreeWithData`.
+///
+/// \return a newly created TfLiteOperator on success, or a nullptr on failure
+TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreateWithData(
+    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version,
+    void* user_data);
 
 /// Destroys the TfLiteOperator instance.
 ///
@@ -98,15 +143,35 @@ TFL_CAPI_EXPORT extern const char* TfLiteOperatorGetCustomName(
 TFL_CAPI_EXPORT extern int TfLiteOperatorGetVersion(
     const TfLiteOperator* registration);
 
+/// Return the user data field of the provided external 'registration', or
+/// nullptr if none was set.
+///
+TFL_CAPI_EXPORT extern void* TfLiteOperatorGetUserData(
+    const TfLiteOperator* registration);
+
 /// Sets the initialization callback for the registration.
 ///
 /// The callback is called to initialize the op from serialized data.
 /// Please refer `init` of `TfLiteRegistration` for the detail.
 ///
+/// Deprecated: Use `TfLiteOperatorSetInitWithData`
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
     TfLiteOperator* registration,
     void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                   size_t length));
+
+/// Sets the initialization callback for the registration. The function returns
+/// an error upon failure.
+///
+/// The callback is called to initialize the op from serialized data. The value
+/// passed in the `user_data` parameter is the value that was passed to
+/// `TfLiteOperatorCreateWithData`.  Please refer `init` of `TfLiteRegistration`
+/// for the detail.
+///
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetInitWithData(
+    TfLiteOperator* registration,
+    void* (*init)(void* user_data, TfLiteOpaqueContext* context,
+                  const char* buffer, size_t length));
 
 /// Sets the deallocation callback for the registration.
 ///
@@ -115,18 +180,46 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
 /// returned by the `init` callback. Please refer `free` of `TfLiteRegistration`
 /// for the detail.
 ///
+/// Deprecated: Use `TfLiteOperatorSetFreeWithData`
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
     TfLiteOperator* registration,
     void (*free)(TfLiteOpaqueContext* context, void* data));
+
+/// Sets the deallocation callback for the registration, similarly to
+/// `TfLiteOperatorSetFree`. The function returns an error upon failure.
+///
+/// This callback is called to deallocate the data returned by the init
+/// callback. The value passed in the `data` parameter is the value that was
+/// returned by the `init` callback. The value passed in the `user_data`
+/// parameter is the value that was passed to `TfLiteOperatorCreateWithData`.
+/// Please refer `free` of `TfLiteRegistration` for the detail.
+///
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetFreeWithData(
+    TfLiteOperator* registration,
+    void (*free)(void* user_data, TfLiteOpaqueContext* context, void* data));
 
 /// Sets the preparation callback for the registration.
 ///
 /// The callback is called when the inputs of operator have been resized.
 /// Please refer `prepare` of `TfLiteRegistration` for the detail.
 ///
+/// Deprecated: Use `TfLiteOperatorSetPrepareWithData`
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
     TfLiteOperator* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node));
+
+/// Sets the preparation callback for the registration. The function returns an
+/// error upon failure.
+///
+/// The callback is called when the inputs of operator have been resized.  The
+/// value passed in the `user_data` parameter is the value that was passed to
+/// `TfLiteOperatorCreateWithData`.  Please refer `prepare` of
+/// `TfLiteRegistration` for the detail.
+///
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetPrepareWithData(
+    TfLiteOperator* registration,
+    TfLiteStatus (*prepare)(void* user_data, TfLiteOpaqueContext* context,
                             TfLiteOpaqueNode* node));
 
 /// Sets the invocation callback for the registration.
@@ -134,9 +227,23 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
 /// The callback is called when the operator is executed.
 /// Please refer `invoke` of `TfLiteRegistration` for the detail.
 ///
+/// Deprecated: Use `TfLiteOperatorSetInvokeWithData`
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInvoke(
     TfLiteOperator* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node));
+
+/// Sets the invocation callback for the registration. The function returns an
+/// error upon failure.
+///
+/// The callback is called when the operator is executed.  The value passed in
+/// the `user_data` parameter is the value that was passed to
+/// `TfLiteOperatorCreate`.  Please refer `invoke` of `TfLiteRegistration` for
+/// the detail.
+///
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetInvokeWithData(
+    TfLiteOperator* registration,
+    TfLiteStatus (*invoke)(void* user_data, TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node));
 
 /// Sets the async kernel accessor callback for the registration.
@@ -146,10 +253,30 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetInvoke(
 /// should not be called, or `async_kernel` needs to be nullptr.
 /// `node` is the delegate TfLiteNode created by `ModifyGraphWithDelegate`.
 /// Please refer `async_kernel` of `TfLiteRegistration` for the detail.
+///
 /// \warning This is an experimental API and subject to change.
+/// Deprecated: Use `TfLiteOperatorSetAsyncKernelWithData`
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetAsyncKernel(
     TfLiteOperator* registration,
     struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                              TfLiteOpaqueNode* node));
+
+/// Sets the async kernel accessor callback for the registration. The function
+/// returns an error upon failure.
+///
+/// The callback is called to retrieve the async kernel if the delegate supports
+/// it. If the delegate does not support async execution, either this function
+/// should not be called, or `async_kernel` needs to be nullptr.  `node` is the
+/// delegate TfLiteNode created by `ModifyGraphWithDelegate`.  The value passed
+/// in the `user_data` parameter is the value that was passed to
+/// `TfLiteOperatorCreate`.  Please refer `async_kernel` of `TfLiteRegistration`
+/// for the detail.
+///
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOperatorSetAsyncKernelWithData(
+    TfLiteOperator* registration,
+    struct TfLiteAsyncKernel* (*async_kernel)(void* user_data,
+                                              TfLiteOpaqueContext* context,
                                               TfLiteOpaqueNode* node));
 
 /// Sets the inplace_operator field of the external registration.

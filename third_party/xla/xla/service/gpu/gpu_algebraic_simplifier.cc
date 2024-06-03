@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_algebraic_simplifier.h"
 
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_support.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,6 +48,13 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
   // Strength-reduce vector-vector dots since they are not supported by
   // GemmFusion.
   if (lhs_is_vector && rhs_is_vector) {
+    return true;
+  }
+
+  absl::StatusOr<bool> is_too_small =
+      IsMatrixMultiplicationTooSmallForRewriting(*hlo, /*threshold=*/1000000);
+  CHECK_OK(is_too_small.status());
+  if (is_too_small.value()) {
     return true;
   }
 
