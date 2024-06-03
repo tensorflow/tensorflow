@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla::cpu {
@@ -51,6 +52,7 @@ class Thunk {
   enum class Kind {
     kCall,
     kCopy,
+    kInfeed,
     kKernel,
     kRngGetAndUpdateState,
     kWhile,
@@ -97,6 +99,7 @@ class Thunk {
   struct ExecuteParams {
     HostKernels* host_kernels = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
+    runtime::XfeedManager* xfeed = nullptr;
   };
 
   virtual absl::Status Execute(const ExecuteParams& params) = 0;

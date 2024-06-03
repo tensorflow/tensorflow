@@ -74,14 +74,19 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitInfeedThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitWhileThunk(
       const HloInstruction* instruction);
 
-  // Returns the list of buffer allocation slices assigned to the given
-  // instruction leaf buffers. We do not materialize tuples at run time and only
-  // read and write from buffers corresponding to arrays.
-  absl::StatusOr<std::vector<BufferAllocation::Slice>> GetLeafAllocationSlices(
-      const HloInstruction* instruction);
+  // Return the list of buffer allocation slices assigned to the given
+  // instruction that will be passed to the host kernel as arguments: a
+  // flattened list of all the leaf buffers for all operands and result. We do
+  // not materialize tuples at run time and only read and write from buffers
+  // corresponding to arrays.
+  absl::StatusOr<std::vector<BufferAllocation::Slice>>
+  GetHostKernelAllocationSlices(const HloInstruction* instruction);
 
   IrEmitter2* ir_emitter_;
   const BufferAssignment* buffer_assignment_;

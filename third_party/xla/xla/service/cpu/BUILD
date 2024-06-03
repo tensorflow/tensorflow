@@ -542,6 +542,7 @@ cc_library(
     hdrs = ["cpu_executable.h"],
     deps = [
         ":buffer_desc",
+        ":cpu_runtime",
         ":simple_orc_jit",
         ":xla_framework",
         "//xla:executable_run_options",
@@ -790,10 +791,12 @@ cc_library(
     deps = [
         ":ir_emitter2",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu/runtime:call_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
+        "//xla/service/cpu/runtime:infeed_thunk",
         "//xla/service/cpu/runtime:kernel_thunk",
         "//xla/service/cpu/runtime:rng_state_thunk",
         "//xla/service/cpu/runtime:thunk",

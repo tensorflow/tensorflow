@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -348,7 +349,10 @@ absl::Status CpuExecutable::ExecuteThunks(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
-  Thunk::ExecuteParams execute_params = {&*host_kernels_, &allocations};
+  Thunk::ExecuteParams execute_params = {
+      &*host_kernels_, &allocations,
+      runtime::GetXfeedManager(run_options->device_ordinal())};
+
   absl::Status executed = thunks_->Execute(execute_params);
 
   if (run_options->execution_profile()) {

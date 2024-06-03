@@ -32,12 +32,15 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
+#include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -174,6 +177,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateStateThunk(instruction);
 
+    case HloOpcode::kInfeed:
+      return EmitInfeedThunk(instruction);
+
     case HloOpcode::kCall:
       return EmitCallThunk(instruction);
 
@@ -210,7 +216,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
   TF_ASSIGN_OR_RETURN(auto kernel,
                       ir_emitter_->EmitElementalHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetLeafAllocationSlices(instruction));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
@@ -222,7 +228,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_->EmitFusionHostKernel(fusion));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetLeafAllocationSlices(instruction));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
@@ -234,7 +240,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
     const HloInstruction* instruction) {
   TF_ASSIGN_OR_RETURN(auto kernel,
                       ir_emitter_->EmitReductionHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetLeafAllocationSlices(instruction));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
@@ -248,6 +254,29 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
   auto* rng_state = Cast<HloRngGetAndUpdateStateInstruction>(instruction);
   return ThunkSequence::Of<RngGetAndUpdateStateThunk>(
       ThunkInfo(instruction), state_buffer, rng_state->delta());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitInfeedThunk(
+    const HloInstruction* instruction) {
+  auto* infeed = Cast<HloInfeedInstruction>(instruction);
+  const Shape& infeed_shape = infeed->infeed_shape();
+
+  // Collect buffer allocation slices corresponding to data buffers produced by
+  // the infeed instruction;
+  std::vector<InfeedThunk::InfeedBuffer> infeed_buffers;
+  for (auto& infeed_leaf : ShapeUtil::GetLeafShapes(infeed_shape)) {
+    infeed_leaf.index.push_front(0);  // prepend infeed tuple index
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice infeed_slice,
+                        GetAllocationSlice(infeed, infeed_leaf.index));
+
+    infeed_buffers.push_back(InfeedThunk::InfeedBuffer{
+        infeed_slice,
+        infeed_leaf.shape,
+    });
+  }
+
+  return ThunkSequence::Of<InfeedThunk>(ThunkInfo(instruction), infeed_buffers);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
@@ -266,7 +295,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
 }
 
 absl::StatusOr<std::vector<BufferAllocation::Slice>>
-ThunkEmitter::GetLeafAllocationSlices(const HloInstruction* instruction) {
+ThunkEmitter::GetHostKernelAllocationSlices(const HloInstruction* instruction) {
   std::vector<BufferAllocation::Slice> buffers;
   auto add_buffers = [&](const HloInstruction* instr) -> absl::Status {
     for (const auto& indexed : ShapeUtil::GetLeafShapes(instr->shape())) {

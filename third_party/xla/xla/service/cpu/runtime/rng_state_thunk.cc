@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
-#include <utility>
 
 #include "absl/base/config.h"
 #include "absl/numeric/int128.h"
@@ -42,7 +41,7 @@ static constexpr absl::int128 kRngStateInitialValue = 0x7012395ull;
 RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
     Info info, BufferAllocation::Slice state_buffer, int64_t delta)
     : Thunk(Kind::kRngGetAndUpdateState, info),
-      state_buffer_(std::move(state_buffer)),
+      state_buffer_(state_buffer),
       delta_(delta),
       state_(kRngStateInitialValue) {}
 
