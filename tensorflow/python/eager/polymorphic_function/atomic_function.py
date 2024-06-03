@@ -288,7 +288,7 @@ class AtomicFunction(core.AtomicFunction):
       func_graph_module.dismantle_func_graph(self._generated_graph)
 
     if RUNTIME_FUNCTION_REFS is None:
-      pass
+      return
 
     key = (self._bound_context.function_scope_id, self.name)
     RUNTIME_FUNCTION_REFS[key] -= 1
