@@ -57,7 +57,9 @@ mlir_api_version = 57
 
 xla_platform_names = {
     'cpu': 'Host',
+    'cuda': 'CUDA',
     'gpu': 'CUDA',
+    'rocm': 'ROCM',
 }
 
 logger = logging.getLogger(__name__)
@@ -72,7 +74,6 @@ def make_cpu_client(
     num_nodes=1,
     collectives=None
 ) -> ...:
-  register_custom_call_handler('cpu', _xla.register_custom_call_target)
   return _xla.get_tfrt_cpu_client(
       asynchronous=asynchronous,
       distributed_client=distributed_client,
@@ -108,8 +109,6 @@ def make_gpu_client(
     config.preallocate = options['preallocate']
   if 'collective_memory_size' in options:
     config.collective_memory_size = options['collective_memory_size']
-  register_custom_call_handler('CUDA', _xla.register_custom_call_target)
-  register_custom_call_handler('ROCM', _xla.register_custom_call_target)
 
   return _xla.get_gpu_client(
       asynchronous=True,
