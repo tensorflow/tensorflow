@@ -130,6 +130,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             ArrayCopySemantics semantics) {
         return delegated_->RemapArrays(plan, arrays, semantics);
       });
+  ON_CALL(*this, GetReadyFuture)
+      .WillByDefault([this](absl::Span<const tsl::RCReference<Value>> values) {
+        return delegated_->GetReadyFuture(values);
+      });
   ON_CALL(*this, MakeTuple)
       .WillByDefault([this](absl::Span<tsl::RCReference<Value>> values) {
         return delegated_->MakeTuple(values);

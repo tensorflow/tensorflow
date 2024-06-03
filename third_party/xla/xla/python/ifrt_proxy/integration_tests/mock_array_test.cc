@@ -43,6 +43,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/client.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
@@ -147,6 +148,16 @@ class MockArrayTest : public testing::Test {
               mock_arrays_.push_back(result);
               return result;
             });
+
+    ON_CALL(*mock_backend, GetReadyFuture)
+        .WillByDefault([](absl::Span<const tsl::RCReference<Value>> values) {
+          std::vector<Future<>> futures;
+          futures.reserve(values.size());
+          for (const auto& value : values) {
+            futures.push_back(value->GetReadyFuture());
+          }
+          return JoinFutures(futures);
+        });
 
     return mock_backend;
   }

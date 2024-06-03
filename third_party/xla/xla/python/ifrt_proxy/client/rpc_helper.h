@@ -87,6 +87,8 @@ class RpcHelper {
 
   ResponseFuture<CheckFutureResponse> CheckFuture(
       std::unique_ptr<CheckFutureRequest> req);
+  ResponseFuture<CheckValueReadyResponse> CheckValueReady(
+      std::unique_ptr<CheckValueReadyRequest> req);
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
@@ -100,8 +102,6 @@ class RpcHelper {
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);
   ResponseFuture<CopyToHostBufferResponse> CopyToHostBuffer(
       std::unique_ptr<CopyToHostBufferRequest> req);
-  ResponseFuture<CheckArrayReadyResponse> CheckArrayReady(
-      std::unique_ptr<CheckArrayReadyRequest> req);
   ResponseFuture<ReshardResponse> Reshard(std::unique_ptr<ReshardRequest> req);
   ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
       std::unique_ptr<FullyReplicatedShardRequest> req);

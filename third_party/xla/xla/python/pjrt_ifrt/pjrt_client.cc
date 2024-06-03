@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -519,6 +521,16 @@ PjRtClient::RemapArrays(const RemapPlan& plan,
                         absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
                         ArrayCopySemantics semantics) {
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
+}
+
+Future<> PjRtClient::GetReadyFuture(
+    absl::Span<const tsl::RCReference<Value>> values) {
+  absl::InlinedVector<Future<>, 1> futures;
+  futures.reserve(values.size());
+  for (const auto& value : values) {
+    futures.push_back(value->GetReadyFuture());
+  }
+  return JoinFutures(futures);
 }
 
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(

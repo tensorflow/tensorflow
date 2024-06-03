@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_UTIL_H_
 #define XLA_PYTHON_UTIL_H_
 
-#include <memory>
-#include <vector>
-
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"

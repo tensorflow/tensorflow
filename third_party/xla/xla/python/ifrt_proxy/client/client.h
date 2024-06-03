@@ -37,6 +37,7 @@
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -78,6 +79,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const RemapPlan& plan,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
+
+  xla::ifrt::Future<> GetReadyFuture(
+      absl::Span<const tsl::RCReference<Value>> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override {

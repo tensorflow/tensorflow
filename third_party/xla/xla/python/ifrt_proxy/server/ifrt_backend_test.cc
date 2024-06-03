@@ -758,27 +758,27 @@ TEST_F(IfrtBackendHandlerTest, ReshardFailsWithNonExistentArrayHandle) {
 TEST_F(IfrtBackendHandlerTest,
        CheckArrayReadyRequestRelaysTheResultFromBackend) {
   auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array, GetReadyFuture())
-      .WillOnce(Return(Future<>(absl::OkStatus())))
-      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
+  EXPECT_CALL(*mock_client_, GetReadyFuture(_))
+      .WillOnce(Return(Future<>(absl::OkStatus())))
+      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
 
   {
     auto ifrt_request = NewIfrtRequest(NewOpId());
-    ifrt_request->mutable_check_array_ready_request()->set_array_handle(
+    ifrt_request->mutable_check_value_ready_request()->add_value_handles(
         array_handle);
     TF_ASSERT_OK_AND_ASSIGN(auto ifrt_response,
                             CallBackend(std::move(ifrt_request)));
 
     EXPECT_THAT(ifrt_response->response_metadata().status().code(),
                 tensorflow::error::OK);
-    EXPECT_TRUE(ifrt_response->has_check_array_ready_response());
+    EXPECT_TRUE(ifrt_response->has_check_value_ready_response());
   }
 
   {
     auto ifrt_request = NewIfrtRequest(NewOpId());
-    ifrt_request->mutable_check_array_ready_request()->set_array_handle(
+    ifrt_request->mutable_check_value_ready_request()->add_value_handles(
         array_handle);
     EXPECT_THAT(CallBackend(std::move(ifrt_request)),
                 StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
@@ -788,7 +788,7 @@ TEST_F(IfrtBackendHandlerTest,
 TEST_F(IfrtBackendHandlerTest,
        CheckArrayReadyRequestFailsWithNonExistentArrayHandle) {
   auto ifrt_request = NewIfrtRequest(NewOpId());
-  ifrt_request->mutable_check_array_ready_request()->set_array_handle(0);
+  ifrt_request->mutable_check_value_ready_request()->add_value_handles(0);
   EXPECT_THAT(CallBackend(std::move(ifrt_request)),
               StatusIs(absl::StatusCode::kNotFound));
 }

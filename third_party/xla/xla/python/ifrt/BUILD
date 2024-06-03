@@ -264,6 +264,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
