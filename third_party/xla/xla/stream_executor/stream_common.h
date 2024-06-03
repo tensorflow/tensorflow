@@ -106,7 +106,7 @@ class StreamCommon : public Stream {
   absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
                       const Kernel &k, const KernelArgs &args) override;
 
- private:
+ protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
     return !status_.ok();
@@ -121,6 +121,7 @@ class StreamCommon : public Stream {
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
+ private:
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
