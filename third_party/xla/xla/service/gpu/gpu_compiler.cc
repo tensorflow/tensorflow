@@ -1680,30 +1680,32 @@ GpuCompiler::CompileSingleModule(const HloModuleConfig& module_config,
                                  llvm::Module* llvm_module, bool relocatable,
                                  const CompileOptions& options,
                                  std::optional<int> shard_number) {
-  // This may print multiple lines per HLO compilation because of the
-  // parallelized compilation of LLVM modules.
-  XLA_SCOPED_LOGGING_TIMER_IF(
-      absl::StrCat(
-          "GpuCompiler::RunBackend - Running LLVM verifier for ",
-          (debug_module != nullptr ? debug_module->name() : "(unknown)")),
-      !options.is_autotuning_compilation);
+  {
+    // This may print multiple lines per HLO compilation because of the
+    // parallelized compilation of LLVM modules.
+    XLA_SCOPED_LOGGING_TIMER_IF(
+        absl::StrCat(
+            "GpuCompiler::RunBackend - Running LLVM verifier for ",
+            (debug_module != nullptr ? debug_module->name() : "(unknown)")),
+        VLOG_IS_ON(4) && !options.is_autotuning_compilation);
 
-  llvm_module->getContext().setDiagnosticHandlerCallBack(NullDiagnosticHandler,
-                                                         nullptr);
+    llvm_module->getContext().setDiagnosticHandlerCallBack(
+        NullDiagnosticHandler, nullptr);
 
-  std::string err;
-  llvm::raw_string_ostream err_stream(err);
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
 
-  // verifyModule() returns true if the module is broken.
-  TF_RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
-      << "Invalid LLVM IR before optimizations:\n"
-      << err_stream.str()
-      << "\nThis probably indicates a bug in the HLO -> LLVM IR "
-         "lowering. Rerun with --xla_dump_to to get the IR"
-      << (debug_module
-              ? absl::StrCat(" and looks for files with name containing: *",
-                             FilenameFor(*debug_module, "", ""), "*")
-              : ".");
+    // verifyModule() returns true if the module is broken.
+    TF_RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
+        << "Invalid LLVM IR before optimizations:\n"
+        << err_stream.str()
+        << "\nThis probably indicates a bug in the HLO -> LLVM IR "
+           "lowering. Rerun with --xla_dump_to to get the IR"
+        << (debug_module
+                ? absl::StrCat(" and looks for files with name containing: *",
+                               FilenameFor(*debug_module, "", ""), "*")
+                : ".");
+  }
 
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult result,
