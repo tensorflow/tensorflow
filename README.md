@@ -50,8 +50,8 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [build from source](https://www.tensorflow.org/install/source).
 
 To install the current release, which includes support for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
-Windows)*:
+[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) _(Ubuntu and
+Windows)_:
 
 ```
 $ pip install tensorflow
