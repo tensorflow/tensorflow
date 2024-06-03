@@ -671,16 +671,6 @@ NB_MODULE(xla_extension, m_nb) {
             xla::ThrowIfError(client.KeyValueSet(key, value, allow_overwrite));
           },
           nb::arg("key"), nb::arg("value"), nb::arg("allow_overwrite") = false)
-      .def(
-          "key_value_set",
-          [](DistributedRuntimeClient& client, std::string_view key,
-             nb::bytes value, bool allow_overwrite) {
-            nb::gil_scoped_release gil_release;
-            xla::ThrowIfError(client.KeyValueSet(
-                key, std::string_view(value.c_str(), value.size()),
-                allow_overwrite));
-          },
-          nb::arg("key"), nb::arg("value"), nb::arg("allow_overwrite") = false)
       // The key must be a string, but the value must a
       // Python bytes object.
       // Use `key_value_set_bytes()` and `blocking_key_value_get_bytes()`.
