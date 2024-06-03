@@ -50,6 +50,7 @@ cc_library(
         ":exhaustive_op_test_utils",
         "//xla:util",
         "//xla/client:xla_builder",
+        "//xla/client/lib:math",
         "//xla/tests:client_library_test_base",
         "@com_google_absl//absl/flags:flag",
     ],
