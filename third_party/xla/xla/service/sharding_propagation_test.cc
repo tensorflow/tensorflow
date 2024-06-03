@@ -10053,11 +10053,13 @@ ENTRY %entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
-  auto* copy = FindInstruction(module.get(), "copy");
-  ASSERT_NE(copy, nullptr);
+
+  auto* p0 = module->entry_computation()->parameter_instruction(0);
+  EXPECT_EQ(p0->user_count(), 1);
   EXPECT_THAT(
-      copy, op::Sharding(
-                "{devices=[2,2,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+      p0->users()[0],
+      op::Sharding(
+          "{devices=[2,2,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardingPropagationTest, DoNotRefineUnspecifiedDimsOnManual) {
@@ -11163,19 +11165,18 @@ ENTRY %entry {
           /*allow_spmd_sharding_propagation_to_parameters=*/{true})
           .Run(module.get()));
   EXPECT_TRUE(changed);
-
-  HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool dce_ed, RunHloPass(&dce, module.get()));
-  EXPECT_TRUE(dce_ed);
-
   XLA_VLOG_LINES(1, module->ToString());
-  // Check dangling sharding custom-call can be removed by DCE after
-  // propagation.
-  auto* instruction = FindInstruction(module.get(), "param0");
-  EXPECT_EQ(instruction, nullptr);
+
+  // The dangling sharding custom-call is removed. Thus, there are 3
+  // instructions, parameter(0), add, and multiply.
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 3);
+
   // Check sharding is correctly propagated.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sharding("{devices=[4]0,1,2,3}"));
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    EXPECT_TRUE(instruction->has_sharding());
+    EXPECT_THAT(instruction, op::Sharding("{devices=[4]0,1,2,3}"));
+  }
 }
 
 TEST_F(ShardingPropagationTest,
@@ -11854,18 +11855,15 @@ ENTRY main.11 {
           /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
           .Run(module.get()));
   EXPECT_TRUE(changed);
-
   XLA_VLOG_LINES(1, module->ToString());
-  auto* broadcast_4 = FindInstruction(module.get(), "broadcast.4");
-  ASSERT_NE(broadcast_4, nullptr);
-  EXPECT_THAT(
-      broadcast_4,
-      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
-  auto* copy = FindInstruction(module.get(), "copy");
-  ASSERT_NE(copy, nullptr);
-  EXPECT_THAT(
-      copy,
-      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
+
+  for (absl::string_view instruction_name : {"broadcast.4", "broadcast.2"}) {
+    auto* instruction = FindInstruction(module.get(), instruction_name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(
+        instruction,
+        op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
+  }
 }
 
 TEST_F(ShardingPropagationTest, ShardAsWithShardBarrier2) {

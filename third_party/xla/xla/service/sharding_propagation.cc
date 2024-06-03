@@ -1601,7 +1601,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
     const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector) {
+        allow_spmd_sharding_propagation_to_parameters_vector,
+    const std::string& copy_metadata_op_name) {
   bool changed = false;
 
   const bool use_shard_group = instruction_to_shard_group_id &&
@@ -1706,6 +1707,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
                                instruction, copy, /*preserve_sharding=*/false,
                                /*relay_control_dependency=*/false,
                                /*remove_unused_operands=*/false));
+          copy->set_metadata_op_name(copy_metadata_op_name);
           copy->set_sharding(std::move(original_sharding));
           instruction = copy;
           changed = true;
@@ -1757,6 +1759,32 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     }
   }
   return changed;
+}
+
+absl::StatusOr<bool> RemoveRedundantCopyInstructions(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::string_view copy_metadata_op_name) {
+  bool global_changed = false;
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopy &&
+          instruction->metadata().op_name() == copy_metadata_op_name &&
+          instruction->has_sharding() &&
+          instruction->operand(0)->has_sharding() &&
+          instruction->operand(0)->sharding() == instruction->sharding()) {
+        TF_ASSIGN_OR_RETURN(
+            bool local_changed,
+            computation->ReplaceInstruction(
+                instruction, instruction->mutable_operand(0),
+                /*preserve_sharding=*/false, /*relay_control_dependency=*/false,
+                /*remove_unused_operands=*/false));
+        CHECK(local_changed);
+        global_changed = true;
+      }
+    }
+  }
+  return global_changed;
 }
 
 // Compute the number of users that are only internal to the computation.
@@ -3027,7 +3055,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
           &shard_group_id_to_shard_like_group,
-          &allow_spmd_sharding_propagation_to_parameters_vector_));
+          &allow_spmd_sharding_propagation_to_parameters_vector_,
+          sharding_custom_call_to_copy_metadata_op_name_));
   any_changed |= changed;
 
   for (const auto& [shard_group_id, shard_as_group] :
@@ -3718,6 +3747,12 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       params[0]->set_sharding(std::move(param_sharding));
     }
   }
+
+  TF_ASSIGN_OR_RETURN(changed,
+                      RemoveRedundantCopyInstructions(
+                          module, execution_threads,
+                          sharding_custom_call_to_copy_metadata_op_name_));
+  any_changed |= changed;
 
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
