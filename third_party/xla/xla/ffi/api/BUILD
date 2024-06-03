@@ -23,6 +23,17 @@ package(
 # `ffi.h` defines builtin decoding for canonical XLA types, but users can add their own decodings
 # with template specializations.
 
+# A user of the FFI interface will only need the three headers included in the `all_headers`
+# filegroup: `api.h`, `c_api.h`, and `ffi.h`.
+filegroup(
+    name = "all_headers",
+    srcs = [
+        "api.h",
+        "c_api.h",
+        "ffi.h",
+    ],
+)
+
 filegroup(
     name = "api_headers",
     srcs = ["api.h"],
