@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The CUDA implementation of the StreamExecutorInterface functionality.
+// The CUDA implementation of the StreamExecutor functionality.
 // CUDA inclusions are ideally confined to this implementation file.
 //
 // The notions from the StreamExecutor basically correspond to the CUDA streams

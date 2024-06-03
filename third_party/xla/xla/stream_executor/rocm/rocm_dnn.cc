@@ -5194,7 +5194,7 @@ void initialize_miopen() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
-            [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            [](StreamExecutor* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
               if (rocm_executor == nullptr) {

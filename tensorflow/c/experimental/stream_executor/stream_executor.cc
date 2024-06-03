@@ -186,7 +186,7 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   delete host_ctx;
 }
 
-class CStreamExecutor : public StreamExecutor {
+class CStreamExecutor : public StreamExecutorCommon {
  public:
   explicit CStreamExecutor(Platform* se_platform, SP_Device device,
                            SP_DeviceFns* device_fns,
@@ -194,7 +194,7 @@ class CStreamExecutor : public StreamExecutor {
                            SP_Platform* platform, SP_PlatformFns* platform_fns,
                            SP_TimerFns* timer_fns, const std::string& name,
                            int visible_device_count)
-      : StreamExecutor(se_platform),
+      : StreamExecutorCommon(se_platform),
         device_(std::move(device)),
         device_fns_(device_fns),
         stream_executor_(stream_executor),
@@ -457,13 +457,11 @@ class CStreamExecutor : public StreamExecutor {
     return StatusFromTF_Status(c_status.get());
   }
 
-  absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
     return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
-  bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
-    return false;
-  }
+  bool CanEnablePeerAccessTo(StreamExecutor* other) override { return false; }
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override {
     return stream_executor_->device_memory_usage(

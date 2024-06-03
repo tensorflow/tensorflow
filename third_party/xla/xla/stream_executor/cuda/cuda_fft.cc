@@ -470,7 +470,7 @@ void initialize_cufft() {
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",
-          [](StreamExecutorInterface *parent) -> fft::FftSupport * {
+          [](StreamExecutor *parent) -> fft::FftSupport * {
             gpu::GpuExecutor *cuda_executor =
                 dynamic_cast<gpu::GpuExecutor *>(parent);
             if (cuda_executor == nullptr) {

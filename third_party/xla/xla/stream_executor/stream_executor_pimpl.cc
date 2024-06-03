@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implements the StreamExecutor interface by passing through to its
-// implementation_ value (in pointer-to-implementation style), which
-// implements StreamExecutorInterface.
-
 #include "xla/stream_executor/stream_executor_pimpl.h"
 
 #include <cstddef>
@@ -64,11 +60,11 @@ static int64_t GetMemoryLimitBytesFromEnvironmentVariable() {
   return value * (1ll << 20);
 }
 
-StreamExecutor::StreamExecutor(const Platform* platform)
+StreamExecutorCommon::StreamExecutorCommon(const Platform* platform)
     : platform_(platform),
       memory_limit_bytes_(GetMemoryLimitBytesFromEnvironmentVariable()) {}
 
-const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
+const DeviceDescription& StreamExecutorCommon::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);
   if (device_description_ != nullptr) {
     return *device_description_;

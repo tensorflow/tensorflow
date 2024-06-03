@@ -46,10 +46,9 @@ class Stream;
 
 // Interface which defines the method for interacting with an accelerator device
 // (e.g. GPU, TPU).
-class StreamExecutorInterface {
+class StreamExecutor {
  public:
-  StreamExecutorInterface() = default;
-  virtual ~StreamExecutorInterface() = default;
+  virtual ~StreamExecutor() = default;
 
   // Returns a reference to the platform that created this executor.
   virtual const Platform* GetPlatform() const = 0;
@@ -288,11 +287,11 @@ class StreamExecutorInterface {
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
   // access it directly.
-  virtual absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+  virtual absl::Status EnablePeerAccessTo(StreamExecutor* other) = 0;
 
   // Returns whether it's possible to enable peer access from this
   // StreamExecutor to memory allocated by another.
-  virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+  virtual bool CanEnablePeerAccessTo(StreamExecutor* other) = 0;
 
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
@@ -403,15 +402,11 @@ class StreamExecutorInterface {
   // Sets the argument logging mode. Returns true if 'mode' is valid.
   // The mode is a bitmask of the kLog* constants.
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
-
- private:
-  StreamExecutorInterface(const StreamExecutorInterface&) = delete;
-  void operator=(const StreamExecutorInterface&) = delete;
 };
 
 template <typename T>
-inline DeviceMemory<T> StreamExecutorInterface::AllocateArray(
-    uint64_t element_count, int64_t memory_space) {
+inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
+                                                     int64_t memory_space) {
   uint64_t bytes = sizeof(T) * element_count;
   auto memory_limit_bytes = GetMemoryLimitBytes();
   if (memory_limit_bytes > 0 &&

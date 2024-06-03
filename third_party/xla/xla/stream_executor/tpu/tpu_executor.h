@@ -156,10 +156,10 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                         uint32_t pattern, uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
-  absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
     LOG(FATAL) << "not yet implemented";
   }
-  bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
+  bool CanEnablePeerAccessTo(StreamExecutor* other) override {
     LOG(FATAL) << "not yet implemented";
   }
 
