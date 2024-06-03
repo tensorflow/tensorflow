@@ -290,6 +290,7 @@ cc_library(
         "simplify_affine.cc",
         "simplify_arith.cc",
         "unswitch_loops.cc",
+        "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
@@ -334,6 +335,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
