@@ -258,7 +258,7 @@ class FunctionalHloRunner {
       const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
       const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
       const xla::FunctionalHloRunner::RunningOptions& running_options,
-      absl::Span<const std::string> hlo_files, InputFormat input_format,
+      absl::string_view hlo_text, InputFormat input_format,
       std::string dump_output_to = "", int task_id = 0);
 
   // Loads an HLO module from hlo_file according to input_format and run it.
@@ -270,9 +270,8 @@ class FunctionalHloRunner {
       PjRtClient& client, const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
-      const RunningOptions& running_options,
-      absl::Span<const std::string> hlo_files, InputFormat input_format,
-      const PerDeviceLiteralVecType& arguments = {});
+      const RunningOptions& running_options, absl::string_view hlo_text,
+      InputFormat input_format, const PerDeviceLiteralVecType& arguments = {});
 
   // Loads and compiles an HLO for debugging purposes.
   //

@@ -257,6 +257,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_nccl_terminate_on_error(false);
 
+  opts.set_xla_use_shardonnay(false);
+
   return opts;
 }
 
@@ -1699,6 +1701,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_nccl_terminate_on_error),
       debug_options->xla_gpu_nccl_terminate_on_error(),
       "If set, then NCCL errors will terminate the process."));
+  flag_list->push_back(tsl::Flag(
+      "xla_use_shardonnay",
+      bool_setter_for(&DebugOptions::set_xla_use_shardonnay),
+      debug_options->xla_use_shardonnay(), "Whether to use Shardonnay."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

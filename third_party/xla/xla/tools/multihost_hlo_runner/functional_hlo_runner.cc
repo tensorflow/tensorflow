@@ -569,7 +569,7 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
-    absl::Span<const std::string> hlo_files, InputFormat input_format,
+    absl::string_view hlo_text, InputFormat input_format,
     std::string dump_output_to, int task_id) {
   TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
                       FunctionalHloRunner::CreateCompileOptions(
@@ -578,7 +578,7 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
                                       compile_options, running_options,
-                                      hlo_files, input_format));
+                                      hlo_text, input_format));
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -590,7 +590,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
                                 const PreprocessingOptions& preproc_options,
                                 const CompileOptions& compile_options,
                                 const RunningOptions& running_options,
-                                absl::Span<const std::string> hlo_files,
+                                absl::string_view hlo_text,
                                 InputFormat input_format,
                                 const PerDeviceLiteralVecType& arguments) {
   // We only support SPMD as of now, i.e., all devices are supposed
@@ -600,14 +600,11 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
   // replay the original execution.
   HloModuleAndArguments hlo_module_and_arguments;
   PerDeviceLiteralVecType loaded_arguments;
-  for (int i = 0; i < hlo_files.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(hlo_module_and_arguments,
-                        LoadHloModuleAndArguments(hlo_files[i], input_format));
-    if (input_format == InputFormat::kSnapshotProtoBinary) {
-      CHECK_GE(client.devices().size(), hlo_files.size());
-      loaded_arguments[client.devices()[i]->id()] =
-          std::move(hlo_module_and_arguments.arguments);
-    }
+  TF_ASSIGN_OR_RETURN(hlo_module_and_arguments,
+                      LoadHloModuleAndArguments(hlo_text, input_format));
+  if (input_format == InputFormat::kSnapshotProtoBinary) {
+    loaded_arguments[client.devices()[0]->id()] =
+        std::move(hlo_module_and_arguments.arguments);
   }
   if (!arguments.empty()) {
     return CompileAndRun(client, debug_options, preproc_options,
