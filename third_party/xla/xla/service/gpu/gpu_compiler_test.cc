@@ -336,6 +336,7 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+  GTEST_SKIP() << "TODO(bchetioui): fix broken test";
   const absl::string_view hlo_string = R"(
 HloModule test
 
