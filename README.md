@@ -146,19 +146,19 @@ You can find more community-supported platforms and configurations in the
 
 ## Resources
 
-*   [TensorFlow.org](https://www.tensorflow.org)
-*   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
-*   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
-*   [TensorFlow Examples](https://github.com/tensorflow/examples)
-*   [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
-*   [TensorFlow Blog](https://blog.tensorflow.org)
-*   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
-*   [TensorFlow Twitter](https://twitter.com/tensorflow)
-*   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
-*   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
-*   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
-*   [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
+- [TensorFlow.org](https://www.tensorflow.org)
+- [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
+- [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
+- [TensorFlow Examples](https://github.com/tensorflow/examples)
+- [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
+- [TensorFlow Blog](https://blog.tensorflow.org)
+- [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
+- [TensorFlow Twitter](https://twitter.com/tensorflow)
+- [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
+- [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
+- [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+- [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+- [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
 
 Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to
@@ -166,9 +166,9 @@ Learn more about the
 
 ## Courses
 
-* [Coursera](https://www.coursera.org/search?query=TensorFlow)
-* [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
-* [Edx](https://www.edx.org/search?q=TensorFlow)
+- [Coursera](https://www.coursera.org/search?query=TensorFlow)
+- [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
+- [Edx](https://www.edx.org/search?q=TensorFlow)
 
 ## License
 
