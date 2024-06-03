@@ -546,13 +546,8 @@ cc_library(
     name = "gpu_util_hdrs",
     hdrs = [
         "gpu_utils.h",
-        # See the exports_files declaration for a description of why this
-        # silliness is here.
-        #
-        # TODO(b/202546057) get rid of this once fused_conv is moved out of
-        # contrib.
-        "@local_xla//xla/stream_executor:lazy_op_runner.h",
     ],
+    deps = ["@local_xla//xla/stream_executor:lazy_op_runner"],
 )
 
 cc_library(

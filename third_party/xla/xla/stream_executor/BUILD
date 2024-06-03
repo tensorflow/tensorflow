@@ -431,9 +431,6 @@ cc_library(
     ],
 )
 
-# TODO(ezhulenev): This should be removed.
-exports_files(["lazy_op_runner.h"])
-
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor platform-dependent interfaces
 #===--------------------------------------------------------------------------------------------===#
