@@ -19,9 +19,9 @@ limitations under the License.
 #include <optional>
 
 #include "absl/functional/function_ref.h"
-#include "xla/service/gpu/runtime/address_computation_thunk.h"
 #include "xla/service/gpu/runtime/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime/conditional_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
@@ -36,9 +36,8 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
   // ... and then handle all nested `Thunks` recursively.
   switch (thunk->kind()) {
     case Thunk::kAddressComputation:
-      ForAllThunks(fn,
-                   tensorflow::down_cast<const AddressComputationThunk*>(thunk)
-                       ->embedded_thunk());
+      ForAllThunks(fn, tensorflow::down_cast<const DynamicSliceThunk*>(thunk)
+                           ->embedded_thunk());
       break;
     case Thunk::kCommandBuffer:
       if (const std::optional<ThunkSequence>& sequence =

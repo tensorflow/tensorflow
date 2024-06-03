@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/address_computation_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -71,7 +71,7 @@ static se::StreamExecutor* GpuExecutor() {
 
 }  // namespace
 
-TEST(AddressComputationThunkTest, SlicedGemm) {
+TEST(DynamicSliceThunkTest, SlicedGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -136,9 +136,9 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
       slice_workspace, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -210,7 +210,7 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
+TEST(DynamicSliceThunkTest, SlicedNonContiguousGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -289,11 +289,11 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
       slice_out, slice_workspace, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  std::vector<AddressComputationThunk::Offset> rhs_offsets{slice_rhs_offset_0,
-                                                           slice_rhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  std::vector<DynamicSliceThunk::Offset> rhs_offsets{slice_rhs_offset_0,
+                                                     slice_rhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -375,7 +375,7 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
   ASSERT_FALSE(thunk.ExecuteOnStream(params).ok());
 }
 
-TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
+TEST(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -453,11 +453,11 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
       slice_out, slice_workspace, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  std::vector<AddressComputationThunk::Offset> rhs_offsets{slice_rhs_offset_0,
-                                                           slice_rhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  std::vector<DynamicSliceThunk::Offset> rhs_offsets{slice_rhs_offset_0,
+                                                     slice_rhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -567,7 +567,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 
-TEST(AddressComputationThunkTest, SlicedMemcpy) {
+TEST(DynamicSliceThunkTest, SlicedMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -631,9 +631,9 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
       /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
-  std::vector<AddressComputationThunk::Offset> slice_offsets{
+  std::vector<DynamicSliceThunk::Offset> slice_offsets{
       slice_offset_0, slice_offset_1, slice_offset_2, slice_offset_3};
-  AddressComputationThunk thunk(
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_offsets, std::nullopt},
@@ -701,7 +701,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
+TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -789,13 +789,13 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
       /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
-  std::vector<AddressComputationThunk::Offset> slice_src_offsets{
+  std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
       slice_src_offset_0, slice_src_offset_1, slice_src_offset_2,
       slice_src_offset_3};
-  std::vector<AddressComputationThunk::Offset> slice_dst_offsets{
+  std::vector<DynamicSliceThunk::Offset> slice_dst_offsets{
       slice_dst_offset_0, slice_dst_offset_1, slice_dst_offset_2,
       slice_dst_offset_3};
-  AddressComputationThunk thunk(
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_src_offsets, slice_dst_offsets},
@@ -895,7 +895,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
+TEST(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -969,9 +969,9 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -1043,7 +1043,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
+TEST(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1117,9 +1117,9 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -1193,7 +1193,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
+TEST(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1258,9 +1258,9 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
       slice_workspace, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
@@ -1340,7 +1340,7 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
+TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1428,13 +1428,13 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
       /*called_computation=*/nullptr));
 
   // Wrapping address computation thunk around the custom call thunk.
-  std::vector<AddressComputationThunk::Offset> slice_src_offsets{
+  std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
       slice_src_offset_0, slice_src_offset_1, slice_src_offset_2,
       slice_src_offset_3};
-  std::vector<AddressComputationThunk::Offset> slice_dst_offsets{
+  std::vector<DynamicSliceThunk::Offset> slice_dst_offsets{
       slice_dst_offset_0, slice_dst_offset_1, slice_dst_offset_2,
       slice_dst_offset_3};
-  AddressComputationThunk thunk(
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_src_offsets, slice_dst_offsets},
@@ -1537,7 +1537,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(AddressComputationThunkTest, SlicedOperandsSameBufferGemm) {
+TEST(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1609,9 +1609,9 @@ TEST(AddressComputationThunkTest, SlicedOperandsSameBufferGemm) {
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
-  std::vector<AddressComputationThunk::Offset> lhs_offsets{slice_lhs_offset_0,
-                                                           slice_lhs_offset_1};
-  AddressComputationThunk thunk(
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
+                                                     slice_lhs_offset_1};
+  DynamicSliceThunk thunk(
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),

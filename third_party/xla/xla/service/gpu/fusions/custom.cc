@@ -54,8 +54,8 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime/address_computation_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -220,8 +220,7 @@ absl::Status CollectSliceInfo(
     const BufferAssignment& buffer_assignment,
     const HloInstruction& fusion_instr,
     absl::Span<HloInstruction*> slice_instrs,
-    std::vector<std::optional<std::vector<AddressComputationThunk::Offset>>>&
-        offsets,
+    std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>& offsets,
     std::vector<std::optional<Shape>>& orig_shapes,
     std::vector<std::optional<Shape>>& sliced_shapes,
     std::vector<std::optional<uint64_t>>& offset_byte_sizes, unsigned arg_idx) {
@@ -231,7 +230,7 @@ absl::Status CollectSliceInfo(
     return absl::OkStatus();
   }
 
-  std::vector<AddressComputationThunk::Offset> arg_offsets;
+  std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
     const auto* param = Cast<HloParameterInstruction>(idx_op);
     const auto* offset_value = fusion_instr.operand(param->parameter_number());
@@ -259,7 +258,7 @@ absl::Status CollectSliceInfo(
 
     } else if (IsLoopIterationOffset(offset_value)) {
       // Loop offset defined by a loop iteration number.
-      arg_offsets.emplace_back() = AddressComputationThunk::LoopIter();
+      arg_offsets.emplace_back() = DynamicSliceThunk::LoopIter();
 
     } else {
       // Loop offset computed on device and has to be transferred to host.
@@ -331,7 +330,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  std::vector<std::optional<std::vector<AddressComputationThunk::Offset>>>
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
       offset_buffer_indices(4, std::nullopt);
   std::vector<std::optional<Shape>> orig_shapes(4, std::nullopt);
   std::vector<std::optional<Shape>> sliced_shapes(4, std::nullopt);
@@ -365,7 +364,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   // Handling cases where multiple operands share the same buffer, with
   // different offset by creating new fake allocations so each operand will have
   // a different buffer index. The slices can thus always start at offset 0.
-  // AddressComputationThunk will take care of the offset adjustment.
+  // DynamicSliceThunk will take care of the offset adjustment.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
   if (fusion.shape().IsArray()) {
     TF_ASSIGN_OR_RETURN(
@@ -457,7 +456,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     std::vector<std::optional<BufferAllocation::Slice>> arguments{
         lhs_slice, rhs_slice, output, workspace};
 
-    thunk = std::make_unique<AddressComputationThunk>(
+    thunk = std::make_unique<DynamicSliceThunk>(
         thunk_info, std::make_unique<ThunkSequence>(std::move(seq)),
         std::move(arguments), std::move(fake_allocations),
         std::move(offset_buffer_indices), std::move(orig_shapes),
@@ -510,8 +509,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     num_args += ShapeUtil::GetLeafCount(operand->shape());
   });
 
-  std::vector<std::optional<std::vector<AddressComputationThunk::Offset>>>
-      offsets(num_args, std::nullopt);
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets(
+      num_args, std::nullopt);
   std::vector<std::optional<Shape>> orig_shapes(num_args, std::nullopt);
   std::vector<std::optional<Shape>> sliced_shapes(num_args, std::nullopt);
   std::vector<std::optional<uint64_t>> offset_byte_sizes(num_args,
@@ -736,7 +735,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
             ? ffi_thunk(std::move(fake_operands), std::move(fake_results))
             : legacy_thunk(std::move(fake_operands), std::move(fake_results)));
 
-    thunk = std::make_unique<AddressComputationThunk>(
+    thunk = std::make_unique<DynamicSliceThunk>(
         thunk_info, std::make_unique<ThunkSequence>(std::move(seq)),
         std::move(arguments), std::move(fake_allocations), std::move(offsets),
         std::move(orig_shapes), std::move(sliced_shapes),

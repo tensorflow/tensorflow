@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_ADDRESS_COMPUTATION_THUNK_H_
-#define XLA_SERVICE_GPU_RUNTIME_ADDRESS_COMPUTATION_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME_DYNAMIC_SLICE_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME_DYNAMIC_SLICE_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -36,12 +36,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// AddressComputationThunk wraps the logic to compute dynamic offsets/sizes from
+// DynamicSliceThunk wraps the logic to compute dynamic offsets/sizes from
 // dynamic-slice or DUS around some original thunks (e.g. custom call or NCCL
 // thunks)
 //
-// AddressComputationThunk assumes that the slices are contiguous.
-class AddressComputationThunk : public Thunk {
+// DynamicSliceThunk assumes that the slices are contiguous.
+class DynamicSliceThunk : public Thunk {
  public:
   struct LoopIter {};
 
@@ -50,7 +50,7 @@ class AddressComputationThunk : public Thunk {
   // computed on device and have to be transferred to host.
   using Offset = std::variant<uint64_t, LoopIter, BufferAllocation::Slice>;
 
-  AddressComputationThunk(
+  DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
       std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
@@ -59,8 +59,8 @@ class AddressComputationThunk : public Thunk {
       std::vector<std::optional<Shape>> sliced_shapes,
       std::vector<std::optional<uint64_t>> offset_byte_sizes);
 
-  AddressComputationThunk(const AddressComputationThunk&) = delete;
-  AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
+  DynamicSliceThunk(const DynamicSliceThunk&) = delete;
+  DynamicSliceThunk& operator=(const DynamicSliceThunk&) = delete;
 
   const Thunk* embedded_thunk() const { return embedded_thunk_.get(); }
 
@@ -101,4 +101,4 @@ class AddressComputationThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_ADDRESS_COMPUTATION_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME_DYNAMIC_SLICE_THUNK_H_

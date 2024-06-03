@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/address_computation_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -46,7 +46,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-AddressComputationThunk::AddressComputationThunk(
+DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
     std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
@@ -81,8 +81,8 @@ AddressComputationThunk::AddressComputationThunk(
   }
 }
 
-absl::Status AddressComputationThunk::Prepare(
-    const PrepareParams& params, ResourceRequests& resource_requests) {
+absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params,
+                                        ResourceRequests& resource_requests) {
   for (SliceDef& slice : slices_) {
     if (slice.offsets.has_value()) {
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
@@ -102,8 +102,7 @@ absl::Status AddressComputationThunk::Prepare(
   return absl::OkStatus();
 }
 
-absl::Status AddressComputationThunk::Initialize(
-    const InitializeParams& params) {
+absl::Status DynamicSliceThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(embedded_thunk_->Initialize(params));
 
   absl::MutexLock lock(&mutex_);
@@ -119,8 +118,7 @@ absl::Status AddressComputationThunk::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status AddressComputationThunk::ExecuteOnStream(
-    const ExecuteParams& params) {
+absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::Stream& stream = *params.stream;
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
 

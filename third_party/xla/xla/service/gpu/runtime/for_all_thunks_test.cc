@@ -23,10 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/runtime/address_computation_thunk.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime/conditional_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
@@ -58,21 +58,20 @@ TEST(ForAllThunksTest, SingleThunk) {
   EXPECT_THAT(GetAllThunks(&thunk), UnorderedElementsAre(&thunk));
 }
 
-TEST(ForAllThunksTest, AddressComputationThunk) {
+TEST(ForAllThunksTest, DynamicSliceThunk) {
   auto thunk = std::make_unique<DummyThunk>();
   Thunk* thunk_ptr = thunk.get();
 
   auto thunk_sequence = std::make_unique<ThunkSequence>();
   thunk_sequence->push_back(std::move(thunk));
 
-  AddressComputationThunk address_computation_thunk(
+  DynamicSliceThunk dynamic_slice_thunk(
       Thunk::ThunkInfo(), std::move(thunk_sequence), {}, {}, {}, {}, {}, {});
-  EXPECT_THAT(
-      GetAllThunks(&address_computation_thunk),
-      // `AddressComputationThunk` wraps the `embedded_thunk` in a
-      // `SequentialThunk`, which is why iterate over more than the
-      // two expected `Thunks`.
-      IsSupersetOf<const Thunk*>({thunk_ptr, &address_computation_thunk}));
+  EXPECT_THAT(GetAllThunks(&dynamic_slice_thunk),
+              // `DynamicSliceThunk` wraps the `embedded_thunk` in a
+              // `SequentialThunk`, which is why iterate over more than the
+              // two expected `Thunks`.
+              IsSupersetOf<const Thunk*>({thunk_ptr, &dynamic_slice_thunk}));
 }
 
 TEST(ForAllThunksTest, CommandBufferThunk) {

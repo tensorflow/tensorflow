@@ -312,9 +312,9 @@ xla_cc_test(
 #===-------------------------------------------------------------------------------------------===//
 
 cc_library(
-    name = "address_computation_thunk",
-    srcs = ["address_computation_thunk.cc"],
-    hdrs = ["address_computation_thunk.h"],
+    name = "dynamic_slice_thunk",
+    srcs = ["dynamic_slice_thunk.cc"],
+    hdrs = ["dynamic_slice_thunk.h"],
     deps = [
         ":sequential_thunk",
         ":thunk",
@@ -342,8 +342,8 @@ cc_library(
 )
 
 xla_test(
-    name = "address_computation_thunk_test",
-    srcs = if_gpu_is_configured(["address_computation_thunk_test.cc"]),
+    name = "dynamic_slice_thunk_test",
+    srcs = if_gpu_is_configured(["dynamic_slice_thunk_test.cc"]),
     backend_tags = {
         "gpu_a100": if_google(["config-cuda-only"]),
         "gpu_v100": if_google(["config-cuda-only"]),
@@ -355,8 +355,8 @@ xla_test(
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
-        ":address_computation_thunk",
         ":custom_call_thunk",
+        ":dynamic_slice_thunk",
         ":gemm_thunk",
         ":thunk",
         "//xla:shape_util",
@@ -1140,9 +1140,9 @@ cc_library(
     srcs = ["for_all_thunks.cc"],
     hdrs = ["for_all_thunks.h"],
     deps = [
-        ":address_computation_thunk",
         ":command_buffer_thunk",
         ":conditional_thunk",
+        ":dynamic_slice_thunk",
         ":sequential_thunk",
         ":thunk",
         ":while_thunk",
@@ -1155,10 +1155,10 @@ xla_cc_test(
     name = "for_all_thunks_test",
     srcs = ["for_all_thunks_test.cc"],
     deps = [
-        ":address_computation_thunk",
         ":command_buffer_cmd",
         ":command_buffer_thunk",
         ":conditional_thunk",
+        ":dynamic_slice_thunk",
         ":for_all_thunks",
         ":sequential_thunk",
         ":thunk",
