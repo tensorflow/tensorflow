@@ -151,10 +151,12 @@ bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
   } else if (dt == DT_HALF) {
     // Float16 is not supported in oneDNN v2.x
 #ifdef ENABLE_ONEDNN_V3
-    result = (TestCPUFeature(port::CPUFeature::AVX512BW) &&
-              (TestCPUFeature(port::CPUFeature::AVX512_FP16) ||
-               TestCPUFeature(port::CPUFeature::AMX_FP16) ||
-               TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT)));
+    // Some CPUs that don't support AVX-512 use AVX-NE-CONVERT to cast to and
+    // from FP32
+    result = ((TestCPUFeature(port::CPUFeature::AVX512BW) &&
+               (TestCPUFeature(port::CPUFeature::AVX512_FP16) ||
+                TestCPUFeature(port::CPUFeature::AMX_FP16))) ||
+              TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT));
     if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
 #endif  // ENABLE_ONEDNN_V3
   } else {
