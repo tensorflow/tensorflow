@@ -291,7 +291,7 @@ func.func @gelu_aten_approximate(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
 
 // CHECK-LABEL  func.func @jax_image_resize_nearest
 func.func @jax_image_resize_nearest(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
-  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = false, align_corners = false, size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = false, size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
   return %1 : tensor<1x4x4x10xf32>
 }
 func.func private @XlaCallModule_tfl.resize_nearest_neighbor.impl_0(%arg0: tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32> {
@@ -346,7 +346,7 @@ func.func private @XlaCallModule__resize_0(%arg0: tensor<1x2x2x10xf32>) -> (tens
 // CHECK-LABEL  func.func @jax_image_resize_nearest_nchw
 func.func @jax_image_resize_nearest_nchw(%arg0: tensor<4x8x32x32xf32>) -> (tensor<4x8x64x64xf32>) {
   %0 = call @XlaCallModule_tfl.resize_nearest_neighbor.impl_1(%arg0) : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
-  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, size = dense<64> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_1} : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
+  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = true, size = dense<64> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_1} : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
   return %1 : tensor<4x8x64x64xf32>
 }
 func.func private @XlaCallModule_tfl.resize_nearest_neighbor.impl_1(%arg0: tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32> {

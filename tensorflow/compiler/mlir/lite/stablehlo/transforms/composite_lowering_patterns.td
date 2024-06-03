@@ -61,7 +61,7 @@ def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
     (TFL_ResizeNearestNeighborOp
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-      (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+      ConstBoolAttrFalse,
       ConstBoolAttrTrue),
     [(IsNhwcLayoutOp $attrs)]>;
 
@@ -79,7 +79,7 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-        (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+        ConstBoolAttrFalse,
         ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
