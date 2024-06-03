@@ -58,7 +58,6 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
@@ -96,6 +95,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -109,14 +109,11 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/fusions/mlir/passes.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -134,6 +131,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
@@ -2378,23 +2376,26 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 }
 
 // Computes the base pointer offset for the given pid and shape.
+// `tile_offset_indexing` is a mapping from
+// (program_id) -> [tile_offset0, ..., tile_offsetN]
 Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
                            const TiledHloInstruction& tiled_hlo) {
   const Shape& shape = tiled_hlo.hlo()->shape();
-  Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
-                                            {ShapeUtil::ElementsIn(shape)});
+  ArrayRef<mlir::AffineExpr> dimension_exprs =
+      tiled_hlo.block_id_to_tile_offsets_indexing().GetAffineMap().getResults();
 
-  // Bitcast map gives an indexing map from linear index to the parameter shape
-  // index respecting physical layout of the memory.
-  auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
-  auto compose_indexing_maps = ComposeIndexingMaps(
-      tiled_hlo.block_id_to_tile_offsets_indexing(), bitcast_map);
-  compose_indexing_maps.Simplify();
+  mlir::AffineExpr linear_index =
+      mlir::getAffineConstantExpr(0, b.getContext());
+  int64_t stride = 1;
+  for (int i : shape.layout().minor_to_major()) {
+    linear_index = linear_index + dimension_exprs[i] * stride;
+    stride *= shape.dimensions(i);
+  }
 
   return b.create<ma::IndexCastUIOp>(
-      b.getI64Type(), mlir_converter::ApplyIndexing(compose_indexing_maps,
-                                                    /*dims=*/pid,
-                                                    /*symbols=*/{}, b)[0]);
+      b.getI64Type(),
+      mlir_converter::ApplyAffineExpr(linear_index, /*dims=*/pid,
+                                      /*symbols=*/{}, b));
 }
 
 namespace ir_emitter_triton_internal {
@@ -2747,12 +2748,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<
-      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
-      mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
-  mlir::DialectRegistry registry;
-  mlir::func::registerInlinerExtension(registry);
-  mlir_context.appendDialectRegistry(registry);
+  mlir_context
+      .loadDialect<mt::TritonDialect, mt::gpu::TritonGPUDialect,
+                   mlir::arith::ArithDialect, mlir::affine::AffineDialect>();
 
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
@@ -2893,9 +2891,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
-
-  // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm.addPass(CreateSimplifyAffinePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   if (!CreateTritonPipeline(pm, cc, config, /*out*/ cluster_info).ok()) {
