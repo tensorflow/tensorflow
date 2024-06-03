@@ -425,6 +425,10 @@ class SplitProvider {
   // Cancels the split provider. After cancelling, all other existing and future
   // calls should return quickly without blocking.
   virtual void Cancel() {}
+  // Used to determine if the split provider is dynamic. Dynamic split providers
+  // are expected to be non-deterministic and may return different splits upon
+  // reinitialization.
+  virtual bool IsDynamic() const { return false; }
 };
 
 // Returns the runner threadpool size from an OpKernelContext.

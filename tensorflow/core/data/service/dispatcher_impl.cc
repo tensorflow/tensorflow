@@ -326,6 +326,11 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
       MakeSplitProviders(iteration.job->dataset_id, split_providers));
   for (int provider_index = 0; provider_index < indices.size();
        ++provider_index) {
+    if (split_providers[provider_index]->IsDynamic()) {
+      VLOG(1) << "Restoring dynamic split provider " << provider_index
+              << " for iteration " << iteration.iteration_id;
+      continue;
+    }
     int index = indices[provider_index];
     VLOG(1) << "Restoring split provider " << provider_index
             << " for iteration " << iteration.iteration_id << " to index "
