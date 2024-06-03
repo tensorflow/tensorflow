@@ -541,6 +541,8 @@ cc_library(
 xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
+    # TODO(b/343996893): Figure out whether msan reports a false positive or not.
+    tags = ["nomsan"],
     deps = [
         ":ptx_compiler",
         ":ptx_compiler_support",
