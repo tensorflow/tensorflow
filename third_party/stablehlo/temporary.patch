@@ -2216,7 +2216,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 +++ stablehlo/stablehlo/experimental/tools/CMakeLists.txt
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,42 @@
 +# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 +# Copyright 2023 The StableHLO Authors.
 +#
@@ -2250,6 +2250,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/s
 +        StablehloTestUtils
 +        StablehloPasses
 +        InterpreterOps
++        StablehloLinalgTransforms
 +        StablehloTOSATransforms
 +        )
 +add_llvm_executable(experimental-stablehlo-opt StablehloOptMain.cpp)
@@ -3014,61 +3015,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
---- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
-+++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
-@@ -115,14 +115,17 @@
-       operand_batching_dims=[6, 7],
-       start_indices_batching_dims=[8, 9],
-       start_index_map=[10],
--      index_vector_dim=11)
--  assert attr is not None
--  assert str(attr) == ("#stablehlo.gather<offset_dims = [1, 2], "
--                       "collapsed_slice_dims = [3, 4, 5], "
--                       "operand_batching_dims = [6, 7], "
--                       "start_indices_batching_dims = [8, 9], "
--                       "start_index_map = [10], "
--                       "index_vector_dim = 11>")
-+      index_vector_dim=11,
-+  )
-+  assert attr is not None
-+  assert str(attr) == (
-+      "#stablehlo.gather<offset_dims = [1, 2], "
-+      "collapsed_slice_dims = [3, 4, 5], "
-+      "operand_batching_dims = [6, 7], "
-+      "start_indices_batching_dims = [8, 9], "
-+      "start_index_map = [10], "
-+      "index_vector_dim = 11>"
-+  )
-   assert attr.offset_dims == [1, 2]
-   assert attr.collapsed_slice_dims == [3, 4, 5]
-   assert attr.operand_batching_dims == [6, 7]
-@@ -178,14 +181,17 @@
-       input_batching_dims=[6, 7],
-       scatter_indices_batching_dims=[8, 9],
-       scattered_dims_to_operand_dims=[10, 11],
--      index_vector_dim=12)
--  assert attr is not None
--  assert str(attr) == ("#stablehlo.scatter<update_window_dims = [1, 2, 3], "
--                       "inserted_window_dims = [4, 5], "
--                       "input_batching_dims = [6, 7], "
--                       "scatter_indices_batching_dims = [8, 9], "
--                       "scatter_dims_to_operand_dims = [10, 11], "
--                       "index_vector_dim = 12>")
-+      index_vector_dim=12,
-+  )
-+  assert attr is not None
-+  assert str(attr) == (
-+      "#stablehlo.scatter<update_window_dims = [1, 2, 3], "
-+      "inserted_window_dims = [4, 5], "
-+      "input_batching_dims = [6, 7], "
-+      "scatter_indices_batching_dims = [8, 9], "
-+      "scatter_dims_to_operand_dims = [10, 11], "
-+      "index_vector_dim = 12>"
-+  )
-   assert attr.update_window_dims == [1, 2, 3]
-   assert attr.inserted_window_dims == [4, 5]
-   assert attr.input_batching_dims == [6, 7]
 diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
 --- stablehlo/stablehlo/reference/Api.cpp
 +++ stablehlo/stablehlo/reference/Api.cpp
