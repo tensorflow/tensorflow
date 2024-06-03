@@ -273,6 +273,14 @@ TEST(InterPlanetaryFileSystemTest, HasAtomicMove) {
   EXPECT_EQ(has_atomic_move, true);
 }
 
+TEST(InterPlanetaryFileSystemTest, CanCreateTempFile) {
+  InterPlanetaryFileSystem ipfs;
+  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  bool can_create_temp_file;
+  TF_EXPECT_OK(ipfs.CanCreateTempFile(dirname, &can_create_temp_file));
+  EXPECT_EQ(can_create_temp_file, true);
+}
+
 // A simple file system with a root directory and a single file underneath it.
 class TestFileSystem : public NullFileSystem {
  public:
