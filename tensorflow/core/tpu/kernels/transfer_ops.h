@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
