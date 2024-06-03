@@ -240,15 +240,13 @@ def xla_test(
                 "//xla/service:cpu_plugin",
                 "//xla/tests:test_macros_cpu",
             ]
-        elif backend in NVIDIA_GPU_BACKENDS:
+        elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS:
             backend_deps += [
                 "//xla/service:gpu_plugin",
                 "//xla/tests:test_macros_%s" % backend,
             ]
-            this_backend_tags += tf_gpu_tests_tags()
-            this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
-        elif backend in AMD_GPU_DEFAULT_BACKENDS:
-            backend_deps.append("//xla/tests:test_macros_gpu_amd_any")
+            if backend in NVIDIA_GPU_BACKENDS:
+                this_backend_tags += tf_gpu_tests_tags()
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
         elif backend == "interpreter":
             backend_deps += [
