@@ -4468,6 +4468,7 @@ cc_library(
         ":hlo_traversal",
         ":ir_emission_utils",
         ":reduction_utils",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",

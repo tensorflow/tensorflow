@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <stack>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -115,22 +117,53 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+namespace {
+std::pair<int64_t, int64_t> MostMinorNonTrivialDimension(const Shape& shape) {
+  int64_t position_of_first_non_trivial_dim = 0;
+  for (int64_t dim : shape.layout().minor_to_major()) {
+    if (shape.dimensions()[dim] > 1) {
+      return {dim, position_of_first_non_trivial_dim};
+    }
+    ++position_of_first_non_trivial_dim;
+  }
+  return {-1, position_of_first_non_trivial_dim};
+}
+}  // namespace
+
 bool TransposesMinorDimension(const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kFusion:
       return absl::c_any_of(instr->fused_instructions(),
                             TransposesMinorDimension);
-    case HloOpcode::kCopy:
-      return instr->shape().layout().minor_to_major(0) !=
-             instr->operand(0)->shape().layout().minor_to_major(0);
+    // TODO(akuegel): This can be simplified by just calling
+    // GetDescriptionForTiledTransposeEmitter() once it returns a value for all
+    // transposes that affect the most minor non-trivial dimension. Right now,
+    // there are also cases with transposes that affect the most minor
+    // non-trivial dimension which are not supported by the transpose emitter,
+    // so GetDescriptionForTiledTransposeEmitter would return std::nullopt.
+    case HloOpcode::kCopy: {
+      int64_t first_non_trivial_operand_dim =
+          MostMinorNonTrivialDimension(instr->operand(0)->shape()).first;
+      int64_t first_non_trivial_output_dim =
+          MostMinorNonTrivialDimension(instr->shape()).first;
+      return first_non_trivial_operand_dim != first_non_trivial_output_dim;
+    }
     case HloOpcode::kTranspose: {
-      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
-      // check if the minor-most dimension (x) is still the minor-most dimension
-      // after the transpose.
-      int64_t minor_input =
-          instr->operand(0)->shape().layout().minor_to_major(0);
-      int64_t minor_output = instr->shape().layout().minor_to_major(0);
-      return minor_input != instr->dimensions().at(minor_output);
+      auto position_in_minor_to_major = InversePermutation(
+          instr->operand(0)->shape().layout().minor_to_major());
+      int64_t position_of_first_non_trivial_dim =
+          MostMinorNonTrivialDimension(instr->operand(0)->shape()).second;
+      for (int64_t output_dim : instr->shape().layout().minor_to_major()) {
+        if (instr->shape().dimensions()[output_dim] == 1) {
+          continue;
+        }
+        int64_t operand_dim = instr->dimensions().at(output_dim);
+        // Check if there is any operand dimension with size > 1 that is more
+        // minor than 'operand_dim'
+        return position_in_minor_to_major[operand_dim] >
+               position_of_first_non_trivial_dim;
+      }
+      return false;
     }
     default:
       return false;
