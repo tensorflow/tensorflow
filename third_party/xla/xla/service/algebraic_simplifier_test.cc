@@ -10064,6 +10064,39 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyTautologicalBitcastConvert) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = bf16[10] parameter(0)
+      ROOT out = bf16[10] bitcast-convert(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SimplifyBitcastConvertChain) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s16[10] parameter(0)
+      b1 = bf16[10] bitcast-convert(p0)
+      b2 = u16[10] bitcast-convert(b1)
+      b3 = f16[10] bitcast-convert(b2)
+      ROOT out = s16[10] bitcast-convert(b3)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::BitcastConvert(m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest,
        DoNotSimplifyRedundantBitcastConvertWithControlDep) {
   const char* kModuleStr = R"(
