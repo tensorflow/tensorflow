@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -48,8 +49,11 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -273,10 +277,10 @@ class GemmDimensionAdapter {
           }
           switch (scope) {
             case TritonFusionAnalysis::Scope::LHS:
-              lhs_noncontracting_split = spec->back().count;
+              lhs_noncontracting_split_ = spec->back().count;
               break;
             case TritonFusionAnalysis::Scope::OUTPUT:
-              if (lhs_noncontracting_split != spec->back().count) {
+              if (lhs_noncontracting_split_ != spec->back().count) {
                 VLOG(8) << "Output non-contracting dimension has to be split "
                            "the same way as the LHS input one if it is split.";
                 return false;
@@ -299,15 +303,15 @@ class GemmDimensionAdapter {
         strides.push_back(spec->front().stride);
       }
     }
-    if (lhs_noncontracting_split > 1 &&
+    if (lhs_noncontracting_split_ > 1 &&
         scope == TritonFusionAnalysis::Scope::OUTPUT &&
         dimensions[kBatchDimensionIndex] == 1) {
       // LHS input noncontracting dimension is split but the corresponding
       // output one is not. Assign part of the output one to the unused batch
       // dimension.
-      dimensions[kBatchDimensionIndex] = lhs_noncontracting_split;
+      dimensions[kBatchDimensionIndex] = lhs_noncontracting_split_;
       dimensions[kOutputLHSNonContractingDimensionIndex] /=
-          lhs_noncontracting_split;
+          lhs_noncontracting_split_;
       strides[kBatchDimensionIndex] =
           strides[kOutputLHSNonContractingDimensionIndex] *
           dimensions[kOutputLHSNonContractingDimensionIndex];
@@ -316,7 +320,7 @@ class GemmDimensionAdapter {
   }
 
  private:
-  int64_t lhs_noncontracting_split = 1;
+  int64_t lhs_noncontracting_split_ = 1;
   const HloDotInstruction& dot_;
 };
 
