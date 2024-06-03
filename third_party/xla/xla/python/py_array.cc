@@ -84,7 +84,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 // TODO(b/324133505): remove this GOOGLE_CUDA block after JAX OSS migrates
 // to cuda plugin.
@@ -160,7 +159,14 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
           first_memory_kind,
           py_arrays.front().ifrt_array()->sharding().devices().front());
   for (const auto& py_array : py_arrays) {
-    DCHECK_EQ(py_array.num_shards(), 1);
+    if (py_array.num_shards() != 1) {
+      throw nb::value_error(
+          absl::StrFormat(
+              "When making an array from single-device arrays the input arrays "
+              "must have one shard each. An argument array had %d shard(s).",
+              py_array.num_shards())
+              .c_str());
+    }
     ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
@@ -231,6 +237,7 @@ struct PyArrayObject {
   PyObject* weakrefs;
   PyObject* dict;
 #endif  // PY_VERSION_HEX < 0x030B0000
+  bool initialized;
   alignas(PyArray::Storage) char array_storage[sizeof(PyArray::Storage)];
 };
 static_assert(std::is_standard_layout<PyArrayObject>::value);
@@ -242,6 +249,8 @@ PyArray::Storage* GetPyArrayStorageFromObject(PyArrayObject* py_array_object) {
 
 extern "C" PyObject* PyArray_tp_new(PyTypeObject* type, PyObject*, PyObject*) {
   PyObject* self = type->tp_alloc(type, 0);
+  auto* obj = reinterpret_cast<PyArrayObject*>(self);
+  obj->initialized = false;
   return self;
 }
 
@@ -250,7 +259,9 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
   PyTypeObject* tp = Py_TYPE(self);
   auto* obj = reinterpret_cast<PyArrayObject*>(self);
 
-  GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+  if (obj->initialized) {
+    GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+  }
 
   PyObject_ClearWeakRefs(self);
 #if PY_VERSION_HEX < 0x030C0000
@@ -297,8 +308,10 @@ extern "C" int PyArray_tp_clear(PyObject* self) {
 
 template <typename... Args>
 PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
-  return new (self->array_storage)
-      PyArray::Storage(std::forward<Args>(args)...);
+  PyArray::Storage* out =
+      new (self->array_storage) PyArray::Storage(std::forward<Args>(args)...);
+  self->initialized = true;
+  return out;
 }
 
 struct ShapedArrayCacheKey {
@@ -970,7 +983,7 @@ nb::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
-  if (py_client->arrays_ == this) {
+  if (py_client && py_client->arrays_ == this) {
     py_client->arrays_ = next;
   }
   if (prev) {
