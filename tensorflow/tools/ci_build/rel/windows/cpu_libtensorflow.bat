@@ -13,7 +13,7 @@
 :: limitations under the License.
 :: =============================================================================
 
-SET TF_DIR=%cd%\github\tensorflow
+SET TF_DIR=%cd%
 SET TF_DOCKER_DIR=C:\src\tensorflow
 REM TODO(belitskiy): Switch to Artifact Registry
 set TF_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:1082ef4299a72e44a84388f192ecefc81ec9091c146f507bc36070c089c0edcc"
