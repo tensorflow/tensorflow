@@ -100,14 +100,6 @@ class GpuExecutable : public Executable {
     bool enable_debug_info_manager = true;
   };
 
-  // Analyze the entry function to construct buffer allocation and other output
-  // information.
-  static absl::Status SetUpMlirAllocation(
-      mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
-      std::vector<BufferAllocation>* allocations,
-      absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
-      Shape* output_shape);
-
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 
