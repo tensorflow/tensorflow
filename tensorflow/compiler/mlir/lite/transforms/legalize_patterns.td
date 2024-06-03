@@ -577,7 +577,7 @@ def LegalizeMatrixSetDiag : Pat<
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
-  (TF_ScatterNdOp $indices, $updates, $shape),
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "">),
   (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
     (CreateTFCastToInt32Op $shape))>;
 

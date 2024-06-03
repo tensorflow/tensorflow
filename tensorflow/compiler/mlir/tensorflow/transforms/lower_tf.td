@@ -462,7 +462,7 @@ def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape),
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "">),
       (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
        $indices, $updates)>;

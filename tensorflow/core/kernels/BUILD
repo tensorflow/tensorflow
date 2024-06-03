@@ -891,6 +891,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+    "//tensorflow/core/util:bad_indices_policy",
     "@eigen_archive//:eigen3",
 ]
 
@@ -6500,6 +6501,8 @@ filegroup(
         "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",
+        "//tensorflow/core/util:bad_indices_policy.cc",
+        "//tensorflow/core/util:bad_indices_policy.h",
     ],
 )
 
@@ -6632,6 +6635,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
         "//tensorflow/core/kernels/linalg:qr_op_impl.h",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels_headers",
+        "//tensorflow/core/util:bad_indices_policy.h",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6996,6 +7000,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:qr_op_double.cc",
         "//tensorflow/core/kernels/linalg:qr_op_float.cc",
         "//tensorflow/core/kernels/linalg:qr_op_half.cc",
+        "//tensorflow/core/util:bad_indices_policy.h",
     ],
 )
 
@@ -7030,6 +7035,8 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "//tensorflow/core/util:bad_indices_policy.h",
+    "//tensorflow/core/util:bad_indices_policy.cc",
     "@local_tsl//tsl/framework/convolution:eigen_convolution_helpers.h",
     "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",

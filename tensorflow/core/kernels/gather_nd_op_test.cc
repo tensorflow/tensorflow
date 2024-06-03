@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -118,6 +119,45 @@ TEST_F(GatherNdOpTest, Quantized_INT8) {
   Tensor expected(allocator(), DT_QINT8, TensorShape({2}));
   test::FillValues<qint8>(&expected, {8, 4});
   test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+}
+
+class GatherNdOpIgnoreBadIndicesTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType param_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "GatherNd")
+                     .Input(FakeInput(param_type))
+                     .Input(FakeInput(index_type))
+                     .Attr("bad_indices_policy", "IGNORE")
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(GatherNdOpIgnoreBadIndicesTest, IgnoreOutOfRange) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5}), {9, 1, 2, 8, 4});
+  // Put the bad index in the middle to make sure others are still correctly
+  // gathered.
+  AddInputFromArray<int32>(TensorShape({3, 1}), {3, 5, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
+  test::FillValues<float>(&expected, {8, 0, 1});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+class GatherNdOpConstructionTest : public OpsTestBase {};
+
+TEST_F(GatherNdOpConstructionTest, Error_BadIndicesPolicyInvalid) {
+  TF_ASSERT_OK(NodeDefBuilder("myop", "GatherNd")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("bad_indices_policy", "AN_UNRECOGNIZED_POLICY")
+                   .Finalize(node_def()));
+  EXPECT_NE(InitOp(), OkStatus());
 }
 
 constexpr int kLookups = 2000;

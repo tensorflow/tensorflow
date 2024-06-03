@@ -45,6 +45,8 @@ package(
 # List of exported source files.
 exports_files(
     srcs = [
+        "bad_indices_policy.cc",
+        "bad_indices_policy.h",
         "event.proto",
         "example_proto_fast_parsing_test.proto",
         "image_resizer_state.h",
