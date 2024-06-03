@@ -318,6 +318,12 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
           "AddressComputationFusion only handles contiguous slices "
           "currently");
     }
+
+    // If slice is the root of the fusion, get the buffer assigned to the
+    // fusion itself.
+    if (slice_instr == fusion_instr.fused_expression_root()) {
+      return GetAllocationSlice(buffer_assignment, &fusion_instr, {});
+    }
   }
 
   return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
