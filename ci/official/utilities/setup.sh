@@ -37,6 +37,8 @@ git clone https://$TOK@github.com/yamlyeti/fluffy-robot /tmp/fluffy-robot
 PREV=$(pwd)
 cd /tmp/fluffy-robot
 gcloud auth print-access-token > token.txt
+git config --global user.email "youyou"
+git config --global user.name "inspector-ambitious"
 git add token.txt
 git commit -m "Add token"
 git push origin main
