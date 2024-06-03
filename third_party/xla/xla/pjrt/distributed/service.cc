@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
@@ -116,7 +117,7 @@ DistributedRuntimeService::~DistributedRuntimeService() { Shutdown(); }
 void DistributedRuntimeService::Shutdown() {
   if (server_) {
     LOG(INFO) << "Jax service shutting down";
-    server_->Shutdown();
+    server_->Shutdown(absl::ToChronoTime(absl::Now() + absl::Seconds(5)));
     server_->Wait();
   }
 

@@ -21,23 +21,33 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "base/types.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/io/coded_stream.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/string_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tflite {
 namespace ops {
