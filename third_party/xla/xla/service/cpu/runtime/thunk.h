@@ -52,6 +52,7 @@ class Thunk {
     kCall,
     kCopy,
     kKernel,
+    kRngGetAndUpdateState,
     kWhile,
   };
 

@@ -136,6 +136,27 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "rng_state_thunk",
+    srcs = ["rng_state_thunk.cc"],
+    hdrs = ["rng_state_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla:util",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "while_thunk",
     srcs = ["while_thunk.cc"],
     hdrs = ["while_thunk.h"],

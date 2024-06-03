@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
+#include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
 #include "xla/shape_util.h"
@@ -170,6 +171,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kReduceWindow:
       return EmitReductionKernelThunk(instruction);
 
+    case HloOpcode::kRngGetAndUpdateState:
+      return EmitRngGetAndUpdateStateThunk(instruction);
+
     case HloOpcode::kCall:
       return EmitCallThunk(instruction);
 
@@ -236,6 +240,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
   // invocation, for now we assume that we always emit a full loop.
   return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
                                         kernel.name, se::ThreadDim());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(auto state_buffer, GetAllocationSlice(instruction));
+  auto* rng_state = Cast<HloRngGetAndUpdateStateInstruction>(instruction);
+  return ThunkSequence::Of<RngGetAndUpdateStateThunk>(
+      ThunkInfo(instruction), state_buffer, rng_state->delta());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
