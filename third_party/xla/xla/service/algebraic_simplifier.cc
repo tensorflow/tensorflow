@@ -434,8 +434,6 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
   // Extract a and b contraction dimensions from dnums
   auto a_batch_dims = dnums.lhs_batch_dimensions();
   auto b_batch_dims = dnums.rhs_batch_dimensions();
-  const auto& a_contracting_dims = dnums.lhs_contracting_dimensions();
-  const auto& b_contracting_dims = dnums.rhs_contracting_dimensions();
   // First add the batch dimensions
   for (int64_t i = 0; i < a_batch_dims.size(); i++) {
     map_a_ab[a_batch_dims[i]] = ab_index;
@@ -444,7 +442,7 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
   }
   // Then add the free dimensions from a
   for (int64_t a_index = 0; a_index < a_shape.rank(); a_index++) {
-    if (!absl::c_linear_search(a_contracting_dims, a_index) &&
+    if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), a_index) &&
         !absl::c_linear_search(a_batch_dims, a_index)) {
       map_a_ab[a_index] = ab_index;
       ab_index++;
@@ -452,7 +450,7 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
   }
   // Finally add the free dimensions from b
   for (int64_t b_index = 0; b_index < b_shape.rank(); b_index++) {
-    if (!absl::c_linear_search(b_contracting_dims, b_index) &&
+    if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), b_index) &&
         !absl::c_linear_search(b_batch_dims, b_index)) {
       map_b_ab[b_index] = ab_index;
       ab_index++;
@@ -3228,15 +3226,9 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
     }
 
     // Perform computations specific to each opcode
-    if (opcode == HloOpcode::kReverse) {
-      // We should check that the reordering will be beneficial before we
-      // create the new Hlo to avoid OOM issues
-      if (ShapeUtil::ElementsIn(reorder_from->shape()) /
-              static_cast<double>(ShapeUtil::ElementsIn(reorder_to->shape())) <
-          options_.associative_reordering_threshold()) {
-        return nullptr;
-      }
-
+    if (opcode == HloOpcode::kReverse &&
+        ShapeUtil::ElementsIn(reorder_from->shape()) >
+            ShapeUtil::ElementsIn(reorder_to->shape())) {
       // Reverses of dot contracting dimensions can be reordered to
       // reverses of the corresponding contracting dimensions in the other dot
       // operand
@@ -3411,26 +3403,11 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
       new_rhs = unreordered;
     }
 
-    // Create Hlo for new dot
-    HloInstruction* new_dot;
-    TF_ASSIGN_OR_RETURN(new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
-                                            dot->precision_config(),
-                                            dot->shape().element_type()));
-
-    // Do cost analysis to determine whether we should reorder. Reverse uses
-    // the ratio of the two shapes a heuristic, while the others use the
-    // number of dot flops
-    const int64_t old_flops =
-        HloCostAnalysis::GetDotFlops(lhs->shape(), dot->shape(), dnums);
-    const int64_t new_flops = HloCostAnalysis::GetDotFlops(
-        new_lhs->shape(), new_dot->shape(), new_dnums);
-    bool reorder =
-        old_flops / static_cast<double>(new_flops) >
-        threshold_multiplier * options_.associative_reordering_threshold();
-
-    if (reorder || opcode == HloOpcode::kReverse) {
-      return new_dot;
-    }
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_dot,
+        MakeDotHlo(new_lhs, new_rhs, new_dnums, dot->precision_config(),
+                   dot->shape().element_type()));
+    return new_dot;
   }
   return nullptr;
 }
@@ -3863,6 +3840,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     }
   }
 
+  // If a dot has a broadcast, pad, or reverse as one of its operands, replace
+  // with an equivalent dot with a reduce, slice, or reverse on the other
+  // operand. In the cast of reverse, only occurs when the initial operand has
+  // more elements
   if (options_.use_associative_reordering()) {
     TF_ASSIGN_OR_RETURN(HloInstruction * dot_operator_reordered,
                         AssociativeReorderDotOperator(dot_cast));
@@ -6459,8 +6440,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   }
 
   // Try to reorder slice of dot to the operand it comes from
-  if (!options_.is_layout_sensitive() &&
-      options_.use_associative_reordering() &&
+  if (!options_.is_layout_sensitive() && options_.raise_ops_through_dot() &&
       slice->operand(0)->opcode() == HloOpcode::kDot) {
     // Unpack the dot operands
     HloDotInstruction* dot = Cast<HloDotInstruction>(slice->mutable_operand(0));
@@ -6574,6 +6554,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       }
     }
 
+    int64_t old_slice_operand_elements = ShapeUtil::ElementsIn(slice->shape());
+    int64_t new_slice_operand_elements = 0;
+    if (new_lhs->opcode() == HloOpcode::kSlice) {
+      new_slice_operand_elements += ShapeUtil::ElementsIn(new_lhs->shape());
+    }
+    if (new_rhs->opcode() == HloOpcode::kSlice) {
+      new_slice_operand_elements += ShapeUtil::ElementsIn(new_rhs->shape());
+    }
+    new_slice_operand_elements *= dot->user_count();
+
     // Finally, create Hlo for the new dot and reorder
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_dot,
@@ -6585,7 +6575,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // that converts dot to mul(broadcast)
     if (!DotHasOnlyBatchAndContractingOnOneOperand(
             ShapeUtil::TrueRank(new_lhs->shape()),
-            ShapeUtil::TrueRank(new_rhs->shape()), dnums)) {
+            ShapeUtil::TrueRank(new_rhs->shape()), dnums) &&
+        new_slice_operand_elements <= old_slice_operand_elements) {
       VLOG(10) << "Reordering slice into dot operands";
       return ReplaceInstruction(slice, new_dot);
     }
@@ -7421,7 +7412,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   }
 
   // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
-  if (options_.use_associative_reordering()) {
+  if (options_.raise_ops_through_dot()) {
     HloInstruction *a, *b;
     // Reordering does not seem possible if the dot has batch dimensions. We
     // also need the reduction operation to be add, and the reduce to have an
@@ -7476,14 +7467,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
 
       // Construct dot dimension numbers for new dot
-      const auto& a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
-      const auto& b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
       DotDimensionNumbers new_dot_dnums;
       for (int64_t reduce_a_index = 0;
            reduce_a_index < reduce_a->shape().rank(); ++reduce_a_index) {
         if (map_reduce_a_a[reduce_a_index] != -1) {
           int64_t a_index = map_reduce_a_a[reduce_a_index];
-          if (absl::c_linear_search(a_contracting_dims, a_index)) {
+          if (absl::c_linear_search(ab_dnums.lhs_contracting_dimensions(),
+                                    a_index)) {
             new_dot_dnums.add_lhs_contracting_dimensions(reduce_a_index);
           }
         }
@@ -7492,7 +7482,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
            reduce_b_index < reduce_b->shape().rank(); ++reduce_b_index) {
         if (map_reduce_b_b[reduce_b_index] != -1) {
           int64_t b_index = map_reduce_b_b[reduce_b_index];
-          if (absl::c_linear_search(b_contracting_dims, b_index)) {
+          if (absl::c_linear_search(ab_dnums.rhs_contracting_dimensions(),
+                                    b_index)) {
             new_dot_dnums.add_rhs_contracting_dimensions(reduce_b_index);
           }
         }

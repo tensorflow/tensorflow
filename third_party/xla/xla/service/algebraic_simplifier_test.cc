@@ -6583,6 +6583,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
+  options.set_raise_ops_through_dot(true);
   options.set_use_associative_reordering(true);
   options.set_associative_reordering_threshold(0);
   AlgebraicSimplifier simplifier(options);
@@ -6610,6 +6611,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
+  options.set_raise_ops_through_dot(true);
   options.set_use_associative_reordering(true);
   options.set_associative_reordering_threshold(0);
   AlgebraicSimplifier simplifier(options);
@@ -6635,6 +6637,7 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifierOptions options;
+  options.set_raise_ops_through_dot(true);
   options.set_use_associative_reordering(true);
   EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
   ASSERT_THAT(
