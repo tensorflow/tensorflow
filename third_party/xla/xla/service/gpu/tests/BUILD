@@ -447,6 +447,7 @@ xla_cc_test(
 xla_test(
     name = "gpu_triton_custom_call_test",
     srcs = ["gpu_triton_custom_call_test.cc"],
+    tags = ["no_rocm"], #TODO(rocm) TEMP
     backends = [
         "gpu_a100",
         "gpu_v100",

@@ -4637,9 +4637,6 @@ cc_library(
 xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = [
-        "no_rocm"
-    ],
     backend_tags = {
         "gpu_a100": [
             "noasan",
@@ -5870,6 +5867,7 @@ xla_cc_test(
 xla_test(
     name = "determinism_test",
     srcs = if_gpu_is_configured(["determinism_test.cc"]),
+    tags = ["no_rocm"],
     backends = [
         "gpu_a100",
     ],
