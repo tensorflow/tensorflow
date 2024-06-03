@@ -3898,6 +3898,7 @@ cc_library(
         "gpu_algebraic_simplifier.h",
     ],
     deps = [
+        ":matmul_utils",
         ":triton_support",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -3906,6 +3907,7 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
