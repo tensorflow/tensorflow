@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project

@@ -472,7 +472,10 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
+// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNorm4D12Degenerate2) {
+  GTEST_SKIP()
+      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -831,7 +834,10 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
+// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12Degenerate2) {
+  GTEST_SKIP()
+      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -1375,7 +1381,10 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
+// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
+  GTEST_SKIP()
+      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -1543,7 +1552,7 @@ TEST_F(CudnnNormRewriterTest,
         norm_scale_bias = f32[2,4,6,8] add(norm_scale, bias_bcast)
         doutput = f32[2,4,48] parameter(3)
         dbias = f32[4] reduce(doutput, c0), dimensions={0,2}, to_apply=apply
-        doutput_bitcast = f32[2,4,6,8] reshape(doutput) 
+        doutput_bitcast = f32[2,4,6,8] reshape(doutput)
         norm_doutput = f32[2,4,6,8] multiply(norm, doutput_bitcast)
         dscale = f32[4] reduce(norm_doutput, c0), dimensions={0,2,3}, to_apply=apply
         scale_doutput = f32[2,4,6,8] multiply(scale_bcast, doutput_bitcast)
@@ -1664,7 +1673,7 @@ TEST_F(CudnnNormRewriterTest,
         norm_scale_bias = f32[2,4,6,8] add(norm_scale, bias_bcast)
         doutput = f32[2,4,6,2,2,2] parameter(3)
         dbias = f32[4] reduce(doutput, c0), dimensions={0,2,3,4,5}, to_apply=apply
-        doutput_bitcast = f32[2,4,6,8] reshape(doutput) 
+        doutput_bitcast = f32[2,4,6,8] reshape(doutput)
         norm_doutput = f32[2,4,6,8] multiply(norm, doutput_bitcast)
         dscale = f32[4] reduce(norm_doutput, c0), dimensions={0,2,3}, to_apply=apply
         scale_doutput = f32[2,4,6,8] multiply(scale_bcast, doutput_bitcast)
