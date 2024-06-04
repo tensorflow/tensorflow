@@ -77,6 +77,17 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 // operations that does not lead to deadlocks.
 class NcclCliqueCommunicators {
  public:
+  class AsyncErrorChecker {
+   public:
+    absl::Status Check();
+
+   private:
+    friend class NcclCliqueCommunicators;
+    AsyncErrorChecker(NcclCliqueCommunicators& comms) : communicators_(comms) {}
+
+    NcclCliqueCommunicators& communicators_;
+  };
+
   NcclCliqueCommunicators(
       NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
       absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators);
@@ -98,6 +109,8 @@ class NcclCliqueCommunicators {
 
   std::string DebugString() const;
 
+  AsyncErrorChecker GetChecker() { return AsyncErrorChecker(*this); }
+
  private:
   NcclCliqueKey clique_key_;
   std::optional<NcclCliqueId> clique_id_;
@@ -112,18 +125,33 @@ struct NcclCliqueName {
   }
 };
 
-struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
+class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
+ public:
   // We keep acquired cliques in a sorted container to guarantee that all
   // participants iterate over cliques in the same order.
   using AcquiredCliquesMap =
       absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
                       std::greater<NcclCliqueKey>>;
 
+  // Construct the lockable clique.
+  // Note that async errors can be checked without acquiring the lock.
+  // To get the lock-free reference to the communicators for the async
+  // error checks, the constructor intentionally leaks the reference
+  // to the communicators from an acquired lock.
   NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
              absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
-      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
+      : Lockable(std::move(clique_key), clique_id, std::move(communicators)),
+        async_error_checker_(Acquire()->GetChecker()) {}
 
   std::string DebugString() const;
+
+  // Checks for async errors for all the communicators in the clique without
+  // taking the lock. If at least one of the communicators has an async error,
+  // it returns one of the errors.
+  absl::Status CheckAsyncErrors();
+
+ private:
+  NcclCliqueCommunicators::AsyncErrorChecker async_error_checker_;
 };
 
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
