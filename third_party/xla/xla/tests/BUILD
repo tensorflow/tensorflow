@@ -3010,7 +3010,12 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:onednn_ops_rewriter",
         "//xla/service/cpu:onednn_util",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

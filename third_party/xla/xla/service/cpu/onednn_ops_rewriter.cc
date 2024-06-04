@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal_comparison.h"
+#include "xla/literal_util.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_pattern_utils.h"
@@ -58,11 +60,59 @@ HloInstruction* FindLayerNormShift(HloInstruction* instr) {
   return shift;
 }
 
-std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
+bool IsNegInfConstScalar(const HloInstruction* const_instr) {
+  if (const_instr->opcode() != HloOpcode::kConstant) {
+    return false;
+  }
+  if (!ShapeUtil::IsEffectiveScalar(const_instr->shape())) {
+    return false;
+  }
+  auto value = LiteralUtil::GetFirstScalarLiteral(const_instr->literal());
+  return literal_comparison::Equal(
+             value, LiteralUtil::MinValue(const_instr->shape().element_type()))
+      .ok();
+}
+
+// Makes sure the reducer computation is strictly a max reducer and root
+// instruction (kMaximum) has the same inputs as computation.
+bool IsMaxReducerComputation(const HloComputation* comp) {
+  if (comp->root_instruction()->opcode() != HloOpcode::kMaximum) {
+    return false;
+  }
+  auto max_instr = comp->root_instruction();
+  const HloInstruction* p0 = comp->parameter_instruction(0);
+  const HloInstruction* p1 = comp->parameter_instruction(1);
+  const HloInstruction* max_p0 = max_instr->operand(0);
+  const HloInstruction* max_p1 = max_instr->operand(1);
+  return (max_p0 == p0 && max_p1 == p1) || (max_p1 == p0 && max_p0 == p1);
+}
+
+// Pattern to match any of Maximum(Reduce_max(...), -inf) or Reduce_max(...).
+auto MaxReduce(HloInstruction** instr) {
+  auto is_valid_reduce_max = [](const HloInstruction* reduce) {
+    HloComputation* reducer = reduce->to_apply();
+    return IsMaxReducerComputation(reducer) &&
+           (reduce->dimensions().size() == 1) &&
+           (reduce->operand(1)->opcode() == HloOpcode::kConstant) &&
+           IsNegInfConstScalar(reduce->operand(1));
+  };
+
+  return m::AnyOf<HloInstruction>(
+      m::Maximum().WithBinaryOperandsAnyOrder(
+          m::Reduce(instr).WithPredicate(is_valid_reduce_max).WithOneUse(),
+          pu::OptionalBroadcast(
+              m::Constant().WithPredicate(IsNegInfConstScalar))),
+      m::Reduce(instr).WithPredicate(is_valid_reduce_max).WithOneUse());
+}
+
+// Matches the softmax pattern with divide instruction as root node.
+// Here we pass 'instr' as root node and return the producer HloInstruction.
+// Tha axis on which softmax is applied is stored in 'axis'.
+std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr, int* axis) {
   //
   // producer
   // |   \
-  // |  reduce_max
+  // |  reduce_max or max(reduce_max)
   // |     |
   // |  reshape
   // |     |
@@ -76,9 +126,15 @@ std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
   // |
   // exponential
   // |   \
+  // |   Convert(optional)
+  // |     |
   // |  reduce_sum
   // |     |
+  // |   Convert(optional)
+  // |     |
   // |  reshape
+  // |     |
+  // |   Convert(optional)
   // |     |
   // |  broadcast
   // |     |
@@ -88,11 +144,15 @@ std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
   // |   /
   // divide  // (instr parameter)
   //
-  // where both reductions occur only on the last axis.
+
+  // This matcher covers the most common SoftMax patterns we have encountered
+  // in real-life models.
   HloInstruction* left_exponential;
   HloInstruction* right_exponential;
   HloInstruction* left_producer;
-  HloInstruction* right_producer;
+  HloInstruction* reduce_sum;
+  HloInstruction* reduce_max;
+  HloInstruction* reduce_instr;
 
   // Lower diamond
   if (!Match(instr,
@@ -100,16 +160,15 @@ std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
                  m::Exp(&left_exponential, m::Op()),
                  m::Broadcast(m::Reshape(m::Broadcast(
                      pu::OptionalConvert(m::Reshape(pu::OptionalConvert(
-                         m::Reduce(pu::OptionalConvert(
+                         m::Reduce(&reduce_sum,
+                                   pu::OptionalConvert(
                                        m::Exp(&right_exponential, m::Op())),
-                                   m::Op())
+                                   m::ConstantScalar(0))
                              .WithPredicate([](const HloInstruction* reduce) {
                                HloComputation* reducer = reduce->to_apply();
                                return (reducer->root_instruction()->opcode() ==
                                            HloOpcode::kAdd &&
-                                       reduce->dimensions().size() == 1 &&
-                                       reduce->dimensions()[0] !=
-                                           reduce->shape().rank() - 1);
+                                       reduce->dimensions().size() == 1);
                              })
                              .WithOneUse()))))))))) {
     return std::nullopt;
@@ -122,28 +181,29 @@ std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
 
   // Upper diamond
   if (!Match(left_exponential->mutable_operand(0),
-             m::Subtract(
-                 m::Op(&left_producer),
-                 m::Broadcast(
-                     m::Reshape(m::Broadcast(m::Reshape(
-                         m::Reduce(m::Op(&right_producer), m::Op())
-                             .WithPredicate([](const HloInstruction* reduce) {
-                               HloComputation* reducer = reduce->to_apply();
-                               return (reducer->root_instruction()->opcode() ==
-                                           HloOpcode::kMaximum &&
-                                       reduce->dimensions().size() == 1 &&
-                                       reduce->dimensions()[0] !=
-                                           reduce->shape().rank() - 1);
-                             })
-                             .WithOneUse()))))
-                     .WithOneUse())
+             m::Subtract(m::Op(&left_producer),
+                         m::Broadcast(m::Reshape(m::Broadcast(
+                                          m::Reshape(m::Op(&reduce_instr)))))
+                             .WithOneUse())
                  .WithOneUse())) {
     return std::nullopt;
   }
 
-  if (left_producer != right_producer || left_producer->user_count() != 2) {
+  // Match the reduce max.
+  if (!Match(reduce_instr, MaxReduce(&reduce_max))) {
     return std::nullopt;
   }
+
+  if (left_producer != reduce_max->operand(0) ||
+      left_producer->user_count() != 2) {
+    return std::nullopt;
+  }
+
+  if (reduce_sum->dimensions()[0] != reduce_max->dimensions()[0]) {
+    return std::nullopt;
+  }
+
+  *axis = reduce_sum->dimensions()[0];
 
   return left_producer;
 }
@@ -493,13 +553,19 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     if (divide_instr->HasControlDependencies()) return absl::OkStatus();
     if (!IsSupportedType(divide_instr->shape().element_type()))
       return absl::OkStatus();
-    std::optional<HloInstruction*> producer = MatchSoftmax(divide_instr);
+    int axis = -1;
+    std::optional<HloInstruction*> producer = MatchSoftmax(divide_instr, &axis);
     if (producer == std::nullopt) return absl::OkStatus();
 
     const Shape& output_shape = divide_instr->shape();
     HloInstruction* softmax_call =
         divide_instr->AddInstruction(HloInstruction::CreateCustomCall(
             output_shape, {producer.value()}, "__onednn$softmax"));
+    BackendConfig backend_config;
+    OneDnnSoftmaxConfig* softmax_config =
+        backend_config.mutable_onednn_softmax_config();
+    softmax_config->set_softmax_axis(axis);
+    TF_RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
 
     return absl::OkStatus();

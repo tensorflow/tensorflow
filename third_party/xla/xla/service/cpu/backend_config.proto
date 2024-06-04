@@ -11,6 +11,7 @@ message BackendConfig {
   // Configuration to be used by oneDNN matmul
   OneDnnMatMulConfig onednn_matmul_config = 2;
   OneDnnLayerNormConfig onednn_layer_norm_config = 3;
+  OneDnnSoftmaxConfig onednn_softmax_config = 4;
 }
 
 message OneDnnMatMulConfig {
@@ -51,4 +52,8 @@ message OneDnnLayerNormConfig {
   }
   FusionKind fused_ops = 1;
   int32 epsilon_typecast = 2;
+}
+
+message OneDnnSoftmaxConfig {
+  int32 softmax_axis = 1;
 }
