@@ -1,5 +1,6 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -488,5 +489,74 @@ tsl_cc_test(
         ":xplane_visitor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "no_init.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "no_init",
+    hdrs = ["no_init.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
+    name = "lock_free_queue",
+    hdrs = ["lock_free_queue.h"],
+    deps = [
+        ":no_init",
+        "//tsl/platform:logging",
+        "//tsl/platform:macros",
+    ],
+)
+
+tsl_cc_test(
+    name = "lock_free_queue_test",
+    size = "small",
+    timeout = "short",
+    srcs = ["lock_free_queue_test.cc"],
+    deps = [
+        ":lock_free_queue",
+        "//tsl/platform:env",
+        "//tsl/platform:env_impl",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "per_thread",
+    hdrs = ["per_thread.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "per_thread_test",
+    size = "small",
+    timeout = "short",
+    srcs = ["per_thread_test.cc"],
+    deps = [
+        ":per_thread",
+        "//tsl/platform:env",
+        "//tsl/platform:env_impl",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
