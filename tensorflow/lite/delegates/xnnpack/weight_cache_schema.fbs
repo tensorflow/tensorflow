@@ -15,11 +15,6 @@
 // This is a list of buffers with identifiers, to host the CPU-specific cache on disk.
 namespace tflite.xnnpack.cache.schema;
 
-// Schema version.
-file_identifier "V001";
-// File extension of written files.
-file_extension "xnn_weights";
-
 table Buffer {
   // To uniquely identify a packed buffer we need to keep track of the packing
   // algorithm and of the buffers that were used to generate it.
@@ -36,17 +31,12 @@ table Buffer {
   size: uint64;
 }
 
-table PackedWeights {
+table BufferList {
   /// A list of buffers.
   buffers: [Buffer];
-
-  /// The serialized file is `flatbuffer_size` of bytes representing
-  /// `NamedBuffers` appended with a blob representing the buffer content.
-  flatbuffer_size: uint64;
-
-  /// Defines the base offset for the data appended to the file. That offset
+  /// Defines the base offset for the data in the file. That offset
   /// may be needed to guarantee data alignment.
   base_offset:uint64;
 }
 
-root_type PackedWeights;
+root_type BufferList;

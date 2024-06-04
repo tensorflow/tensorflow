@@ -4,7 +4,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -133,12 +133,14 @@ filegroup(
 # LINT.IfChange(TFLITE_HEADERS)
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
+    # Public API headers.
     "//tensorflow/lite:builtin_ops.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:c_api_experimental.h",
     "//tensorflow/lite/c:c_api_opaque.h",
     "//tensorflow/lite/c:c_api_types.h",
     "//tensorflow/lite/c:common.h",
+    # Transitive includes of the public API headers.
     "//tensorflow/lite/core/async/c:types.h",
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
@@ -193,23 +195,30 @@ aar_without_jni(
     android_library = ":tensorflowlite_api",
 )
 
+TFLITE_STABLE_HEADERS = [
+    # Public headers.
+    "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:c_api_opaque.h",
+    "//tensorflow/lite/c:c_api_types.h",
+    # Transitive includes of the public headers.
+    "//tensorflow/lite/core/async/c:types.h",
+    "//tensorflow/lite/core/c:c_api.h",
+    "//tensorflow/lite/core/c:c_api_opaque.h",
+    "//tensorflow/lite/core/c:c_api_types.h",
+    # TODO(b/175298345): move the stable parts of common.h into
+    # a separate header file that contains no experimental APIs
+    # (perhaps also replacing concrete struct types with opaque types
+    # and accessor functions), and include that header here.
+    "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/core/c:operator.h",
+]
+
 # Same as "tensorflow-lite" (above), but excluding experimental APIs.
 aar_with_jni(
     name = "tensorflow-lite-stable",
     android_library = ":tensorflowlite_stable",
-    headers = [
-        "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
-        "//tensorflow/lite/core/async/c:types.h",
-        "//tensorflow/lite/core/c:c_api.h",
-        "//tensorflow/lite/core/c:c_api_types.h",
-        "//tensorflow/lite/core/c:operator.h",
-        # TODO(b/175298345): move the stable parts of common.h into
-        # a separate header file that contains no experimental APIs
-        # (perhaps also replacing concrete struct types with opaque types
-        # and accessor functions), and include that header here.
-    ],
+    headers = TFLITE_STABLE_HEADERS,
 )
 
 # EXPERIMENTAL: AAR target for using TensorFlow ops with TFLite. Note that this
@@ -880,6 +889,24 @@ java_test(
         "@com_google_truth",
         "@junit",
     ],
+)
+
+tflite_cc_library_with_c_headers_test(
+    name = "native_headers_lib_for_test",
+    testonly = True,
+    srcs = [],
+    hdrs = TFLITE_HEADERS,
+    visibility = ["//visibility:private"],
+    deps = [],
+)
+
+tflite_cc_library_with_c_headers_test(
+    name = "native_stable_headers_lib_for_test",
+    testonly = True,
+    srcs = [],
+    hdrs = TFLITE_STABLE_HEADERS,
+    visibility = ["//visibility:private"],
+    deps = [],
 )
 
 #-----------------------------------------------------------------------------
