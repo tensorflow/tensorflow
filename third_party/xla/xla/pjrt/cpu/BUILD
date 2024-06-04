@@ -183,6 +183,7 @@ cc_library(
         "//xla/service/cpu:cpu_event",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
+        "//xla/service/cpu:cpu_runtime",
         "//xla/service/cpu:cpu_xfeed",
         "//xla/service/cpu:simple_orc_jit",
         "//xla/service/cpu/runtime:buffer_allocations",

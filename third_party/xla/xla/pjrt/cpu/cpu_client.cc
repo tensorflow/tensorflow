@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
+#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -1604,7 +1605,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
       cpu::BufferAllocations allocations(buffer_device_mem);
       cpu::Thunk::ExecuteParams execute_params = {
-          &cpu_executable->host_kernels(), &allocations};
+          &cpu_executable->host_kernels(), &allocations,
+          cpu::runtime::GetXfeedManager(run_options.device_ordinal())};
       TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(execute_params));
 
     } else {

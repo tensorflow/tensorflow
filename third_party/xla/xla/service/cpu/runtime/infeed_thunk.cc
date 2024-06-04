@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 
+#include <cstdint>
 #include <cstring>
 
 #include "absl/status/status.h"
@@ -46,22 +47,24 @@ absl::Status InfeedThunk::Execute(const ExecuteParams& params) {
     return InvalidArgument("Xfeed must be not null to execute infeed thunk");
   }
 
+  int64_t infeed_num = 0;
+
   for (InfeedBuffer& infeed_buffer : infeed_buffers_) {
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase infeed_data,
         params.buffer_allocations->GetDeviceAddress(infeed_buffer.slice));
 
-    VLOG(3) << absl::StreamFormat(
-        "  infeed #%d: %s into slice %s (%p)", infeed_data.size() - 1,
-        infeed_buffer.shape.ToString(), infeed_buffer.slice.ToString(),
-        infeed_data.opaque());
+    VLOG(3) << absl::StreamFormat("  infeed #%d: %s into slice %s (%p)",
+                                  infeed_num++, infeed_buffer.shape.ToString(),
+                                  infeed_buffer.slice.ToString(),
+                                  infeed_data.opaque());
 
     // Acquire infeed buffer from the runtime.
     runtime::XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
     if (buffer->length() != infeed_buffer.slice.size()) {
       return Internal(
-          "XLA program infeed request buffer size %d did not match the "
-          "runtime's infed buffer length %d",
+          "XLA runtime-managed infeed buffer size %d did not match the "
+          "infeed operation result buffer size %d",
           buffer->length(), infeed_buffer.slice.size());
     }
 
