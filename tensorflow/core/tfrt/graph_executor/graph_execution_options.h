@@ -108,6 +108,11 @@ struct GraphExecutionOptions {
   // This option is experimental.
   bool use_ifrt = false;
 
+  // If true, TFRT will use the IFRT backend to load and shard
+  // the weights of the TF checkpoint.
+  // This option is experimental.
+  bool enable_multihost_checkpoint_loading = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 

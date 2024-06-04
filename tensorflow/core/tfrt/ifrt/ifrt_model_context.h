@@ -20,9 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -118,7 +122,17 @@ class IfrtModelContext {
   tsl::protobuf::Message* GetCompilationEnvironmentProto() const {
     return compilation_environment_proto_.get();
   }
-
+  void SetShardings(
+      std::vector<std::unique_ptr<xla::HloSharding>> hlo_shardings) {
+    hlo_shardings_ = std::move(hlo_shardings);
+  }
+  absl::StatusOr<const xla::HloSharding*> GetSharding(int var_num) const {
+    if (hlo_shardings_.size() <= var_num) {
+      return absl::NotFoundError(
+          absl::StrCat("Sharding not found for var num ", var_num, "."));
+    }
+    return hlo_shardings_[var_num].get();
+  }
   // Freeze the model: release the resources such as host tensors that are used
   // by the device only. The caller guarantees all resources released in this
   // function is no longer in use in regular execution path.
@@ -145,6 +159,10 @@ class IfrtModelContext {
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
   IfrtRestoreTensorRegistry restore_tensor_registry_;
+
+  // Var num to sharding config map. The order is the same as the order
+  // in which they are enumerated within the saved model.
+  std::vector<std::unique_ptr<xla::HloSharding>> hlo_shardings_;
 };
 
 }  // namespace ifrt_serving
