@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 269
+_version = 270
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -543,7 +543,6 @@ DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
-XLACompatibleSharding = _xla.XLACompatibleSharding
 NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
