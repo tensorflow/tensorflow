@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/statusor.h"
@@ -37,6 +37,12 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
+    absl::string_view device_type, absl::string_view address, int node_id,
+    int num_nodes, bool enable_mock_nccl,
+    std::unique_ptr<xla::DistributedRuntimeService>& service,
+    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store);
 
 // Supported input formats for the input HLO module.
 enum class InputFormat {

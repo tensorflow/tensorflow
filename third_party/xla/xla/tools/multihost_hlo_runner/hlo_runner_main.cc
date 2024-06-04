@@ -18,20 +18,17 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/client.h"
-#include "xla/pjrt/distributed/distributed.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/statusor.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tools/multihost_hlo_runner/hlo_runner_flags.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -71,49 +68,6 @@ Mock GPU usage:
 Tip: If the input generation takes too long or uses too much host memory,
 consider using --hlo_argument_mode=uninitialized.
 )";
-
-absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetClient(
-    const std::string& device_type_str, bool enable_mock_nccl, int num_nodes,
-    const std::string& address_str, int task_id,
-    std::unique_ptr<xla::DistributedRuntimeService>* service) {
-  if (device_type_str == "host") {
-    CHECK_EQ(num_nodes, 1);
-    return xla::FunctionalHloRunner::CreateHostClient();
-  }
-
-  CHECK_EQ(device_type_str, "gpu");
-
-  if (enable_mock_nccl) {
-    CHECK_GT(num_nodes, 1);
-    return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
-  } else {
-    if (num_nodes == 1) {
-      return xla::FunctionalHloRunner::CreateGpuClient();
-    } else {
-      CHECK_GT(address_str.length(), 0);
-      // Multinode. Start service on task 0.
-      if (task_id == 0) {
-        std::string coordinator_bind_address =
-            "[::]:" + address_str.substr(address_str.rfind(":") + 1);
-        xla::CoordinationServiceImpl::Options options;
-        options.num_nodes = num_nodes;
-        auto status_or = xla::GetDistributedRuntimeService(
-            coordinator_bind_address, options);
-        TF_QCHECK_OK(status_or.status());
-        *service = std::move(status_or.value());
-      }
-      xla::DistributedRuntimeClient::Options options;
-      options.node_id = task_id;
-      options.init_timeout = absl::Seconds(300);
-      auto distributed_client =
-          xla::GetDistributedRuntimeClient(address_str, options);
-      TF_QCHECK_OK(distributed_client->Connect());
-      return xla::FunctionalHloRunner::CreateGpuClient(distributed_client,
-                                                       task_id, num_nodes);
-    }
-  }
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -187,9 +141,11 @@ int main(int argc, char** argv) {
       << "Can only dump output literal when single input file is specified";
 
   std::unique_ptr<xla::DistributedRuntimeService> service;
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
+
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
-      GetClient(device_type_str, enable_mock_nccl, num_nodes, address_str,
-                task_id, &service);
+      xla::GetPjRtClient(device_type_str, address_str, task_id, num_nodes,
+                         enable_mock_nccl, service, kv_store);
   TF_QCHECK_OK(client.status());
 
   for (int c = 1; c < argc; c++) {

@@ -47,6 +47,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/distributed.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -71,6 +74,53 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
+    absl::string_view device_type, absl::string_view address, int node_id,
+    int num_nodes, bool enable_mock_nccl,
+    std::unique_ptr<xla::DistributedRuntimeService>& service,
+    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store) {
+  if (device_type == "host") {
+    CHECK_EQ(num_nodes, 1);
+    return xla::FunctionalHloRunner::CreateHostClient();
+  }
+
+  if (device_type != "gpu") {
+    return absl::UnimplementedError(device_type);
+  }
+
+  if (enable_mock_nccl) {
+    CHECK_GT(num_nodes, 1);
+    return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
+  } else {
+    if (num_nodes == 1) {
+      return xla::FunctionalHloRunner::CreateGpuClient();
+    } else {
+      CHECK_GT(address.length(), 0);
+      // Multinode. Start service on task 0.
+      if (node_id == 0) {
+        std::string coordinator_bind_address =
+            "[::]:" + std::string(address).substr(address.rfind(':') + 1);
+        xla::CoordinationServiceImpl::Options options;
+        options.num_nodes = num_nodes;
+        auto status_or = xla::GetDistributedRuntimeService(
+            coordinator_bind_address, options);
+        TF_QCHECK_OK(status_or.status());
+        service = std::move(status_or.value());
+      }
+      xla::DistributedRuntimeClient::Options options;
+      options.node_id = node_id;
+      options.init_timeout = absl::Seconds(300);
+      auto distributed_client =
+          GetDistributedRuntimeClient(std::string(address), options);
+      TF_QCHECK_OK(distributed_client->Connect());
+      kv_store = GetDistributedKeyValueStore(distributed_client,
+                                             /*key_prefix=*/"gpu:");
+      return xla::FunctionalHloRunner::CreateGpuClient(distributed_client,
+                                                       node_id, num_nodes);
+    }
+  }
+}
 
 namespace {
 // Creates an HloModule from the given proto.
