@@ -1592,7 +1592,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 #else
   auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
     mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
-    mlir_context.loadDialect<mlir::triton::TritonDialect>();
+    LoadMlirDialectsForTriton(mlir_context);
     auto call =
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
     auto kernel_name =

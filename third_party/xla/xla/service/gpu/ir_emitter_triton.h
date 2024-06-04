@@ -102,6 +102,9 @@ using TritonIrEmitter = std::function<absl::Status(
     mlir::triton::FuncOp, const TritonGemmConfig&,
     const std::vector<int64_t>&)>;
 
+// Load the MLIR dialects required for Triton IR generation.
+void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
+
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
 // MatMul and SoftMax above are some such IR generators.

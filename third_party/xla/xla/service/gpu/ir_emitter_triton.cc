@@ -2707,6 +2707,15 @@ absl::Status EmitSoftMax(mlir::OpBuilder builder,
   return absl::OkStatus();
 }
 
+void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
+  mlir_context.loadDialect<
+      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
+      mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
+  mlir::DialectRegistry registry;
+  mlir::func::registerInlinerExtension(registry);
+  mlir_context.appendDialectRegistry(registry);
+}
+
 // Simplified copy of translateLLVMToLLVMIR which in addition takes
 // path to libdevice directly as an argument.
 absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
@@ -2747,12 +2756,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<
-      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
-      mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
-  mlir::DialectRegistry registry;
-  mlir::func::registerInlinerExtension(registry);
-  mlir_context.appendDialectRegistry(registry);
+  LoadMlirDialectsForTriton(mlir_context);
 
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
