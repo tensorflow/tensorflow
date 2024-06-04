@@ -39,12 +39,17 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -74,6 +79,7 @@ namespace {
 namespace m = ::xla::match;
 
 class TritonTest : public GpuCodegenTest {
+ protected:
   const auto& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
@@ -151,14 +157,14 @@ class TritonFilecheckTest : public TritonTest {
  public:
   absl::Status CreateTritonIrAndFileCheck(
       absl::string_view hlo_text, const TritonGemmConfig& config,
-      const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter emitter,
+      std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
       absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern);
 };
 
 absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     absl::string_view hlo_text, const TritonGemmConfig& config,
-    const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter emitter,
+    std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       ParseAndReturnVerifiedModule(hlo_text));
@@ -168,6 +174,18 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
   TF_RET_CHECK(computation != nullptr);
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(*computation));
+
+  auto fusion_analysis = HloFusionAnalysis::Create(
+      Cast<HloFusionInstruction>(computation->FusionInstruction()),
+      &device_desc());
+
+  if (fusion_analysis.fusion_backend_config().kind() ==
+      kTritonSoftmaxFusionKind) {
+    TritonFusion triton_fusion(fusion_analysis);
+    if (auto launch_config = triton_fusion.launch_config()) {
+      output_tile_sizes = launch_config->output_tile_sizes;
+    }
+  }
 
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(

@@ -614,6 +614,8 @@ xla_test(
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
+        ":hlo_fusion_analysis",
+        ":ir_emission_utils",
         ":ir_emitter_triton",
         ":matmul_utils",
         ":triton_fusion_analysis",
@@ -626,6 +628,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
+        "//xla/service/gpu/fusions:triton",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cublas_plugin",

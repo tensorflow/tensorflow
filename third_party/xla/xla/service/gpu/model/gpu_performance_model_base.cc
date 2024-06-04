@@ -162,8 +162,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_dimensions = triton_emitter->launch_dimensions()) {
-      return *launch_dimensions;
+    if (auto launch_config = triton_emitter->launch_config()) {
+      return launch_config->launch_dimensions;
     }
   }
 

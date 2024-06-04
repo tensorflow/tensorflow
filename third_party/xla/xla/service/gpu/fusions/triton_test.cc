@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -27,6 +28,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::ElementsAre;
 
 class TritonFusionTest : public HloTestBase {};
 
@@ -76,10 +79,11 @@ TEST_F(TritonFusionTest, TritonSoftmaxFusion) {
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter_fused.get());
   ASSERT_NE(triton_fusion, nullptr);
-  auto launch_dims = triton_fusion->launch_dimensions();
-  ASSERT_NE(launch_dims, std::nullopt);
-  EXPECT_EQ(launch_dims->num_blocks(), 125);
-  EXPECT_EQ(launch_dims->num_threads_per_block(), 32);
+  auto launch_config = triton_fusion->launch_config();
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 125);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 32);
+  EXPECT_THAT(launch_config->output_tile_sizes, ElementsAre(1, 127));
 
   auto analysis_consumer = AnalyzeFusion(*root, device_info);
 

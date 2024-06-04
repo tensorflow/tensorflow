@@ -1002,7 +1002,7 @@ ENTRY main {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitSoftMax,
+                    /*output_tile_sizes=*/{1, 127}, &llvm_module_, &EmitSoftMax,
                     mlir_context_),
       tsl::testing::StatusIs(
           absl::StatusCode::kInternal,
@@ -1052,7 +1052,7 @@ ENTRY main {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitSoftMax,
+                    /*output_tile_sizes=*/{1, 127}, &llvm_module_, &EmitSoftMax,
                     mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              ::testing::HasSubstr("Unsupported operation")));
