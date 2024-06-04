@@ -6996,7 +6996,6 @@ filegroup(
         "//tensorflow/core/kernels/linalg:qr_op_double.cc",
         "//tensorflow/core/kernels/linalg:qr_op_float.cc",
         "//tensorflow/core/kernels/linalg:qr_op_half.cc",
-        "//tensorflow/core/util:bad_indices_policy.h",
     ],
 )
 
@@ -7032,7 +7031,6 @@ filegroup(
 
 ANDROID_TEXTUAL_HDRS = [
     "//tensorflow/core/util:bad_indices_policy.h",
-    "//tensorflow/core/util:bad_indices_policy.cc",
     "@local_tsl//tsl/framework/convolution:eigen_convolution_helpers.h",
     "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
@@ -7117,6 +7115,9 @@ filegroup(
         "conv_3d.h",
         "conv_ops_3d.cc",
         "conv_ops_gpu.h",
+        # Transitive dependencies of the ops with attributes "bad_indices_policy".
+        "//tensorflow/core/util:bad_indices_policy.cc",
+        "//tensorflow/core/util:bad_indices_policy.h",
     ],
     visibility = ["//visibility:public"],
 )
