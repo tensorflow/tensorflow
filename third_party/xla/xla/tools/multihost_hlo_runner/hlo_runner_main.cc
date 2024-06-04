@@ -154,12 +154,12 @@ int main(int argc, char** argv) {
     if (should_run) {
       TF_QCHECK_OK(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *client.value(), xla::GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, {filename}, input_format,
+          raw_compile_options, running_options, filename, input_format,
           dump_output_literal_to, task_id));
     } else {
       TF_QCHECK_OK(xla::FunctionalHloRunner::LoadAndCompile(
           *client.value(), xla::GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, {argv[c]}, input_format, task_id));
+          raw_compile_options, argv[c], input_format, task_id));
     }
   }
 
