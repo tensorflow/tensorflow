@@ -4112,7 +4112,7 @@ ENTRY test {
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
 
-  if (IsCuda() ||
+  if (IsCuda() &&
       !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
   }

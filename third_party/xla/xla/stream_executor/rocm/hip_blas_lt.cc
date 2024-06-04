@@ -176,8 +176,12 @@ absl::Status BlasLt::Init() {
   auto hip_compute_type = AsHipblasComputeType(compute_type);
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
       &hip_desc, hip_compute_type, hip_scale_type));
+
+  int32_t bias_flag =
+      static_cast<int32_t>(epilogue) & static_cast<int32_t>(Epilogue::kBias);
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
-  BlasLt::MatmulDesc desc(hip_desc, hip_compute_type, hip_scale_type);
+  BlasLt::MatmulDesc desc(hip_desc, hip_compute_type, hip_scale_type,
+                          bias_flag != 0);
   if (pointer_mode != PointerMode::kHost) {
     return absl::InternalError("hipblaslt does not support device pointers");
   }
@@ -215,17 +219,13 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
     gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
 
-    // Right now, hipBlasLt would require setting the bias pointer (even a dummy
-    // one) before finding the algorithms for
-    // HIPBLASLT_MATMUL_DESC_BIAS_POINTER. Can remove this later once this
-    // restriction is gone.
-    static int dummy_pointer = 0;
-    TF_ASSIGN_OR_RETURN(auto epilogue,
-                        GetAttr<hipblasLtEpilogue_t>(
-                            op_desc_.get(), HIPBLASLT_MATMUL_DESC_EPILOGUE));
-    if (epilogue == HIPBLASLT_EPILOGUE_BIAS) {
+    // hipBlasLt requires setting the bias pointer (even a dummy one), otherwise
+    // no algorithms can be found for "bias epilogues". This is to be removed
+    // later when this limitation is gone.
+    if (op_desc_.has_bias_epilogue()) {
+      static int64_t dummyPointer = 0xACEBALL;
       TF_RETURN_IF_ERROR(SetAttr(
-          op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &dummy_pointer));
+          op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &dummyPointer));
     }
 
     int found_algorithm_count = 0;
@@ -450,7 +450,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     TF_RET_CHECK(blas_lt_ref_.blas_lt_ != nullptr);
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
-    if (bias != nullptr) {
+    if (op_desc_.has_bias_epilogue() && bias != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(
           op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, bias.opaque()));
     }
