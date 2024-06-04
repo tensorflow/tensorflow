@@ -86,8 +86,8 @@ struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
 // Returns a delegate that uses NNAPI for ops execution.
 // Must outlive the interpreter.
 // WARNING: This is an experimental API and subject to change.
-TfLiteDelegate* TFL_CAPI_EXPORT
-TfLiteNnapiDelegateCreate(const TfLiteNnapiDelegateOptions* options);
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteNnapiDelegateCreate(
+    const TfLiteNnapiDelegateOptions* options);
 
 // Returns TfLiteNnapiDelegateOptions populated with default values.
 // WARNING: This is an experimental API and subject to change.

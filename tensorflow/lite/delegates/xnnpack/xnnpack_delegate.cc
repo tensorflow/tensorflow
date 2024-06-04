@@ -534,23 +534,23 @@ class Delegate {
     // If no weight cache is provided, add one when requested.
     if (!options_.weights_cache) {
       if (options_.experimental_weight_cache_file_path) {
-        if (weight_cache_provider_.Load(
+        if (weight_cache_provider_.LoadOrStartBuild(
                 options_.experimental_weight_cache_file_path)) {
-          TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-                     "XNNPack weight cache loaded from '%s'.",
-                     options_.experimental_weight_cache_file_path);
+          options_.weights_cache =
+              reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
+                  weight_cache_provider_.GetCacheProvider().context);
+          options_.experimental_weight_cache_file_path =
+              weight_cache_provider_.GetFilePath().data();
         } else {
-          TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-                     "XNNPack weight cache not found at '%s', building it.",
-                     options_.experimental_weight_cache_file_path);
+          TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                          "XNNPack weight cache could neither be loaded from "
+                          "or saved to '%s'. Check that this location is "
+                          "readable and writable.",
+                          options_.experimental_weight_cache_file_path);
+          options_.experimental_weight_cache_file_path = nullptr;
         }
-        options_.weights_cache =
-            reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
-                weight_cache_provider_.GetCacheProvider().context);
-        options_.experimental_weight_cache_file_path =
-            weight_cache_provider_.GetFilePath().data();
       } else {
-        TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+        TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
                    "XNNPack weight cache not enabled.");
       }
     }

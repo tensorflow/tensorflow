@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -33,6 +34,23 @@ limitations under the License.
 
 namespace tflite {
 namespace xnnpack {
+
+// This structure is written at the start of every cache file.
+//
+// When changing this structure or anything in the cache file layout,
+// `kVersion` should be incremented by one.
+//
+// When creating a new cache file, `version` should be set to `kVersion`.
+//
+// When reading a cache file, the cache should be rejected if `version`
+// doesn't match `kVersion`.
+struct XNNPackCacheHeader {
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 1 };
+  uint64_t version;
+  uint8_t xnnpack_build_identifier[32];
+  uint64_t buffer_list_offset;
+  uint64_t buffer_list_size;
+};
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
@@ -116,6 +134,28 @@ class MMapHandle {
 // CHANGE. Do not rely on it.
 class WeightCacheBuilder {
  public:
+  WeightCacheBuilder() = default;
+  ~WeightCacheBuilder();
+
+  // Non-copyable.
+  WeightCacheBuilder(const WeightCacheBuilder&) = delete;
+  WeightCacheBuilder& operator=(const WeightCacheBuilder&) = delete;
+
+  // Moveable.
+  WeightCacheBuilder(WeightCacheBuilder&&);
+  WeightCacheBuilder& operator=(WeightCacheBuilder&&);
+
+  [[nodiscard /*Starting the builder may fail.*/]]
+  bool Start(const char* path);
+
+  [[nodiscard]]
+  bool IsStarted() const {
+    return fd_ != -1;
+  }
+
+  // Resets the builder, discarding any data that hasn't been written.
+  void Reset();
+
   // Reserves space in the data buffer for the required size in bytes and
   // returns the address of that space.
   //
@@ -134,23 +174,35 @@ class WeightCacheBuilder {
                         uint64_t size);
 
   // Checks whether this builder has data that needs to be written to disk.
-  bool ShouldWrite() const;
+  bool ShouldFinalize() const;
 
   // Writes the flatbuffer to disk.
   [[nodiscard /*Writing the weight cache can fail.*/]]
-  bool Write(const char* path);
+  bool Finalize();
 
-  // Helper for testing.
+  // Returns the capacity of the underlying reserved buffer.
   //
   // WARNING: this exposes class implementation details for testing purposes and
   // may be removed at any time.
-  const std::vector<uint8_t>& BufferData() const { return buffer_data_; }
+  size_t capacity() const { return capacity_; }
+
+  // Returns the address of the underlying reserved buffer.
+  //
+  // YOU SHOULD BE GETTING THAT ADDRESS FROM THE `Reserve` FUNCTION.
+  //
+  // WARNING: this exposes class implementation details for testing purposes and
+  // may be removed at any time.
+  uint8_t* data() const { return data_.get(); }
+
+  friend void swap(WeightCacheBuilder& a, WeightCacheBuilder& b);
 
  private:
-  bool SpanIsWithinBuffer(const void* ptr, uint64_t size) const;
-
-  cache::schema::PackedWeightsT schema_;
-  std::vector<uint8_t> buffer_data_;
+  std::unique_ptr<uint8_t[]> data_ = nullptr;
+  cache::schema::BufferListT schema_;
+  size_t capacity_ = 0;
+  // Temporary file descriptor to write the weights to disk immediately.
+  int fd_ = -1;
+  std::string file_path_;
 };
 
 // Allows XNNPack to directly load packed weights from disk instead of having to
@@ -180,6 +232,14 @@ class MMapWeightCacheProvider {
   void SetFilePath(const char* file_path);
 
   const std::string& GetFilePath() const { return file_path_; }
+
+  // Tries to load the given file. If the file doesn't exist starts building the
+  // cache for it.
+  [[nodiscard /*Loading a cache file may fail.*/]]
+  bool LoadOrStartBuild(const char* file_path);
+
+  [[nodiscard /*Starting to build a cache file may fail.*/]]
+  bool StartBuild(const char* file_path);
 
   // Set the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
