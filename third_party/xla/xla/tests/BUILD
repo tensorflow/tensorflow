@@ -2911,6 +2911,7 @@ xla_test(
 xla_test(
     name = "constant_reduction_function_test",
     srcs = ["constant_reduction_function_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
