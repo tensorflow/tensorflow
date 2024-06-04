@@ -44,7 +44,6 @@ cc_library(
         ":gpu_helpers",
         ":gpu_metrics",
         ":gpu_topology",
-        ":gpu_topology_proto_cc",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -300,7 +299,6 @@ xla_cc_test(
         "requires-gpu-nvidia",
     ] + if_google(["config-cuda-only"]),
     deps = [
-        ":gpu_topology",
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
         "//xla:test",
