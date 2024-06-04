@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import atexit
+from collections.abc import Mapping, Sequence
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
@@ -24,7 +25,7 @@ import inspect
 import logging
 import os
 import threading
-from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
+from typing import Any, Protocol, Union
 
 import ml_dtypes
 import numpy as np
@@ -61,7 +62,7 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
+_NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 
 
 def make_cpu_client(
@@ -122,7 +123,7 @@ def make_gpu_client(
   )
 
 
-def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
   assert pjrt_plugin_loaded('tpu')
   if not pjrt_plugin_initialized('tpu'):
     initialize_pjrt_plugin('tpu')
@@ -178,8 +179,8 @@ def initialize_pjrt_plugin(plugin_name: str) -> None:
 
 def make_c_api_client(
     plugin_name: str,
-    options: Optional[_NameValueMapping] = None,
-    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -199,8 +200,9 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client(library_path: Optional[str] = None,
-                    options: Optional[_NameValueMapping] = None):
+def make_tpu_client(
+    library_path: str | None = None, options: _NameValueMapping | None = None
+):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
@@ -688,7 +690,7 @@ class PaddingConfig:
 
 
 def make_padding_config(
-    padding_config: Union[PaddingConfig, Sequence[Tuple[int, int, int]]]
+    padding_config: Union[PaddingConfig, Sequence[tuple[int, int, int]]]
 ) -> PaddingConfig:
   """Create PaddingConfig proto from list of triples of integers.
 
@@ -732,7 +734,7 @@ class DotDimensionNumbers:
 def make_dot_dimension_numbers(
     dimension_numbers: Union[
         DotDimensionNumbers,
-        Tuple[Tuple[List[int], List[int]], Tuple[List[int], List[int]]],
+        tuple[tuple[list[int], list[int]], tuple[list[int], list[int]]],
     ]
 ) -> DotDimensionNumbers:
   """Builds a DotDimensionNumbers object from a specification.
@@ -787,7 +789,7 @@ class ConvolutionDimensionNumbers:
 
 def make_convolution_dimension_numbers(
     dimension_numbers: Union[
-        None, ConvolutionDimensionNumbers, Tuple[str, str, str]
+        None, ConvolutionDimensionNumbers, tuple[str, str, str]
     ],
     num_spatial_dimensions: int,
 ) -> ConvolutionDimensionNumbers:
