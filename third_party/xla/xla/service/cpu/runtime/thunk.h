@@ -52,6 +52,7 @@ class Thunk {
   enum class Kind {
     kCall,
     kCopy,
+    kConditional,
     kInfeed,
     kKernel,
     kOutfeed,

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
+#include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
@@ -109,6 +110,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     // Control flow thunks check predicates on the host and launch nested thunk
     // sequences for branches and loops.
+    case HloOpcode::kConditional:
+      return EmitConditionThunk(instruction);
     case HloOpcode::kWhile:
       return EmitWhileThunk(instruction);
 
@@ -314,6 +317,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeedThunk(
 
   return ThunkSequence::Of<OutfeedThunk>(ThunkInfo(instruction),
                                          outfeed_buffers);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditionThunk(
+    const HloInstruction* instruction) {
+  std::vector<ThunkSequence> branches;
+  TF_ASSIGN_OR_RETURN(auto branch_index_buffer,
+                      GetAllocationSlice(instruction->operand(0)));
+
+  for (HloComputation* branch : instruction->branch_computations()) {
+    TF_ASSIGN_OR_RETURN(branches.emplace_back(), EmitHloComputation(branch));
+  }
+
+  return ThunkSequence::Of<ConditionalThunk>(
+      ThunkInfo(instruction), branch_index_buffer, std::move(branches));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(

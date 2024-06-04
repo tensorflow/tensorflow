@@ -685,6 +685,7 @@ xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
     shard_count = 2,
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
