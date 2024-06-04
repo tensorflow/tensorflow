@@ -709,3 +709,37 @@ module {
 // CHECK-NEXT:      "dummy.op2"
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return %[[I]] : index
+
+// -----
+
+module {
+  func.func @transfer_write(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> tensor<43xf32> {
+    %c16 = arith.constant 16 : index
+    %c22 = arith.constant 22 : index
+    %cst = arith.constant dense<[1.0, 2.0]> : vector<2xf32>
+    %out = vector.transfer_write %cst, %arg0[%c16] : vector<2xf32>, tensor<43xf32>
+    %out2 = vector.transfer_write %cst, %out[%c22] : vector<2xf32>, tensor<43xf32>
+    func.return %out2 : tensor<43xf32>
+  }
+}
+
+// CHECK-LABEL: @transfer_write
+// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK-NEXT:      llvm.store %[[CST:.*]], %[[PTR1]]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
+
+// -----
+
+module {
+  func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<2xf32> {
+    %c16 = arith.constant 16 : index
+    %c0 = arith.constant 0.0 : f32
+    %out = vector.transfer_read %arg0[%c16], %c0 : tensor<43xf32>, vector<2xf32>
+    func.return %out : vector<2xf32>
+  }
+}
+
+// CHECK-LABEL: @transfer_read
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<2xf32>

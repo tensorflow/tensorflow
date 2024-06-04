@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -39,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -82,6 +86,38 @@ using mlir::ValueRange;
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+
+Value GetDestinationBuffer(Value dest) {
+  while (dest.getDefiningOp()) {
+    int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
+    if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
+      dest = insert.getDest();
+    } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
+      // Pick one of the branches, they're required to yield the same buffers.
+      dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
+          result_number);
+    } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
+      dest = scf_for.getInitArgs()[result_number];
+    } else if (dest.getDefiningOp<mlir::UnrealizedConversionCastOp>() ||
+               dest.getDefiningOp<AllocateSharedOp>()) {
+      break;
+    } else if (auto transfer_write =
+                   dest.getDefiningOp<mlir::vector::TransferWriteOp>()) {
+      dest = transfer_write.getSource();
+    } else {
+      dest.getDefiningOp()->emitOpError("unsupported dest type");
+      return nullptr;
+    }
+  }
+  return dest;
+}
+
+template <typename Op>
+bool IsSupportedTransfer(Op op) {
+  return !absl::c_linear_search(op.getInBoundsValues(), false) &&
+         op.getVectorType().getRank() == 1 && !op.getMask() &&
+         op.getPermutationMap().isMinorIdentity();
+}
 
 struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -229,29 +265,43 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
+struct RewriteTransferRead
+    : mlir::OpRewritePattern<mlir::vector::TransferReadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::vector::TransferReadOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    assert(IsSupportedTransfer(op));
+
+    auto source = mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(
+        op.getSource());
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto linear_index = GetLinearIndex(source, op.getIndices(), rewriter);
+    Type element_type = source.getType().getElementType();
+    auto gep = CreateGep(source, linear_index, rewriter, element_type);
+
+    mlir::LLVMTypeConverter converter(rewriter.getContext());
+    auto llvm_vector_type = converter.convertType(op.getVectorType());
+    auto load =
+        rewriter.create<mlir::LLVM::LoadOp>(gep.getLoc(), llvm_vector_type, gep)
+            .getResult();
+    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+        op, op.getType(), load);
+    return success();
+  }
+};
+
 struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
       mlir::PatternRewriter& rewriter) const override {
-    Value dest = op.getDest();
-    while (dest.getDefiningOp()) {
-      int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
-      if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
-        dest = insert.getDest();
-      } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
-        // Pick one of the branches, they're required to yield the same buffers.
-        dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
-            result_number);
-      } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
-        dest = scf_for.getInitArgs()[result_number];
-      } else if (dest.getDefiningOp<mlir::UnrealizedConversionCastOp>() ||
-                 dest.getDefiningOp<AllocateSharedOp>()) {
-        break;
-      } else {
-        return op.emitOpError("unsupported dest type");
-      }
+    Value dest = GetDestinationBuffer(op.getDest());
+    if (!dest) {
+      return failure();
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -296,6 +346,38 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), scalar_value, gep);
 
     op.replaceAllUsesWith(op.getDest());
+    op.erase();
+    return success();
+  }
+};
+
+struct RewriteTransferWrite
+    : mlir::OpRewritePattern<mlir::vector::TransferWriteOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::vector::TransferWriteOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    assert(IsSupportedTransfer(op));
+    Value dest = GetDestinationBuffer(op.getSource());
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
+    auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
+    auto element_type = tensor_dest.getType().getElementType();
+
+    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
+    mlir::Value vector_value = op.getVector();
+
+    mlir::LLVMTypeConverter converter(getContext());
+    auto llvm_type = converter.convertType(vector_value.getType());
+    vector_value = rewriter
+                       .create<mlir::UnrealizedConversionCastOp>(
+                           gep.getLoc(), llvm_type, vector_value)
+                       .getResult(0);
+    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), vector_value, gep);
+
+    op.replaceAllUsesWith(mlir::ValueRange{op.getSource()});
     op.erase();
     return success();
   }
@@ -899,11 +981,12 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     tensor_patterns.add<RewriteAtomicRMW>(mlir_context, is_amd_gpu_, gpu_arch_);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteNonScalarConstants,
-             RewriteSyncThreads, RewriteTensorExtract, RewriteTensorInsert>(
-            mlir_context);
+             RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
+             RewriteTensorInsert, RewriteTransferWrite>(mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
             getOperation(), std::move(tensor_patterns)))) {
       signalPassFailure();
+      return;
     }
 
     mlir::RewritePatternSet function_patterns(mlir_context);
@@ -914,6 +997,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
             getOperation(), std::move(function_patterns)))) {
       signalPassFailure();
+      return;
     }
 
     getOperation()->walk([this](mlir::LLVM::LoadOp load) {
