@@ -2077,6 +2077,7 @@ xla_test(
 xla_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",

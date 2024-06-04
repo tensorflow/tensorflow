@@ -108,6 +108,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAfterAll:
       return ThunkSequence::Empty();
 
+    // Call operations are simply converted to a ThunkSequence emitted from the
+    // called computation and embedded into the "main" one.
+    case HloOpcode::kCall:
+      return EmitCallThunk(instruction);
+
     // Control flow thunks check predicates on the host and launch nested thunk
     // sequences for branches and loops.
     case HloOpcode::kConditional:
@@ -178,8 +183,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // it's much easier to get peak performance from hand written code.
     case HloOpcode::kSlice:
     case HloOpcode::kDynamicSlice:
+    // TODO(ezhulenev): Port dynamic update slice optimizations from IrEmitter.
     case HloOpcode::kDynamicUpdateSlice:
       return EmitElementalKernelThunk(instruction);
+
+    case HloOpcode::kConcatenate:
+      return EmitConcatenateThunk(instruction);
 
     case HloOpcode::kFusion:
       return EmitFusionKernelThunk(instruction);
@@ -196,9 +205,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kOutfeed:
       return EmitOutfeedThunk(instruction);
-
-    case HloOpcode::kCall:
-      return EmitCallThunk(instruction);
 
     case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
@@ -217,6 +223,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
       EmitHloComputation(instruction->called_computations().front()));
   return ThunkSequence::Of<CallThunk>(ThunkInfo(instruction),
                                       std::move(called_sequence));
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateThunk(
+    const HloInstruction* instruction) {
+  // TODO(ezhulenev): Port optimized concat implementation from IrEmitter.
+  return EmitElementalKernelThunk(instruction);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
