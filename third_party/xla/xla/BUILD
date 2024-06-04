@@ -741,7 +741,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/strings",
     ],
 )

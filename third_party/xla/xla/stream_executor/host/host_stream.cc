@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/stream_common.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/setround.h"

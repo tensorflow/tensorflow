@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {

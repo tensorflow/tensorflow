@@ -50,6 +50,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_common",
     ],
 )
 
@@ -69,7 +70,8 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:stream_executor_interface",
+        "@local_xla//xla/stream_executor:stream_common",
+        "@local_xla//xla/stream_executor:stream_executor_h",
     ],
 )
 
