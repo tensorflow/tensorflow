@@ -95,7 +95,7 @@ void Shape::SetProto(ShapeProto& proto) const {
     shape.SetProto(*proto.add_tuple_shapes());
   }
   if (has_layout()) {
-    *proto.mutable_layout() = layout().ToProto();
+    layout().SetProto(*proto.mutable_layout());
   }
 }
 
