@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -15,9 +16,11 @@ cc_library(
     name = "nnapi_delegate_no_nnapi_implementation",
     srcs = select({
         "//tensorflow:ios": [
+            "nnapi_delegate_c_api_disabled.cc",
             "nnapi_delegate_disabled.cc",
         ],
         "//tensorflow:windows": [
+            "nnapi_delegate_c_api_disabled.cc",
             "nnapi_delegate_disabled.cc",
         ],
         "//conditions:default": [
@@ -71,6 +74,17 @@ cc_library(
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
+    ],
+)
+
+tflite_cc_library_with_c_headers_test(
+    name = "nnapi_delegate_c_api",
+    hdrs = ["nnapi_delegate_c_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":nnapi_delegate",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -189,10 +203,6 @@ cc_test(
     size = "small",
     srcs = [
         "nnapi_delegate_c_api_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "tflite_not_portable_ios",
     ],
     visibility = ["//visibility:private"],
     deps = [

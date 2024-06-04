@@ -139,11 +139,13 @@ TFLITE_HEADERS = [
     "//tensorflow/lite/c:c_api_opaque.h",
     "//tensorflow/lite/c:c_api_types.h",
     "//tensorflow/lite/c:common.h",
+    "//tensorflow/lite/core/async/c:types.h",
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/core/c:operator.h",
     "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
 ]
 # LINT.ThenChange(../c/BUILD:exported_headers)
