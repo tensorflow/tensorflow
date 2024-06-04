@@ -51,8 +51,7 @@ class HostOffloadLegalizeTest : public HloTestBase {
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
-                                              /*after_layout=*/true);
+    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor);
     return host_offload_legalize.Run(module);
   }
 
