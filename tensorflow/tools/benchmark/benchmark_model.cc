@@ -66,7 +66,7 @@ Status InitializeVariables(Session* session,
   for (const string& init_op : init_ops) {
     TF_RETURN_IF_ERROR(session->Run({}, {}, {init_op}, nullptr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -156,7 +156,7 @@ Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
     const TensorShape& found_shape = output_tensors[i].shape();
     (*node_shapes)[wanted_shape_name] = found_shape;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CalculateFlops(const GraphDef& graph,
@@ -222,7 +222,7 @@ Status CalculateFlops(const GraphDef& graph,
       *total_flops += current_flops;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordBenchmarkEntry(const string& output_prefix,
@@ -291,7 +291,7 @@ Status InitializeSession(int num_threads, const string& graph,
     return s;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
@@ -375,7 +375,7 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
   stat.OutputToStream(&stream);
   LOG(INFO) << stream.str() << std::endl;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int Main(int argc, char** argv) {
