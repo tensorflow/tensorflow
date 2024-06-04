@@ -1327,7 +1327,7 @@ TEST_F(MatmulTest, BiasAddTanhFusionTest_F16) {
     ROOT tanh.7 = f16[1024,1024] tanh(add.6)
   })";
 
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_tanh_rewrite_str_);
 }
 
@@ -1349,7 +1349,7 @@ TEST_F(MatmulTest, BiasAddRelu6Fusion_F32) {
     ROOT clamp.11 = f32[1024,1024] clamp(broadcast.2, add.8, broadcast.10)
   })";
 
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_relu6_rewrite_str_);
 }
 
@@ -1390,7 +1390,7 @@ TEST_F(MatmulTest, BiasAddRelu6Fusion_F16) {
   HloModule matmul.bias.relu6.test.f16
   ENTRY matmul.bias.relu6.test.f16 {
     constant.1 = f16[] constant(0)
-    broadcast.2 = f16[1024,1024] broadcast(constant.7), dimensions={}
+    broadcast.2 = f16[1024,1024] broadcast(constant.1), dimensions={}
     arg0.3 = f16[1024,1024] parameter(0)
     arg1.4 = f16[1024,1024] parameter(1)
     dot.5 = f16[1024,1024] dot(arg1.4, arg0.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -1402,7 +1402,7 @@ TEST_F(MatmulTest, BiasAddRelu6Fusion_F16) {
     ROOT clamp.11 = f16[1024,1024] clamp(broadcast.2, add.8, broadcast.10)
   })";
 
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_relu6_rewrite_str_);
 }
 

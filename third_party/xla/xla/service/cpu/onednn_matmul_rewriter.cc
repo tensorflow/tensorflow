@@ -355,7 +355,6 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
   //   4. pattern-root
   auto common = m::AnyOf<HloInstruction>(
       pu::SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
-          .WithOperand(0, m::Op().WithElementType(PrimitiveType::BF16))
           .WithElementType(PrimitiveType::F32),
       std::move(pattern).WithOneUser());
   return m::AnyOf<HloInstruction>(
