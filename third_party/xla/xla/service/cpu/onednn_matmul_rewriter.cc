@@ -731,7 +731,10 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
 
     if (Match(instr, pattern)) {
       std::vector<HloInstruction*> new_operands;
-      auto constant_value = *GetConstantValueAsFloat32(constant);
+      auto constant_value = GetConstantValueAsFloat32(constant);
+      if (!constant_value) {
+        return absl::OkStatus();
+      }
 
       for (auto operand : dot->operands()) {
         new_operands.push_back(operand);
@@ -744,7 +747,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
       backend_config->mutable_onednn_matmul_config()->set_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value)));
+          *(reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&

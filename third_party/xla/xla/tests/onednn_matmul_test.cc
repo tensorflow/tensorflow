@@ -760,6 +760,31 @@ TEST_F(MatmulTest, BiasAndExactGELUTestF16) {
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_erf_);
 }
 
+TEST_F(MatmulTest, TestNonScalarConstantEltwiseLinearF32) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.nonscalar.test.1
+  ENTRY matmul.nonscalar.test.f32 {
+    arg.0 = f32[16,400,500] parameter(0)
+    arg.1 = f32[16,500,3] parameter(1)
+    onednn.matmul.0 = f32[16,400,3] dot(arg.0, arg.1), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+    constant.0 = f32[3]{0} constant({0.625, 0.875, 0.375})
+    broadcast.0 = f32[16,400,3] broadcast(constant.0), dimensions={2}
+    ROOT mult.0 = f32[16,400,3] multiply(onednn.matmul.0, broadcast.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-NOT:       "fused_ops":["LINEAR"]
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
 TEST_F(MatmulTest, ReLUTestF32) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
