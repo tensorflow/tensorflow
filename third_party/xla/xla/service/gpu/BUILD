@@ -3625,6 +3625,10 @@ cc_library(
 xla_test(
     name = "gpu_compiler_test",
     srcs = if_gpu_is_configured(["gpu_compiler_test.cc"]),
+    backend_tags = {
+        "gpu_a100": ["no_rocm"],
+        "gpu_v100": ["no_rocm"],
+    },
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     deps = [
