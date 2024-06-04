@@ -25,7 +25,7 @@ tb-nightly ~= 2.17.0.a
 grpcio >= 1.24.3, < 2.0
 portpicker == 1.6.0
 scipy == 1.11.3
-requests == 2.31.0
+requests >= 2.31.0
 packaging==23.2
 setuptools==68.2.2
 jax==0.4.7
