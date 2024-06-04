@@ -663,14 +663,15 @@ Status BatchResourceBase::ConcatInputTensors(
   const int padding_amount =
       just_for_warmup ? padded_batch_size
                       : padded_batch_size - batch.size() - unbatched_tasks_size;
-  tsl::profiler::TraceMe trace_me([padded_batch_size, padding_amount,
-                                   disable_padding = batcher_queue_options_
-                                                         .disable_padding]() {
-    return profiler::TraceMeEncode(
-        "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
-                               {"padding_amount", padding_amount},
-                               {"disable_padding", disable_padding}});
-  });
+  tsl::profiler::TraceMe trace_me(
+      [padded_batch_size, padding_amount,
+       disable_padding = batcher_queue_options_.disable_padding]() {
+        return tsl::profiler::TraceMeEncode(
+            "ConcatInputTensors",
+            {{"batch_size_after_padding", padded_batch_size},
+             {"padding_amount", padding_amount},
+             {"disable_padding", disable_padding}});
+      });
   // TODO(b/316379576): Add metrics for the breakdown between the size of the
   // original batch size and the unbatched task size and update the batch size
   // to include the unbatched tasks.

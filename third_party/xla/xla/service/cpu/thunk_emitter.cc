@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
+#include "xla/service/cpu/runtime/outfeed_thunk.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
@@ -190,6 +191,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kInfeed:
       return EmitInfeedThunk(instruction);
 
+    case HloOpcode::kOutfeed:
+      return EmitOutfeedThunk(instruction);
+
     case HloOpcode::kCall:
       return EmitCallThunk(instruction);
 
@@ -287,6 +291,29 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitInfeedThunk(
   }
 
   return ThunkSequence::Of<InfeedThunk>(ThunkInfo(instruction), infeed_buffers);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeedThunk(
+    const HloInstruction* instruction) {
+  auto* outfeed = Cast<HloOutfeedInstruction>(instruction);
+  const Shape& outfeed_shape = outfeed->outfeed_shape();
+
+  // Collect buffer allocation slices corresponding to data buffers fed into the
+  // outfeed instruction as first operand.
+  std::vector<OutfeedThunk::OutfeedBuffer> outfeed_buffers;
+  for (auto& outfeed_leaf : ShapeUtil::GetLeafShapes(outfeed_shape)) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice outfeed_slice,
+        GetAllocationSlice(outfeed->operand(0), outfeed_leaf.index));
+
+    outfeed_buffers.push_back(OutfeedThunk::OutfeedBuffer{
+        outfeed_slice,
+        outfeed_leaf.shape,
+    });
+  }
+
+  return ThunkSequence::Of<OutfeedThunk>(ThunkInfo(instruction),
+                                         outfeed_buffers);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
