@@ -59,6 +59,7 @@ class Tiling {
     }
     if (loops_to_unroll_.empty()) loops_to_unroll_.resize(shape.size());
   }
+  Tiling() = default;
 
   std::string ToString() const {
     return absl::StrJoin(
