@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -413,10 +414,13 @@ Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs<T>* args,
                        const float* leakyrelu_alpha = nullptr) {
   // Bias of the following dimensions: [ output_depth ]
   const Tensor& bias = context->input(2);
-
-  if (bias.dims() != 1)
-    return errors::InvalidArgument("bias must be 1-dimensional",
-                                   bias.shape().DebugString());
+  for (int i = 0; i < bias.dims() - 1; ++i) {
+    if (bias.dim_size(i) != 1) {
+      return errors::InvalidArgument(
+          "all dimension sizes of bias must be 1 except the last dimension: ",
+          bias.shape().DebugString());
+    }
+  }
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());
