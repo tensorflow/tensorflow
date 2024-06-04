@@ -328,17 +328,18 @@ absl::Status CreateClientOnce(
     // proceed.
     creation_state->SetReady();
   }
-  auto status = BuildDistributedDevices(
+  auto device_topology_pair = BuildDistributedDevices(
       platform_name, std::move(unique_local_device_states), node_id, num_nodes,
-      &pjrt_devices, gpu_run_options.get(), kv_store,
-      /*enable_mock_nccl=*/false);
-  if (!status.ok()) {
+      gpu_run_options.get(), kv_store,
+      /*enable_mock_nccl=*/false, /*generate_gpu_topology=*/false);
+  if (!device_topology_pair.ok()) {
     if (use_creation_info) {
       creation_state->SetDone();
     }
-    return status;
+    return device_topology_pair.status();
   }
 
+  pjrt_devices = std::move(device_topology_pair->first);
   VLOG(2) << "Distributed devices built with size=" << pjrt_devices.size();
   int i = 0;
   for (const auto& pjrt_device : pjrt_devices) {
@@ -358,10 +359,11 @@ absl::Status CreateClientOnce(
             /*allocator=*/std::move(info->allocator),
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
-            /*gpu_run_options=*/std::move(gpu_run_options));
+            /*gpu_run_options=*/std::move(gpu_run_options),
+            std::move(device_topology_pair->second));
     VLOG(2) << "PJRT GPU client with remote devices created.";
-    status = SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
-                                                    std::move(pjrt_client));
+    auto status = SetPjRtClientInTFGlobalResourceManager(
+        DeviceType(DEVICE_GPU), std::move(pjrt_client));
     creation_state->SetDone();
     return status;
   } else {

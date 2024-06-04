@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "xla/client/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -60,10 +61,18 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
   return XlaComputation(hlo_module->ToProto());
 }
 
+std::shared_ptr<xla::GpuTopology> GetGpuTopology(
+    std::vector<int> device_ids, absl::string_view platform_version,
+    int num_slices, int num_hosts_per_slice, int num_devices_per_host) {
+  return std::make_shared<xla::GpuTopology>(device_ids, platform_version,
+                                            num_slices, num_hosts_per_slice,
+                                            num_devices_per_host);
+}
+
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   StreamExecutorGpuCompiler compiler;
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                "Fake_device", {0, 1});
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
@@ -73,11 +82,12 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler;
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                "Fake_device", {0, 1});
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(GpuClientOptions(
+                       xla::GpuClientOptions{.generate_gpu_topology = true})));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                client.get()),
@@ -87,8 +97,9 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
 TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   StreamExecutorGpuCompiler compiler;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(GpuClientOptions(
+                       xla::GpuClientOptions{.generate_gpu_topology = true})));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -119,8 +130,8 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                "Fake_device", {0, 1});
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2));
 
   EXPECT_THAT(
       compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
@@ -137,11 +148,12 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                "Fake_device", {0, 1});
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(GpuClientOptions(
+                       xla::GpuClientOptions{.generate_gpu_topology = true})));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
                                topology, client.get()),
               StatusIs(absl::StatusCode::kUnimplemented));
@@ -156,8 +168,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(GpuClientOptions(
+                       xla::GpuClientOptions{.generate_gpu_topology = true})));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
