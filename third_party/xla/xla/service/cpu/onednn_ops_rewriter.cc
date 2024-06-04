@@ -172,20 +172,24 @@ std::optional<bool> MatchTFKerasLayerNorm(HloInstruction* instr,
   // LN(X) = X*Z + Bias - Mean(X)*Z
 
   HloInstruction *src_a, *src_b, *src_c;
-  HloInstruction *bias_node, *scaled_norm_a, *scaled_norm_b, *mean0_a, *epsilon,
+  HloInstruction *bias_node, *scaled_norm_a, *scaled_norm_b, *mean0_a,
       *sqrd_diff_mean, *scale_node, *sqrd_diff;
+  HloInstruction* epsilon = nullptr;
 
   // First Match X*Z + Bias - Mean(X)*Z
   if (!Match(
           instr,
           m::Add().WithBinaryOperandsAnyOrder(
               m::Multiply()
-                  .WithBinaryOperandsAnyOrder(m::Op(src), m::Op(&scaled_norm_a))
+                  .WithBinaryOperandsAnyOrder(
+                      m::Op(src),
+                      m::Op(&scaled_norm_a).WithOpcode(HloOpcode::kMultiply))
                   .WithOneUser(),
-              m::Subtract(m::Op(&bias_node),
-                          m::Multiply().WithBinaryOperandsAnyOrder(
-                              m::Broadcast(m::Reshape(m::Op(&mean0_a))),
-                              m::Op(&scaled_norm_b)))
+              m::Subtract(
+                  m::Op(&bias_node),
+                  m::Multiply().WithBinaryOperandsAnyOrder(
+                      m::Broadcast(m::Reshape(m::Op(&mean0_a))),
+                      m::Op(&scaled_norm_b).WithOpcode(HloOpcode::kMultiply)))
                   .WithOneUser()))) {
     return std::nullopt;
   }
@@ -202,22 +206,25 @@ std::optional<bool> MatchTFKerasLayerNorm(HloInstruction* instr,
   if (!Match(scaled_norm_a,
              m::Multiply().WithBinaryOperandsAnyOrder(
                  m::Op(&scale_node),
-                 m::Broadcast(
-                     m::Reshape(m::Rsqrt(m::Add().WithBinaryOperandsAnyOrder(
+                 m::Broadcast(m::Reshape(m::Rsqrt(m::AnyOf<HloInstruction>(
+                     m::Add().WithBinaryOperandsAnyOrder(
                          m::Broadcast(m::ConstantScalar(&epsilon)),
-                         m::Op(&sqrd_diff_mean)))))))) {
+                         m::Op(&sqrd_diff_mean)),
+                     m::Op(&sqrd_diff_mean)))))))) {
     return std::nullopt;
   }
 
   // get epsilon
-  *eps = static_cast<float>(epsilon->literal().GetAsDouble({}).value());
+  if (epsilon != nullptr) {
+    *eps = static_cast<float>(epsilon->literal().GetAsDouble({}).value());
+  }
   // get scale
   if (!Match(scale_node, m::Broadcast(m::Op(scale)))) return std::nullopt;
 
   // match variance
   if (!Match(sqrd_diff_mean, MeanPattern(&sqrd_diff))) return std::nullopt;
 
-  if (!Match(sqrd_diff, Square(m::Subtract(
+  if (!Match(sqrd_diff, Square(m::Subtract().WithBinaryOperandsAnyOrder(
                             m::Op(&src_a),
                             m::Broadcast(m::Reshape(MeanPattern(&src_b))))))) {
     return std::nullopt;
@@ -241,8 +248,9 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
   HloInstruction *prod_s, *hinge;
   HloInstruction *div0, *div1, *div_red;
   HloInstruction *mul_in0, *mul_in1, *main_pipe_mul_in0;
-  HloInstruction *reduce_in0, *epsilon;
+  HloInstruction* reduce_in0;
   HloInstruction *broadcast0, *broadcast1;
+  HloInstruction* epsilon = nullptr;
 
   bool scaleFound = false;
   bool shiftFound = false;
@@ -376,7 +384,9 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
   *scale = scale_gamma;
   *bias = shift;
   // get epsilon
-  *eps = static_cast<float>(epsilon->literal().GetAsDouble({}).value());
+  if (epsilon != nullptr) {
+    *eps = static_cast<float>(epsilon->literal().GetAsDouble({}).value());
+  }
 
   return true;
 }
@@ -387,7 +397,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   absl::Status HandleAdd(HloInstruction* instr) override {
     HloInstruction *src, *scale, *bias;
-    float eps;
+    float eps = 1e-5;
     bool is_bf16orfp16_convert = false;
     bool is_producer_bf16orfp16 = false;
     HloInstruction* convert_instr;
