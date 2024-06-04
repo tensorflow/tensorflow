@@ -5544,7 +5544,8 @@ triton_dot {
   broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
   dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
   compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
-      direction=EQ bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
+      direction=EQ
+  bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
   convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
   parameter_2 = f32[128,8]{1,0} parameter(2)
   ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
