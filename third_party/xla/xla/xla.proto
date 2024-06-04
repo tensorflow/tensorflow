@@ -789,7 +789,12 @@ message DebugOptions {
   // If true, Nccl errors will terminate the process.
   bool xla_gpu_nccl_terminate_on_error = 301;
 
-  // Next id: 302
+  // Use Shardonnay, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool xla_use_shardonnay = 302;
+
+  // Next id: 303
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
