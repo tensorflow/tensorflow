@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -71,6 +70,53 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
+    absl::string_view device_type, absl::string_view address, int node_id,
+    int num_nodes, bool enable_mock_nccl,
+    std::unique_ptr<xla::DistributedRuntimeService>& service,
+    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store) {
+  if (device_type == "host") {
+    CHECK_EQ(num_nodes, 1);
+    return xla::FunctionalHloRunner::CreateHostClient();
+  }
+
+  if (device_type != "gpu") {
+    return absl::UnimplementedError(device_type);
+  }
+
+  if (enable_mock_nccl) {
+    CHECK_GT(num_nodes, 1);
+    return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
+  } else {
+    if (num_nodes == 1) {
+      return xla::FunctionalHloRunner::CreateGpuClient();
+    } else {
+      CHECK_GT(address.length(), 0);
+      // Multinode. Start service on task 0.
+      if (node_id == 0) {
+        std::string coordinator_bind_address =
+            "[::]:" + std::string(address).substr(address.rfind(":") + 1);
+        xla::CoordinationServiceImpl::Options options;
+        options.num_nodes = num_nodes;
+        auto status_or = xla::GetDistributedRuntimeService(
+            coordinator_bind_address, options);
+        TF_QCHECK_OK(status_or.status());
+        service = std::move(status_or.value());
+      }
+      xla::DistributedRuntimeClient::Options options;
+      options.node_id = node_id;
+      options.init_timeout = absl::Seconds(300);
+      auto distributed_client =
+          GetDistributedRuntimeClient(std::string(address), options);
+      TF_QCHECK_OK(distributed_client->Connect());
+      kv_store = GetDistributedKeyValueStore(distributed_client,
+                                             /*key_prefix=*/"gpu:");
+      return xla::FunctionalHloRunner::CreateGpuClient(kv_store, node_id,
+                                                       num_nodes);
+    }
+  }
+}
 
 namespace {
 // Creates an HloModule from the given proto.
@@ -294,20 +340,19 @@ FunctionalHloRunner::CreateMockGpuClient(int num_nodes) {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>>
 FunctionalHloRunner::CreateGpuClient(
-    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client,
-    int node_id, int num_nodes) {
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store, int node_id,
+    int num_nodes) {
   if (node_id < 0 || node_id >= num_nodes) {
     return absl::InvalidArgumentError(
         "Node id is expected to be in range [0, num_nodes)");
   }
 
-  TF_RET_CHECK(distributed_client != nullptr);
+  TF_RET_CHECK(kv_store != nullptr);
 
   GpuClientOptions options;
   options.node_id = node_id;
   options.num_nodes = num_nodes;
-  options.kv_store =
-      GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
+  options.kv_store = kv_store;
   return GetStreamExecutorGpuClient(options);
 }
 
@@ -321,7 +366,8 @@ absl::StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
 
 absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
     const PjRtClient& client,
-    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id) {
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   CompileOptions compile_options;
   if (raw_options.execution_options.has_value()) {
     compile_options.executable_build_options =
@@ -338,6 +384,9 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
           raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
+  build_options.set_process_index(task_id);
+  build_options.set_process_count(num_nodes);
+  build_options.set_key_value_store(kv_store);
   if (raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning) {
     build_options.set_use_spmd_partitioning(true);
   }
@@ -520,10 +569,12 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::Span<const std::string> hlo_files, InputFormat input_format,
-    std::string dump_output_to, int task_id) {
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      FunctionalHloRunner::CreateCompileOptions(
-                          client, raw_compile_options, task_id));
+    std::string dump_output_to, int task_id, int num_nodes,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  TF_ASSIGN_OR_RETURN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
+                                                task_id, num_nodes, kv_store));
   TF_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
@@ -573,10 +624,12 @@ absl::Status FunctionalHloRunner::LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
-    InputFormat input_format, int task_id) {
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      FunctionalHloRunner::CreateCompileOptions(
-                          client, raw_compile_options, task_id));
+    InputFormat input_format, int task_id, int num_nodes,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  TF_ASSIGN_OR_RETURN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
+                                                task_id, num_nodes, kv_store));
 
   int num_replicas = compile_options.executable_build_options.num_replicas();
   int num_partitions =

@@ -167,6 +167,14 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
         break;
       case OneDnnMatMulConfig::BINARY_ADD: {
         auto binary_md = fused_mds.at(fused_operand_idx);
+        // Extend addend rank to match result rank.
+        auto missed_rank = output_md.get_ndims() - binary_md.get_ndims();
+        XLA_LIGHTWEIGHT_CHECK(missed_rank >= 0);
+        if (missed_rank > 0) {
+          auto binary_dims = binary_md.get_dims();
+          binary_dims.insert(binary_dims.begin(), missed_rank, 1);
+          binary_md = binary_md.reshape(binary_dims);
+        }
         if (fused_operands_ref) {
           auto arg_idx =
               DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;

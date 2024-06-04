@@ -115,6 +115,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:computation_layout",
