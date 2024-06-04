@@ -15253,14 +15253,22 @@ The resulting tensor would look like this:
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 
-Note that on CPU, if an out of bound index is found, an error is returned.
-On GPU, if an out of bound index is found, the index is ignored.
+If `indices` contains any out-of-bound indices, depending on
+`bad_indices_policy`, the op will either return an error or ignore the
+out-of-bound indices. `bad_indices_policy` can be one of the following values:
+1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+   historically on CPU and GPU we handle errors in different ways, and for
+   backward compatibility we keep the default behavior.
+2. "ERROR": raises error; GPU does not support this value.
+3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
   }];
 
   let arguments = (ins
     Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Tensor of indices.}]>:$indices,
     Arg<TF_Tensor, [{Values to scatter into the output tensor.}]>:$updates,
-    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{1-D. The shape of the output tensor.}]>:$shape
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{1-D. The shape of the output tensor.}]>:$shape,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs
