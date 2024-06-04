@@ -62,14 +62,15 @@ namespace QueueBaseInternal {
 //   * BlockedQueue support move constructor/assignment and iterators
 
 template <typename T, size_t kBlockSize>
-struct Block {
+struct InternalBlock {
   // The number of slots in a block is chosen so the block fits in kBlockSize.
   static constexpr size_t kNumSlots =
-      (kBlockSize - (sizeof(size_t /*start*/) + sizeof(Block* /*next*/))) /
+      (kBlockSize -
+       (sizeof(size_t /*start*/) + sizeof(InternalBlock* /*next*/))) /
       sizeof(NoInit<T>);
 
   size_t start;  // The number of the first slot.
-  Block* next;
+  InternalBlock* next;
   NoInit<T> slots[kNumSlots];
 };
 
@@ -96,7 +97,7 @@ struct Index<true> {
 
 template <typename T, size_t kBlockSize, bool kAtomicEnd>
 class BlockedQueueBase {
-  using Block = Block<T, kBlockSize>;
+  using Block = InternalBlock<T, kBlockSize>;
 
  public:
   static constexpr size_t kNumSlotsPerBlockForTesting = Block::kNumSlots;
@@ -186,7 +187,7 @@ class LockFreeQueue;
 template <typename T, size_t kBlockSize = 1 << 16 /* 64 KiB */>
 class BlockedQueue final
     : public QueueBaseInternal::BlockedQueueBase<T, kBlockSize, false> {
-  using Block = QueueBaseInternal::Block<T, kBlockSize>;
+  using Block = QueueBaseInternal::InternalBlock<T, kBlockSize>;
   friend class LockFreeQueue<T, kBlockSize>;
 
  public:
@@ -263,7 +264,7 @@ class BlockedQueue final
 template <typename T, size_t kBlockSize = 1 << 16 /* 64 KiB */>
 class LockFreeQueue final
     : public QueueBaseInternal::BlockedQueueBase<T, kBlockSize, true> {
-  using Block = QueueBaseInternal::Block<T, kBlockSize>;
+  using Block = QueueBaseInternal::InternalBlock<T, kBlockSize>;
 
  public:
   // Pop all events into an normal block storage queue, blocks are directly
