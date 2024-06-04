@@ -58,7 +58,6 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
-  const Tiling& GetTiling() const { return tiling_; };
 
  private:
   struct EmitterState;
@@ -84,7 +83,16 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   std::vector<std::vector<const HloInstruction*>> side_output_roots_;
   const HloFusionAnalysis& analysis_;
 
-  Tiling tiling_;
+  // The number of elements in each dimension.
+  absl::InlinedVector<int64_t, 4> tiled_shape_;
+
+  // The number of elements for each dimension of a tile.
+  absl::InlinedVector<int64_t, 4> tile_sizes_per_thread_;
+  absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
+
+  absl::InlinedVector<int64_t, 4> num_threads_;
+  absl::InlinedVector<int64_t, 4> num_blocks_;
+
   bool is_row_reduction_;
   bool is_race_free_;
   ReductionGroups groups_;

@@ -1118,9 +1118,9 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
 }
 
 AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
-                             const Tiling& tiling) {
+                             int64_t num_symbols) {
   return AffineMap::get(
-      /*dimCount=*/6, /*symbolCount=*/tiling.GetShape().size(), exprs,
+      /*dimCount=*/6, /*symbolCount=*/num_symbols, exprs,
       exprs[0].getContext());
 }
 
@@ -1194,28 +1194,45 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
       shape.dimensions(), {});
 }
 
-AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
-                                   MLIRContext* mlir_context) {
-  auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context),
-                                          tiling.GetBlockCounts());
-  for (auto&& [offset, tile_size] :
-       llvm::zip(offsets, tiling.GetBlockTileSize())) {
+AffineMap GetBlockOffsetsForTiling(
+    absl::Span<const int64_t> num_blocks,
+    absl::Span<const int64_t> tile_sizes_per_block, int64_t rank,
+    MLIRContext* mlir_context) {
+  auto offsets =
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context), num_blocks);
+  for (auto&& [offset, tile_size] : llvm::zip(offsets, tile_sizes_per_block)) {
     offset = offset * tile_size;
   }
-  return GetTilingAffineMap(offsets, tiling);
+  return GetTilingAffineMap(offsets, rank);
+}
+
+AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
+                                   MLIRContext* mlir_context) {
+  return GetBlockOffsetsForTiling(tiling.GetBlockCounts(),
+                                  tiling.GetBlockTileSize(),
+                                  tiling.GetShape().size(), mlir_context);
+}
+
+AffineMap GetThreadOffsetsForTiling(
+    absl::Span<const int64_t> num_threads,
+    absl::Span<const int64_t> tile_sizes_per_thread, int64_t rank,
+    MLIRContext* mlir_context) {
+  auto offsets =
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads);
+  for (int dim = 0; dim < rank; ++dim) {
+    if (tile_sizes_per_thread[dim] > 1) {
+      offsets[dim] = offsets[dim] +
+                     getAffineSymbolExpr(dim, mlir_context) * num_threads[dim];
+    }
+  }
+  return GetTilingAffineMap(offsets, rank);
 }
 
 AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
                                     MLIRContext* mlir_context) {
-  auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context),
-                                          tiling.GetThreadsPerBlock());
-  for (int dim = 0; dim < tiling.GetShape().size(); ++dim) {
-    if (tiling.GetThreadTileSize()[dim] > 1) {
-      offsets[dim] = offsets[dim] + getAffineSymbolExpr(dim, mlir_context) *
-                                        tiling.GetThreadsPerBlock()[dim];
-    }
-  }
-  return GetTilingAffineMap(offsets, tiling);
+  return GetThreadOffsetsForTiling(tiling.GetThreadsPerBlock(),
+                                   tiling.GetThreadTileSize(),
+                                   tiling.GetShape().size(), mlir_context);
 }
 
 IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
