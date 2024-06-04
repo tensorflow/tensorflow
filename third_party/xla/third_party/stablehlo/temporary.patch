@@ -3090,4 +3090,21 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/
  
  func.func @test_select(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
    %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -745,10 +745,11 @@
+       eraseAttrs(vhloAttrs, "api_version");
+     if (isEmptyArray(vhloOp.getCalledComputations()))
+       eraseAttrs(vhloAttrs, "called_computations");
+-    if (isEmptyArray(vhloOp.getOperandLayouts()))
++    if (isEmptyArray(vhloOp.getOperandLayouts()) &&
++        isEmptyArray(vhloOp.getResultLayouts())) {
+       eraseAttrs(vhloAttrs, "operand_layouts");
+-    if (isEmptyArray(vhloOp.getResultLayouts()))
+       eraseAttrs(vhloAttrs, "result_layouts");
++    }
+     if (isEmptyArray(vhloOp.getOutputOperandAliases()))
+       eraseAttrs(vhloAttrs, "output_operand_aliases");
+   }
 
