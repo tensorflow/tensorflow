@@ -1,13 +1,29 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lld/MachO/ObjC.cpp b/lld/MachO/ObjC.cpp
---- a/lld/MachO/ObjC.cpp
-+++ b/lld/MachO/ObjC.cpp
-@@ -388,7 +388,7 @@
-         : categoryPrefix(_categoryPrefix),
-           pointersPerStruct(_pointersPerStruct) {}
+diff -ruN --strip-trailing-cr a/clang/lib/AST/QualTypeNames.cpp b/clang/lib/AST/QualTypeNames.cpp
+--- a/clang/lib/AST/QualTypeNames.cpp
++++ b/clang/lib/AST/QualTypeNames.cpp
+@@ -65,8 +65,9 @@
+   assert(ArgTDecl != nullptr);
+   QualifiedTemplateName *QTName = TName.getAsQualifiedTemplateName();
  
--    inline bool operator==(const PointerListInfo &cmp) {
-+    inline bool operator==(const PointerListInfo &cmp) const {
-       return pointersPerStruct == cmp.pointersPerStruct &&
-              structSize == cmp.structSize && structCount == cmp.structCount &&
-              allPtrs == cmp.allPtrs;
+-  if (QTName && !QTName->hasTemplateKeyword()) {
+-    NNS = QTName->getQualifier();
++  if (QTName &&
++      !QTName->hasTemplateKeyword() &&
++      (NNS = QTName->getQualifier())) {
+     NestedNameSpecifier *QNNS = getFullyQualifiedNestedNameSpecifier(
+         Ctx, NNS, WithGlobalNsPrefix);
+     if (QNNS != NNS) {
+diff -ruN --strip-trailing-cr a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
+--- a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
++++ b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
+@@ -5095,7 +5095,8 @@
+     // header. Note that the header is computed *after* the output is known, so
+     // we currently explicitly use a buffer, write to it, and then subsequently
+     // flush to Out.
+-    SmallVector<char, 256 * 1024> Buffer;
++    SmallVector<char, 0> Buffer;
++    Buffer.reserve(256 * 1024);
+     Buffer.insert(Buffer.begin(), BWH_HeaderSize, 0);
+     BitcodeWriter Writer(Buffer);
+     Write(Writer);
