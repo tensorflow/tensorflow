@@ -43,9 +43,15 @@ of `params`.  The output tensor has shape
 
     indices.shape[:-1] + params.shape[indices.shape[-1]:]
 
-Note that on CPU, if an out of bound index is found, an error is returned.
-On GPU, if an out of bound index is found, a 0 is stored in the
-corresponding output value.
+If `indices` contains any out-of-bound indices, depending on
+`bad_indices_policy`, the op will either return an error or ignore the
+out-of-bound indices. `bad_indices_policy` can be one of the following values:
+1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+   historically on CPU and GPU we handle errors in different ways, and for
+   backward compatibility we keep the default behavior.
+2. "ERROR": raises error; GPU does not support this value.
+3. "IGNORE": ignore error and set the corresponding output to 0;
+   supported on both CPU and GPU.
 
 Some examples below.
 
