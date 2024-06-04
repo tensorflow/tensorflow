@@ -20,6 +20,7 @@ cc_library(
         "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -46,8 +47,6 @@ cc_library(
         "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
-        "//tsl/profiler/utils:lock_free_queue",
-        "//tsl/profiler/utils:per_thread",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,

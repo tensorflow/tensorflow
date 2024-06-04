@@ -15,17 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_TRACEME_H_
 
-#include <cstdint>
-#include <functional>
+#include <new>
 #include <string>
-#include <type_traits>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/platform.h"
+#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/traceme_encode.h"  // IWYU pragma: export
-#include "tsl/profiler/utils/no_init.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
@@ -101,7 +100,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      name_.Emplace(std::string(name));
+      new (&no_init_.name) std::string(name);
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -148,7 +147,8 @@ class TraceMe {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      name_.Emplace(std::forward<NameGeneratorT>(name_generator)());
+      new (&no_init_.name)
+          std::string(std::forward<NameGeneratorT>(name_generator)());
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -159,7 +159,8 @@ class TraceMe {
   TraceMe& operator=(TraceMe&& other) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(other.start_time_ != kUntracedActivity)) {
-      name_.Emplace(std::move(other.name_).Consume());
+      new (&no_init_.name) std::string(std::move(other.no_init_.name));
+      other.no_init_.name.~string();
       start_time_ = std::exchange(other.start_time_, kUntracedActivity);
     }
 #endif
@@ -184,9 +185,9 @@ class TraceMe {
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record(
-            {std::move(name_.value), start_time_, GetCurrentTimeNanos()});
+            {std::move(no_init_.name), start_time_, GetCurrentTimeNanos()});
       }
-      name_.Destroy();
+      no_init_.name.~string();
       start_time_ = kUntracedActivity;
     }
 #endif
@@ -210,7 +211,7 @@ class TraceMe {
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         traceme_internal::AppendMetadata(
-            &name_.value,
+            &no_init_.name,
             std::forward<MetadataGeneratorT>(metadata_generator)());
       }
     }
@@ -309,7 +310,13 @@ class TraceMe {
   TraceMe(const TraceMe&) = delete;
   void operator=(const TraceMe&) = delete;
 
-  NoInit<std::string> name_;
+  // Wrap the name into a union so that we can avoid the cost of string
+  // initialization when tracing is disabled.
+  union NoInit {
+    NoInit() {}
+    ~NoInit() {}
+    std::string name;
+  } no_init_;
 
   int64_t start_time_ = kUntracedActivity;
 };
