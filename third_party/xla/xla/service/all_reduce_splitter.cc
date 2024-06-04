@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/collective_opt_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -192,6 +194,39 @@ ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
   };
 }
 
+// Returns true if `spec` can be transformed into a logical reduce scatter.
+// False otherwise.
+bool IsLogicalReduceScatter(const HloModule& module,
+                            const AllReduceRewriteSpec& spec,
+                            HloComputation& computation) {
+  HloAllReduceInstruction& ar = *spec.all_reduce;
+  CHECK_EQ(ar.user_count(), 1);
+  CHECK_EQ(module.config().replica_count(), 1);
+
+  HloInstruction* first_ar =
+      computation.AddInstruction(HloInstruction::CreateAllReduce(
+          ar.shape(), ar.operands(), ar.to_apply(),
+          CollectiveDeviceList(spec.replica_groups.first_ar_replica_groups),
+          ar.constrain_layout(), hlo_query::NextChannelId(module),
+          ar.use_global_device_ids()));
+
+  HloInstruction* ds = ar.users()[0];
+  auto* old_operand = ds->mutable_operand(0);
+  if (!ds->ReplaceOperandWith(0, first_ar).ok()) {
+    return false;
+  }
+  absl::Cleanup _ = [&] {
+    CHECK_OK(ds->ReplaceOperandWith(0, old_operand));
+    CHECK_OK(computation.RemoveInstruction(first_ar));
+  };
+  return MatchReduceScatter(Cast<HloAllReduceInstruction>(first_ar),
+                            module.config().num_partitions(),
+                            module.config().replica_count(),
+                            /*allow_multiple_split_dims=*/false,
+                            /*allow_intervening_reshape=*/true)
+      .has_value();
+}
+
 // Determine whether the given `spec`'s AllReduce instruction is profitable to
 // split. Currently it employs a simple heuristic, and it checks whether there
 // exists at least one all reduce with same replica groups as any of the all
@@ -206,10 +241,12 @@ bool IsProfitableToSplit(const ARReplicaGroupMap& replica_map,
   return first_replica_exists || second_replica_exists;
 }
 
-RewriteDecision CanRewrite(const HloModuleConfig& config,
+RewriteDecision CanRewrite(const HloModule& module,
                            const ARReplicaGroupMap& replica_map,
+                           HloComputation& computation,
                            HloInstruction& instruction) {
   // We rely on SPMD partitioning enabled, thus asserting `replica_count` = 1.
+  const HloModuleConfig& config = module.config();
   if (config.use_auto_spmd_partitioning() || !config.use_spmd_partitioning() ||
       config.replica_count() != 1) {
     return RewriteInfeasibleReason{
@@ -300,6 +337,13 @@ RewriteDecision CanRewrite(const HloModuleConfig& config,
       /*replica_groups=*/GetNewReplicaGroups(*group_size, num_partitions),
   };
 
+  if (!IsLogicalReduceScatter(module, spec, computation)) {
+    return RewriteInfeasibleReason{
+        &instruction,
+        "Not a logical reduce scatter.",
+    };
+  }
+
   if (!IsProfitableToSplit(replica_map, spec)) {
     return RewriteInfeasibleReason{
         &instruction,
@@ -310,9 +354,9 @@ RewriteDecision CanRewrite(const HloModuleConfig& config,
   return spec;
 }
 
-absl::StatusOr<bool> SplitAllReduce(AllReduceRewriteSpec spec,
-                                    HloComputation& computation,
-                                    const HloModuleConfig& config) {
+absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
+                                    AllReduceRewriteSpec spec,
+                                    HloComputation& computation) {
   int64_t next_channel_id =
       hlo_query::NextChannelId(*spec.all_reduce->GetModule());
   VLOG(1) << "AR splitting spec: " << spec.ToString();
@@ -354,19 +398,20 @@ absl::StatusOr<bool> SplitAllReduce(AllReduceRewriteSpec spec,
 
 // Splits `instruction` if it finds it is feasible and profitable to do so.
 // Return true if `instruction` has been rewritten, or false otherwise.
-absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
+absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
                                     const ARReplicaGroupMap& replica_map,
                                     HloComputation& computation,
                                     HloInstruction& instruction) {
-  RewriteDecision spec = CanRewrite(config, replica_map, instruction);
+  RewriteDecision spec =
+      CanRewrite(module, replica_map, computation, instruction);
   if (std::holds_alternative<RewriteInfeasibleReason>(spec)) {
     auto reason = std::get<RewriteInfeasibleReason>(spec);
     VLOG(1) << "Cannot process {" << reason.ar->ToString()
             << "} due to : " << reason.message;
     return false;  // changed
   }
-  return SplitAllReduce(std::get<AllReduceRewriteSpec>(spec), computation,
-                        config);  // changed
+  return SplitAllReduce(module.config(), std::get<AllReduceRewriteSpec>(spec),
+                        computation);  // changed
 }
 
 }  // namespace
@@ -374,13 +419,12 @@ absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
 absl::StatusOr<bool> AllReduceSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  const HloModuleConfig& config = module->config();
   bool changed = false;
 
   for (auto* computation : module->computations(execution_threads)) {
     ARReplicaGroupMap replica_map = GetReplicaGroupsMap(*computation);
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(config, replica_map,
+      TF_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
                                                          *computation, *instr));
       changed |= rewritten;
     }

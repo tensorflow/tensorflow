@@ -256,6 +256,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_host_memory_offloading(false);
 
+  opts.set_xla_gpu_nccl_terminate_on_error(false);
+
   return opts;
 }
 
@@ -1698,6 +1700,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_host_memory_offloading),
       debug_options->xla_gpu_enable_host_memory_offloading(),
       "Whether to trigger host memory offloading on a device."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_terminate_on_error",
+      bool_setter_for(&DebugOptions::set_xla_gpu_nccl_terminate_on_error),
+      debug_options->xla_gpu_nccl_terminate_on_error(),
+      "If set, then NCCL errors will terminate the process."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

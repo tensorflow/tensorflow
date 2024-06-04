@@ -96,7 +96,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -143,7 +143,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -180,7 +180,7 @@ ENTRY main {
   first.ar = bf16[2,4096,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -233,7 +233,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -271,7 +271,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -306,7 +306,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -343,7 +343,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -379,7 +379,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)

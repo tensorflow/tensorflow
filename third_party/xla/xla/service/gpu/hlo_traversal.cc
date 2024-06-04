@@ -364,10 +364,17 @@ absl::InlinedVector<const HloInstruction*, 2> HloFusionAdaptor::GetParameters()
   absl::flat_hash_set<const HloInstruction*> parameters_to_skip;
   // Skip parameters that have just have a root user. Those will not be fused.
   for (const auto& root : producer_roots) {
-    if (root.opcode() == HloOpcode::kParameter &&
-        root.instruction().user_count() <= 1) {
-      parameters_to_skip.insert(
-          producer_fusion.operand(root.instruction().parameter_number()));
+    if (root.opcode() == HloOpcode::kParameter) {
+      // If the root instruction is both a parameter and the fusion instruction,
+      // then the producer fusion is a single instruction fusion of a parameter
+      // instruction. In that case, the parameter number refers to a parameter
+      // in the parent computation, and we mustn't query its operands.
+      if (&root.instruction() == &producer_fusion) {
+        parameters_to_skip.insert(&producer_fusion);
+      } else if (root.instruction().user_count() <= 1) {
+        parameters_to_skip.insert(
+            producer_fusion.operand(root.instruction().parameter_number()));
+      }
     }
   }
   for (auto param : fusion_instructions_[0]->GetParameters()) {
