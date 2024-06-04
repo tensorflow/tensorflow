@@ -124,6 +124,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -155,6 +156,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:

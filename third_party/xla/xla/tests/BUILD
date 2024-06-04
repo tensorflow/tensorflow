@@ -667,6 +667,7 @@ xla_test(
 xla_test(
     name = "select_test",
     srcs = ["select_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -720,6 +721,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -737,6 +739,7 @@ xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
     shard_count = 32,
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -779,6 +782,7 @@ xla_test(
 xla_test(
     name = "deconstruct_tuple_test",
     srcs = ["deconstruct_tuple_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":test_macros_header",
@@ -1962,6 +1966,7 @@ xla_test(
         "noasan",
         "nomac",
         "nosan",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
@@ -2232,6 +2237,7 @@ xla_test(
 xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2407,7 +2413,10 @@ xla_test(
 xla_test(
     name = "broadcast_test",
     srcs = ["broadcast_test.cc"],
-    tags = ["test_hlo_pjrt_runner"],
+    tags = [
+        "test_hlo_pjrt_runner",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
@@ -2653,6 +2662,7 @@ xla_test(
 xla_test(
     name = "reshape_motion_test",
     srcs = ["reshape_motion_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2787,6 +2797,7 @@ xla_test(
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
         "optonly",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
