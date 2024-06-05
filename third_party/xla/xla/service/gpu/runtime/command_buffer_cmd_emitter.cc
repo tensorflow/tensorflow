@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -178,8 +179,9 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
-  return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
-                                      thunk.nccl_execution_stream_id());
+  return std::make_unique<BarrierCmd>(
+      thunk.execution_stream_id(),
+      std::vector<ExecutionStreamId>{thunk.nccl_execution_stream_id()});
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
@@ -203,6 +205,11 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
 static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
   return std::make_unique<CuDnnCmd>(thunk.execution_stream_id(),
                                     thunk.arguments(), thunk.graph());
+}
+
+static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
+  return std::make_unique<BarrierCmd>(thunk.stream_id(),
+                                      thunk.wait_for_stream_ids());
 }
 
 //===----------------------------------------------------------------------===//
@@ -284,10 +291,8 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kNcclReduceScatterDone:
       return append(Convert<NcclCollectiveDoneThunk>(thunk));
 
-    // Currently all collective operations recorded on the tracing stream and do
-    // not need to have a separate done command.
     case Thunk::Kind::kWaitForStreams:
-      return absl::OkStatus();
+      return append(Convert<WaitForStreamsThunk>(thunk));
 
     default:
       return Internal("Unsupported thunk kind: %s",
