@@ -109,7 +109,7 @@ class PyClient {
 
   // Returns implementation-specific attributes about this client, e.g. the PJRT
   // C API version if applicable.
-  absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>
+  const absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>&
   attributes() const {
     return client_attributes_;
   }
