@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -1030,9 +1031,63 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapHloOp<mhlo::BitcastConvertOp>(result_element_type, arg_types,
                                               operands, builder);
     case HloOpcode::kConvert: {
-      return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
+      if (operands[0].getType().isa<mlir::FloatType>() &&
+          element_type == PRED) {
+        return {builder
+                    .create<mlir::arith::CmpFOp>(
+                        mlir::arith::CmpFPredicate::UNE, operands[0],
+                        builder.create<ConstantOp>(
+                            builder.getFloatAttr(operands[0].getType(), 0.0)))
+                    ->getResults()};
+      }
+      auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
           builder.getLoc(), element_mlir_type, result_element_type, arg_types,
-          operands, &builder)}};
+          operands, &builder);
+      if (auto int_ty = out.getType().dyn_cast<mlir::IntegerType>()) {
+        auto in = operands[0];
+        if (auto float_ty = in.getType().dyn_cast<mlir::FloatType>()) {
+          auto cst_int = [&](int64_t x) {
+            return builder.create<arith::ConstantIntOp>(x, int_ty);
+          };
+          auto cst_float = [&](int64_t x) {
+            return builder.create<ConstantOp>(
+                builder.getFloatAttr(float_ty, x));
+          };
+          if (element_mlir_type.isUnsignedInteger()) {
+            int64_t min = 0;
+            int64_t max = llvm::maxUIntN(int_ty.getWidth());
+            // x <= 0 || isnan(x) ? 0 : ...
+            out = builder.create<mlir::arith::SelectOp>(
+                builder.create<mlir::arith::CmpFOp>(
+                    mlir::arith::CmpFPredicate::ULE, in, cst_float(min)),
+                cst_int(min), out);
+            // x >= static_cast<float>(UINT_MAX) ? UINT_MAX : ...
+            out = builder.create<mlir::arith::SelectOp>(
+                builder.create<mlir::arith::CmpFOp>(
+                    mlir::arith::CmpFPredicate::OGE, in, cst_float(max)),
+                cst_int(max), out);
+          } else {
+            int64_t min = llvm::minIntN(int_ty.getWidth());
+            int64_t max = llvm::maxIntN(int_ty.getWidth());
+            // x <= static_cast<float>(INT_MIN) ? INT_MIN : ...
+            out = builder.create<mlir::arith::SelectOp>(
+                builder.create<mlir::arith::CmpFOp>(
+                    mlir::arith::CmpFPredicate::OLE, in, cst_float(min)),
+                cst_int(min), out);
+            // x >= static_cast<float>(INT_MAX) ? INT_MAX : ...
+            out = builder.create<mlir::arith::SelectOp>(
+                builder.create<mlir::arith::CmpFOp>(
+                    mlir::arith::CmpFPredicate::OGE, in, cst_float(max)),
+                cst_int(max), out);
+            // isnan(x) ? 0 : ...
+            out = builder.create<mlir::arith::SelectOp>(
+                builder.create<mlir::arith::CmpFOp>(
+                    mlir::arith::CmpFPredicate::UNO, in, in),
+                cst_int(0), out);
+          }
+        }
+      }
+      return {{out}};
     }
     case HloOpcode::kBitcast:
     case HloOpcode::kCopy:
