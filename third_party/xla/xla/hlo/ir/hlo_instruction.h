@@ -2143,7 +2143,7 @@ class HloInstruction {
 
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the

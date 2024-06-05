@@ -82,7 +82,7 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
                                              std::unique_ptr<se::Event> event) {
   Key key = {executor, instr};
   absl::MutexLock lock(&mutex_);
-  VLOG(3) << "Emplace event " << event->implementation();
+  VLOG(3) << "Emplace event " << event.get();
   if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
       inserted) {
     return absl::OkStatus();
@@ -97,7 +97,7 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
   Key key = {executor, instr};
   absl::MutexLock lock(&mutex_);
   if (auto event = events_.extract(key)) {
-    VLOG(3) << "Extract event " << event.mapped()->implementation();
+    VLOG(3) << "Extract event " << event.mapped().get();
     return std::move(event.mapped());
   }
   return absl::InternalError("Async copy event was not found!");
@@ -136,7 +136,7 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
   TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
-  VLOG(3) << "Emplace events: " << event->implementation()
+  VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
@@ -174,7 +174,7 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
   TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
-  VLOG(3) << "Emplace events: " << event->implementation()
+  VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
 }

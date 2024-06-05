@@ -75,7 +75,8 @@ object_ = np.object_
 tf_export.tf_export('experimental.numpy.object_', v1=[]).export_constant(
     __name__, 'object_'
 )
-string_ = np.string_
+# np.string_ is aliased to np.bytes_ and depercated in numpy 2.0.
+string_ = np.bytes_
 tf_export.tf_export('experimental.numpy.string_', v1=[]).export_constant(
     __name__, 'string_'
 )
@@ -95,7 +96,8 @@ uint8 = np.uint8
 tf_export.tf_export('experimental.numpy.uint8', v1=[]).export_constant(
     __name__, 'uint8'
 )
-unicode_ = np.unicode_
+# np.unicode_ is aliased to np.str_ and depercated in numpy 2.0.
+unicode_ = np.str_
 tf_export.tf_export('experimental.numpy.unicode_', v1=[]).export_constant(
     __name__, 'unicode_'
 )

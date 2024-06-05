@@ -176,6 +176,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/python/ifrt",
         "@tf_runtime//:hostcontext",
     ],

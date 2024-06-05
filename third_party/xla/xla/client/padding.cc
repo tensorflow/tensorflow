@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/util.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
@@ -47,7 +48,7 @@ absl::Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
                              i, window_strides[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<std::pair<int64_t, int64_t>> MakePadding(

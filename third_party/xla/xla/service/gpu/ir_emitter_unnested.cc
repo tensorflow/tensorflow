@@ -256,7 +256,7 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(
       new ConditionalThunk(Thunk::ThunkInfo::WithProfileAnnotation(instr),
                            std::move(config), slice)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
@@ -632,7 +632,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config),
       std::move(operand_slices), std::move(result_slices), scratch_slice));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitterUnnested::EmitGemmThunk(
@@ -1422,7 +1422,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
     return std::make_unique<CustomCallThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->handler,
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
@@ -1680,11 +1680,10 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
 absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                            HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<FusionInterface> emitter,
+  std::unique_ptr<FusionInterface> emitter =
       GetFusionEmitter(HloFusionInfo(fusion_analysis, instr,
                                      &ir_emitter_context_->buffer_assignment()),
-                       /*is_emission_phase=*/true));
+                       /*is_emission_phase=*/true);
   return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, *instr));
 }
 

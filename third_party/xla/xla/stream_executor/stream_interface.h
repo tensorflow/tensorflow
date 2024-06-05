@@ -46,7 +46,7 @@ class StreamInterface {
   // if it exists, or nullptr otherwise. This is available via Stream public API
   // as Stream::PlatformSpecificHandle, and should not be accessed directly
   // outside of a StreamExecutor package.
-  virtual void* platform_specific_stream() { return nullptr; }
+  virtual void* platform_specific_stream() const { return nullptr; }
 
  private:
   StreamInterface(const StreamInterface&) = delete;

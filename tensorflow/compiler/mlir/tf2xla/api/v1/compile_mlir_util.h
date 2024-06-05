@@ -188,20 +188,6 @@ Status CompileGraphToXlaHlo(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
 
-// Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
-// and stores them in CompilationResult.
-ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
-Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, bool enable_op_fallback,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    XlaCompilationResult* compilation_result,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
-
 // Compiles a Graph from TF to HLO and adds the resulting HLO to the
 // XlaBuilder. This function adds HLO to a larger HLO computation, so
 // HLO-level inputs are supplied, and HLO-level outputs are produced.

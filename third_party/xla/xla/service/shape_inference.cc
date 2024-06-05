@@ -83,7 +83,7 @@ absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status VerifyReducerShape(
@@ -182,7 +182,7 @@ absl::Status VerifyReducerShape(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
@@ -837,7 +837,7 @@ absl::Status ValidateDotDimensionNumbers(
                            dimension_numbers.DebugString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1550,11 +1550,11 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       ExpectArray(scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               OkStatus());
+               absl::OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               OkStatus());
+               absl::OkStatus());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               OkStatus());
+               absl::OkStatus());
 
   if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
@@ -2853,7 +2853,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   const auto verify_size = [&](const size_t x,
                                const char* x_name) -> absl::Status {
     if (x == 0 || x == window_dimensions.size()) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return InvalidArgument(
           "%s", absl::StrCat(
@@ -3882,7 +3882,7 @@ static absl::Status ValidateGatherDimensionNumbers(
         StrJoin(dim_numbers.collapsed_slice_dims(), ", "));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ absl::StatusOr<Shape> ShapeInference::InferGatherShape(
@@ -4118,7 +4118,7 @@ absl::Status ValidateScatterDimensionNumbers(
         StrJoin(dim_numbers.scatter_dims_to_operand_dims(), ", "));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

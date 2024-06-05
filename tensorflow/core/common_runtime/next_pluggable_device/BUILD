@@ -130,6 +130,7 @@ cc_library(
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_client",
     ],
 )

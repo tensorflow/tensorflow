@@ -33,7 +33,13 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-void RegisterThreadpoolEventCollector(ThreadpoolEventCollector* collector) {
+ThreadpoolEventCollector* GetThreadpoolEventCollector() {
+  static auto event_collector = new ThreadpoolEventCollector();
+  return event_collector;
+}
+
+void RegisterThreadpoolEventCollector(
+    const ThreadpoolEventCollector* collector) {
   tracing::SetEventCollector(tracing::EventCategory::kScheduleClosure,
                              collector);
   tracing::SetEventCollector(tracing::EventCategory::kRunClosure, collector);
@@ -75,8 +81,7 @@ absl::Status ThreadpoolProfilerInterface::Start() {
         "ThreadPool.");
     return absl::OkStatus();
   }
-  event_collector_ = std::make_unique<ThreadpoolEventCollector>();
-  RegisterThreadpoolEventCollector(event_collector_.get());
+  RegisterThreadpoolEventCollector(GetThreadpoolEventCollector());
   threadpool_listener::Activate();
   return absl::OkStatus();
 }

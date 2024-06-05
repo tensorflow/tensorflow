@@ -41,7 +41,7 @@ class SparseDotRewriterImpl : public DfsHloRewriteVisitor {
     // Only handle sparse dots with a single RHS sparse descriptor.
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     if (dot->sparse_operands() != 1 || dot->sparsity().front().index() != 1) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction* lhs = dot->mutable_operand(0);

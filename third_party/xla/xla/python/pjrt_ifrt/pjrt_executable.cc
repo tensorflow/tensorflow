@@ -359,7 +359,7 @@ PjRtLoadedExecutable::CreateInternal(
         *sharding_devices, memory_kind,
         /*shape=*/ifrt::Shape(dimensions),
         /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
-    return OkStatus();
+    return absl::OkStatus();
   };
   auto append_token = [&](MemoryKind memory_kind) {
     output_dtypes.push_back(DType(DType::kToken));

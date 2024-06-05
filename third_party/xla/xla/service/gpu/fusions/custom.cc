@@ -585,7 +585,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
     return std::make_unique<CustomCallThunk>(
-        thunk_info, registration->handler, std::move(ops), std::move(res),
+        thunk_info, registration->bundle, std::move(ops), std::move(res),
         std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };

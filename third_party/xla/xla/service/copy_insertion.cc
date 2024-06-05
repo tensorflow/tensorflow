@@ -294,7 +294,7 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                              &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Adding copies for " << xla_while->name() << " at indices:";
@@ -337,7 +337,7 @@ absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   }
 
   body->set_root_instruction(root_copy);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
@@ -351,7 +351,7 @@ absl::Status AddCopiesForInPlaceOperation(
                       in_place_op->parent()->DeepCopyInstruction(operand));
   TF_RETURN_IF_ERROR(
       operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Conservatively adds copies before root instruction of entry computation and
@@ -364,7 +364,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
   HloComputation* entry = module->entry_computation();
   if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
                                         execution_threads)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* root = entry->root_instruction();
 
@@ -415,7 +415,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
   }
 
   if (!has_alias) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add copies before root instruction.
@@ -431,7 +431,7 @@ absl::Status AddCopiesForAliasedInputOutputs(
       [&](const ShapeIndex& output_index,
           const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
         if (!copied_parameters[alias.parameter_number]) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         HloInstruction* from =
             copied_parameters[alias.parameter_number]->element(
@@ -441,12 +441,12 @@ absl::Status AddCopiesForAliasedInputOutputs(
         TF_RET_CHECK(from != nullptr);
         TF_RET_CHECK(to != nullptr);
         TF_RETURN_IF_ERROR(from->AddControlDependencyTo(to));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   entry->set_root_instruction(root_copied);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Removes any control dependencies to or from the given instruction.
@@ -462,7 +462,7 @@ absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
             instruction));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class LiveRangeRegions {
@@ -1476,7 +1476,7 @@ class CopyRemover {
         p = p->next;
       } while (p != head);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Compute the set of instructions where values are alive and organize these
@@ -1977,7 +1977,7 @@ absl::Status CopyInsertion::AddCopiesForConditional(
                                    conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kConditional instruction "
             << conditional->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (HloComputation* computation : conditional->branch_computations()) {
@@ -1991,7 +1991,7 @@ absl::Status CopyInsertion::AddCopiesForConditional(
     }
     computation->set_root_instruction(deep_copy);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add kCopy instructions to the given module to guarantee there is no
@@ -2068,7 +2068,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
 
   TF_RETURN_IF_ERROR(
       AddCopiesForAliasedInputOutputs(module, execution_threads));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CopyInsertion::AddSpecialCaseCopies(
@@ -2228,7 +2228,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       instruction->parent()->set_root_instruction(deep_copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static int64_t GetNumExistingCopies(
@@ -2317,7 +2317,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> CopyInsertion::Run(

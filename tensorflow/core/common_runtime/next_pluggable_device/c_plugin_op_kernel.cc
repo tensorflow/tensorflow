@@ -198,7 +198,8 @@ Status CPluginOpKernelContext::AllocateTempForPluginVariable(
   return status;
 }
 
-Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
+absl::Status CPluginOpKernelContext::GetInput(int index,
+                                              const Tensor** tensor) const {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor;
   TF_GetInput(ctx_, index, &c_tensor, c_status_ptr.get());
@@ -206,21 +207,29 @@ Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
     return StatusFromTF_Status(c_status_ptr.get());
   }
-  return TF_TensorToTensor(c_tensor, tensor);
-}
-
-Status CPluginOpKernelContext::GetInput(const char* name,
-                                        const Tensor** tensor) {
-  TF_StatusPtr c_status_ptr(TF_NewStatus());
-  TF_Tensor* c_tensor;
-  TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
-  TF_TensorPtr c_tensor_ptr(c_tensor);
   Tensor tensor_tmp;
   absl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
   if (status.ok()) {
     tsl::mutex_lock lock(mu_);
-    obtained_tensors_.push_back(std::move(tensor_tmp));
-    *tensor = &(obtained_tensors_.back());
+    *tensor = &obtained_tensors_.emplace_back(std::move(tensor_tmp));
+  }
+  return status;
+}
+
+absl::Status CPluginOpKernelContext::GetInput(const char* name,
+                                              const Tensor** tensor) const {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_Tensor* c_tensor;
+  TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
+  TF_TensorPtr c_tensor_ptr(c_tensor);
+  if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
+    return StatusFromTF_Status(c_status_ptr.get());
+  }
+  Tensor tensor_tmp;
+  absl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  if (status.ok()) {
+    tsl::mutex_lock lock(mu_);
+    *tensor = &obtained_tensors_.emplace_back(std::move(tensor_tmp));
   }
   return status;
 }

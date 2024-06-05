@@ -1859,7 +1859,7 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,

@@ -108,7 +108,7 @@ absl::Status AllGatherDecomposer::DecomposeAllGather(
     TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   }
   TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> AllGatherDecomposer::Run(

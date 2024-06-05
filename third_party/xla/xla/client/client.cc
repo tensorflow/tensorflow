@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
@@ -113,7 +114,7 @@ absl::Status Client::TransferToInfeed(const LiteralSlice& literal,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::TransferFromOutfeed(
@@ -161,7 +162,7 @@ absl::Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::ExecuteAndTransfer(

@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -414,16 +413,24 @@ TEST(FfiTest, DecodingErrors) {
 
   EXPECT_TRUE(absl::StrContains(
       status.message(),
-      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"));
+      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"));
+      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"));
+      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: str vs not_str_should_fail"));
+      status.message(), "Attribute name mismatch: str vs not_str_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 }
 
 TEST(FfiTest, BufferBaseArgument) {
@@ -601,16 +608,16 @@ TEST(FfiTest, RunOptionsCtx) {
   auto call_frame = CallFrameBuilder().Build();
   auto* expected = reinterpret_cast<se::Stream*>(0x01234567);
 
-  ServiceExecutableRunOptions opts;
-  opts.mutable_run_options()->set_stream(expected);
-
   auto fn = [&](const se::Stream* run_options) {
     EXPECT_EQ(run_options, expected);
     return absl::OkStatus();
   };
 
+  CallOptions options;
+  options.stream = expected;
+
   auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
-  auto status = Call(*handler, call_frame, {&opts});
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }
@@ -632,12 +639,10 @@ TEST(FfiTest, UserData) {
     return absl::OkStatus();
   };
 
+  CallOptions options;
+  options.execution_context = &execution_context;
+
   auto handler = Ffi::Bind().Ctx<UserData<StrUserData>>().To(fn);
-
-  ServiceExecutableRunOptions opts;
-  opts.mutable_run_options()->set_ffi_execution_context(&execution_context);
-
-  CallOptions options = {&opts};
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);

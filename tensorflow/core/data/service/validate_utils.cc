@@ -29,8 +29,8 @@ namespace {
 
 using ::tensorflow::protobuf::util::MessageDifferencer;
 
-StatusOr<StructuredValue> DecodeElementSpec(const std::string& dataset_id,
-                                            const std::string& encoded_spec) {
+absl::StatusOr<StructuredValue> DecodeElementSpec(
+    const std::string& dataset_id, const std::string& encoded_spec) {
   if (encoded_spec.empty()) {
     return StructuredValue();
   }

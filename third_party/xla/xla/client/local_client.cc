@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/backend.h"
 #include "xla/service/dump.h"
@@ -112,7 +113,7 @@ absl::Status LocalExecutable::ValidateExecutionOptions(
         backend.platform()->Name());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>

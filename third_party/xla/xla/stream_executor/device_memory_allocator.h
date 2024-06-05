@@ -18,19 +18,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
-#include <map>
-#include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -79,8 +72,7 @@ class ScopedDeviceMemory {
         device_ordinal_(other.device_ordinal_),
         allocator_(other.allocator_) {}
 
-  // Releases the memory that was provided in the constructor, through the
-  // "parent" StreamExecutor.
+  // Releases the memory that was provided in the constructor.
   ~ScopedDeviceMemory() { TF_CHECK_OK(Free()); }
 
   // Moves ownership of the memory from other to this object.
@@ -221,51 +213,6 @@ class DeviceMemoryAllocator {
 
  protected:
   const Platform *platform_;
-};
-
-// Default memory allocator for a platform which uses
-// StreamExecutor::Allocate/Deallocate.
-class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
- public:
-  // Create an allocator supporting a single device, corresponding to the passed
-  // executor.
-  explicit StreamExecutorMemoryAllocator(StreamExecutorInterface *executor);
-
-  // Create an allocator supporting multiple stream executors.
-  //
-  // Precondition: all stream_executors have different device ordinals.
-  StreamExecutorMemoryAllocator(
-      const Platform *platform,
-      absl::Span<StreamExecutorInterface *const> stream_executors);
-
-  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                              bool retry_on_failure,
-                                              int64_t memory_space) override;
-
-  // Pull in two-arg overload that sets retry_on_failure to true.
-  using DeviceMemoryAllocator::Allocate;
-
-  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
-
-  bool AllowsAsynchronousDeallocation() const override;
-
-  // Gets-or-creates a stream for a given `device_ordinal` from an appropriate
-  // stream executor.
-  absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
-
-  // Gets the stream executor for given device ordinal.
-  absl::StatusOr<StreamExecutorInterface *> GetStreamExecutor(
-      int device_ordinal) const;
-
- private:
-  // Available stream executors. Each stream executor has a different device
-  // ordinal.
-  std::vector<StreamExecutorInterface *> stream_executors_;
-
-  absl::Mutex mutex_;
-
-  // Cache of streams for GetStream.
-  std::map<int, std::unique_ptr<Stream>> streams_ ABSL_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>

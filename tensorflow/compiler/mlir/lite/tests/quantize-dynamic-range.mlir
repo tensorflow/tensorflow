@@ -149,32 +149,28 @@ func.func @QuantizeTransposeConvWeightOnly(%arg0: tensor<32x4x4x128xf32>, %arg1:
 
 // CHECK: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<1x32x42x128xf32>
 // CHECK: %[[w:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00}>>
-// CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[w]]) : (tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00}>>) -> tensor<1x32x42x128xf32>
-// CHECK: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[dq_w]], %arg0, %[[b]]) <{
+// CHECK: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[w:.*]], %arg0, %[[b]]) <{
 // CHECK-NOT: asymmetric_quantize_inputs = true
 // CHECK-SAME: padding = "SAME"
 // CHECK: return %[[tconv:.*]]
 
 // PerTensor: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<1x32x42x128xf32>
 // PerTensor: %[[w:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
-// PerTensor: %[[dq_w:.*]] = "tfl.dequantize"(%[[w]]) : (tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1x32x42x128xf32>
-// PerTensor: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[dq_w]], %arg0, %[[b]]) <{
+// PerTensor: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[w:.*]], %arg0, %[[b]]) <{
 // PerTensor-NOT: asymmetric_quantize_inputs = true
 // PerTensor-SAME: padding = "SAME"
 // PerTensor: return %[[tconv:.*]]
 
 // PerChannelWeightOnly: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<1x32x42x128xf32>
 // PerChannelWeightOnly: %[[w:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00}>>
-// PerChannelWeightOnly: %[[dq_w:.*]] = "tfl.dequantize"(%[[w]]) : (tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00}>>) -> tensor<1x32x42x128xf32>
-// PerChannelWeightOnly: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[dq_w]], %arg0, %[[b]]) <{
+// PerChannelWeightOnly: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[w]], %arg0, %[[b]]) <{
 // PerChannelWeightOnly-NOT: asymmetric_quantize_inputs = true
 // PerChannelWeightOnly-SAME: padding = "SAME"
 // PerChannelWeightOnly: return %[[tconv:.*]]
 
 // PerTensorWeightOnly: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<1x32x42x128xf32>
 // PerTensorWeightOnly: %[[w:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
-// PerTensorWeightOnly: %[[dq_w:.*]] = "tfl.dequantize"(%[[w]]) : (tensor<1x32x42x128x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1x32x42x128xf32>
-// PerTensorWeightOnly: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[dq_w]], %arg0, %[[b]]) <{
+// PerTensorWeightOnly: %[[tconv:.*]] = "tfl.transpose_conv"(%arg1, %[[w]], %arg0, %[[b]]) <{
 // PerTensorWeightOnly-NOT: asymmetric_quantize_inputs = true
 // PerTensorWeightOnly-SAME: padding = "SAME"
 // PerTensorWeightOnly: return %[[tconv:.*]]

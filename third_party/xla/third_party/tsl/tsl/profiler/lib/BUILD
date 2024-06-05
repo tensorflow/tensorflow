@@ -300,7 +300,6 @@ config_setting(
 cc_library(
     name = "scoped_annotation",
     hdrs = [
-        "nvtx_utils.h",
         "scoped_annotation.h",
     ],
     visibility = ["//visibility:public"],

@@ -729,9 +729,12 @@ struct SomeExtraContext {
   int32_t value;
 };
 
+static int32_t execution_context_counter = 0;
+
 static absl::Status ExecutionContext(ffi::Result<ffi::BufferBase>,
                                      SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  ++execution_context_counter;
   return absl::OkStatus();
 }
 
@@ -741,7 +744,12 @@ XLA_FFI_DEFINE_HANDLER(kExecutionContext, ExecutionContext,
                            .Ctx<ffi::UserData<SomeExtraContext>>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
-                         PLATFORM, kExecutionContext);
+                         PLATFORM,
+                         {
+                             /*prepare=*/nullptr,
+                             /*initializer=*/kExecutionContext,
+                             /*execute=*/kExecutionContext,
+                         });
 
 TEST_F(CustomCallTest, FfiExecutionContext) {
   XlaBuilder b(TestName());
@@ -760,6 +768,9 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
       &execution_context);
 
   TF_ASSERT_OK(Execute(&b, {}).status());
+
+  // Check that FFI handler was called during initialization and execution.
+  EXPECT_EQ(execution_context_counter, 2);
 }
 
 }  // anonymous namespace

@@ -61,14 +61,14 @@ bool TpuExecutor::SynchronizeAllActivity() {
 absl::Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
-      executor_, get_stream(stream->implementation()), status.c_status);
+      executor_, get_stream(stream), status.c_status);
   return status.status();
 }
 
 absl::Status TpuExecutor::GetStatus(Stream* stream) {
   StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_GetStatusFn(
-      executor_, get_stream(stream->implementation()), status.c_status);
+  ExecutorApiFn()->TpuExecutor_GetStatusFn(executor_, get_stream(stream),
+                                           status.c_status);
   return status.status();
 }
 
@@ -79,10 +79,10 @@ tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
 }
 
 void TpuExecutor::DeallocateStream(Stream* stream) {
-  ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(
-      executor_, get_stream(stream->implementation()));
+  ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(executor_,
+                                                  get_stream(stream));
   tpu_platform().mutex().Lock();
-  stream_map().erase(stream->implementation());
+  stream_map().erase(stream);
   tpu_platform().mutex().Unlock();
 }
 
@@ -92,52 +92,37 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-absl::Status TpuExecutor::DeallocateEvent(Event* event) {
-  tpu_platform().EraseEvent(event->implementation());
-  return absl::OkStatus();
-}
-
-stream_executor::Event::Status TpuExecutor::PollForEventStatus(
-    stream_executor::Event* event) {
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
-  return stream_executor::Event::Status(
-      ExecutorApiFn()->TpuExecutor_PollForEventStatusFn(executor_, se_event));
-}
-
 absl::Status TpuExecutor::RecordEvent(Stream* stream,
                                       ::stream_executor::Event* event) {
   StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
-  ExecutorApiFn()->TpuExecutor_RecordEventFn(
-      executor_, get_stream(stream->implementation()), se_event,
-      status.c_status);
+  auto se_event = tpu_platform().LookupEvent(event);
+  ExecutorApiFn()->TpuExecutor_RecordEventFn(executor_, get_stream(stream),
+                                             se_event, status.c_status);
   return status.status();
 }
 
 absl::Status TpuExecutor::WaitForEvent(Stream* stream,
                                        ::stream_executor::Event* event) {
   StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
-  ExecutorApiFn()->TpuExecutor_WaitForEventFn(
-      executor_, get_stream(stream->implementation()), se_event,
-      status.c_status);
+  auto se_event = tpu_platform().LookupEvent(event);
+  ExecutorApiFn()->TpuExecutor_WaitForEventFn(executor_, get_stream(stream),
+                                              se_event, status.c_status);
   return status.status();
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
-  auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
+  auto stream = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream, this);
   tpu_platform().mutex().Lock();
-  stream_map()[ptr.get()] = tpu_stream;
+  stream_map()[stream.get()] = tpu_stream;
   tpu_platform().mutex().Unlock();
-  auto stream = std::make_unique<Stream>(this, std::move(ptr));
   return std::move(stream);
 }
 
 absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   SE_Event* se_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto tpu_event = std::make_unique<TpuEvent>(se_event);
+  auto tpu_event = std::make_unique<TpuEvent>(se_event, platform_);
   tpu_platform().InsertEvent(tpu_event.get(), se_event);
 
   StatusHelper status;
@@ -145,7 +130,7 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
                                                status.c_status);
   TF_RETURN_IF_ERROR(status.status());
 
-  return std::make_unique<Event>(this, std::move(tpu_event));
+  return std::move(tpu_event);
 }
 
 DeviceMemoryBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
@@ -224,8 +209,7 @@ absl::Status TpuExecutor::Memcpy(
   StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
   ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
-      executor_, get_stream(stream->implementation()), host_dst, &se_base, size,
-      status.c_status);
+      executor_, get_stream(stream), host_dst, &se_base, size, status.c_status);
   return status.status();
 }
 
@@ -235,8 +219,7 @@ absl::Status TpuExecutor::Memcpy(
   StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
   ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
-      executor_, get_stream(stream->implementation()), &se_base, host_src, size,
-      status.c_status);
+      executor_, get_stream(stream), &se_base, host_src, size, status.c_status);
   return status.status();
 }
 
@@ -276,8 +259,7 @@ absl::Status TpuExecutor::EnqueueCompactionOnStreamForHbm(
     Stream* compaction_stream) {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_EnqueueCompactionOnStreamForHbmFn(
-      executor_, get_stream(compaction_stream->implementation()),
-      status.c_status);
+      executor_, get_stream(compaction_stream), status.c_status);
   return status.status();
 }
 
@@ -298,8 +280,7 @@ bool TpuExecutor::HostCallback(Stream* stream,
                                absl::AnyInvocable<absl::Status() &&> callback) {
   HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
   return ExecutorApiFn()->TpuExecutor_HostCallbackFn(
-      executor_, get_stream(stream->implementation()), &HostCallbackTrampoline,
-      ctx);
+      executor_, get_stream(stream), &HostCallbackTrampoline, ctx);
 }
 
 absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>

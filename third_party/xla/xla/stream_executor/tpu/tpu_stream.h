@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -32,8 +33,11 @@ namespace tpu {
 
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
-  explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
+  explicit TpuStream(SE_Stream* stream,
+                     stream_executor::StreamExecutor* executor)
+      : TpuStreamInterface(executor), stream_(stream) {}
   ~TpuStream() override {
+    BlockHostUntilDone().IgnoreError();
     stream_executor::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
   }
 

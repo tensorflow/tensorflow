@@ -13,6 +13,7 @@ cc_library(
     hdrs = ["calibration_wrapper.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite:offset_buffer",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite:string_util",
@@ -22,7 +23,6 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools/optimize:quantization_wrapper_utils",
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",

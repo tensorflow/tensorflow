@@ -1318,13 +1318,19 @@ struct BitPatternToValue {
 
 /* static */ void* GpuDriver::DeviceAllocate(GpuContext* context,
                                              uint64_t bytes) {
+  if (bytes == 0) {
+    return nullptr;
+  }
+
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
   hipError_t res = wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to allocate "
-               << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
-               << " bytes) from device: " << ToString(res);
+    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
+    // implements a retry if the first allocation fails).
+    LOG(INFO) << "failed to allocate "
+              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
+              << " bytes) from device: " << ToString(res);
     return nullptr;
   }
   void* ptr = reinterpret_cast<void*>(result);

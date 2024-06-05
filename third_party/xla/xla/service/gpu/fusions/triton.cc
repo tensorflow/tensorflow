@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -47,12 +48,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/ir_emitter_triton.h"
-#else
-#include "absl/status/status.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -104,7 +99,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
@@ -217,9 +211,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;
-#else
-  return absl::UnimplementedError("Triton support requires CUDA or ROCm");
-#endif
 }
 
 std::optional<LaunchDimensions> TritonFusion::launch_dimensions() const {

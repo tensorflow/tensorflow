@@ -369,7 +369,7 @@ absl::Status CallGraph::VisitNodesInternal(
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (const HloComputation* computation : node.callees()) {
@@ -396,7 +396,7 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CallGraph::IsFlattened() const {

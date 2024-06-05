@@ -42,32 +42,16 @@ limitations under the License.
 
 namespace stream_executor {
 
-Stream::Stream(StreamExecutor *parent,
-               std::unique_ptr<StreamInterface> implementation)
-    : parent_(parent),
-      implementation_(std::move(implementation)),
-      status_(absl::OkStatus()) {}
-
-Stream::~Stream() {
-  // Ensure the stream is completed.
-  auto status = BlockHostUntilDone();
-  if (!status.ok()) {
-    LOG(WARNING) << "Error blocking host until done in stream destructor: "
-                 << status;
-  }
-
-  if (implementation_ != nullptr) {
-    parent_->DeallocateStream(this);
-  }
+Stream::Stream(StreamExecutor *parent)
+    : parent_(parent), status_(absl::OkStatus()) {
+  CHECK_NE(parent, nullptr);
 }
 
-std::variant<StreamPriority, int> Stream::priority() const {
-  return implementation_->priority();
-}
+Stream::~Stream() { parent_->DeallocateStream(this); }
 
 Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
-  handle.stream = implementation_->platform_specific_stream();
+  handle.stream = platform_specific_stream();
   return handle;
 }
 

@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 
 #include <optional>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

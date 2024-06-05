@@ -288,7 +288,7 @@ absl::Status RunAndCompareInternal(
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference runner";
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (const HloInstruction* root_instruction =
           reference_module->entry_computation()->root_instruction();
@@ -299,7 +299,7 @@ absl::Status RunAndCompareInternal(
     if (reference_run_result != nullptr) {
       *reference_run_result = ModuleResult::kSkipped;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -441,7 +441,7 @@ absl::Status RunIsolatedAndCompare(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(*test_module, /*deduplicate_modules=*/true));
 
-  absl::Status status = OkStatus();
+  absl::Status status = absl::OkStatus();
   for (std::unique_ptr<HloModule>& module : modules) {
     const std::string module_name = module->name();
     ModuleResult test_module_result = ModuleResult::kDidntRun;

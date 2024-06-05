@@ -182,8 +182,7 @@ gpu_only_cc_library(
     deps = [
         ":gpu_stream_header",
         ":gpu_types_header",
-        "//xla/stream_executor:event_interface",
-        "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/status",
     ],
 )
@@ -197,8 +196,8 @@ gpu_only_cc_library(
         ":gpu_executor_header",
         ":gpu_stream",
         ":gpu_types_header",
-        "//xla/stream_executor:event_interface",
-        "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
     ],
 )
@@ -295,9 +294,9 @@ gpu_only_cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
+        ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -311,7 +310,6 @@ gpu_only_cc_library(
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -567,6 +565,7 @@ xla_cc_test(
         ":redzone_allocator",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

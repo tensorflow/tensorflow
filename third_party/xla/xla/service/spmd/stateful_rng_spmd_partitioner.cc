@@ -43,7 +43,7 @@ absl::Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
   SetPartitionedHlo(
       hlo, spmd::PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>

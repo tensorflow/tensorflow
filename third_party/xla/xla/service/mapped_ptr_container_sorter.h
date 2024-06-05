@@ -237,7 +237,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
 
   mapped_element_indices_by_partial_order_[partial_order].push_back(
       unordered_container_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename PointedToTy>
@@ -449,7 +449,7 @@ absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
       indices, ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
                                  unordered_container));
   Reorder(std::move(indices), unordered_container);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

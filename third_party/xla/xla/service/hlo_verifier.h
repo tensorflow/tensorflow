@@ -243,7 +243,9 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleSetDimensionSize(HloInstruction* set_size) override;
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  absl::Status FinishVisit(HloInstruction*) override { return OkStatus(); }
+  absl::Status FinishVisit(HloInstruction*) override {
+    return absl::OkStatus();
+  }
 
  protected:
   // Helpers that switch on layout_sensitive_.

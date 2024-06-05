@@ -24,12 +24,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Lowers a TensorFlow Graph (already converted to MLIR, imported with
-// tf_executor dialect still present) to ml_program+HLO. Returns an
-// MLIR consisting of the HLO, ml_program and (for fallbacks) TF dialects.
-// On failure, nullptr is returned.
-mlir::LogicalResult LowerToMlProgramAndHlo(mlir::ModuleOp module_op);
-
 void RegisterMlProgramPasses();
 
 }  // namespace tensorflow

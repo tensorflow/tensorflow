@@ -16,10 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/runtime/fused_mha_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_fused_mha_runner.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

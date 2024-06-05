@@ -996,6 +996,17 @@ PJRT_Error* PJRT_Memory_AddressableByDevices(
   return nullptr;
 }
 
+// ------------------------------- Execute Context -----------------------------
+
+PJRT_Error* PJRT_ExecuteContext_Destroy(
+    PJRT_ExecuteContext_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_ExecuteContext_Destroy_Args",
+      PJRT_ExecuteContext_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  delete args->context;
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
@@ -2281,6 +2292,13 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   return c_client;
 }
 
+PJRT_ExecuteContext* CreateWrapperExecuteContext(
+    std::unique_ptr<xla::ExecuteContext> cpp_execute_context) {
+  PJRT_ExecuteContext* execute_context =
+      new PJRT_ExecuteContext{std::move(cpp_execute_context)};
+  return execute_context;
+}
+
 PJRT_TopologyDescription* CreateWrapperDeviceTopology(
     const xla::PjRtTopologyDescription* cpp_topology) {
   PJRT_TopologyDescription* c_topology =
@@ -2329,6 +2347,7 @@ PJRT_LoadedExecutable::PJRT_LoadedExecutable(
 namespace pjrt {
 
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
+                       PJRT_ExecuteContext_Create* execute_context_create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
                        PJRT_Extension_Base* extension_start,
@@ -2498,6 +2517,9 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Executable_GetCompiledMemoryStats= */
       pjrt::PJRT_Executable_GetCompiledMemoryStats,
       /*PJRT_Memory_Kind_Id=*/pjrt::PJRT_Memory_Kind_Id,
+
+      /*PJRT_ExecuteContext_Create=*/execute_context_create_fn,
+      /*PJRT_ExecuteContext_Destroy=*/pjrt::PJRT_ExecuteContext_Destroy,
   };
 }
 

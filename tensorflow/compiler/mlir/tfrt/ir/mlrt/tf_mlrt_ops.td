@@ -461,8 +461,6 @@ def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", [Pure]> {
 
   let arguments = (ins
     TFTensorType:$variable,
-    StrAttr:$device_sharding_config_proto_text,
-    StrAttr:$name,
     DefaultValuedAttr<BoolAttr, "false">:$used_by_host
   );
 

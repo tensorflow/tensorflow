@@ -80,7 +80,7 @@ using ReduceScatterKey =
 absl::Status CombineReduceScatters(
     absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " reduce-scatter ops";
 
@@ -168,7 +168,7 @@ absl::Status CombineReduceScatters(
     TF_RETURN_IF_ERROR(
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -786,7 +787,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<DotDecomposer>();
     // Only merge "smallish" dots.  This threshold was not set carefully, but
     // so far we know that 1mb is too small.
-    pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{16} << 20);
+    pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{32} << 20);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();
@@ -1228,6 +1229,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
     // Layout normalization will create scatters that are not simplified and
     // also have unsorted update_window_dims.
     layout_normalization_pipeline.AddPass<ScatterSimplifier>();
+    // Layout normalization will create gathers that are not simplified and also
+    // have unsorted offset_dims.
+    layout_normalization_pipeline.AddPass<GatherSimplifier>();
   }
   TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
   // Run target-specific HLO optimization passes after layout assignment.
@@ -1261,7 +1265,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
 
-  return absl::OkStatus();
+  return RunPreSchedulingPasses(hlo_module, stream_exec);
 }  // NOLINT(readability/fn_size)
 
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
@@ -1383,6 +1387,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       // Layout normalization will create scatters that are not simplified and
       // also have unsorted update_window_dims.
       pipeline.AddPass<ScatterSimplifier>();
+      // Layout normalization will create gathers that are not simplified and
+      // also have unsorted offset_dims.
+      pipeline.AddPass<GatherSimplifier>();
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
 
@@ -1418,13 +1425,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyBroadcastDimensionsOrder()
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
-
-  // Linearize collective schedule if online autotuning of convolutions is
-  // enabled.
-  pipeline.AddPass<CollectivesScheduleLinearizer>(
-      [this, stream_exec](const HloModule* module) {
-        return RequiresCollectiveScheduleLinearizer(module, stream_exec);
-      });
 
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
@@ -1468,12 +1468,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
-  // Since this CSE runs after collective schedule linearizer which inserts
-  // control dependencies, ignore these control deps when replacing instructions
-  // with equivalent ones here.
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
-                           /*only_fusion_computations=*/false,
-                           /*ignore_control_dependencies=*/true);
+  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
 
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
@@ -1792,6 +1787,31 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
                                llvm_module, /*relocatable=*/false, options,
                                /*shard_number=*/std::nullopt);
+  }
+
+  bool force_module_split =
+      module_config.debug_options().xla_llvm_force_inline_before_split();
+  if (force_module_split) {
+    for (llvm::Function& func : llvm_module->functions()) {
+      if (func.getNumUses() > 0 && !func.isDeclaration()) {
+        VLOG(4) << absl::StrFormat("Inlining function %s with %d users.\n",
+                                   func.getName().str(), func.getNumUses());
+        std::vector<llvm::CallInst*> calls_to_inline;
+        for (auto* user : func.users()) {
+          if (auto* call = llvm::dyn_cast<llvm::CallInst>(user)) {
+            calls_to_inline.push_back(call);
+          }
+        }
+        for (auto* call_to_inline : calls_to_inline) {
+          llvm::InlineFunctionInfo inline_function_info;
+          if (!llvm::InlineFunction(*call_to_inline, inline_function_info)
+                   .isSuccess()) {
+            return absl::InternalError("Can not inline function " +
+                                       func.getName().str());
+          };
+        }
+      }
+    }
   }
 
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
@@ -2141,6 +2161,16 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
       gpu_executable->text(), gpu_executable->binary(),
       gpu_executable->dnn_compiled_graphs());
+}
+
+absl::Status GpuCompiler::RunPreSchedulingPasses(
+    HloModule* module, se::StreamExecutor* stream_exec) {
+  HloPassPipeline pipeline("pre-scheduling-passes");
+  pipeline.AddPass<CollectivesScheduleLinearizer>(
+      [this, stream_exec](const HloModule* module) {
+        return RequiresCollectiveScheduleLinearizer(module, stream_exec);
+      });
+  return pipeline.Run(module).status();
 }
 
 absl::Status GpuCompiler::RunPostSchedulingPipelines(

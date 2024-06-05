@@ -64,7 +64,7 @@ inline BufferAssigner::Colorer CollectiveColorer() {
         value->set_color(0);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 

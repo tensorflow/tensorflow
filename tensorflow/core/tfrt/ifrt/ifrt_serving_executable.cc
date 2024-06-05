@@ -167,17 +167,20 @@ IfrtServingExecutable::Create(
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    IfrtServingCoreSelector* ifrt_serving_core_selector) {
+    IfrtServingCoreSelector* ifrt_serving_core_selector,
+    tsl::protobuf::Message* compilation_environement_proto) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
 
-  return absl::WrapUnique(new IfrtServingExecutable(
+  auto executable = absl::WrapUnique(new IfrtServingExecutable(
       program_id, model_name, signature_name, std::move(module),
       std::move(client), thread_pool, ifrt_loaded_variable_registry,
       ifrt_restore, checkpoint_loader_queue, device_mgr,
       std::move(shape_representation_fn), ifrt_serving_core_selector,
-      std::move(original_compile_metadata)));
+      std::move(original_compile_metadata), compilation_environement_proto));
+
+  return executable;
 }
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
@@ -351,8 +354,15 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
-  // TODO(b/304839793): populate xla_compile_options.argument_layouts.
-  // TODO(b/316071625): per model config in TFRT + IFRT.
+  if (compilation_environment_proto_) {
+    tsl::protobuf::Message* comp_env_copy =
+        compilation_environment_proto_->New();
+    comp_env_copy->CopyFrom(*compilation_environment_proto_);
+    TF_RETURN_IF_ERROR(
+        xla_compile_options.executable_build_options.mutable_comp_envs()
+            ->AddEnv(absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+  }
+
   xla_compile_options.executable_build_options.set_num_replicas(num_replicas);
   xla_compile_options.executable_build_options.set_num_partitions(
       num_partitions);

@@ -968,7 +968,7 @@ absl::Status MemoryUsageTracker::CountFreedMemory(Item* item) {
       // free up the parameter space and reuse it for other tensors.
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemoryUsageTracker::BeginInstruction(Item* item) {
@@ -990,7 +990,7 @@ absl::Status MemoryUsageTracker::BeginInstruction(Item* item) {
   if (VLOG_IS_ON(1)) {
     DCHECK(Check());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemoryUsageTracker::EndInstruction() {
@@ -1007,7 +1007,7 @@ absl::Status MemoryUsageTracker::EndInstruction() {
   if (VLOG_IS_ON(1)) {
     DCHECK(Check());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
@@ -1183,7 +1183,7 @@ absl::Status MemoryUsageTracker::AddCompressInstructions(
   // original buffer with the newly created final buffer.
   ReplaceUsesInUsersOfBuffer(uncompressed_buffer, original_buffer_id);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemoryUsageTracker::AddRematerializedInstruction(
@@ -1328,7 +1328,7 @@ absl::Status MemoryUsageTracker::AddRematerializedInstruction(
 
   DCHECK(Check());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
@@ -1471,7 +1471,7 @@ absl::Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string MemoryUsageTracker::ToString() const {
@@ -2897,7 +2897,7 @@ absl::StatusOr<bool> HloRematerialization::Run(
                                                       node.computation()),
                                                   {callee_thread}));
           }
-          return OkStatus();
+          return absl::OkStatus();
         },
         /*visit_unreachable_nodes=*/false));
 
@@ -2937,7 +2937,7 @@ absl::StatusOr<bool> HloRematerialization::Run(
                                 module->schedule().sequence(node.computation()),
                                 execution_threads));
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       /*visit_unreachable_nodes=*/false));
 

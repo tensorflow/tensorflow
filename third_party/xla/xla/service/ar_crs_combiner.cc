@@ -493,7 +493,7 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
@@ -531,7 +531,7 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       next = next->users()[0];
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {

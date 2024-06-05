@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
@@ -51,7 +52,7 @@ absl::Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Accumulates the received data.

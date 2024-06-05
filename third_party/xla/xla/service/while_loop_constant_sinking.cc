@@ -46,7 +46,7 @@ absl::Status ReplaceUsesWhileKeepingLoopInvariance(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInstruction* CloneHelper(const HloInstruction* instruction,

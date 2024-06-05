@@ -73,7 +73,8 @@ TEST(SavedModelIfrt, Basic) {
       [&](tensorflow::tfrt_stub::ModelRuntimeContext& model_context) {
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                "IfrtModelContext", client, &core_selector, &GetThreadPool());
+                "IfrtModelContext", client, &core_selector, &GetThreadPool(),
+                /*compilation_environment_proto=*/nullptr);
 
         (*model_context.resource_context()
               .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(

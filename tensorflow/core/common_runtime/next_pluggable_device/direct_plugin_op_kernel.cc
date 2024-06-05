@@ -119,13 +119,14 @@ Status DirectPluginOpKernelContext::LookupOrCreateResource(
   return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
-  *tensor = ctx_->input(index);
+Status DirectPluginOpKernelContext::GetInput(int index,
+                                             const Tensor** tensor) const {
+  *tensor = &ctx_->input(index);
   return absl::OkStatus();
 }
 
 Status DirectPluginOpKernelContext::GetInput(const char* name,
-                                             const Tensor** tensor) {
+                                             const Tensor** tensor) const {
   return ctx_->input(name, tensor);
 }
 

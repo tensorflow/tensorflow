@@ -127,7 +127,7 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
 
     TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(result));
     TF_RETURN_IF_ERROR(comp->RemoveInstruction(instruction));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TODO(b/232442915): Add support for converting to floats.

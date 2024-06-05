@@ -164,7 +164,7 @@ absl::Status FloatNormalizationVisitor::InsertConvertAfterOutput(
 
   TF_ASSIGN_OR_RETURN(auto new_hlo, ConvertType(hlo, from, to, computation));
   if (new_hlo == hlo) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (auto* user : materialized_users) {
@@ -174,7 +174,7 @@ absl::Status FloatNormalizationVisitor::InsertConvertAfterOutput(
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
   }
   changed_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
@@ -182,7 +182,7 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloComputation* computation) {
   auto original_shape = hlo->shape();
   if (CountSubshapesWithMatchingType(original_shape, from) == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   ShapeUtil::ForEachMutableSubshape(
       hlo->mutable_shape(), [&](Shape* subshape, const xla::ShapeIndex& index) {
@@ -243,7 +243,7 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
   }
   changed_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
@@ -253,12 +253,12 @@ absl::Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
   TF_ASSIGN_OR_RETURN(auto new_operand,
                       ConvertType(operand, from, to, computation));
   if (new_operand == operand) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(
       hlo->ReplaceOperandWithDifferentShape(operand_idx, new_operand));
   changed_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status FloatNormalizationVisitor::ConvertCalledComputations(
@@ -289,7 +289,7 @@ absl::Status FloatNormalizationVisitor::ConvertCalledComputations(
           param, LowPrecisionType(), HighPrecisionType(), comp));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if the called computations of the instruction should not
@@ -332,7 +332,7 @@ absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
   }
 
   if (low_prec_count == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto should_convert_operand = [&](int64_t i) {
@@ -361,7 +361,7 @@ absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
   if (!has_unsupported_low_prec_output &&
       (float_support_->SupportsMixedPrecisions(*hlo) || high_prec_count == 0 ||
        low_prec_count == 0)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<HloComputation*> low_precision_called_comps;
@@ -502,7 +502,7 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
   // operands/output and high-precision operands/output may have changed.
   if (float_support_->SupportsMixedPrecisions(*hlo) || low_prec_count == 0 ||
       high_prec_count == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // See if we can change everything to low-precision.
   if (hlo->called_computations().empty() &&
@@ -529,7 +529,7 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
         TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(
             hlo, i, HighPrecisionType(), LowPrecisionType(), computation_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   TF_RETURN_IF_ERROR(ChangeOutputTypeThenInsertConvertBack(
@@ -558,7 +558,7 @@ absl::Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kConditional ||      //
       hlo->opcode() == HloOpcode::kBitcastConvert ||   //
       hlo->HasSideEffectNoRecurse()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
@@ -572,7 +572,7 @@ absl::Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
 
 absl::Status FloatNormalizationVisitor::Preprocess(HloInstruction* hlo) {
   computation_ = hlo->parent();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // We must avoid normalizing computations that have non-normalizing users

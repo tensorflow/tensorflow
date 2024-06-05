@@ -462,11 +462,11 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleCustomCall(HloInstruction* inst) override {
     if (should_decompose_ && !should_decompose_(inst)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloCustomCallInstruction* call = DynCast<HloCustomCallInstruction>(inst);
     if (call == nullptr || call->custom_call_target() != "TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloComputation* comparator = call->to_apply();
     return DecomposeTopK(call, comparator);
@@ -474,7 +474,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleTopK(HloInstruction* topk) override {
     if (should_decompose_ && !should_decompose_(topk)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_ASSIGN_OR_RETURN(HloComputation * comparator,
                         CreateVariadicComparator(topk));
@@ -548,7 +548,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
                     {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));
       sort->set_metadata(call->metadata());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

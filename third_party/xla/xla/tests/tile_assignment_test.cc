@@ -323,6 +323,44 @@ TEST_P(FormattedTileAssignmentTest,
 }
 
 TEST_P(FormattedTileAssignmentTest,
+       TransposeIotaTileSplittingBothCanonicalizedReshapeDimsAndTileDims) {
+  TileAssignment tile({14, 3, 5}, {6, 5, 7}, {2, 0, 1});
+  if (ShouldConvertToV1()) {
+    tile = TileAssignment(tile.shared_array());
+  }
+  TileAssignment xposed = tile.Transpose({1, 0, 2});
+  EXPECT_NE(xposed, tile);
+  EXPECT_EQ(xposed, TileAssignment({3, 14, 5}, {2, 3, 5, 7}, {1, 3, 0, 2}));
+  EXPECT_EQ(xposed.num_dimensions(), 3);
+  EXPECT_EQ(xposed.dim(0), 3);
+  EXPECT_EQ(xposed.dim(1), 14);
+  EXPECT_EQ(xposed.dim(2), 5);
+  EXPECT_EQ(xposed(0, 0, 0), 0);
+  EXPECT_EQ(xposed({2, 11, 3}), 201);
+  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
+  EXPECT_TRUE(xposed.UsesDevice(0));
+  EXPECT_TRUE(xposed.UsesDevice(209));
+  EXPECT_FALSE(xposed.UsesDevice(210));
+  EXPECT_THAT(
+      ToVectorUsingEach(xposed),
+      ElementsAre(
+          0, 7, 14, 21, 28, 105, 112, 119, 126, 133, 1, 8, 15, 22, 29, 106, 113,
+          120, 127, 134, 2, 9, 16, 23, 30, 107, 114, 121, 128, 135, 3, 10, 17,
+          24, 31, 108, 115, 122, 129, 136, 4, 11, 18, 25, 32, 109, 116, 123,
+          130, 137, 5, 12, 19, 26, 33, 110, 117, 124, 131, 138, 6, 13, 20, 27,
+          34, 111, 118, 125, 132, 139, 35, 42, 49, 56, 63, 140, 147, 154, 161,
+          168, 36, 43, 50, 57, 64, 141, 148, 155, 162, 169, 37, 44, 51, 58, 65,
+          142, 149, 156, 163, 170, 38, 45, 52, 59, 66, 143, 150, 157, 164, 171,
+          39, 46, 53, 60, 67, 144, 151, 158, 165, 172, 40, 47, 54, 61, 68, 145,
+          152, 159, 166, 173, 41, 48, 55, 62, 69, 146, 153, 160, 167, 174, 70,
+          77, 84, 91, 98, 175, 182, 189, 196, 203, 71, 78, 85, 92, 99, 176, 183,
+          190, 197, 204, 72, 79, 86, 93, 100, 177, 184, 191, 198, 205, 73, 80,
+          87, 94, 101, 178, 185, 192, 199, 206, 74, 81, 88, 95, 102, 179, 186,
+          193, 200, 207, 75, 82, 89, 96, 103, 180, 187, 194, 201, 208, 76, 83,
+          90, 97, 104, 181, 188, 195, 202, 209));
+}
+
+TEST_P(FormattedTileAssignmentTest,
        TransposeIotaTileGroupingCanonicalizedReshapeDims) {
   TileAssignment tile({1, 4, 16}, {4, 4, 4}, {1, 0, 2});
   if (ShouldConvertToV1()) {

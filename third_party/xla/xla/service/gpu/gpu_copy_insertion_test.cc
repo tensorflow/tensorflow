@@ -727,6 +727,42 @@ ENTRY main {
 }
 
 TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedWhenOtherUserIsTransposeUser) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = f32[100,110,120]{2,1,0} parameter(0)
+  p1 = f32[120,110,100]{2,1,0} parameter(1)
+  zero = f32[] constant(0.0)
+  broadcast = f32[120,110,100]{2,1,0} broadcast(zero), dimensions={}
+  maximum = f32[120,110,100]{2,1,0} maximum(broadcast, p1)
+  t = f32[120,110,100]{2,1,0} transpose(p0), dimensions={2,1,0}
+  add = f32[120,110,100]{2,1,0} add(t, maximum)
+  ROOT res = (f32[120,110,100]{2,1,0}, f32[120,110,100]{2,1,0}) tuple(add, maximum)
+}
+
+ENTRY main {
+  param_0 = f32[100,110,120]{2,1,0} parameter(0)
+  param_1 = f32[120,110,100]{2,1,0} parameter(1)
+  ROOT fusion = (f32[120,110,100]{2,1,0}, f32[120,110,100]{2,1,0}) fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
        BufferCannotBeSharedDynamicUpdateSliceAndOtherUser) {
   // This is a fusion that we would normally not create because it cannot be
   // emitted in-place. Still check whether buffer sharing logic would handle it

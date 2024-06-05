@@ -473,7 +473,7 @@ class LayoutAssignment : public HloModulePass {
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
   virtual absl::Status Verify(const HloInstruction* instruction) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
@@ -581,7 +581,7 @@ class LayoutAssignment : public HloModulePass {
   // all mandatory constraints have been added via AddMandatoryConstraints
   // and before propagating constraints.
   virtual absl::Status AddBackendConstraints(LayoutConstraints* constraints) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Construct constraints and assign layouts to all instructions in the

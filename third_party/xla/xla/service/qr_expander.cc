@@ -169,7 +169,7 @@ absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
   *v = e_k + Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

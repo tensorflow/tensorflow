@@ -64,7 +64,7 @@ bool GpuStream::IsIdle() const {
 
 GpuStream* AsGpuStream(Stream* stream) {
   DCHECK(stream != nullptr);
-  return static_cast<GpuStream*>(stream->implementation());
+  return static_cast<GpuStream*>(stream);
 }
 
 GpuStreamHandle AsGpuStreamValue(Stream* stream) {

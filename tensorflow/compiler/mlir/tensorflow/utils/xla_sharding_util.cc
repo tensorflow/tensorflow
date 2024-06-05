@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -815,12 +816,16 @@ llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
 
     const auto sharding_type = sharding.type();
     if (sharding_type == xla::OpSharding::OTHER) {
-      for (const auto& device : sharding.tile_assignment_devices())
+      for (const auto& device : sharding.tile_assignment_devices()) {
+        CHECK(device >= 0 && device < input_mappings.size());
         input_mappings[device].push_back(idx);
+      }
     } else if (sharding_type == xla::OpSharding::REPLICATED) {
       for (auto& input : input_mappings) input.push_back(idx);
     } else {
       assert(sharding_type == xla::OpSharding::MAXIMAL);
+      CHECK(sharding.tile_assignment_devices(0) >= 0 &&
+            sharding.tile_assignment_devices(0) < input_mappings.size());
       input_mappings[sharding.tile_assignment_devices(0)].push_back(idx);
     }
   }

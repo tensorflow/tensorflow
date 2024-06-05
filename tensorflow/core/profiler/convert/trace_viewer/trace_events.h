@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
@@ -249,6 +250,10 @@ class TraceEventsContainerBase {
     trace.set_num_events(NumEvents());
     auto events_by_level = EventsByLevel();
     return DoStoreAsLevelDbTable(file, trace, events_by_level);
+  }
+
+  std::vector<std::vector<const TraceEvent*>> GetTraceEventsByLevel() const {
+    return EventsByLevel();
   }
 
   // Loads the contents of this container from a level-db sstable file.

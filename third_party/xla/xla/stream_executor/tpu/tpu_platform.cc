@@ -152,18 +152,17 @@ TpuRuntimeVersion TpuPlatform::version() const {
       platform_);
 }
 
-void TpuPlatform::InsertEvent(stream_executor::EventInterface* key,
-                              SE_Event* val) {
+void TpuPlatform::InsertEvent(stream_executor::Event* key, SE_Event* val) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_[key] = val;
 }
 
-SE_Event* TpuPlatform::LookupEvent(stream_executor::EventInterface* key) {
+SE_Event* TpuPlatform::LookupEvent(stream_executor::Event* key) {
   absl::ReaderMutexLock lock(&event_map_mu_);
   return event_map_.at(key);
 }
 
-void TpuPlatform::EraseEvent(stream_executor::EventInterface* key) {
+void TpuPlatform::EraseEvent(stream_executor::Event* key) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_.erase(key);
 }

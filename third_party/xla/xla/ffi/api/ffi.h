@@ -63,42 +63,7 @@ enum class DataType : uint8_t {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
-  switch (dtype) {
-    case DataType::INVALID:
-      return os << "INVALID";
-    case DataType::PRED:
-      return os << "PRED";
-    case DataType::S8:
-      return os << "S8";
-    case DataType::S16:
-      return os << "S16";
-    case DataType::S32:
-      return os << "S32";
-    case DataType::S64:
-      return os << "S64";
-    case DataType::U8:
-      return os << "U8";
-    case DataType::U16:
-      return os << "U16";
-    case DataType::U32:
-      return os << "U32";
-    case DataType::U64:
-      return os << "U64";
-    case DataType::F16:
-      return os << "F16";
-    case DataType::F32:
-      return os << "F32";
-    case DataType::F64:
-      return os << "F64";
-    case DataType::BF16:
-      return os << "BF16";
-    case DataType::C64:
-      return os << "C64";
-    case DataType::C128:
-      return os << "C128";
-    case DataType::TOKEN:
-      return os << "TOKEN";
-  }
+  return os << static_cast<XLA_FFI_DataType>(dtype);
 }
 
 //===----------------------------------------------------------------------===//

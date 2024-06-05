@@ -74,7 +74,7 @@ absl::Status LogicalBufferAnalysis::Analyze() {
   for (auto* instruction : fusion_instructions) {
     TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 LogicalBuffer& LogicalBufferAnalysis::GetBuffer(LogicalBuffer::Id id) const {
@@ -104,38 +104,38 @@ absl::Status LogicalBufferAnalysis::DefaultAction(
         NewLogicalBuffer(hlo_instruction, index);
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement does not create buffers.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand and does not
   // create buffers.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   // The top-level buffer (index={}) for kCopy is newly created, but all other
   // buffers (in the case of a tuple shape) come from the operand
   NewLogicalBuffer(copy, /*index=*/{});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
   // A kDomain instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
@@ -144,7 +144,7 @@ absl::Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // the token are defined by the RecvDone.
   NewLogicalBuffer(recv_done, /*index=*/{});
   NewLogicalBuffer(recv_done, /*index=*/{1});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
@@ -155,7 +155,7 @@ absl::Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   NewLogicalBuffer(send, /*index=*/{});
   NewLogicalBuffer(send, /*index=*/{1});
   NewLogicalBuffer(send, /*index=*/{2});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleCopyStart(
@@ -165,19 +165,19 @@ absl::Status LogicalBufferAnalysis::HandleCopyStart(
   NewLogicalBuffer(copy_start, /*index=*/{});
   NewLogicalBuffer(copy_start, /*index=*/{0});
   NewLogicalBuffer(copy_start, /*index=*/{2});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
   // The output of CopyDone aliases with operand {0}. CopyDone doesn't create
   // any buffers.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LogicalBufferAnalysis::HandleCustomCall(
@@ -193,7 +193,7 @@ absl::Status LogicalBufferAnalysis::HandleCustomCall(
       NewLogicalBuffer(custom_call, index);
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // WARNING (b/259460539): output_to_operand_aliasing was moved from
@@ -215,7 +215,7 @@ absl::Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
                                  NewLogicalBuffer(fusion, index);
                                }
                              });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

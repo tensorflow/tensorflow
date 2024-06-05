@@ -275,7 +275,7 @@ absl::Status CompilationEnvironments::AddEnvImpl(
   // Actually add the env
   environments_.insert({&descriptor, std::move(processed_env)});
   EnvAdded(descriptor.full_name());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla
