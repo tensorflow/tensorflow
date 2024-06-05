@@ -103,10 +103,12 @@ class WhileLoopUnroller : public HloModulePass {
 
   // Unrolls the given while loop with the default behaviour set to full unroll.
   // If wrap_in_trivial_loop is set, the unrolled body of the loop will be
-  // wrapped in a loop with trip count of one.
+  // wrapped in a loop with trip count of one. Forcing unroll will not perform
+  // soft checking of the conditions.
   static absl::StatusOr<bool> Unroll(HloInstruction* while_op,
                                      int64_t unroll_factor = -1,
-                                     bool wrap_in_trivial_loop = false);
+                                     bool wrap_in_trivial_loop = false,
+                                     bool force_unroll = false);
 
  private:
   int64_t unroll_factor_;
