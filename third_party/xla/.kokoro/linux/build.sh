@@ -49,7 +49,7 @@ pull_docker_image_with_retries
 
 
 # Start a container in the background
-docker run --name xla -w /github/xla -itd --rm \
+docker run --name xla -w /github/xla -it --rm \
     -v "./github:/github" \
     "$DOCKER_IMAGE" \
     bash
