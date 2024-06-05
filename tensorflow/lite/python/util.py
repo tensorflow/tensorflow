@@ -20,6 +20,7 @@ import sys
 
 from absl import logging
 import flatbuffers
+import numpy as np
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -39,9 +40,6 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 
 # The field name of conversion metadata in the flatbuffer file.
 CONVERSION_METADATA_FIELD_NAME = "CONVERSION_METADATA"
-
-# A constant used for mixing the hash.
-HASH_CONST = 0x9e3779b97f4a7800
 
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
@@ -1021,9 +1019,8 @@ def get_model_hash(model):
   Returns:
       int: A 64-bit integer hash value representing the model structure.
   """
-  # TODO(zeekc): Move the hashing implementation to the very end of FlatBuffer
-  # serialization in the c++ layer since not all calls to the converter come via
-  # the Python API.
+  # TODO(b/344872922): Move the hashing implementation to C++ layer since not
+  # all calls to the converter come via the Python API.
   hash_value = 0
 
   for subgraph in model.subgraphs:
@@ -1034,14 +1031,10 @@ def get_model_hash(model):
 
       for operator in subgraph.operators:
         if operator.inputs is not None:
-          hash_value = update_hash_with_array(
-              hash_value, operator.inputs
-          )
+          hash_value = update_hash_with_array(hash_value, operator.inputs)
 
         if operator.outputs is not None:
-          hash_value = update_hash_with_array(
-              hash_value, operator.outputs
-          )
+          hash_value = update_hash_with_array(hash_value, operator.outputs)
 
     if subgraph.tensors is not None:
       hash_value = update_hash_with_primitive_value(
@@ -1049,10 +1042,12 @@ def get_model_hash(model):
       )
 
       for tensor in subgraph.tensors:
-        if tensor.name is not None:
-          hash_value = update_hash_with_primitive_value(
-              hash_value, int.from_bytes(tensor.name, "big")
-          )
+        if tensor.buffer is not None:
+          buffer = model.buffers[tensor.buffer]
+          if buffer.data is not None:
+            hash_value = update_hash_with_primitive_value(
+                hash_value, len(buffer.data)
+            )
 
         if tensor.shape is not None:
           hash_value = update_hash_with_array(hash_value, tensor.shape)
@@ -1074,17 +1069,32 @@ def update_hash_with_primitive_value(hash_value, value):
   """Update the hash value using a primitive value.
 
   Args:
-      hash_value (int): The current hash value.
+      hash_value (uint64): The current hash value.
       value: The primitive value to incorporate into the hash.
 
   Returns:
       int: The updated hash value.
   """
-  hash_value = int(value + HASH_CONST +
-                   (hash_value << 10) + (hash_value >> 4))
+  hash_const = np.uint64(0x9E3779B97F4A7800)
+  hash_value = np.uint64(hash_value)
+  value = np.uint64(value)
 
-  # Ensures 64-bit integer range is returned.
-  return (hash_value & ((1 << 63) - 1))
+  # Convert to arrays before shifting.
+  hash_value = np.array([hash_value])
+  value = np.array([value])
+
+  # Shift the values, then take the value from the first index.
+  hash_value = np.bitwise_xor(
+      hash_value,
+      (
+          value
+          + hash_const
+          + np.left_shift(hash_value, 10)
+          + np.right_shift(hash_value, 4)
+      ),
+  )[0]
+
+  return hash_value
 
 
 def update_hash_with_array(hash_value, int_array):
@@ -1160,6 +1170,8 @@ def get_conversion_metadata(model_buffer):
       metadata_buf = model_object.buffers[meta.buffer].data.tobytes()
       return conversion_metadata_fb.ConversionMetadataT.InitFromObj(
           conversion_metadata_fb.ConversionMetadata.GetRootAsConversionMetadata(
-              metadata_buf, 0))
+              metadata_buf, 0
+          )
+      )
 
   return None
