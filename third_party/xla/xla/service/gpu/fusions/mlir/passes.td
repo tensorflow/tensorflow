@@ -187,6 +187,23 @@ def LowerToLLVMPass :
   let constructor = "CreateLowerToLLVMPass()";
 }
 
+def VectorizeLoadsAndStoresPass :
+   Pass<"xla-gpu-vectorize-loads-stores", "mlir::func::FuncOp"> {
+  let summary = "Vectorizes loads and stores.";
+
+  let description = [{
+    Rewrites tensor.extract and tensor.insert ops inside loops to their vector
+    equivalents (vector.transfer_read and vector.transfer_write + vector.extract
+    and vector.insert).
+  }];
+
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+  ];
+
+  let constructor = "CreateVectorizeLoadsAndStoresPass()";
+}
+
 def UnswitchLoopsPass :
    Pass<"xla-gpu-unswitch-loops", "mlir::func::FuncOp"> {
   let summary = "Swaps scf.if and scf.for.";
