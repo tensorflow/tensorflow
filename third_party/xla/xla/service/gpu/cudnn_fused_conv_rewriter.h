@@ -31,12 +31,12 @@ namespace gpu {
 
 // Rewrites custom-calls targeting cudnnConvolutionForward to
 // cudnnConvolutionBiasActivationForward by fusing operations following forward
-// convolution.  This transform must run after cudnn_conv_rewriter.
+// convolution.  This transform must run after GpuConvRewriter.
 //
 // Semantics of underlying cudnn ops:
 //
-// https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
-// https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
+// https://docs.nvidia.com/deeplearning/cudnn/latest/api/cudnn-cnn-library.html#cudnnconvolutionforward
+// https://docs.nvidia.com/deeplearning/cudnn/latest/developer/misc.html#scaling-parameters
 //
 // ## Floating-point convs
 //
@@ -86,7 +86,7 @@ namespace gpu {
 //          alpha2_f32 * side_input +
 //          bias_f32
 //
-//   result_f32        = max(result_f32, 0)
+//   result_f32        = max(base, 0)
 //   result_s8_option1 = max(convert_s8(clamp(-128, base, 127)), 0)
 //   result_s8_option2 = convert_s8(clamp(-128, max(base, 0), 127))
 //
