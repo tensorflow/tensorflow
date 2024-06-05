@@ -53,13 +53,29 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_UserData_Add_Args, user_data);
 // Adds a user data to the execute context.
 typedef PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args);
 
+struct PJRT_FFI_Register_Handler_Args {
+  size_t struct_size;
+  const char* target_name;
+  size_t target_name_size;
+  int api_version;  // 0 for an untyped call, 1 -- for typed
+  void* handler;
+  const char* platform_name;
+  size_t platform_name_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Register_Handler_Args, handler);
+
+// Registers an FFI call handler for a specific platform.
+typedef PJRT_Error* PJRT_FFI_Register_Handler(
+    PJRT_FFI_Register_Handler_Args* args);
+
 typedef struct PJRT_FFI_Extension {
   size_t struct_size;
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
   PJRT_FFI_UserData_Add* user_data_add;
+  PJRT_FFI_Register_Handler* register_handler;
 } PJRT_FFI;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension, user_data_add);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension, register_handler);
 
 #ifdef __cplusplus
 }
