@@ -1,29 +1,141 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/AST/QualTypeNames.cpp b/clang/lib/AST/QualTypeNames.cpp
---- a/clang/lib/AST/QualTypeNames.cpp
-+++ b/clang/lib/AST/QualTypeNames.cpp
-@@ -65,8 +65,9 @@
-   assert(ArgTDecl != nullptr);
-   QualifiedTemplateName *QTName = TName.getAsQualifiedTemplateName();
+diff -ruN --strip-trailing-cr a/clang/test/Driver/mips-mti-linux.c b/clang/test/Driver/mips-mti-linux.c
+--- a/clang/test/Driver/mips-mti-linux.c
++++ b/clang/test/Driver/mips-mti-linux.c
+@@ -6,7 +6,7 @@
+ //        the --gcc-toolchain one.
  
--  if (QTName && !QTName->hasTemplateKeyword()) {
--    NNS = QTName->getQualifier();
-+  if (QTName &&
-+      !QTName->hasTemplateKeyword() &&
-+      (NNS = QTName->getQualifier())) {
-     NestedNameSpecifier *QNNS = getFullyQualifiedNestedNameSpecifier(
-         Ctx, NNS, WithGlobalNsPrefix);
-     if (QNNS != NNS) {
-diff -ruN --strip-trailing-cr a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
---- a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
-+++ b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
-@@ -5095,7 +5095,8 @@
-     // header. Note that the header is computed *after* the output is known, so
-     // we currently explicitly use a buffer, write to it, and then subsequently
-     // flush to Out.
--    SmallVector<char, 256 * 1024> Buffer;
-+    SmallVector<char, 0> Buffer;
-+    Buffer.reserve(256 * 1024);
-     Buffer.insert(Buffer.begin(), BWH_HeaderSize, 0);
-     BitcodeWriter Writer(Buffer);
-     Write(Writer);
+ // = Big-endian, mips32r2, hard float
+-// RUN: %clang -### %s 2>&1 \
++// RUN: %clang -### -no-canonical-prefixes %s 2>&1 \
+ // RUN:     --target=mips-mti-linux -mips32r2 -mhard-float -no-pie \
+ // RUN:     -rtlib=platform -fuse-ld=ld \
+ // RUN:     --sysroot=%S/Inputs/mips_mti_linux/sysroot \
+@@ -25,7 +25,7 @@
+ // CHECK-BE-HF-32R2-SAME: "[[SYSROOT]]/mips-r2-hard-musl/usr/lib{{/|\\\\}}crtn.o"
+ 
+ // = Little-endian, mips32r2, hard float
+-// RUN: %clang -### %s 2>&1 \
++// RUN: %clang -### -no-canonical-prefixes %s 2>&1 \
+ // RUN:     --target=mips-mti-linux -mips32r2 -EL -mhard-float -no-pie \
+ // RUN:     -rtlib=platform -fuse-ld=ld \
+ // RUN:     --sysroot=%S/Inputs/mips_mti_linux/sysroot \
+diff -ruN --strip-trailing-cr a/clang/test/Driver/openmp-offload.c b/clang/test/Driver/openmp-offload.c
+--- a/clang/test/Driver/openmp-offload.c
++++ b/clang/test/Driver/openmp-offload.c
+@@ -35,7 +35,7 @@
+ /// ###########################################################################
+ 
+ /// Check -Xopenmp-target=powerpc64le-ibm-linux-gnu -mcpu=pwr7 is passed when compiling for the device.
+-// RUN:   %clang -### -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target=powerpc64le-ibm-linux-gnu -mcpu=pwr7 %s 2>&1 \
++// RUN:   %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target=powerpc64le-ibm-linux-gnu -mcpu=pwr7 %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHK-FOPENMP-EQ-TARGET %s
+ 
+ // CHK-FOPENMP-EQ-TARGET: clang{{.*}} "-target-cpu" "pwr7" {{.*}}"-fopenmp-is-target-device"
+@@ -43,7 +43,7 @@
+ /// ###########################################################################
+ 
+ /// Check -Xopenmp-target -mcpu=pwr7 is passed when compiling for the device.
+-// RUN:   %clang -### -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target -mcpu=pwr7 %s 2>&1 \
++// RUN:   %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target -mcpu=pwr7 %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHK-FOPENMP-TARGET %s
+ 
+ // CHK-FOPENMP-TARGET: clang{{.*}} "-target-cpu" "pwr7" {{.*}}"-fopenmp-is-target-device"
+@@ -51,7 +51,7 @@
+ /// ##########################################################################
+ 
+ /// Check -mcpu=pwr7 is passed to the same triple.
+-// RUN:    %clang -### -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu --target=powerpc64le-ibm-linux-gnu -mcpu=pwr7 %s 2>&1 \
++// RUN:    %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu --target=powerpc64le-ibm-linux-gnu -mcpu=pwr7 %s 2>&1 \
+ // RUN:    | FileCheck -check-prefix=CHK-FOPENMP-MCPU-TO-SAME-TRIPLE %s
+ 
+ // CHK-FOPENMP-MCPU-TO-SAME-TRIPLE: clang{{.*}} "-target-cpu" "pwr7" {{.*}}"-fopenmp-is-target-device"
+@@ -59,7 +59,7 @@
+ /// ##########################################################################
+ 
+ /// Check -march=pwr7 is NOT passed to nvptx64-nvidia-cuda.
+-// RUN:    not %clang -### -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda --target=powerpc64le-ibm-linux-gnu -march=pwr7 %s 2>&1 \
++// RUN:    not %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda --target=powerpc64le-ibm-linux-gnu -march=pwr7 %s 2>&1 \
+ // RUN:    | FileCheck -check-prefix=CHK-FOPENMP-MARCH-TO-GPU %s
+ 
+ // CHK-FOPENMP-MARCH-TO-GPU-NOT: clang{{.*}} "-target-cpu" "pwr7" {{.*}}"-fopenmp-is-target-device"
+@@ -67,7 +67,7 @@
+ /// ###########################################################################
+ 
+ /// Check -march=pwr7 is NOT passed to x86_64-unknown-linux-gnu.
+-// RUN:    not %clang -### -fopenmp=libomp -fopenmp-targets=x86_64-unknown-linux-gnu --target=powerpc64le-ibm-linux-gnu -march=pwr7 %s 2>&1 \
++// RUN:    not %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=x86_64-unknown-linux-gnu --target=powerpc64le-ibm-linux-gnu -march=pwr7 %s 2>&1 \
+ // RUN:    | FileCheck -check-prefix=CHK-FOPENMP-MARCH-TO-X86 %s
+ 
+ // CHK-FOPENMP-MARCH-TO-X86-NOT: clang{{.*}} "-target-cpu" "pwr7" {{.*}}"-fopenmp-is-target-device"
+@@ -75,7 +75,7 @@
+ /// ###########################################################################
+ 
+ /// Check -Xopenmp-target triggers error when multiple triples are used.
+-// RUN:   not %clang -### -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu,powerpc64le-unknown-linux-gnu -Xopenmp-target -mcpu=pwr8 %s 2>&1 \
++// RUN:   not %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu,powerpc64le-unknown-linux-gnu -Xopenmp-target -mcpu=pwr8 %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHK-FOPENMP-TARGET-AMBIGUOUS-ERROR %s
+ 
+ // CHK-FOPENMP-TARGET-AMBIGUOUS-ERROR: clang{{.*}} error: cannot deduce implicit triple value for -Xopenmp-target, specify triple using -Xopenmp-target=<triple>
+@@ -83,7 +83,7 @@
+ /// ###########################################################################
+ 
+ /// Check -Xopenmp-target triggers error when an option requiring arguments is passed to it.
+-// RUN:   not %clang -### -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target -Xopenmp-target -mcpu=pwr8 %s 2>&1 \
++// RUN:   not %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=powerpc64le-ibm-linux-gnu -Xopenmp-target -Xopenmp-target -mcpu=pwr8 %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHK-FOPENMP-TARGET-NESTED-ERROR %s
+ 
+ // CHK-FOPENMP-TARGET-NESTED-ERROR: clang{{.*}} error: invalid -Xopenmp-target argument: '-Xopenmp-target -Xopenmp-target', options requiring arguments are unsupported
+diff -ruN --strip-trailing-cr a/clang/test/Driver/openmp-offload-gpu.c b/clang/test/Driver/openmp-offload-gpu.c
+--- a/clang/test/Driver/openmp-offload-gpu.c
++++ b/clang/test/Driver/openmp-offload-gpu.c
+@@ -70,21 +70,21 @@
+ 
+ /// Check that the runtime bitcode library is part of the compile line.
+ /// Create a bogus bitcode library and specify it with libomptarget-nvptx-bc-path
+-// RUN:   %clang -### -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
++// RUN:   %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
+ // RUN:   --libomptarget-nvptx-bc-path=%S/Inputs/libomptarget/libomptarget-nvptx-test.bc \
+ // RUN:   -Xopenmp-target -march=sm_52 --cuda-path=%S/Inputs/CUDA_102/usr/local/cuda \
+ // RUN:   -fopenmp-relocatable-target -save-temps %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=CHK-BCLIB %s
+ 
+ /// Specify the directory containing the bitcode lib, check clang picks the right one
+-// RUN:   %clang -### -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
++// RUN:   %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
+ // RUN:   --libomptarget-nvptx-bc-path=%S/Inputs/libomptarget \
+ // RUN:   -Xopenmp-target -march=sm_52 --cuda-path=%S/Inputs/CUDA_102/usr/local/cuda \
+ // RUN:   -fopenmp-relocatable-target -save-temps \
+ // RUN:   %s 2>&1 | FileCheck -check-prefix=CHK-BCLIB-DIR %s
+ 
+ /// Create a bogus bitcode library and find it with LIBRARY_PATH
+-// RUN:   env LIBRARY_PATH=%S/Inputs/libomptarget/subdir %clang -### -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
++// RUN:   env LIBRARY_PATH=%S/Inputs/libomptarget/subdir %clang -### -no-canonical-prefixes -fopenmp=libomp -fopenmp-targets=nvptx64-nvidia-cuda \
+ // RUN:   -Xopenmp-target -march=sm_52 --cuda-path=%S/Inputs/CUDA_102/usr/local/cuda \
+ // RUN:   -fopenmp-relocatable-target -save-temps \
+ // RUN:   %s 2>&1 | FileCheck -check-prefix=CHK-ENV-BCLIB %s
+diff -ruN --strip-trailing-cr a/clang/test/Driver/ve-toolchain.c b/clang/test/Driver/ve-toolchain.c
+--- a/clang/test/Driver/ve-toolchain.c
++++ b/clang/test/Driver/ve-toolchain.c
+@@ -79,7 +79,7 @@
+ ///  - nld VE specific options
+ ///  - sjlj exception
+ 
+-// RUN: %clang -### --target=ve-unknown-linux-gnu \
++// RUN: %clang -### -no-canonical-prefixes --target=ve-unknown-linux-gnu \
+ // RUN:     --sysroot %S/Inputs/basic_ve_tree \
+ // RUN:     -resource-dir=%S/Inputs/basic_ve_tree/resource_dir \
+ // RUN:     --unwindlib=none \
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1098,6 +1098,9 @@
+ libc_support_library(
+     name = "__support_threads_sleep",
+     hdrs = ["src/__support/threads/sleep.h"],
++    deps = [
++        ":__support_macros_attributes",
++    ],
+ )
+ 
+ libc_support_library(
