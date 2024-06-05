@@ -1568,6 +1568,34 @@ auto DictionaryDecoder(Members... m) {
     }                                                                   \
   }
 
+// Registers decoding for a user-defined enum class type. Uses enums underlying
+// type to decode the attribute as a scalar value and cast it to the enum type.
+#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
+  template <>                                                                 \
+  struct ::xla::ffi::AttrDecoding<T> {                                        \
+    using Type = T;                                                           \
+    using U = std::underlying_type_t<Type>;                                   \
+    static_assert(std::is_enum<Type>::value, "Expected enum class");          \
+                                                                              \
+    static std::optional<Type> Decode(XLA_FFI_AttrType attr_type, void* attr, \
+                                      DiagnosticEngine& diagnostic) {         \
+      if (XLA_FFI_PREDICT_FALSE(attr_type != XLA_FFI_AttrType_SCALAR)) {      \
+        return diagnostic.Emit("Wrong attribute type: expected ")             \
+               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
+      }                                                                       \
+                                                                              \
+      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
+      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
+      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {           \
+        return diagnostic.Emit("Wrong scalar data type: expected ")           \
+               << expected_dtype << " but got " << scalar->dtype;             \
+      }                                                                       \
+                                                                              \
+      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
+      return static_cast<Type>(underlying);                                   \
+    }                                                                         \
+  };
+
 //===----------------------------------------------------------------------===//
 // Helper macro for registering FFI implementations
 //===----------------------------------------------------------------------===//
@@ -1597,6 +1625,9 @@ auto DictionaryDecoder(Members... m) {
 
 #define XLA_FFI_DEFINE_HANDLER_X(x, fn, impl, binding, FUNC, ...) FUNC
 
+// Define XLA FFI handler as a static function pointer variable, which allows
+// to define handlers in nested scopes without polluting the global namespace.
+//
 // This is a trick to define macro with optional parameters.
 // Source: https://stackoverflow.com/a/8814003
 #define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                 \
@@ -1620,32 +1651,23 @@ auto DictionaryDecoder(Members... m) {
                                                       FUNC, ##__VA_ARGS__); \
       }()
 
-#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
-  template <>                                                                 \
-  struct ::xla::ffi::AttrDecoding<T> {                                        \
-    using Type = T;                                                           \
-    using U = std::underlying_type_t<Type>;                                   \
-    static_assert(std::is_enum<Type>::value, "Expected enum class");          \
-                                                                              \
-    static std::optional<Type> Decode(XLA_FFI_AttrType attr_type, void* attr, \
-                                      DiagnosticEngine& diagnostic) {         \
-      if (attr_type != XLA_FFI_AttrType_SCALAR) [[unlikely]] {                \
-        return diagnostic.Emit("Wrong attribute type: expected ")             \
-               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
-      }                                                                       \
-                                                                              \
-      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
-      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
-      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype))             \
-          [[unlikely]] {                                                      \
-        return diagnostic.Emit("Wrong scalar data type: expected ")           \
-               << expected_dtype << " but got " << scalar->dtype;             \
-      }                                                                       \
-                                                                              \
-      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
-      return static_cast<Type>(underlying);                                   \
-    }                                                                         \
-  };
+// Following two APIs are intended for users who want to export XLA FFI handler
+// from a shared library as a C function symbol.
+
+// Declares C function that implements FFI handler.
+#define XLA_FFI_DECLARE_HANDLER_SYMBOL(fn) \
+  extern "C" XLA_FFI_Error* fn(XLA_FFI_CallFrame* call_frame)
+
+// Defines C function that implements FFI handler.
+#define XLA_FFI_DEFINE_HANDLER_SYMBOL(fn, impl, ...)                           \
+  extern "C" XLA_FFI_Error* fn(XLA_FFI_CallFrame* call_frame) {                \
+    XLA_FFI_DEFINE_HANDLER(handler, impl, ##__VA_ARGS__);                      \
+    return (*handler)(call_frame);                                             \
+  }                                                                            \
+                                                                               \
+  static_assert(                                                               \
+      std::is_invocable_r_v<XLA_FFI_Error*, decltype(fn), XLA_FFI_CallFrame*>, \
+      "FFI handler must return XLA_FFI_Error* and accept XLA_FFI_CallFrame*")
 
 }  // namespace xla::ffi
 

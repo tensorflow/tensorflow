@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
@@ -44,7 +45,7 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
-TEST(FfiTest, StaticRegistration) {
+TEST(FfiTest, StaticHandlerRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
 
   // Use explicit binding specification.
@@ -68,6 +69,28 @@ TEST(FfiTest, StaticRegistration) {
 
   EXPECT_THAT(StaticRegisteredHandlers("Host"),
               UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));
+}
+
+// Declare XLA FFI handler as a function (extern "C" declaration).
+XLA_FFI_DECLARE_HANDLER_SYMBOL(NoOpHandler);
+
+// Define XLA FFI handler as a function forwarded to `NoOp` implementation.
+static absl::Status NoOp() { return absl::OkStatus(); }
+XLA_FFI_DEFINE_HANDLER_SYMBOL(NoOpHandler, NoOp, Ffi::Bind());
+
+TEST(FfiTest, StaticHandlerSymbolRegistration) {
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-sym-0", "Host", NoOpHandler);
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-sym-1", "Host", NoOpHandler,
+                           XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+
+  auto handler0 = FindHandler("no-op-sym-0", "Host");
+  auto handler1 = FindHandler("no-op-sym-1", "Host");
+
+  TF_ASSERT_OK(handler0.status());
+  TF_ASSERT_OK(handler1.status());
+
+  ASSERT_EQ(handler0->traits, 0);
+  ASSERT_EQ(handler1->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 }
 
 TEST(FfiTest, ForwardError) {

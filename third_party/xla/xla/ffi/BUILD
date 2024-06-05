@@ -126,6 +126,7 @@ xla_cc_test(
         ":ffi",
         ":ffi_api",
         "//xla:xla_data_proto_cc",
+        "//xla/ffi/api:c_api",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
