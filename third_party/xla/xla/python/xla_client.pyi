@@ -51,7 +51,6 @@ from .xla_extension import Sharding as Sharding
 from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import Traceback as Traceback
 from .xla_extension import XlaBuilder as XlaBuilder
-from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
 
