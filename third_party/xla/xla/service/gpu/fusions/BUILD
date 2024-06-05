@@ -164,8 +164,8 @@ cc_library(
 )
 
 xla_test(
-    name = "address_computation_fusion_test",
-    srcs = if_cuda_is_configured(["address_computation_fusion_test.cc"]),
+    name = "dynamic_slice_fusion_test",
+    srcs = if_cuda_is_configured(["dynamic_slice_fusion_test.cc"]),
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [

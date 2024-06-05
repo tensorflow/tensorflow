@@ -71,7 +71,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class AddressComputationFusionTest : public HloTestBase {
+class DynamicSliceFusionTest : public HloTestBase {
  public:
   HloModuleConfig GetModuleConfigWithoutCommandBuffer() {
     DebugOptions debug_options = GetDebugOptionsForTest();
@@ -82,7 +82,7 @@ class AddressComputationFusionTest : public HloTestBase {
   }
 };
 
-TEST_F(AddressComputationFusionTest, CublasGemmSimple) {
+TEST_F(DynamicSliceFusionTest, CublasGemmSimple) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -160,7 +160,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmSimple) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmWithWorkspace) {
+TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -241,7 +241,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmWithWorkspace) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, ContiguousSlice) {
+TEST_F(DynamicSliceFusionTest, ContiguousSlice) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -319,7 +319,7 @@ TEST_F(AddressComputationFusionTest, ContiguousSlice) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, ContiguousSliceNonDefaultLayout) {
+TEST_F(DynamicSliceFusionTest, ContiguousSliceNonDefaultLayout) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -397,7 +397,7 @@ TEST_F(AddressComputationFusionTest, ContiguousSliceNonDefaultLayout) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, OperandIsSlicedGetTupleElement) {
+TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -528,7 +528,7 @@ TEST_F(AddressComputationFusionTest, OperandIsSlicedGetTupleElement) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, ReversedOperandOrder) {
+TEST_F(DynamicSliceFusionTest, ReversedOperandOrder) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -613,7 +613,7 @@ TEST_F(AddressComputationFusionTest, ReversedOperandOrder) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, SingleOperandComputation) {
+TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -743,7 +743,7 @@ TEST_F(AddressComputationFusionTest, SingleOperandComputation) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
+TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -850,7 +850,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 
-TEST_F(AddressComputationFusionTest, CustomCallSimple) {
+TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$memcpy",
              /*operands=*/
@@ -950,7 +950,7 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
                          PLATFORM, kSubBuffers);
 
-TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
+TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "__xla_test$$subbuffers", /*operands=*/
@@ -1032,7 +1032,7 @@ XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
                          kNoOp);
 
-TEST_F(AddressComputationFusionTest, NilTuple) {
+TEST_F(DynamicSliceFusionTest, NilTuple) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$noop",
              /*operands=*/
@@ -1081,7 +1081,7 @@ void Callback_Memcpy(se::gpu::GpuStreamHandle stream, void** buffers,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, PLATFORM);
 
-TEST_F(AddressComputationFusionTest, CustomCallLegacyAPI) {
+TEST_F(DynamicSliceFusionTest, CustomCallLegacyAPI) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Memcpy",
              /*operands=*/
@@ -1119,7 +1119,7 @@ void Callback_Void(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, PLATFORM);
 
-TEST_F(AddressComputationFusionTest, NilTupleLegacyAPI) {
+TEST_F(DynamicSliceFusionTest, NilTupleLegacyAPI) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Void", /*operands=*/
              {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
@@ -1152,7 +1152,7 @@ TEST_F(AddressComputationFusionTest, NilTupleLegacyAPI) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDynamic) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDynamic) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1236,7 +1236,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDynamic) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDynamicWithWorkspace) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1323,7 +1323,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDynamicWithWorkspace) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicContiguousSlice) {
+TEST_F(DynamicSliceFusionTest, DynamicContiguousSlice) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1413,7 +1413,7 @@ TEST_F(AddressComputationFusionTest, DynamicContiguousSlice) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicContiguousSliceNonDefaultLayout) {
+TEST_F(DynamicSliceFusionTest, DynamicContiguousSliceNonDefaultLayout) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1504,7 +1504,7 @@ TEST_F(AddressComputationFusionTest, DynamicContiguousSliceNonDefaultLayout) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicOperandIsSlicedGetTupleElement) {
+TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1638,7 +1638,7 @@ TEST_F(AddressComputationFusionTest, DynamicOperandIsSlicedGetTupleElement) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicReversedOperandOrder) {
+TEST_F(DynamicSliceFusionTest, DynamicReversedOperandOrder) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1729,7 +1729,7 @@ TEST_F(AddressComputationFusionTest, DynamicReversedOperandOrder) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicSingleOperandComputation) {
+TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1862,7 +1862,7 @@ TEST_F(AddressComputationFusionTest, DynamicSingleOperandComputation) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicSlicedOperandAliasingOutput) {
+TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -1960,7 +1960,7 @@ TEST_F(AddressComputationFusionTest, DynamicSlicedOperandAliasingOutput) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDUS) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDUS) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -2055,7 +2055,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUS) {
       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDUSWithWorkspace) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -2152,7 +2152,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUSWithWorkspace) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDUSWorkspaceIgnored) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDUSWorkspaceIgnored) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -2237,7 +2237,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUSWorkspaceIgnored) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDUSOffsetS32NotConstant) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -2334,7 +2334,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUSOffsetS32NotConstant) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CublasGemmDUSOffsetOOB) {
+TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   const char* hlo_ref = R"(
@@ -2431,7 +2431,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUSOffsetOOB) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicCustomCallSimple) {
+TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "__xla_test$$memcpy",
@@ -2467,7 +2467,7 @@ TEST_F(AddressComputationFusionTest, DynamicCustomCallSimple) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, DynamicCustomCallWithTuple) {
+TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "__xla_test$$subbuffers", /*operands=*/
@@ -2603,7 +2603,7 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
                          PLATFORM, kSubBuffers2);
 
-TEST_F(AddressComputationFusionTest, CustomCallDUS) {
+TEST_F(DynamicSliceFusionTest, CustomCallDUS) {
   XlaBuilder b(TestName());
   auto custom_call =
       CustomCall(&b, "Callback_Memcpy",
@@ -2642,7 +2642,7 @@ TEST_F(AddressComputationFusionTest, CustomCallDUS) {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(AddressComputationFusionTest, CustomCallDUSTuple) {
+TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   XlaBuilder b(TestName());
   auto big_buffer1 =
       Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 128}), "p0");
