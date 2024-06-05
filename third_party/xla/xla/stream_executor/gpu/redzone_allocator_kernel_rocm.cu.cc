@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 
 namespace {
@@ -38,11 +39,11 @@ namespace stream_executor {
 
 absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
     StreamExecutor* executor, GpuAsmOpts /*gpu_asm_opts*/) {
-  static auto kernel =
-      TypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
-                  DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
-                                                  reinterpret_cast<void*>(
-                                                      redzone_checker_kernel));
+  static auto kernel = TypedKernelFactory<
+      DeviceMemory<uint8>, uint8, uint64_t,
+      DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
+                                      reinterpret_cast<void*>(
+                                          redzone_checker_kernel));
 
   if (!kernel.ok()) return kernel.status();
   return &kernel.value();

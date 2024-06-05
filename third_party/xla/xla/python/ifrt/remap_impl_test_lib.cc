@@ -160,7 +160,8 @@ TEST(RemapImplTest, ExtractSingleShard) {
                     MemoryKind(), /*shape=*/Shape({2, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[1:2:1] is mapped into out_arrays[0].shards[0:1:1].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{1, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
@@ -221,12 +222,14 @@ TEST(RemapImplTest, InterleaveArrays) {
                     MemoryKind(), /*shape=*/Shape({8, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[0:2:1] is mapped into out_arrays[0].shards[0:4:2].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 4, 2}}});
   // arrays[1].shards[0:2:1] is mapped into out_arrays[0].shards[1:4:2].
-  plan.mappings.push_back(
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
@@ -240,11 +243,12 @@ TEST(RemapImplTest, InterleaveArrays) {
                           CreateArray(client.get(), /*base_values=*/{100, 106},
                                       /*device_indices=*/{2, 3}));
 
-  EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
-                                  ArrayCopySemantics::kReuseInput),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("kDonateInput is required if multiple inputs "
-                                 "or outputs are used")));
+  EXPECT_THAT(
+      client->RemapArrays(plan, absl::MakeSpan(arrays),
+                          ArrayCopySemantics::kReuseInput),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("kDonateInput is required if multiple inputs are used")));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
@@ -289,12 +293,14 @@ TEST(RemapImplTest, DeinterleaveArrays) {
                     MemoryKind(), /*shape=*/Shape({4, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[0:4:2] is mapped into out_arrays[0].shards[0:2:1].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 4, 2}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
   // arrays[0].shards[1:4:2] is mapped into out_arrays[1].shards[0:2:1].
-  plan.mappings.push_back(
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/1,
                          /*from=*/{RemapPlan::Interval{1, 4, 2}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
@@ -306,27 +312,40 @@ TEST(RemapImplTest, DeinterleaveArrays) {
       CreateArray(client.get(), /*base_values=*/{0, 100, 6, 106},
                   /*device_indices=*/{0, 2, 1, 3}));
 
-  EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
-                                  ArrayCopySemantics::kReuseInput),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("kDonateInput is required if multiple inputs "
-                                 "or outputs are used")));
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                             ArrayCopySemantics::kReuseInput));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
-                                           ArrayCopySemantics::kDonateInput));
+    ASSERT_THAT(out_arrays, SizeIs(2));
+    // `out_arrays[0].shards[0] == arrays[0].shards[0]`
+    // `out_arrays[0].shards[1] == arrays[0].shards[2]`
+    // `out_arrays[1].shards[0] == arrays[0].shards[1]`
+    // `out_arrays[1].shards[1] == arrays[0].shards[3]`
+    AssertArrayContent(client.get(), out_arrays[0].get(),
+                       /*base_values=*/{0, 6},
+                       /*device_indices=*/{0, 1});
+    AssertArrayContent(client.get(), out_arrays[1].get(),
+                       /*base_values=*/{100, 106},
+                       /*device_indices=*/{2, 3});
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                             ArrayCopySemantics::kDonateInput));
 
-  ASSERT_THAT(out_arrays, SizeIs(2));
-  // `out_arrays[0].shards[0] == arrays[0].shards[0]`
-  // `out_arrays[0].shards[1] == arrays[0].shards[2]`
-  // `out_arrays[1].shards[0] == arrays[0].shards[1]`
-  // `out_arrays[1].shards[1] == arrays[0].shards[3]`
-  AssertArrayContent(client.get(), out_arrays[0].get(),
-                     /*base_values=*/{0, 6},
-                     /*device_indices=*/{0, 1});
-  AssertArrayContent(client.get(), out_arrays[1].get(),
-                     /*base_values=*/{100, 106},
-                     /*device_indices=*/{2, 3});
+    ASSERT_THAT(out_arrays, SizeIs(2));
+    // `out_arrays[0].shards[0] == arrays[0].shards[0]`
+    // `out_arrays[0].shards[1] == arrays[0].shards[2]`
+    // `out_arrays[1].shards[0] == arrays[0].shards[1]`
+    // `out_arrays[1].shards[1] == arrays[0].shards[3]`
+    AssertArrayContent(client.get(), out_arrays[0].get(),
+                       /*base_values=*/{0, 6},
+                       /*device_indices=*/{0, 1});
+    AssertArrayContent(client.get(), out_arrays[1].get(),
+                       /*base_values=*/{100, 106},
+                       /*device_indices=*/{2, 3});
+  }
 }
 
 }  // namespace

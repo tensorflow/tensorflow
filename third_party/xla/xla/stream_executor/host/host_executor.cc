@@ -22,24 +22,30 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_interface.h"
+#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/profile_utils/cpu_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace host {
@@ -49,7 +55,51 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
+static std::vector<HostExecutor::KernelFunctionLoader>&
+KernelFunctionLoaderRegistry() {
+  static auto* registry = new std::vector<HostExecutor::KernelFunctionLoader>();
+  return *registry;
+}
+
+void HostExecutor::RegisterKernelFunctionLoader(KernelFunctionLoader loader) {
+  KernelFunctionLoaderRegistry().push_back(std::move(loader));
+}
+
 absl::Status HostExecutor::Init() { return absl::OkStatus(); }
+
+absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::CreateKernel() {
+  return std::make_unique<HostKernel>();
+}
+
+absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
+                                     Kernel* kernel) {
+  HostKernel* host_kernel = AsHostKernel(kernel);
+  host_kernel->SetArity(spec.arity());
+
+  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
+
+  for (auto& loader : KernelFunctionLoaderRegistry()) {
+    auto loaded = loader(spec);
+    if (!loaded.has_value()) continue;
+
+    TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
+    host_kernel->SetExecutionEngine(std::move(kernel_function));
+    return absl::OkStatus();
+  }
+
+  return absl::InternalError("No method of loading host kernel provided");
+}
+
+absl::Status HostExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                  const BlockDim& block_dims,
+                                  const Kernel& kernel,
+                                  const KernelArgs& args) {
+  // const HostKernel* host_kernel = AsHostKernel(&kernel);
+
+  // TODO(tsilytskyi): convert args into proper format
+  // host_kernel->Launch(thread_dims, args);
+  return absl::UnimplementedError("Not Implemented");
+}
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
@@ -162,8 +212,6 @@ bool HostExecutor::HostCallback(
   return true;
 }
 
-bool HostExecutor::AllocateStream(Stream* stream) { return true; }
-
 void HostExecutor::DeallocateStream(Stream* stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
@@ -187,17 +235,13 @@ class HostEvent : public EventInterface {
   std::shared_ptr<absl::Notification> notification_;
 };
 
-std::unique_ptr<EventInterface> HostExecutor::CreateEventImplementation() {
-  return std::unique_ptr<EventInterface>(new HostEvent());
+absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
+  return std::make_unique<Event>(this, std::make_unique<HostEvent>());
 }
 
 static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<HostEvent*>(event->implementation());
-}
-
-absl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return absl::OkStatus();
 }
 
 absl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
@@ -254,9 +298,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  auto stream = std::make_unique<Stream>(this, std::make_unique<HostStream>());
-  TF_RETURN_IF_ERROR(stream->Initialize(priority));
-  return std::move(stream);
+  return std::make_unique<Stream>(this, std::make_unique<HostStream>());
 }
 
 }  // namespace host

@@ -30,6 +30,7 @@ package(
 pytype_strict_library(
     name = "quantization",
     srcs = ["quantization.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
@@ -45,6 +46,10 @@ pytype_strict_library(
 #     testonly = 1,
 #     srcs = ["integration_test/quantize_model_test_base.py"],
 #     tags = ["no_pip"],
+#     visibility = [
+#         "//learning/brain/mlir/quantization/stablehlo:__subpackages__",
+#         "//tensorflow/compiler/mlir/quantization:__subpackages__",
+#     ],
 #     deps = [
 #         "//third_party/py/mlir:ir",
 #         "//third_party/py/mlir:stablehlo_dialect",
@@ -62,6 +67,7 @@ pytype_strict_library(
 #         "//tensorflow/python/ops:nn_ops",
 #         "//tensorflow/python/ops:variables",
 #         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/platform:tf_logging",
 #         "//tensorflow/python/saved_model:load",
 #         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",

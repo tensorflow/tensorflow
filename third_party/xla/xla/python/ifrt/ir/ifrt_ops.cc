@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -146,7 +147,7 @@ mlir::LogicalResult VerifyDevicePlacement(
     mlir::Operation* op, llvm::ArrayRef<int> devices,
     llvm::ArrayRef<IfrtArrayType> inputs,
     llvm::ArrayRef<IfrtArrayType> outputs) {
-  llvm::SmallSet<int, 4> device_set;
+  llvm::DenseSet<int> device_set;
   device_set.insert(devices.begin(), devices.end());
 
   for (const IfrtArrayType input : inputs) {
@@ -239,7 +240,7 @@ mlir::LogicalResult ReshardOp::verify() {
 }
 
 mlir::LogicalResult AssembleOp::verify() {
-  llvm::SmallVector<int, 4> input_devices;
+  std::vector<int> input_devices;
   for (const mlir::Value input : getInputs()) {
     const auto array = llvm::cast<IfrtArrayType>(input.getType());
     if (array.getDevices().size() != 1) {
@@ -259,7 +260,7 @@ mlir::LogicalResult AssembleOp::verify() {
 }
 
 mlir::LogicalResult DisassembleOp::verify() {
-  llvm::SmallVector<int, 4> output_devices;
+  std::vector<int> output_devices;
   for (const mlir::Value output : getOutputs()) {
     const auto array = llvm::cast<IfrtArrayType>(output.getType());
     if (array.getDevices().size() != 1) {

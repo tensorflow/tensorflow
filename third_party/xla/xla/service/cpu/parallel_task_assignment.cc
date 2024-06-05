@@ -133,7 +133,8 @@ ParallelTaskAssignment::ParallelTaskAssignment(
   // Run cost analysis on 'module'.
   auto cost_analysis = std::make_unique<HloCostAnalysis>(shape_size);
   HloComputation* computation = module->entry_computation();
-  Status status = computation->root_instruction()->Accept(cost_analysis.get());
+  absl::Status status =
+      computation->root_instruction()->Accept(cost_analysis.get());
   if (status.ok()) {
     // Set default cost model based on 'cost_analysis'.
     cost_model_ = std::make_unique<DefaultCostModel>(

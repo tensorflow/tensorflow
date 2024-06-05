@@ -83,7 +83,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         .cuda_compute_capability();
   }
 
-  ErrorSpec error_spec_{2.5E-3, 1e-5};
+  ErrorSpec mha_error_spec_{2.5E-3, 1e-5};
 
  protected:
   DebugOptions GetDebugOptionsForTest() override {
@@ -131,7 +131,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         ExecuteAndTransfer(std::move(test_module), literals);
 
     EXPECT_TRUE(
-        LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
+        LiteralTestUtil::Near(expected_result, actual_result, mha_error_spec_));
   }
 
   template <typename T>

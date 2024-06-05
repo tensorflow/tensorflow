@@ -26,6 +26,7 @@ namespace xla {
 
 static constexpr double kDeviceMeshAlpha = 1.0;
 static constexpr double kDeviceMeshBeta = 1.0;
+static constexpr double kOverbudgetCoeff = 1e6;
 
 // Options for the autosharding pass
 struct AutoShardingOption {
@@ -62,6 +63,10 @@ struct AutoShardingOption {
   //     memory_budget_ratio * (memory lower bound estimation).
   // Enabled when memory_budget_per_device == 0;
   float memory_budget_ratio = 1.1;
+
+  // Controls the penalty associated with violating memory constraints; if
+  // negative, the memory budget is instead imposed as a hard constraint.
+  float memory_overbudget_coeff = kOverbudgetCoeff;
 
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_override_all_gather_cost = false;
@@ -190,6 +195,12 @@ struct AutoShardingOption {
   // Whether or not to model the memory usage of intermediate tensors, if any,
   // for resharding edges.
   bool model_resharding_memory_costs = true;
+
+  // Whether or not to generate strategies that model the windowed einsum (or
+  // collective matmul) optimization
+  // TODO(331684721,329508561): Generate windowed-einsum strategies by default
+  // once it is fully implemented.
+  bool generate_windowed_einsum_strategies = false;
 
   // Prints a debug string.
   std::string ToString() const;

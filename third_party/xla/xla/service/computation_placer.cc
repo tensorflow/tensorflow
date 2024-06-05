@@ -84,7 +84,7 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
   return device_to_logical_id;
 }
 
-Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
+absl::Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
+#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
   int task_id = 0;
   int num_nodes = 1;
   std::string device_type_str = "gpu";
+  std::string address_str = "";
   xla::FunctionalHloRunner::PreprocessingOptions preproc_options;
   xla::FunctionalHloRunner::RawCompileOptions raw_compile_options;
   xla::FunctionalHloRunner::RunningOptions running_options;
@@ -97,10 +99,15 @@ int main(int argc, char** argv) {
                 "Example: /a/b/literal.txt."),
       tsl::Flag("task_id", &task_id, "Borg task id."),
       tsl::Flag("device_type", &device_type_str, "Device type: gpu, host"),
-      tsl::Flag("num_nodes", &num_nodes, "Number of nodes (hosts)"),
+      tsl::Flag("num_nodes", &num_nodes,
+                "Number of nodes (hosts). If greater than 1, a distributed "
+                "service will be created for task_id 0"),
       tsl::Flag(
           "enable_mock_nccl", &enable_mock_nccl,
           "Should we simulate multi-hosts run with mock nccl collectives?"),
+      tsl::Flag("address", &address_str,
+                "Coordinator address with port for when num_nodes > 1. "
+                "Example: 127.0.0.1:12345"),
   };
 
   xla::MultiHostHloRunnerFlags hlo_runner_flags;
@@ -131,6 +138,8 @@ int main(int argc, char** argv) {
     }
   }
 
+  std::unique_ptr<xla::DistributedRuntimeService> service;
+
   // The main logic:
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client = [&] {
     if (device_type_str == "host") {
@@ -144,8 +153,30 @@ int main(int argc, char** argv) {
       CHECK_GT(num_nodes, 1);
       return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
     } else {
-      CHECK_EQ(num_nodes, 1);
-      return xla::FunctionalHloRunner::CreateGpuClient();
+      if (num_nodes == 1) {
+        return xla::FunctionalHloRunner::CreateGpuClient();
+      } else {
+        CHECK_GT(address_str.length(), 0);
+        // Multinode. Start service on task 0.
+        if (task_id == 0) {
+          std::string coordinator_bind_address =
+              "[::]:" + address_str.substr(address_str.rfind(":") + 1);
+          xla::CoordinationServiceImpl::Options options;
+          options.num_nodes = num_nodes;
+          auto status_or = xla::GetDistributedRuntimeService(
+              coordinator_bind_address, options);
+          TF_QCHECK_OK(status_or.status());
+          service = std::move(status_or.value());
+        }
+        xla::DistributedRuntimeClient::Options options;
+        options.node_id = task_id;
+        options.init_timeout = absl::Seconds(300);
+        auto distributed_client =
+            xla::GetDistributedRuntimeClient(address_str, options);
+        TF_QCHECK_OK(distributed_client->Connect());
+        return xla::FunctionalHloRunner::CreateGpuClient(distributed_client,
+                                                         task_id, num_nodes);
+      }
     }
   }();
 

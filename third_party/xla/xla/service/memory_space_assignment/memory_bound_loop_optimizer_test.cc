@@ -91,8 +91,8 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
   const int64_t kAlternateMemorySpace = 1;
   const int64_t kDefaultMemorySpace = 0;
 
-  Status Initialize(const HloModule* module,
-                    uint64_t alternate_memory_size = 256) {
+  absl::Status Initialize(const HloModule* module,
+                          uint64_t alternate_memory_size = 256) {
     HloCostAnalysis::Options options;
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
@@ -119,7 +119,7 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(live_range_,
                         HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                           module->entry_computation()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<MemoryBoundLoopOptimizer*> CreateOptimizer(
@@ -370,8 +370,8 @@ ENTRY Entry {
     return preset_assignments;
   }
 
-  Status VerifyMsaEquivalence(HloModule* module,
-                              bool expect_unsupported_allocations = false) {
+  absl::Status VerifyMsaEquivalence(
+      HloModule* module, bool expect_unsupported_allocations = false) {
     // Create a map indexed by instruction number and operand number.
     absl::flat_hash_map<std::pair<int, int>, const Allocation*> allocation_map;
     for (const MemoryBoundLoopOptimizer::LoopValue& value :
@@ -496,7 +496,7 @@ ENTRY Entry {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

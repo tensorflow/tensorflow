@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/str_replace.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
@@ -1755,7 +1756,7 @@ ENTRY TestComputation {
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
-  constexpr char kHlo[] = R"(
+  std::string kHlo = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -1765,11 +1766,51 @@ ENTRY TestComputation {
   %bias = f32[32] parameter(2)
   %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
   %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+)";
+
+  std::string kHloNoPad = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,7,7,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=0_0x0_0}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+)";
+
+  std::string kHloRELU = R"(
+
   %zero = f32[] constant(0)
   %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
   ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
 })";
-  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+
+  std::string kHloTANH = R"(
+  ROOT result = f32[8,5,5,32] tanh(%add)
+})";
+
+  std::string kHloELU = R"(
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  %one = f32[] constant(1)
+  %ones = f32[8,5,5,32] broadcast(%one), dimensions={}
+  %exp = f32[8,5,5,32] exponential(%add)
+  %expm1 = f32[8,5,5,32] subtract(%exp, %ones)
+  %sgn = pred[8,5,5,32] compare(%add, %zeros), direction=GT
+  ROOT elu = f32[8,5,5,32] select(%sgn, %add, %expm1)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloRELU, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloTANH, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(RunAndCompare(kHlo + kHloELU, ErrorSpec{0.01, 0.01}));
+  EXPECT_TRUE(
+      RunAndCompare(absl::StrReplaceAll(kHlo + kHloRELU, {{"f32", "f16"}}),
+                    ErrorSpec{0.03, 0.03}));
+  EXPECT_TRUE(
+      RunAndCompare(absl::StrReplaceAll(kHloNoPad + kHloRELU, {{"f32", "f16"}}),
+                    ErrorSpec{0.03, 0.03}));
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {

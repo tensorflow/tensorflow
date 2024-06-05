@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AddV2"
   input_arg {
     name: "x"

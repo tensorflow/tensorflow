@@ -472,7 +472,7 @@ std::vector<DotTestParam> CreateDotTestParameters() {
 XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
-XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, OVERSIZE_ON_GRM(TestF64)) { TestImpl<double>(); }
 XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }

@@ -531,6 +531,22 @@ void ApplyIndexingOp::getCanonicalizationPatterns(
               SimplifyIndexingMap>(context);
 }
 
+mlir::LogicalResult ApplyIndexingOp::fold(
+    FoldAdaptor adaptor, llvm::SmallVectorImpl<mlir::OpFoldResult> &results) {
+  auto map = getAffineMap();
+  for (auto expr : map.getResults()) {
+    if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
+      results.push_back(getOperand(dim.getPosition()));
+    } else if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(expr)) {
+      results.push_back(getOperand(map.getNumDims() + sym.getPosition()));
+    } else {
+      results.clear();
+      return failure();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // AtomicRMWOp
 //===----------------------------------------------------------------------===//

@@ -67,16 +67,16 @@ class HloControlFlowFlattening : public HloModulePass {
 
  private:
   // Replaces an infeed with a custom call.
-  Status RemoveInfeed(HloInstruction* infeed_hlo) const;
+  absl::Status RemoveInfeed(HloInstruction* infeed_hlo) const;
   // Removes outfeeds and replaces the outfeed HLO with a side-effecting custom
   // call that ensures that XLA doesn't dead-code-eliminate the outfeeded values
   // but lowers to a no-op.
-  Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
+  absl::Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
   // Flattens the while loop. Precondition: while_hlo is a while instruction.
-  Status FlattenWhileLoop(HloInstruction* while_hlo,
-                          const CallGraph& call_graph) const;
+  absl::Status FlattenWhileLoop(HloInstruction* while_hlo,
+                                const CallGraph& call_graph) const;
   // Replaces an id with a zero constant.
-  Status RemoveId(HloInstruction* hlo) const;
+  absl::Status RemoveId(HloInstruction* hlo) const;
 
   int while_execution_count_;
   int max_outer_loop_count_;

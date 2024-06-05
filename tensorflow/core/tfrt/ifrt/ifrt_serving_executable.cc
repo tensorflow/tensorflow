@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -164,7 +165,7 @@ IfrtServingExecutable::Create(
     IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
     const IfrtRestoreTensorRegistry* ifrt_restore,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    tensorflow::StaticDeviceMgr* device_mgr,
+    tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector) {
   TF_ASSIGN_OR_RETURN(
@@ -236,7 +237,7 @@ GroupHostCallbackByKey(const Tf2HloResult& tf2hlo_result) {
 // TODO: shape propagation in module
 absl::StatusOr<xla::HostCallback> BuildHostCallback(
     absl::string_view key, const HostCallbackBuilderInfo& builder_info,
-    mlir::ModuleOp module, tensorflow::StaticDeviceMgr* device_mgr,
+    mlir::ModuleOp module, tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   VLOG(2) << "BuildHostCallback for key: " << key;
 
@@ -309,7 +310,7 @@ absl::StatusOr<xla::HostCallback> BuildHostCallback(
 
 absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
     const Tf2HloResult& tf2hlo_result, mlir::ModuleOp module,
-    tensorflow::StaticDeviceMgr* device_mgr,
+    tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   TF_ASSIGN_OR_RETURN(auto host_callback_maps,
                       GroupHostCallbackByKey(tf2hlo_result));
@@ -386,7 +387,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
       ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::XlaProgram>(
+          std::make_unique<xla::ifrt::HloProgram>(
               tf2hlo_result.mlir_hlo_module.get()),
           std::make_unique<xla::ifrt::XlaCompileOptions>(
               xla_compile_options, loaded_host_callbacks)));

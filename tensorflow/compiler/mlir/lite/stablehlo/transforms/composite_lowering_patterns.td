@@ -50,6 +50,21 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
                             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
                     [(IsSupportedNchwUpsampleBlinear $input, $old_val, $attrs)]>;
 
+// TODO(b/333961789): Add support for NCHW layout for PyTorch resize, plus jax
+// supports NCHW inputs as well, so we need to add reliable way of checking the
+// layout.
+// pattern to lower a stablehlo.composite with `jax.image.resize` in `nearest`
+// mode to a tflite.resize_nearest_neighbor op.
+def LegalizeJaxResizeNearestNeighbor2dComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+    (variadic $input),
+    ConstantStrAttr<StrAttr, "odml.jax_resize_nearest_neighbor2d">, $attrs, $_, $_),
+    (TFL_ResizeNearestNeighborOp
+      $input,
+      (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output_size"> $attrs))),
+      ConstBoolAttrFalse,
+      ConstBoolAttrTrue)>;
+
 
 def LegalizeCompositeGELU : Pat<(MHLO_CompositeOp:$composite 
                                   (variadic $inputs), 

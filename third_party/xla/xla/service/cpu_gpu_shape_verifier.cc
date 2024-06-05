@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 namespace {
-Status VerifyS4U4Usage(HloInstruction* instruction) {
+absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConstant:
@@ -62,7 +62,7 @@ Status VerifyS4U4Usage(HloInstruction* instruction) {
 }
 }  // namespace
 
-Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
+absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
         if (shape.has_layout()) {

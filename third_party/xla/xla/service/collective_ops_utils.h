@@ -308,7 +308,7 @@ class Rendezvous {
 
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
-  static StatusOr<O> SubmitParticipant(
+  static absl::StatusOr<O> SubmitParticipant(
       absl::FunctionRef<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
       I participant) {
     std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
@@ -336,7 +336,7 @@ class Rendezvous {
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<O> RunCollectiveOp(const I& participant) = 0;
+  virtual absl::StatusOr<O> RunCollectiveOp(const I& participant) = 0;
 
   // Adding participants_ requires holding mu_.
   // Not annotated with ABSL_GUARDED_BY(mu_) because we do not require the lock
@@ -353,7 +353,7 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
+  absl::StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
       absl::MutexLock lock(&mu_);

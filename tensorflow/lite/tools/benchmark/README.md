@@ -250,6 +250,11 @@ delegate first, and then the XNNPACK delegate secondly.
 
 ## To build/install/run
 
+Note: The benchmarking tool must be compiled with a TFLite runtime that
+supports the ops found in the model to be tested.<br/>
+If Tensorflow Ops ("flex ops")
+or other custom ops are used in the model, please see the section [below](#build-the-benchmark-tool-with-tensorflow-ops-support).
+
 ### On Android:
 
 (0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
@@ -308,8 +313,8 @@ adb shell /data/local/tmp/benchmark_model \
 bazel build -c opt tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
-(2) Run on your compute graph, similar to the Android case but without the need of adb shell.
-For example:
+(2) Run on your compute graph, similar to the Android case but without the need
+of adb shell. For example:
 
 ```
 bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model \
@@ -442,12 +447,19 @@ some additional parameters as detailed below.
 
 ## Build the benchmark tool with Tensorflow ops support
 
-You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+If you see an error that says: `ERROR: Select TensorFlow op(s), included in the
+given model, is(are) not supported by this interpreter.` you will need to
+build with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+Having Tensorflow ops in the TFLite file works when the benchmark tool is built
+with Tensorflow ops support. It doesn't require any additional option to use it.
 
 ### How to build
 
-To build the tool, you need to use 'benchmark_model_plus_flex' target with
-'--config=monolithic' option.
+To build the tool, you need to use the `benchmark_model_plus_flex` target with
+the `--config=monolithic` flag.
+
+**Desktop**
 
 ```
 bazel build -c opt \
@@ -455,12 +467,53 @@ bazel build -c opt \
   tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
 ```
 
+**Android**
+
+```
+bazel build -c opt \
+  --config=monolithic --config=android_arm64 \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
 ### How to benchmark tflite model with Tensorflow ops
 
-Tensorflow ops support just works the benchmark tool is built with Tensorflow
-ops support. It doesn't require any additional option to use it.
+Follow the further instructions [above](#to-buildinstallrun) replacing
+`benchmark_model` with the `benchmark_model_plus_flex` file created here.
+
+For example, on desktop it's very easy:
 
 ```
 bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
   --graph=model_converted_with_TF_ops.tflite \
 ```
+
+## Build the benchmark tool with Custom ops support
+
+If you see an error that says `ERROR: Op type not registered 'XXXXXXXX'
+in binary running on localhost.` for custom ops running in your TFLite model,
+you will need to manually build the tool to include your libraries providing
+the custom ops.
+
+### How to build
+
+While possible, this is not necessarily supported.
+
+However, you should be able to create a new `cc_binary` rule that depends on
+`tensorflow/lite/tools/benchmark:benchmark_model_main` along with your custom op
+rules.
+
+```
+cc_binary(
+    name = "benchmark_model_plus_custom_ops",
+    deps = [
+        ":my_custom_ops_provider",
+        "//tensorflow/lite/tools/benchmark:benchmark_model_main",
+    ],
+)
+```
+
+### How to benchmark tflite model with Custom ops
+
+Use the `benchmark_model_plus_custom_ops` (or whatever) file created by your
+custom rule instead of the `benchmark_model` file in the instructions,
+[above](#to-buildinstallrun).

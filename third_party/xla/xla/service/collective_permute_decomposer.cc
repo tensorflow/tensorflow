@@ -110,7 +110,7 @@ bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
 // collective-permute will be pipelined and the value of the attribute
 // represents the runtime stream to execute the instruction. Without the
 // frontend attribute, the collective-permute will not be pipelined.
-Status DecomposeCollectivePermute(
+absl::Status DecomposeCollectivePermute(
     HloCollectivePermuteInstruction* collective_permute,
     HloComputation* computation, const std::string& pipeline_decision) {
   // We currently only decompose collective-permute with a channel_id.

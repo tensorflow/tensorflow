@@ -26,7 +26,6 @@ namespace profiler {
 namespace {
 
 using absl::OkStatus;
-using absl::Status;
 using absl::StatusCode;
 
 // CUPTI from CUDA 11.6 adds information about the hardware channel that ops
@@ -365,11 +364,10 @@ void AddSynchronizationActivityEvent(
   collector.receive(std::move(event));
 }
 
-static Status ConvertActivityBuffer(CuptiEventCollectorDelegate &collector,
-                                    uint8_t *buffer, const size_t size,
-                                    const size_t max_activity_event_count,
-                                    size_t &total_activity_event_count,
-                                    size_t &dropped_activity_event_count) {
+static absl::Status ConvertActivityBuffer(
+    CuptiEventCollectorDelegate &collector, uint8_t *buffer, const size_t size,
+    const size_t max_activity_event_count, size_t &total_activity_event_count,
+    size_t &dropped_activity_event_count) {
   CuptiInterface *cupti_interface = GetCuptiInterface();
   CUpti_Activity *record = nullptr;
   while (true) {
@@ -430,8 +428,8 @@ static Status ConvertActivityBuffer(CuptiEventCollectorDelegate &collector,
       break;
     } else {
       LOG(WARNING) << "CUPTI parse ACTIVITY buffer error: " << status;
-      return Status(StatusCode::kInternal,
-                    "Parse cupti activity buffer error.");
+      return absl::Status(StatusCode::kInternal,
+                          "Parse cupti activity buffer error.");
     }
   }
   VLOG(3) << "CUPTI tracer post-process one ACTIVITY buffer of size: " << size

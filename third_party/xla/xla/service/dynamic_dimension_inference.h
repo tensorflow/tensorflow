@@ -71,7 +71,7 @@ class DynamicDimensionInference {
     kIgnore,
   };
   using CustomCallInferenceHandler =
-      std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
+      std::function<absl::Status(HloInstruction*, DynamicDimensionInference*)>;
 
   // Generate an assertion which fails the execution if the instruction value is
   // false.
@@ -108,8 +108,9 @@ class DynamicDimensionInference {
                            ShapeIndexView index = {}) const;
 
   // Forward dynamic dimension size at `dim` from `inst` to `new_inst`.
-  Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
-                            const ShapeIndex& index);
+  absl::Status ForwardDynamicSize(HloInstruction* inst,
+                                  HloInstruction* new_inst,
+                                  const ShapeIndex& index);
 
   // Update the dynamic mapping so that we know dimension `dim` of instruction
   // `inst` at `index` has a dynamic size, and its runtime size is represented
@@ -193,7 +194,7 @@ class DynamicDimensionInference {
 
   // AnalyzeDynamicDimensions starts the analysis of the dynamic dimensions in
   // module_.
-  Status AnalyzeDynamicDimensions();
+  absl::Status AnalyzeDynamicDimensions();
 
   // HloModule being analyzed.
   HloModule* module_;

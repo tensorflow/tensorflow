@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MutableHashTableOfTensorsV2"
   output_arg {
     name: "table_handle"

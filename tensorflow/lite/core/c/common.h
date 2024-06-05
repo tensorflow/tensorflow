@@ -472,6 +472,8 @@ typedef enum TfLiteCustomAllocationFlags {
   kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
 } TfLiteCustomAllocationFlags;
 
+enum { kTfLiteNoBufferIdentifier = SIZE_MAX };
+
 /// A tensor in the interpreter system which is a wrapper around a buffer of
 /// data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY

@@ -1850,25 +1850,25 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
         dynamic_dimension_inference_(dynamic_dimension_inference),
         execution_threads_(execution_threads) {}
 
-  Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
 
-  Status HandleCustomCall(HloInstruction* hlo) override;
+  absl::Status HandleCustomCall(HloInstruction* hlo) override;
 
-  Status HandleTuple(HloInstruction* hlo) override;
-  Status HandleGetTupleElement(HloInstruction* hlo) override;
+  absl::Status HandleTuple(HloInstruction* hlo) override;
+  absl::Status HandleGetTupleElement(HloInstruction* hlo) override;
 
-  Status HandleParameter(HloInstruction* hlo) override;
-  Status HandleInfeed(HloInstruction* hlo) override;
+  absl::Status HandleParameter(HloInstruction* hlo) override;
+  absl::Status HandleInfeed(HloInstruction* hlo) override;
 
-  Status HandleAsyncStart(HloInstruction* hlo) override;
-  Status HandleAsyncUpdate(HloInstruction* hlo) override;
-  Status HandleAsyncDone(HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(HloInstruction* hlo) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* hlo) override;
+  absl::Status HandleAsyncDone(HloInstruction* hlo) override;
 
-  Status HandleWhile(HloInstruction* hlo) override;
-  Status HandleConditional(HloInstruction* hlo) override;
+  absl::Status HandleWhile(HloInstruction* hlo) override;
+  absl::Status HandleConditional(HloInstruction* hlo) override;
 
-  Status HandleGetDimensionSize(HloInstruction* hlo) override;
-  Status HandleSetDimensionSize(HloInstruction* hlo) override;
+  absl::Status HandleGetDimensionSize(HloInstruction* hlo) override;
+  absl::Status HandleSetDimensionSize(HloInstruction* hlo) override;
 
   static absl::StatusOr<bool> Run(
       HloComputation* computation,
@@ -1900,7 +1900,7 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
 
   // Same as above, but for all of the instructions operands.  The operands will
   // be replaced by dynamic operands as needed.
-  Status ConvertOperandsToDynamic(HloInstruction* inst);
+  absl::Status ConvertOperandsToDynamic(HloInstruction* inst);
 
   const OpSupportsDynamismHandler& op_supports_dynamism_handler_;
 
@@ -1947,7 +1947,7 @@ absl::StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
   return TupleUtil::AssembleTupleInstruction(inst->parent(), std::move(gtes));
 }
 
-Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
+absl::Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
     HloInstruction* inst) {
   for (int64_t i = 0; i < inst->operand_count(); ++i) {
     auto operand = inst->mutable_operand(i);
@@ -1961,7 +1961,7 @@ Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
   // By default, ops don't support dynamic lowering.
   OpDynamismSupport op_support = OpDynamismSupport::kNoSupport;
   if (op_supports_dynamism_handler_) {
@@ -1993,23 +1993,25 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleGetTupleElement(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleGetTupleElement(
+    HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
+    HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SliceToDynamic" ||
       hlo->custom_call_target() == "PadToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
@@ -2020,7 +2022,8 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
-Status DynamicShapeRemovingVisitor::HandleAsyncStart(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncStart(
+    HloInstruction* hlo) {
   if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
                                        execution_threads_)) {
     return OkStatus();
@@ -2028,28 +2031,30 @@ Status DynamicShapeRemovingVisitor::HandleAsyncStart(HloInstruction* hlo) {
   return ConvertOperandsToDynamic(hlo);
 }
 
-Status DynamicShapeRemovingVisitor::HandleAsyncUpdate(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleWhile(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleConditional(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleGetDimensionSize(
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncUpdate(
     HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleSetDimensionSize(
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
+  return OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleWhile(HloInstruction* hlo) {
+  return OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleConditional(
+    HloInstruction* hlo) {
+  return OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleGetDimensionSize(
+    HloInstruction* hlo) {
+  return OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleSetDimensionSize(
     HloInstruction* hlo) {
   *hlo->mutable_shape() = hlo->operand(0)->shape();
   hlo->mutable_shape()->set_dynamic_dimension(hlo->dimension(), false);

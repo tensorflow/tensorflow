@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "tsl/platform/protobuf.h"
 
@@ -278,6 +279,62 @@ MemoryTermReducer::GetReducedIntervals() const {
 const std::vector<absl::btree_set<int64_t>>&
 MemoryTermReducer::GetReducedGroups() const {
   return reduced_groups_;
+}
+
+// Retrieves a reduced subset of time points (i.e., along the liveness
+// dimension) that are sufficient to establish memory constraints.
+absl::flat_hash_set<int64_t> MemoryTermReducer::GetReducedTimes(
+    int64_t num_primitives) {
+  return GetReducedTimes(num_primitives, reduced_intervals_, reduced_groups_);
+}
+
+absl::flat_hash_set<int64_t> MemoryTermReducer::GetReducedTimes(
+    int64_t num_primitives,
+    const std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
+    const std::vector<absl::btree_set<int64_t>>& reduced_groups) {
+  // First, reconstruct the original intervals of the primitives alone (since
+  // the start of a group does not necessarily correspond to the start of a
+  // primitive).
+  std::vector<std::pair<int64_t, int64_t>> intervals;
+  for (int64_t reduced_interval_idx = 0;
+       reduced_interval_idx < reduced_intervals.size();
+       ++reduced_interval_idx) {
+    const Interval& reduced_interval = reduced_intervals[reduced_interval_idx];
+    if (reduced_interval_idx < num_primitives) {
+      intervals.push_back(reduced_interval);
+      continue;
+    }
+    const GroupIdx group_idx = reduced_interval_idx - num_primitives;
+    for (const PrimIdx prim_idx : reduced_groups[group_idx]) {
+      Interval& interval = intervals[prim_idx];
+      if (!IsValid(interval)) {
+        interval.first = reduced_interval.first;
+        interval.second = reduced_interval.second;
+        continue;
+      }
+      interval.first = std::min(interval.first, reduced_interval.first);
+      interval.second = std::max(interval.second, reduced_interval.second);
+    }
+  }
+  // Next, created a sorted set of all entering & eviction times.
+  absl::btree_set<std::pair<int64_t, /*is_eviction=*/bool>> times;
+  for (const Interval& interval : intervals) {
+    if (!IsValid(interval)) continue;
+    times.insert({interval.first, false});
+    times.insert({interval.second, true});
+  }
+  // Finally, collect the latest entering times across all primitive intervals.
+  int64_t last_entering_time = -1;
+  absl::flat_hash_set<int64_t> reduced_times;
+  for (const auto& time : times) {
+    if (/*is_eviction*/ time.second) {
+      reduced_times.insert(last_entering_time);
+    } else {
+      last_entering_time = time.first;
+    }
+  }
+  reduced_times.insert(last_entering_time);
+  return reduced_times;
 }
 
 }  // namespace spmd

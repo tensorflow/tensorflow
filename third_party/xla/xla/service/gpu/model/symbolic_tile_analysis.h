@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -50,9 +50,7 @@ class SymbolicTileAnalysis {
       const HloComputation& computation, mlir::MLIRContext* ctx);
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
-  // Result vector has instructions in def-before-use order.
-  absl::StatusOr<std::vector<std::unique_ptr<TiledHloInstruction>>>
-  ComputeTiledHloInstructions(
+  absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
       const std::vector<int64_t>& tile_parameters) const;
 
   // Returns the tiled root instruction.

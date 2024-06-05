@@ -51,7 +51,7 @@ LogicalBufferAnalysis::Run(const HloModule* module) {
   return std::move(analysis);
 }
 
-Status LogicalBufferAnalysis::Analyze() {
+absl::Status LogicalBufferAnalysis::Analyze() {
   // Empirically we usually have a few more logical buffers than instructions,
   // so reserve 10% more than the number of instructions to avoid frequent
   // resizes.
@@ -95,7 +95,8 @@ void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,
   logical_buffers_.push_back(std::move(buffer));
 }
 
-Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
+absl::Status LogicalBufferAnalysis::DefaultAction(
+    HloInstruction* hlo_instruction) {
   // Create a logical buffer for each output of the instruction.
   ShapeUtil::ForEachSubshape(
       hlo_instruction->shape(),
@@ -106,38 +107,38 @@ Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
+absl::Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement does not create buffers.
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleAddDependency(
+absl::Status LogicalBufferAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand and does not
   // create buffers.
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
+absl::Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   // The top-level buffer (index={}) for kCopy is newly created, but all other
   // buffers (in the case of a tuple shape) come from the operand
   NewLogicalBuffer(copy, /*index=*/{});
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
+absl::Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
+absl::Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
   // A kDomain instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+absl::Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone produces a two-element tuple containing the data value (which
   // aliases part of its operand) and a token. Only the tuple index table and
   // the token are defined by the RecvDone.
@@ -146,7 +147,7 @@ Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
+absl::Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   // Send creates new buffers for the top-level tuple, the context (tuple
   // element at {1}), and the token (tuple element at {2}). Tuple element at {0}
   // is an alias of the Send operand, so we don't need to create a new Logical
@@ -157,7 +158,8 @@ Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleCopyStart(HloInstruction* copy_start) {
+absl::Status LogicalBufferAnalysis::HandleCopyStart(
+    HloInstruction* copy_start) {
   // CopyStart defines the tuple, target buffer at index {0}, and context at
   // index {2}.
   NewLogicalBuffer(copy_start, /*index=*/{});
@@ -166,19 +168,20 @@ Status LogicalBufferAnalysis::HandleCopyStart(HloInstruction* copy_start) {
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+absl::Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
   // The output of CopyDone aliases with operand {0}. CopyDone doesn't create
   // any buffers.
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
+absl::Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
   return OkStatus();
 }
 
-Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+absl::Status LogicalBufferAnalysis::HandleCustomCall(
+    HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   absl::flat_hash_set<ShapeIndex> aliased_outputs;
   for (const auto& pair : ccall->output_to_operand_aliasing()) {
@@ -200,7 +203,7 @@ Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
 // accommodate the output-operand aliases (similar to HandleCustomCall).
 // TODO (sacer): We might want to consider the pairs discovered by
 // GetFusionInstructionInPlaceInputOutputPairs() here as well.
-Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
+absl::Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
   auto cfusion = Cast<HloFusionInstruction>(fusion);
   absl::flat_hash_set<ShapeIndex> aliased_outputs;
   for (const auto& pair : cfusion->output_to_operand_aliasing()) {

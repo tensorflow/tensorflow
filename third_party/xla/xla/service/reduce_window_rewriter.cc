@@ -76,7 +76,7 @@ static HloInstruction* GetAtIndex(HloInstruction* hlo,
 //   if rank(x) == 1:
 //   then: reshape_r2_r1(reduce-win(reshape_r1_r2(x)))
 //   else: no change
-Status ReduceWindowRewriter::ReplaceReduceWindowWithReshape(
+absl::Status ReduceWindowRewriter::ReplaceReduceWindowWithReshape(
     HloReduceWindowInstruction* reduce_window) {
   VLOG(2) << "Converting R1 reduce window: " << reduce_window->ToString();
 
@@ -434,7 +434,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   std::vector<HloInstruction*> scans;
   auto status = ShapeUtil::ForEachSubshapeWithStatus(
       outer_reduce_window->shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) -> Status {
+      [&](const Shape& subshape,
+          const ShapeIndex& shape_index) -> absl::Status {
         if (!ShapeUtil::IsLeafIndex(outer_reduce_window->shape(),
                                     shape_index)) {
           return OkStatus();

@@ -43,7 +43,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
  public:
   explicit OperationDumper(const std::string& path) : path_(path) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     std::string params = absl::StrJoin(
         hlo->operands(), ", ",
         [](std::string* out, const HloInstruction* operand) {

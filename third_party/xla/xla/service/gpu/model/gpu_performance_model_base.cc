@@ -57,22 +57,18 @@ bool FusionUsesParameterElementwiseFromRoot(
              fusion->fused_expression_root()) == 1.f;
 }
 
-int GetCoalescingWasteFactor(PrimitiveType element_type) {
+int GetCoalescingWasteFactor(PrimitiveType element_type,
+                             const se::DeviceDescription& gpu_device_info) {
   int64_t element_size_bytes =
       element_type == PrimitiveType::TUPLE ||
               element_type == PrimitiveType::TOKEN
           ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
           : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // Cache line is 128B that is split into 4 sectors of 32B. Default transaction
-  // size from DRAM -> L2 = 64 Bytes = 2 sectors, since V100, but it can be also
-  // configured.
-  // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-  // (page 10).
-  constexpr int kDRAMToL2TransactionSizeBytes = 64;
   // Assume we use one element from the cache line and waste the remaining
   // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
   // line.
-  return kDRAMToL2TransactionSizeBytes / element_size_bytes;
+  return gpu_device_info.dram_to_l2_transaction_size_bytes() /
+         element_size_bytes;
 }
 
 // Limit the bandwidth for low occupancy cases. Each SM can issue at most
@@ -80,7 +76,8 @@ int GetCoalescingWasteFactor(PrimitiveType element_type) {
 // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
 float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
                       float bandwidth, int64_t num_blocks) {
-  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f * 32;
+  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f *
+                              gpu_device_info.memory_transactions_per_clock();
   float max_bandwidth = num_blocks * per_block_bandwidth;
 
   return std::min(bandwidth, max_bandwidth);
@@ -286,7 +283,8 @@ absl::Duration GpuPerformanceModelBase::ReadTime(
   float bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+    if (n_bytes_net <
+        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
       bandwidth *= kL1CacheSpeedup;
     }
   }
@@ -300,7 +298,8 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
     bool coalesced) {
-  int waste_factor = coalesced ? 1 : GetCoalescingWasteFactor(element_type);
+  int waste_factor =
+      coalesced ? 1 : GetCoalescingWasteFactor(element_type, gpu_device_info);
 
   // The first read of the input buffer always happens from DRAM. If reads are
   // no coaleced, bandwidth is reduced by the waste factor.
@@ -313,7 +312,8 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
   float rest_bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     rest_bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+    if (n_bytes_net <
+        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
       rest_bandwidth *= kL1CacheSpeedup;
     }
   } else {

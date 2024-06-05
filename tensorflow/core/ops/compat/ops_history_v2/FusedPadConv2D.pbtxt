@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FusedPadConv2D"
   input_arg {
     name: "input"

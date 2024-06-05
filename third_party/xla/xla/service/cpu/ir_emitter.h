@@ -124,7 +124,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilder<>* builder() { return &b_; }
 
   // Emit an LLVM global variable for every constant buffer allocation.
-  Status EmitConstantGlobals();
+  absl::Status EmitConstantGlobals();
 
  protected:
   //
@@ -132,55 +132,57 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
-  Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
 
-  Status HandleAllGather(HloInstruction* instruction) override;
-  Status HandleAllToAll(HloInstruction* instruction) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleCopy(HloInstruction* copy) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleSelect(HloInstruction* select) override;
-  Status HandleDot(HloInstruction* dot) override;
-  Status HandleConvolution(HloInstruction* convolution) override;
-  Status HandleFft(HloInstruction* fft) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
-  Status HandleReduceScatter(HloInstruction* crs) override;
-  Status HandleCollectivePermute(HloInstruction* crs) override;
-  Status HandleInfeed(HloInstruction* instruction) override;
-  Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* hlo) override;
-  Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window) override;
-  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleSendDone(HloInstruction* send_done) override;
-  Status HandleSlice(HloInstruction* slice) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleAllGather(HloInstruction* instruction) override;
+  absl::Status HandleAllToAll(HloInstruction* instruction) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleConstant(HloInstruction* constant) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleSelect(HloInstruction* select) override;
+  absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleFft(HloInstruction* fft) override;
+  absl::Status HandleAllReduce(HloInstruction* crs) override;
+  absl::Status HandleReduceScatter(HloInstruction* crs) override;
+  absl::Status HandleCollectivePermute(HloInstruction* crs) override;
+  absl::Status HandleInfeed(HloInstruction* instruction) override;
+  absl::Status HandleOutfeed(HloInstruction* outfeed) override;
+  absl::Status HandleSort(HloInstruction* hlo) override;
+  absl::Status HandleParameter(HloInstruction* parameter) override;
+  absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleReduceWindow(HloInstruction* reduce_window) override;
+  absl::Status HandleSelectAndScatter(
+      HloInstruction* select_and_scatter) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleSendDone(HloInstruction* send_done) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
+  absl::Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  absl::Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleRecv(HloInstruction* recv) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandlePad(HloInstruction* pad) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleWhile(HloInstruction* xla_while) override;
-  Status HandleConcatenate(HloInstruction* concatenate) override;
-  Status HandleConditional(HloInstruction* conditional) override;
-  Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleAfterAll(HloInstruction* after_all) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
-  Status HandlePartitionId(HloInstruction* hlo) override;
-  Status HandleReplicaId(HloInstruction* hlo) override;
-  Status HandleRng(HloInstruction* rng) override;
-  Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
-  Status FinishVisit(HloInstruction* root) override;
+  absl::Status HandleRecv(HloInstruction* recv) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandlePad(HloInstruction* pad) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status HandleCall(HloInstruction* call) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleWhile(HloInstruction* xla_while) override;
+  absl::Status HandleConcatenate(HloInstruction* concatenate) override;
+  absl::Status HandleConditional(HloInstruction* conditional) override;
+  absl::Status HandleScatter(HloInstruction* scatter) override;
+  absl::Status HandleAfterAll(HloInstruction* after_all) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status HandlePartitionId(HloInstruction* hlo) override;
+  absl::Status HandleReplicaId(HloInstruction* hlo) override;
+  absl::Status HandleRng(HloInstruction* rng) override;
+  absl::Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
+  absl::Status FinishVisit(HloInstruction* root) override;
 
-  Status Preprocess(HloInstruction* hlo) override;
-  Status Postprocess(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
+  absl::Status Postprocess(HloInstruction* hlo) override;
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
@@ -189,16 +191,16 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
-  Status HandleSliceToDynamic(HloInstruction* hlo);
-  Status HandlePadToStatic(HloInstruction* hlo);
-  Status HandleTopK(HloInstruction* hlo);
-  Status HandleAllReduceSingleReplica(HloInstruction* crs);
-  Status HandleAllReduceMultipleReplica(HloInstruction* crs);
+  absl::Status HandleSliceToDynamic(HloInstruction* hlo);
+  absl::Status HandlePadToStatic(HloInstruction* hlo);
+  absl::Status HandleTopK(HloInstruction* hlo);
+  absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
+  absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
-                                 std::string runtime_symbol_name);
-  Status HandleOneDnnSoftmax(HloInstruction* hlo);
-  Status HandleOneDnnLayerNorm(HloInstruction* hlo);
+  absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
+                                       std::string runtime_symbol_name);
+  absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);
+  absl::Status HandleOneDnnLayerNorm(HloInstruction* hlo);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
@@ -316,7 +318,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
-  Status ElementTypesSameAndSupported(
+  absl::Status ElementTypesSameAndSupported(
       const HloInstruction& instruction,
       absl::Span<const HloInstruction* const> operands,
       absl::Span<const PrimitiveType> supported_types);
@@ -331,23 +333,23 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the loop name.
   //
   // TODO(jingyue): target_op should be a `const HloInstruction*`.
-  Status EmitTargetElementLoop(
+  absl::Status EmitTargetElementLoop(
       HloInstruction* target_op,
       const llvm_ir::ElementGenerator& element_generator);
-  Status EmitTargetElementLoop(
+  absl::Status EmitTargetElementLoop(
       HloInstruction* target_op, absl::string_view desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
   // emitted_value_ table.
-  Status EmitMemcpy(const HloInstruction& source,
-                    const HloInstruction& destination);
+  absl::Status EmitMemcpy(const HloInstruction& source,
+                          const HloInstruction& destination);
 
   // Emits IR to compute the target address of the buffer for the given op.
   // After calling this function, you can get a pointer to this buffer by
   // calling GetIrArrayForOp or GetEmittedValueFor.
-  Status EmitTargetAddressForOp(const HloInstruction* op);
+  absl::Status EmitTargetAddressForOp(const HloInstruction* op);
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
@@ -652,8 +654,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Emit IR to transfer between a {infeed,outfeed} buffer and an in-program
   // address.
-  Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
-                           llvm::Value* program_buffer_address);
+  absl::Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
+                                 llvm::Value* program_buffer_address);
 
   // Returns a ConstExpr bitcast.
   llvm::Constant* EmitGlobalForLiteral(const Literal& literal);

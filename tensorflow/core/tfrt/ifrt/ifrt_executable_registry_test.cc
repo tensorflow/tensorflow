@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
@@ -118,6 +119,44 @@ TEST(IfrtExecutableRegistry, Basic) {
   ASSERT_EQ(executable_ptr, raw_ptr);
 }
 
+TEST(IfrtExecutableRegistry, DuplicateRegistrationFails) {
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  int64_t program_id = 1234;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
+                          CreateIfrtServingExecutable(context, program_id));
+  TF_ASSERT_OK_AND_ASSIGN(auto handle, ServingExecutableRegistry::Register(
+                                           program_id, std::move(executable)));
+
+  EXPECT_THAT(
+      ServingExecutableRegistry::Register(program_id, std::move(executable)),
+      testing::StatusIs(absl::StatusCode::kAlreadyExists));
+}
+
+TEST(IfrtExecutableRegistry, ReleaseOk) {
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  int64_t program_id = 1234;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
+                          CreateIfrtServingExecutable(context, program_id));
+  TF_ASSERT_OK_AND_ASSIGN(auto handle, ServingExecutableRegistry::Register(
+                                           program_id, std::move(executable)));
+
+  handle.Release();
+
+  EXPECT_EQ(ServingExecutableRegistry::Lookup(program_id), nullptr);
+}
+
 TEST(IfrtExecutableRegistry, FreezeOk) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -140,6 +179,27 @@ TEST(IfrtExecutableRegistry, FreezeOk) {
   IfrtServingExecutable* executable_ptr =
       ServingExecutableRegistry::Lookup(program_id);
   ASSERT_EQ(executable_ptr, raw_ptr);
+}
+
+TEST(IfrtExecutableRegistry, FreezeFailedProgramNotRegistered) {
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  int64_t program_id = 1234;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
+                          CreateIfrtServingExecutable(context, program_id));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto handle, ServingExecutableRegistry::Register(
+                                           program_id, std::move(executable)));
+
+  handle.Release();
+
+  EXPECT_THAT(handle.Freeze(),
+              testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(IfrtExecutableRegistry, InvalidProgramIdShallReturnNull) {

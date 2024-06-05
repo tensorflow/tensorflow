@@ -62,7 +62,7 @@ namespace jax {
 namespace nb = nanobind;
 
 // TODO(phawkins): Add support for Tracers.
-// TODO(jblespiau): Use absl Status.
+// TODO(jblespiau): Use absl absl::Status.
 
 namespace {
 

@@ -28,7 +28,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
+absl::Status ReplaceWithContiguousAllReduce(
+    HloAllReduceInstruction* all_reduce) {
   TF_RET_CHECK(all_reduce);
   TF_RET_CHECK(!all_reduce->has_sharding());
 

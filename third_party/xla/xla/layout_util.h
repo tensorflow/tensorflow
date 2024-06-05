@@ -90,13 +90,13 @@ class LayoutUtil {
   // Validates that the layout within the given shape is correct. The check
   // is performed for all subshapes as well. If missing layouts are allowed
   // the check does not fail on array shapes without layouts.
-  static Status ValidateLayoutInShape(const Shape& shape,
-                                      bool allow_missing_layouts = false);
+  static absl::Status ValidateLayoutInShape(const Shape& shape,
+                                            bool allow_missing_layouts = false);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.
-  static Status ValidateLayoutForShape(const Layout& layout,
-                                       const Shape& shape);
+  static absl::Status ValidateLayoutForShape(const Layout& layout,
+                                             const Shape& shape);
 
   // Clears the layout in the given Shape. After this function is called,
   // HasLayout will return false for the shape.
@@ -242,7 +242,7 @@ class LayoutUtil {
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
   // have the same tuple structure (if any) and arrays must have the same
   // rank. within the shapes must have the same number of dimensions.
-  static Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
+  static absl::Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
   // otherwise. Recursively compares layouts of tuples.

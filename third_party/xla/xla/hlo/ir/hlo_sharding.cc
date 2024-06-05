@@ -613,7 +613,7 @@ int64_t HloSharding::RequiredLeaves(const Shape& shape) {
   return (leaf_count == 0) ? 1 : leaf_count;
 }
 
-Status HloSharding::CheckLeafCount(const Shape& shape) const {
+absl::Status HloSharding::CheckLeafCount(const Shape& shape) const {
   int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
   if (leaf_count == 0 && tuple_elements_.size() == 1) {
     // Allow (but don't require) empty tuples to have a single sharding
@@ -683,8 +683,8 @@ int64_t HloSharding::GetUniqueDevice() const {
   return *device;
 }
 
-Status HloSharding::ValidateTuple(const Shape& shape,
-                                  std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::ValidateTuple(
+    const Shape& shape, std::optional<int64_t> num_devices) const {
   if (!shape.IsTuple()) {
     return tsl::errors::InvalidArgument(
         "Sharding is tuple-shaped but validation shape is not.");
@@ -699,7 +699,7 @@ Status HloSharding::ValidateTuple(const Shape& shape,
   // shape tree.
   ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
   for (const auto& index_to_sharding : shape_tree.leaves()) {
-    Status status = index_to_sharding.second.ValidateNonTuple(
+    absl::Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
       tsl::errors::AppendToMessage(
@@ -712,13 +712,13 @@ Status HloSharding::ValidateTuple(const Shape& shape,
   return OkStatus();
 }
 
-Status HloSharding::Validate(const Shape& shape,
-                             std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::Validate(const Shape& shape,
+                                   std::optional<int64_t> num_devices) const {
   if (shape.IsToken()) {
     return OkStatus();
   }
-  Status status = IsTuple() ? ValidateTuple(shape, num_devices)
-                            : ValidateNonTuple(shape, num_devices);
+  absl::Status status = IsTuple() ? ValidateTuple(shape, num_devices)
+                                  : ValidateNonTuple(shape, num_devices);
   if (!status.ok()) {
     tsl::errors::AppendToMessage(
         &status, StrCat("Note: While validating sharding ", ToString(),
@@ -727,8 +727,8 @@ Status HloSharding::Validate(const Shape& shape,
   return status;
 }
 
-Status HloSharding::ValidateNonTuple(const Shape& shape,
-                                     std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::ValidateNonTuple(
+    const Shape& shape, std::optional<int64_t> num_devices) const {
   if (shape.IsTuple()) {
     return absl::InvalidArgumentError(
         "Validation shape is a tuple but sharding is not.");
@@ -742,7 +742,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   bool all_devices_seen;
   if (!tile_assignment_.iota_) {
     absl::flat_hash_set<int64_t> seen_devices;
-    Status status = tile_assignment_.array().EachStatus(
+    absl::Status status = tile_assignment_.array().EachStatus(
         [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
                                       int32_t device) {
           if (num_devices.has_value() && device >= *num_devices) {

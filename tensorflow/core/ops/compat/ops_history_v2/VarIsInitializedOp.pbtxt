@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "VarIsInitializedOp"
   input_arg {
     name: "resource"

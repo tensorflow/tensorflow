@@ -93,7 +93,7 @@ class HloParser {
  public:
   // Runs the parser and constructs the resulting HLO in the given (empty)
   // HloModule. Returns the error status in case an error occurred.
-  virtual Status Run(HloModule* module) = 0;
+  virtual absl::Status Run(HloModule* module) = 0;
   virtual ~HloParser() {}
 
  private:

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseApplyMomentum"
   input_arg {
     name: "var"

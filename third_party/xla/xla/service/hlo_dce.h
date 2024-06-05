@@ -66,7 +66,7 @@ class HloDCE : public HloModulePass {
   // computations and checks if any of the subcomputations become dead after the
   // removal. Returns whether all dead computations were successfully removed
   // from the module.
-  Status RecursivelyRemoveDeadComputation(
+  absl::Status RecursivelyRemoveDeadComputation(
       HloModule* module, HloComputation* computation,
       absl::flat_hash_map<HloComputation*, int>& live_call_counts);
 

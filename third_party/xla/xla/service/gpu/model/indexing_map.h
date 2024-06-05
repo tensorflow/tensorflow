@@ -351,6 +351,11 @@ class IndexingMap {
   // Does `symbol` correspond to an RTVar?
   bool IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const;
 
+  IndexingMap GetSubMap(unsigned int result_index) const {
+    return {affine_map_.getSubMap({result_index}), dim_vars_, range_vars_,
+            rt_vars_, constraints_};
+  }
+
  private:
   IndexingMap() = default;
 

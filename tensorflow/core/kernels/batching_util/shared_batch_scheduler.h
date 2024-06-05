@@ -959,7 +959,7 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
             return profiler::TraceMeEncode("ScheduleOutputTask",
                                            {{"size", task_handles[i]->size()}});
           },
-          profiler::ContextType::kSharedBatchScheduler,
+          tsl::profiler::ContextType::kSharedBatchScheduler,
           task_handle_batches_.back()->traceme_context_id());
 
       task_handle_batches_.back()->AddTask(std::move(task_handles[i]));
@@ -1040,7 +1040,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
           return profiler::TraceMeEncode("ScheduleOutputTask",
                                          {{"size", output_tasks[i]->size()}});
         },
-        profiler::ContextType::kSharedBatchScheduler,
+        tsl::profiler::ContextType::kSharedBatchScheduler,
         batches.back()->traceme_context_id());
     batches.back()->AddTask(std::move(output_tasks[i]));
   }
@@ -1332,7 +1332,7 @@ void Queue<TaskType>::ProcessBatch(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
                              {"_r", 2} /*root_event*/});
       },
-      profiler::ContextType::kSharedBatchScheduler,
+      tsl::profiler::ContextType::kSharedBatchScheduler,
       batch->traceme_context_id());
 
   if (std::holds_alternative<ProcessBatchCallbackWithoutPaddingTasks>(

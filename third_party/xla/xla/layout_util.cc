@@ -204,7 +204,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutInShape(
+/* static */ absl::Status LayoutUtil::ValidateLayoutInShape(
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     // Tuple shape.
@@ -215,11 +215,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
-    return OkStatus();
+    return absl::OkStatus();
   } else if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape));
@@ -232,12 +232,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
-                                                       const Shape& shape) {
+/* static */ absl::Status LayoutUtil::ValidateLayoutForShape(
+    const Layout& layout, const Shape& shape) {
   if (shape.IsTuple()) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
@@ -248,7 +248,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a non-trivial layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (layout.minor_to_major_size() != shape.rank()) {
@@ -358,7 +358,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                   "physical shape: %s",
                   shape.ShortDebugString());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }));
       if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID &&
           !primitive_util::IsUnsignedIntegralType(
@@ -419,7 +419,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                            layout.element_size_in_bits());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -586,7 +586,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (src.IsTuple() != dst->IsTuple()) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -613,13 +613,13 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
 /* static */
-Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
+absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 

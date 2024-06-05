@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPUExecuteAndUpdateVariables"
   input_arg {
     name: "args"

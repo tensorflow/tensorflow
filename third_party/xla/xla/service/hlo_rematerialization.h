@@ -90,13 +90,15 @@ class HloRematerialization : public HloModulePass {
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   struct Options {
-    explicit Options(
-        HloCostAnalysis& hlo_cost_analysis,
-        const RematerializationModeConfig& remat_mode_config,
-        int64_t memory_limit_bytes, int block_size_limit,
-        int block_rematerialization_factor, int64_t min_remat_size,
-        CompactShapeFunction compact_shape_function,
-        std::optional<HostMemoryOffloadConfig> host_memory_offload_config)
+    explicit Options(HloCostAnalysis& hlo_cost_analysis,
+                     const RematerializationModeConfig& remat_mode_config,
+                     int64_t memory_limit_bytes, int block_size_limit,
+                     int block_rematerialization_factor, int64_t min_remat_size,
+                     CompactShapeFunction compact_shape_function,
+                     std::optional<HostMemoryOffloadConfig>
+                         host_memory_offload_config = std::nullopt,
+                     absl::flat_hash_map<HloComputation*, int64_t>
+                         async_computation_parallelism = {})
         : hlo_cost_analysis(hlo_cost_analysis),
           remat_mode_config(remat_mode_config),
           memory_limit_bytes(memory_limit_bytes),
@@ -106,7 +108,8 @@ class HloRematerialization : public HloModulePass {
           compact_shape_function(compact_shape_function == nullptr
                                      ? DefaultCompactShapeFunction
                                      : std::move(compact_shape_function)),
-          host_memory_offload_config(host_memory_offload_config) {}
+          host_memory_offload_config(host_memory_offload_config),
+          async_computation_parallelism(async_computation_parallelism) {}
 
     // The cost model used for decisions during rematerialization for host
     // memory offload. It is also used for getting Shape size.
@@ -133,7 +136,7 @@ class HloRematerialization : public HloModulePass {
     // return for potentially reduced memory consumption.
     int block_rematerialization_factor;
 
-    // The minimim size, in bytes, of a tensor to be considered for
+    // The minimum size, in bytes, of a tensor to be considered for
     // rematerialization. All tensors smaller than this size will be skipped
     // over.
     int64_t min_remat_size;
@@ -143,6 +146,10 @@ class HloRematerialization : public HloModulePass {
     CompactShapeFunction compact_shape_function;
 
     std::optional<HostMemoryOffloadConfig> host_memory_offload_config;
+
+    // Collection of async entry computations and their number of parallel
+    // invocations.
+    absl::flat_hash_map<HloComputation*, int64_t> async_computation_parallelism;
   };
 
   explicit HloRematerialization(Options options, RematerializationSizes& sizes)

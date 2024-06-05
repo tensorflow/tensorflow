@@ -647,5 +647,85 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
 }
 
+TEST_F(CollectiveOpsTestE2E, WindowedEinsumE2EAllgatherMultiConsumer) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,16,48]{2,1,0}, bf16[48,192]{1,0}, bf16[48,192]{1,0}, bf16[192,48]{1,0})->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main.12 {
+  Arg_0.1 = bf16[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  dot.5 = bf16[2,16,192]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  custom-call.7 = bf16[2,16,192]{2,1,0} custom-call(dot.5), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+  Arg_2.3 = bf16[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  dot.6 = bf16[2,16,192]{2,1,0} dot(Arg_0.1, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  add.8 = bf16[2,16,192]{2,1,0} add(custom-call.7, dot.6)
+  Arg_3.4 = bf16[192,48]{1,0} parameter(3), sharding={devices=[4,1]<=[4]}
+  dot.9 = bf16[2,16,48]{2,1,0} dot(add.8, Arg_3.4), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  tuple.10 = (bf16[2,16,48]{2,1,0}) tuple(dot.9)
+  ROOT get-tuple-element.11 = bf16[2,16,48]{2,1,0} get-tuple-element(tuple.10), index=0, sharding={devices=[1,4,1]<=[4]}
+} // main.12
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(opts);
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
+                        /*computation_count=*/kNumPartitions);
+  config.set_replica_count(kNumReplicas);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assn(0, i) = i;
+  }
+
+  auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+  std::vector<Literal*> fake_ptrs(fake_arguments.size());
+  for (int i = 0; i < fake_arguments.size(); i++) {
+    fake_ptrs[i] = &fake_arguments[i];
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(
+          std::move(module), fake_ptrs, kNumPartitions, &assn,
+          true /*run_hlo_passes*/, true /*use-threads*/));
+  ASSERT_EQ(results.size(), kNumPartitions);
+  HloModuleConfig ref_config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto ref_opts = GetDebugOptionsForTest();
+  ref_opts.set_xla_gpu_graph_min_graph_size(200);
+  ref_opts.set_xla_gpu_enable_triton_gemm(false);
+  ref_config.set_debug_options(ref_opts);
+  ref_config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ref_module,
+      ParseAndReturnVerifiedModule(kModuleReplicatedStr, ref_config));
+  auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
+  std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
+  for (int i = 0; i < fake_ref_arguments.size(); i++) {
+    ref_fake_ptrs[i] = &fake_ref_arguments[i];
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> ref_results,
+      HloTestBase::ExecuteReplicated(
+          std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
+          true /*run_hlo_passes*/, true /*use-threads*/));
+  ASSERT_EQ(ref_results.size(), kNumPartitions);
+  ErrorSpec error_spec{1e-2, 1e-2};
+  // Results should be the same between windowed einsum and non-windowed cases
+  for (int i = 0; i < kNumPartitions; i++) {
+    EXPECT_TRUE(LiteralTestUtil::Near(ref_results[i], results[i], error_spec));
+  }
+}
 }  // namespace
 }  // namespace xla

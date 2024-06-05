@@ -2826,7 +2826,7 @@ void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
   StatusOr<Layout> layout = Layout::FromString(serialized_layout);
   if (!layout.ok()) {
     RETURN_STATUS(status, TF_INTERNAL,
-                  tsl::NullTerminatedMessage(layout.status()));
+                  absl::StatusMessageAsCStr(layout.status()));
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->SetDefaultLayout(layout.value());
@@ -2842,7 +2842,7 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
   StatusOr<Mesh> mesh = Mesh::FromString(serialized_mesh);
   if (!mesh.ok()) {
     RETURN_STATUS(status, TF_INTERNAL,
-                  tsl::NullTerminatedMessage(mesh.status()));
+                  absl::StatusMessageAsCStr(mesh.status()));
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->SetDefaultMesh(mesh.value());

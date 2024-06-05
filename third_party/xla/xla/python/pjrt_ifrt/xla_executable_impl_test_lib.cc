@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -97,7 +98,7 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
       }
     }
   }
-  return compiler->Compile(std::make_unique<XlaProgram>(*module),
+  return compiler->Compile(std::make_unique<HloProgram>(*module),
                            std::move(compile_options));
 }
 

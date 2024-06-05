@@ -821,21 +821,19 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
 }
 
 // CHECK-LABEL: "op_dynamic_conv"
-func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>, %arg2: tensor<4xi32>) -> tensor<1x?x?x16xf32> {
+func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>, %arg2: tensor<2x2xi32>) -> tensor<1x?x?x16xf32> {
   //      CHECK: "stablehlo.dynamic_conv"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) <{
   // CHECK-SAME:   batch_group_count = 1 : i64,
   // CHECK-SAME:   dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
   // CHECK-SAME:   feature_group_count = 1 : i64,
   // CHECK-SAME:   lhs_dilation = array<i64: 1, 1>,
-  // CHECK-SAME:   padding = dense<1> : tensor<2x2xi64>,
   // CHECK-SAME:   precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
   // CHECK-SAME:   rhs_dilation = array<i64: 1, 1>,
   // CHECK-SAME:   window_reversal = array<i1: false, false>,
   // CHECK-SAME:   window_strides = array<i64: 1, 1>
-  // CHECK-SAME: }> : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
+  // CHECK-SAME: }> : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<2x2xi32>) -> tensor<1x?x?x16xf32>
   %0 = "mhlo.dynamic_conv"(%arg0, %arg1, %arg2) {
     window_strides = dense<1> : tensor<2xi64>,
-    padding = dense<1> : tensor<2x2xi64>,
     lhs_dilation = dense<1> : tensor<2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_reversal = dense<false> : tensor<2xi1>,
@@ -843,7 +841,7 @@ func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x1
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
+  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<2x2xi32>) -> tensor<1x?x?x16xf32>
   func.return %0 : tensor<1x?x?x16xf32>
 }
 
@@ -1602,17 +1600,6 @@ func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>)
     batch_dims = 0 : i64
   } : (tensor<5x1x5xf32>, tensor<2xi32>) -> tensor<2x1x5xf32>
   func.return %0 : tensor<2x1x5xf32>
-}
-
-// CHECK-LABEL: "op_trace"
-func.func @op_trace(%arg0: tensor<f32>) {
-  //      CHECK: "stablehlo.trace"([[ARG0:%arg[0-9]+]]) <{
-  // CHECK-SAME:   tag = "foo"
-  // CHECK-SAME: }> : (tensor<f32>) -> ()
-  "mhlo.trace"(%arg0) {
-    tag = "foo"
-  } : (tensor<f32>) -> ()
-  func.return
 }
 
 // CHECK-LABEL: "op_transpose"

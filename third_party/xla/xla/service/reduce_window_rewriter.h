@@ -58,10 +58,10 @@ class ReduceWindowRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  Status ReplaceReduceWindowWithReshape(
+  absl::Status ReplaceReduceWindowWithReshape(
       HloReduceWindowInstruction* reduce_window);
 
-  StatusOr<bool> TryOptimizeCumSumOrProd(
+  absl::StatusOr<bool> TryOptimizeCumSumOrProd(
       HloReduceWindowInstruction* reduce_window);
 
   int64_t base_length_;

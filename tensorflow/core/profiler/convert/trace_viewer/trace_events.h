@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tsl/lib/io/table.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/status.h"
@@ -64,6 +65,9 @@ tsl::Status DoLoadFromLevelDbTable(
     bool& filter_by_visibility,
     const std::function<TraceEvent*(const TraceEvent&)>& copy_event_to_arena,
     const std::function<void(TraceEvent*)>& add_arena_event);
+
+// Reads the trace metadata from a file with given path
+absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace);
 
 std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
     const Trace& trace, std::vector<TraceEvent*>& events);

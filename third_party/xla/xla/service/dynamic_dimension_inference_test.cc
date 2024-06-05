@@ -46,7 +46,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     module_ = CreateNewVerifiedModule();
   }
 
-  Status RunInference(
+  absl::Status RunInference(
       OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
       DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr,
       DynamicDimensionInference::ShapeCheckMode shape_check_mode =
@@ -603,7 +603,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  Status status = RunInference();
+  absl::Status status = RunInference();
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
 }
 

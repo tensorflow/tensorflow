@@ -88,7 +88,7 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
   streams_defined_on_.push_back(stream);
 }
 
-Status BufferSequencingEvent::WaitForEventOnExternalStream(
+absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
     std::intptr_t stream) {
   absl::MutexLock lock(&mu_);
 

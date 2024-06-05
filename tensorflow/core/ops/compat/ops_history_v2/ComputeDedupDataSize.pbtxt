@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ComputeDedupDataSize"
   output_arg {
     name: "num_elements"

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -54,6 +55,8 @@ class AddressComputationThunk : public Thunk {
 
   AddressComputationThunk(const AddressComputationThunk&) = delete;
   AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
+
+  const Thunk* embedded_thunk() const { return embedded_thunk_.get(); }
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;

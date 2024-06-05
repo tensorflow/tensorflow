@@ -25,36 +25,52 @@ limitations under the License.
 
 namespace xla::ffi {
 
-struct StringUserData {
-  std::string data;
-};
-
-struct I32UserData : public ExecutionContext::UserData {
+struct I32UserData {
   explicit I32UserData(int32_t value) : value(value) {}
   int32_t value;
 };
 
-TEST(ExecutionContextTest, OpaqueUserData) {
-  StringUserData string_data = {"foo"};
-  auto deleter = [](void*) {};
+struct StrUserData {
+  explicit StrUserData(std::string value) : value(value) {}
+  std::string value;
+};
 
-  ExecutionContext context;
-  TF_ASSERT_OK(context.Emplace("foo", &string_data, deleter));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto opaque_data, context.Lookup("foo"));
-  ASSERT_NE(opaque_data, nullptr);
-
-  StringUserData* user_data = static_cast<StringUserData*>(opaque_data->data());
-  EXPECT_EQ(user_data, &string_data);
-}
-
-TEST(ExecutionContextTest, UserData) {
+TEST(ExecutionContextTest, EmplaceUserData) {
   ExecutionContext context;
   TF_ASSERT_OK(context.Emplace<I32UserData>(42));
+  TF_ASSERT_OK(context.Emplace<StrUserData>("hello"));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto i32_data, context.Lookup<I32UserData>());
+  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
+  TF_ASSERT_OK_AND_ASSIGN(auto* str_data, context.Lookup<StrUserData>());
+
   ASSERT_NE(i32_data, nullptr);
+  ASSERT_NE(str_data, nullptr);
   ASSERT_EQ(i32_data->value, 42);
+  ASSERT_EQ(str_data->value, "hello");
+}
+
+TEST(ExecutionContextTest, InsertUserOwned) {
+  I32UserData user_data(42);
+
+  ExecutionContext context;
+  TF_ASSERT_OK(context.Insert(&user_data));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
+  ASSERT_EQ(i32_data, &user_data);
+}
+
+TEST(ExecutionContextTest, InsertUserOwnedWithTypeId) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionContext::TypeId type_id,
+      ExecutionContext::RegisterExternalTypeId("I32UserData"));
+
+  I32UserData user_data(42);
+
+  ExecutionContext context;
+  TF_ASSERT_OK(context.Insert(type_id, &user_data));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup(type_id));
+  ASSERT_EQ(i32_data, &user_data);
 }
 
 TEST(ExecutionContextTest, UserDataNotFound) {

@@ -11,3 +11,21 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect
  
      // get MMA encoding for the given number of warps
      auto retShapePerCTA = ttg::getShapePerCTA(oldRetType);
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+@@ -31,7 +31,13 @@ Value convertLayout(
+   // Calculate offset in the tile for the current thread.
+   Value threadsPerWarp = i32_val(kThreadsPerWarp);
+   Value warpId = udiv(thread, threadsPerWarp);
+-  Value warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
++  Value warpGroupId;
++  if (mmaLayout.isHopper()) {
++    warpGroupId = urem(warpId, i32_val(warpsPerCTA[0]));
++  } else {
++    assert(mmaLayout.isAmpere());
++    warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
++  }
+   Value laneId = urem(thread, threadsPerWarp);
+   Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
+   Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));

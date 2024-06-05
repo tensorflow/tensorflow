@@ -31,7 +31,8 @@ namespace xla {
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 
-StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
+absl::StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(
+    PjRtBuffer* buffer) {
   if (buffer->on_device_shape().IsTuple()) {
     return Unimplemented(
         "unsafe_buffer_pointer is not implemented for tuple buffers.");
@@ -78,7 +79,7 @@ PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
 
 CopyToDeviceStream::~CopyToDeviceStream() = default;
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtLoadedExecutable::GetCostAnalysis() const {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
                       client()->GetHloCostAnalysis());

@@ -26,7 +26,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable() const {
+absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
+    const {
   if (aot_executables_.empty()) {
     return absl::InternalError("No local executable");
   }

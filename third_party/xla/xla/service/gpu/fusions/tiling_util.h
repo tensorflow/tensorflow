@@ -19,11 +19,19 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -33,15 +41,14 @@ namespace gpu {
 // Used by reduction and transpose emitters.
 class Tiling {
  public:
-  Tiling(absl::InlinedVector<int64_t, 4> shape,
-         absl::InlinedVector<int64_t, 4> tile_sizes,
-         absl::InlinedVector<int64_t, 4> num_threads,
+  Tiling(absl::Span<const int64_t> shape, absl::Span<const int64_t> tile_sizes,
+         absl::Span<const int64_t> num_threads,
          // By default, don't unroll anything.
          absl::InlinedVector<bool, 4> loops_to_unroll = {})
-      : shape_(shape),
-        tile_sizes_per_thread_(tile_sizes),
+      : shape_{shape.begin(), shape.end()},
+        tile_sizes_per_thread_{tile_sizes.begin(), tile_sizes.end()},
         tile_sizes_per_block_(shape.size()),
-        num_threads_(num_threads),
+        num_threads_{num_threads.begin(), num_threads.end()},
         num_blocks_(shape.size()),
         loops_to_unroll_(loops_to_unroll) {
     for (int64_t i = 0; i < shape.size(); ++i) {

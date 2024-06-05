@@ -45,8 +45,7 @@ class GpuStream : public StreamInterface {
 
   void* platform_specific_stream() override { return gpu_stream_; }
 
-  // Explicitly initialize the CUDA resources associated with this stream, used
-  // by StreamExecutor::AllocateStream().
+  // Explicitly initialize the CUDA resources associated with this stream.
   bool Init();
 
   void SetPriority(StreamPriority priority) override {

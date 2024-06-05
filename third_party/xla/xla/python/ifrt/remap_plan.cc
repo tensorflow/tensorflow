@@ -180,8 +180,8 @@ absl::Status RemapPlan::Validate() const {
         /*v=*/nullptr);
   }
 
-  for (int64_t i = 0; i < mappings.size(); ++i) {
-    const RemapPlan::Mapping& mapping = mappings[i];
+  for (int64_t i = 0; i < mappings->size(); ++i) {
+    const RemapPlan::Mapping& mapping = (*mappings)[i];
     if (mapping.in_array < 0 || mapping.in_array >= num_inputs) {
       return InvalidArgument(
           "mappings[%d].in_array must be in [0, %d], but is %d", i,
@@ -280,10 +280,11 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(
     plan.output_specs.push_back(std::move(output_spec));
   }
 
-  plan.mappings.reserve(proto.mappings_size());
+  plan.mappings = std::make_shared<std::vector<Mapping>>();
+  plan.mappings->reserve(proto.mappings_size());
   for (const auto& mapping_proto : proto.mappings()) {
     TF_ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
-    plan.mappings.push_back(std::move(mapping));
+    plan.mappings->push_back(std::move(mapping));
   }
 
   return plan;
@@ -301,8 +302,8 @@ absl::StatusOr<RemapPlanProto> RemapPlan::ToProto() const {
     TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), output_spec.ToProto());
   }
 
-  proto.mutable_mappings()->Reserve(mappings.size());
-  for (const auto& mapping : mappings) {
+  proto.mutable_mappings()->Reserve(mappings->size());
+  for (const auto& mapping : *mappings) {
     TF_ASSIGN_OR_RETURN(*proto.add_mappings(), MappingToProto(mapping));
   }
 
@@ -330,7 +331,7 @@ std::string RemapPlan::DebugString() const {
   };
   return absl::StrCat(
       "RemapPlan(output_specs=", format_array_specs(output_specs), ",",
-      "mappings=", format_mappings(mappings), ")");
+      "mappings=", format_mappings(*mappings), ")");
 }
 
 }  // namespace ifrt

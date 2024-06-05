@@ -38,6 +38,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -46,17 +47,6 @@ Stream::Stream(StreamExecutor *parent,
     : parent_(parent),
       implementation_(std::move(implementation)),
       status_(absl::OkStatus()) {}
-
-absl::Status Stream::Initialize(
-    std::optional<std::variant<StreamPriority, int>> priority) {
-  absl::MutexLock lock(&mu_);
-  if (parent_->AllocateStream(this)) {
-    // Successful initialization!
-    return absl::OkStatus();
-  }
-
-  return absl::InternalError("failed to allocate stream during initialization");
-}
 
 Stream::~Stream() {
   // Ensure the stream is completed.

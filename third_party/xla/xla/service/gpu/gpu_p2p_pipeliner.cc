@@ -76,7 +76,7 @@ bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
   return true;
 }
 
-Status PostprocessP2PImpl(
+absl::Status PostprocessP2PImpl(
     HloInstruction* instr,
     std::function<std::string(std::vector<ReplicaGroup>&)> transformer) {
   // The input instruction is a Done instruction.
@@ -106,7 +106,7 @@ Status PostprocessP2PImpl(
 
 // Modifies the loop iteration frontend attribute for the peeled off Send and
 // Recv for the first iteration of a loop.
-Status PostprocessPeeledP2P(HloInstruction* instr) {
+absl::Status PostprocessPeeledP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -149,7 +149,7 @@ Status PostprocessPeeledP2P(HloInstruction* instr) {
 
 // Modifies the loop iteration frontend attribute for the rotated Send and Recv
 // for the remaining iterations in a loop.
-Status PostprocessRotatedP2P(HloInstruction* instr) {
+absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());

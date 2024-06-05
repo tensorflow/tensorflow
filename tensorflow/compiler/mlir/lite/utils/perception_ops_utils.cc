@@ -140,8 +140,7 @@ LogicalResult ConvertMaxUnpoolingFunc::VerifySignature() {
     return func_.emitWarning() << "'padding' attribute for " << kMaxUnpooling
                                << " is not set or not a string";
   }
-  if (!padding.getValue().equals("VALID") &&
-      !padding.getValue().equals("SAME")) {
+  if (padding.getValue() != "VALID" && padding.getValue() != "SAME") {
     return func_.emitWarning()
            << "Padding for " << kMaxUnpooling << " must be 'SAME' or 'VALID'";
   }
@@ -174,9 +173,9 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
     return func_.emitError() << "'padding' attribute for " << kMaxUnpooling
                              << " is not set or not a string";
   }
-  if (padding.getValue().equals("VALID")) {
+  if (padding.getValue() == "VALID") {
     pool_params.padding = kTfLitePaddingValid;
-  } else if (padding.getValue().equals("SAME")) {
+  } else if (padding.getValue() == "SAME") {
     pool_params.padding = kTfLitePaddingSame;
   } else {
     return func_.emitError()

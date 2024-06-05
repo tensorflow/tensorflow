@@ -122,7 +122,7 @@ flatbuffer_cc_library(
 # Generic schema for flatbuffer converter (but with mutable makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_mutable",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--gen-mutable",
@@ -134,7 +134,7 @@ flatbuffer_cc_library(
 # Generic schema for inference on device (but with reflections makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--reflect-types",

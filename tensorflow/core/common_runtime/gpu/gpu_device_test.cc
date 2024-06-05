@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tests/test_macros.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -36,6 +37,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
+
+#if GOOGLE_CUDA
+// Needed for CUDA_VERSION preprocessor directive
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 namespace tensorflow {
 namespace {

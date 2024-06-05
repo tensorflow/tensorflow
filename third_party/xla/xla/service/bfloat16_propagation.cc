@@ -708,7 +708,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   }
 }
 
-Status BFloat16Propagation::ResolveInconsistentFusions(
+absl::Status BFloat16Propagation::ResolveInconsistentFusions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We could have changed a fusion computation's root shape to have a different
@@ -771,7 +771,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(
   return OkStatus();
 }
 
-Status BFloat16Propagation::ResolveConvertedConstants(
+absl::Status BFloat16Propagation::ResolveConvertedConstants(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We may have converted some constants from F32 to BF16, so adjust the
@@ -803,7 +803,7 @@ Status BFloat16Propagation::ResolveConvertedConstants(
   return OkStatus();
 }
 
-Status BFloat16Propagation::SkipNoopConversions(
+absl::Status BFloat16Propagation::SkipNoopConversions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto computation : module->computations(execution_threads)) {

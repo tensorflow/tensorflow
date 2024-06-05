@@ -78,8 +78,9 @@ class ComputeConstantTest : public ::testing::Test {
   }
 
   template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(Client* client, const XlaOp operand,
-                                         XlaBuilder* builder) {
+  absl::StatusOr<Scalar> ComputeConstantScalar(Client* client,
+                                               const XlaOp operand,
+                                               XlaBuilder* builder) {
     TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
                                                              builder, nullptr));
     return literal.Get<Scalar>({});

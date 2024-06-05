@@ -615,24 +615,24 @@ TEST(FfiTest, RunOptionsCtx) {
   TF_ASSERT_OK(status);
 }
 
-struct MyData : public ExecutionContext::UserData {
-  explicit MyData(std::string str) : str(std::move(str)) {}
+struct StrUserData {
+  explicit StrUserData(std::string str) : str(std::move(str)) {}
   std::string str;
 };
 
 TEST(FfiTest, UserData) {
   ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace<MyData>("foo"));
+  TF_ASSERT_OK(execution_context.Emplace<StrUserData>("foo"));
 
   CallFrameBuilder builder;
   auto call_frame = builder.Build();
 
-  auto fn = [&](std::shared_ptr<MyData> data) {
+  auto fn = [&](StrUserData* data) {
     EXPECT_EQ(data->str, "foo");
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
+  auto handler = Ffi::Bind().Ctx<UserData<StrUserData>>().To(fn);
 
   ServiceExecutableRunOptions opts;
   opts.mutable_run_options()->set_ffi_execution_context(&execution_context);

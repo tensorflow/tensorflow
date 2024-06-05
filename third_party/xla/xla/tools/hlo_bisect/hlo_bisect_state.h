@@ -82,7 +82,7 @@ class HloBisectState {
 
   // Asserts that the module still has the bug. If negative, runs the bug
   // checker repeatedly to verify that it's deterministic.
-  Status ExpectModuleIsBuggy();
+  absl::Status ExpectModuleIsBuggy();
 
   std::unique_ptr<xla::HloModule> module_;
   BugCheckerInterface* bug_checker_;

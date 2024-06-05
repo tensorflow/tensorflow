@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 
@@ -35,12 +36,13 @@ absl::StatusOr<std::string> GetBootIdString();
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to
 // form a global topology.
-Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
-                          absl::Duration get_local_topology_timeout,
-                          absl::Duration get_global_topology_timeout,
-                          KeyValueStoreInterface* kv_store,
-                          const LocalTopologyProto& local_topology,
-                          GlobalTopologyProto* global_topology);
+absl::Status ExchangeTopologies(std::string_view platform, int node_id,
+                                int num_nodes,
+                                absl::Duration get_local_topology_timeout,
+                                absl::Duration get_global_topology_timeout,
+                                KeyValueStoreInterface* kv_store,
+                                const LocalTopologyProto& local_topology,
+                                GlobalTopologyProto* global_topology);
 
 // Functions below this point are public only for testing.
 
@@ -50,6 +52,10 @@ Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
 GlobalTopologyProto BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies);
 
+// Builds a GpuTopologyProto representing the GPU configuration described in the
+// given GlobalTopologyProto.
+absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
+    const GlobalTopologyProto& global_topology);
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_

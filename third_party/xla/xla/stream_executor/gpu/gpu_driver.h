@@ -777,12 +777,6 @@ class GpuDriver {
   static absl::Status RecordEvent(GpuContext* context, GpuEventHandle event,
                                   GpuStreamHandle stream);
 
-  // Polls (without blocking) to determine the status of an event - pending or
-  // complete (or an error status).
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g6f0704d755066b0ee705749ae911deef
-  static absl::StatusOr<GpuStatus> QueryEvent(GpuContext* context,
-                                              GpuEventHandle event);
-
   // -- Pointer-specific calls.
 
   // Returns the context in which pointer was allocated or registered.

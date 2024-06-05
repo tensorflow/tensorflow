@@ -308,6 +308,7 @@ tf_cuda_cc_test(
     srcs = [
         "gpu_device_test.cc",
     ],
+    extra_copts = ["-DXLA_TEST_BACKEND_GPU=1"], # This is a mess
     features = ["-layering_check"],
     tags = tf_cuda_tests_tags(),
     deps = [
@@ -329,6 +330,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:test",
         "@local_tsl//tsl/framework:device_id",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
+        "@local_xla//xla/tests:test_macros_header",
     ],
 )
 
@@ -391,6 +393,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:test",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
+        "@local_xla//xla/tests:test_macros_header",
     ],
 )
 

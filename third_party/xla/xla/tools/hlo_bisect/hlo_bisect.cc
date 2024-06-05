@@ -50,7 +50,7 @@ struct BisectOptions {
   std::string input = "";
   std::string script = "";
   std::string dump_path = "/tmp/hlo_bisect";
-  std::string output_format = "pb";
+  std::string output_format = "hlo";
   bool all_computations = false;
   std::string test_platform = "CUDA";
   std::string reference_platform = "Interpreter";

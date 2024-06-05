@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "IsFinite"
   input_arg {
     name: "x"

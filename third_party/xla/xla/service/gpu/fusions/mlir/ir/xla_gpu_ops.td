@@ -278,6 +278,7 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

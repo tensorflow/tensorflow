@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -109,7 +108,7 @@ static absl::Status PopulateExecutableCostAnalysis(
                       executable->get()->GetCostAnalysis());
   // If no output, return empty result
   if (properties.empty()) {
-    return xla::OkStatus();
+    return absl::OkStatus();
   }
 
   // Copy each returned property to cost analysis vectors in PJRT_Executable
@@ -141,7 +140,7 @@ static absl::Status PopulateExecutableCostAnalysis(
     ++i;
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::Status PopulateExecutableOutputElementTypes(
@@ -167,7 +166,7 @@ static absl::Status PopulateExecutableOutputElementTypes(
     out_types.push_back(ConvertToPjRtBufferType(element_type));
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::Status PopulateExecutableOutputDimensions(
@@ -201,7 +200,7 @@ static absl::Status PopulateExecutableOutputDimensions(
     }
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::Status PopulateExecutableOutputMemoryKinds(
@@ -230,7 +229,7 @@ static absl::Status PopulateExecutableOutputMemoryKinds(
     memory_kind_sizes.push_back(memory.size());
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 class CApiKeyValueStore : public xla::KeyValueStoreInterface {
@@ -1101,7 +1100,7 @@ static absl::Status VerifyOptimizedProgramArgs(
       PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE, args->struct_size));
   TF_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::StatusOr<std::shared_ptr<xla::HloModule>>

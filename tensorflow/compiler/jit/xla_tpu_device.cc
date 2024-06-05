@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -271,9 +272,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
           dst_xla_context->host_to_device_stream()));
     }
 
-    auto definition_event =
-        std::make_shared<se::Event>(dst_xla_context->stream()->parent());
-    TF_RET_CHECK(definition_event->Init()) << "Event failed to initialize!";
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<se::Event> definition_event,
+                        dst_xla_context->stream()->parent()->CreateEvent());
     TF_RETURN_IF_ERROR(
         dst_device_to_device_stream->RecordEvent(definition_event.get()));
     xla_output->ResetDefinitionEvent(std::move(definition_event),

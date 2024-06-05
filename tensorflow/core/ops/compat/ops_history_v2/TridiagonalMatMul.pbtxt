@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TridiagonalMatMul"
   input_arg {
     name: "superdiag"

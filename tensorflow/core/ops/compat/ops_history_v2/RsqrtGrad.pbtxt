@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RsqrtGrad"
   input_arg {
     name: "x"

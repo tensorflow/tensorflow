@@ -81,7 +81,7 @@ std::string PjRtTuple::DebugString() const {
 }
 int PjRtTuple::Arity() { return values_.size(); }
 
-Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
+absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
   if (values_out.size() != values_.size()) {
     return InvalidArgument(
         "Wrong number of output values for "

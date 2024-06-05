@@ -153,6 +153,7 @@ tf_cc_shared_test(
     srcs = ["stream_test.cc"],
     tags = ["no_oss"],
     deps = [
+        ":step_id",
         ":stream",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_testutil",
@@ -162,6 +163,8 @@ tf_cc_shared_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",

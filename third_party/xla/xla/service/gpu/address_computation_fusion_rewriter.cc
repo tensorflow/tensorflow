@@ -275,10 +275,11 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   return captures;
 }
 
-Status CreateRootTuple(HloInstruction* hero, HloComputation::Builder& builder,
-                       DataflowPathsView sliced_user_paths,
-                       absl::flat_hash_map<const HloInstruction*,
-                                           HloInstruction*>& instr_mapping) {
+absl::Status CreateRootTuple(
+    HloInstruction* hero, HloComputation::Builder& builder,
+    DataflowPathsView sliced_user_paths,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+        instr_mapping) {
   unsigned tuple_size = hero->shape().tuple_shapes_size();
 
   std::vector<HloInstruction*> sliced_elems(tuple_size, nullptr);

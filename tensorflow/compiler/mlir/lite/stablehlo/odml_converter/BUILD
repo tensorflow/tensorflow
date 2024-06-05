@@ -18,7 +18,6 @@ package_group(
 
 tf_cc_binary(
     name = "odml-converter",
-    testonly = True,
     srcs = ["odml_converter_main.cc"],
     compatible_with = get_compatible_with_portable(),
     visibility = [

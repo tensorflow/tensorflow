@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -867,6 +868,22 @@ HloInstruction* ExpandDegenerateReshape(HloInstruction* inst) {
     return degenerate_adding_hlo;
   }
   return nullptr;
+}
+
+std::unique_ptr<HloInstruction> MakeConstantWithShape(const Shape& shape,
+                                                      int64_t value) {
+  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+      [&](auto literal_constant) -> std::unique_ptr<HloInstruction> {
+        if constexpr (primitive_util::IsIntegralType(literal_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<literal_constant>;
+          auto constant = HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0(static_cast<NativeT>(value)));
+          *constant->mutable_shape() = shape;
+          return std::move(constant);
+        }
+        LOG(FATAL) << "Literal is of non-integral type";
+      },
+      shape.element_type());
 }
 
 }  // namespace xla

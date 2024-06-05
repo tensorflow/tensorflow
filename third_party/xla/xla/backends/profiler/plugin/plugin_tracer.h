@@ -33,11 +33,11 @@ class PluginTracer : public tsl::profiler::ProfilerInterface {
                         const tensorflow::ProfileOptions& options);
   ~PluginTracer() override;
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(tensorflow::profiler::XSpace* space) override;
+  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
  private:
   const PLUGIN_Profiler_Api* profiler_api_;

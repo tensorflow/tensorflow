@@ -20,9 +20,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"

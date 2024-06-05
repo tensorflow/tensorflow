@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "HistogramSummary"
   input_arg {
     name: "tag"

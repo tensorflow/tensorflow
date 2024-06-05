@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -225,7 +224,7 @@ IfrtDevicesAttr::operator llvm::ArrayRef<int>() const { return getIds(); }
 mlir::LogicalResult IfrtDevicesAttr::verify(
     llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
     llvm::ArrayRef<int> ids) {
-  llvm::SmallSet<int, 4> device_set;
+  llvm::DenseSet<int> device_set;
   for (int id : ids) {
     if (id < 0) {
       return emitError() << "Device list has negative logical id " << id;

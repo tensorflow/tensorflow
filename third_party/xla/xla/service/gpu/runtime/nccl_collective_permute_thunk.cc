@@ -89,7 +89,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     replica_group.add_replica_ids(i);
   }
 
-  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs =
       instr->source_target_pairs();
 
   for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
@@ -110,7 +110,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     int64_t partition_count) {
   // The collective permute is degenerate if all source-target pairs are
   // identity, and all the IDs appear in the list.
-  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs =
       instr->source_target_pairs();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of

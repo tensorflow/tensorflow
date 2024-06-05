@@ -62,7 +62,7 @@ absl::StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
   return std::move(literal);
 }
 
-Status TransferManager::TransferLiteralFromDevice(
+absl::Status TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
@@ -70,11 +70,11 @@ Status TransferManager::TransferLiteralFromDevice(
   TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
-  Status ret;
+  absl::Status ret;
   tsl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
-      [&](Status status) {
+      [&](absl::Status status) {
         ret = status;
         n.Notify();
       },
@@ -83,7 +83,7 @@ Status TransferManager::TransferLiteralFromDevice(
   return ret;
 }
 
-Status TransferManager::TransferLiteralToDevice(
+absl::Status TransferManager::TransferLiteralToDevice(
     se::Stream* stream, const LiteralSlice& literal,
     const ShapedBuffer& device_buffer,
     const TransferMetadata* transfer_metadata) {
@@ -112,7 +112,7 @@ absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   return std::move(literal);
 }
 
-Status TransferManager::TransferArrayToDevice(
+absl::Status TransferManager::TransferArrayToDevice(
     se::Stream* stream, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest,
     const TransferMetadata* transfer_metadata) {
@@ -127,7 +127,7 @@ Status TransferManager::TransferArrayToDevice(
   return substream->BlockHostUntilDone();
 }
 
-Status TransferManager::TransferArrayToDeviceAsync(
+absl::Status TransferManager::TransferArrayToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest,
     const TransferMetadata* transfer_metadata) {
@@ -139,9 +139,9 @@ Status TransferManager::TransferArrayToDeviceAsync(
                                       transfer_metadata);
 }
 
-Status TransferManager::ReadDynamicShapes(se::Stream* stream,
-                                          const ShapedBuffer* device_buffer,
-                                          Shape* device_shape) {
+absl::Status TransferManager::ReadDynamicShapes(
+    se::Stream* stream, const ShapedBuffer* device_buffer,
+    Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -223,19 +223,20 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
   return it->second.manager.get();
 }
 
-Status TransferManager::WriteTupleIndexTables(
+absl::Status TransferManager::WriteTupleIndexTables(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   TF_RETURN_IF_ERROR(WriteTupleIndexTablesAsync(stream, device_buffer));
   return stream->BlockHostUntilDone();
 }
 
-Status TransferManager::WriteTupleIndexTablesAsync(
+absl::Status TransferManager::WriteTupleIndexTablesAsync(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   VLOG(2) << "Writing tuple index tables for " << device_buffer;
 
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
-      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
+      [&](const Shape& device_subshape,
+          const ShapeIndex& index) -> absl::Status {
         if (device_subshape.IsTuple() &&
             ShapeUtil::TupleElementCount(device_subshape) > 0) {
           se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
@@ -258,7 +259,7 @@ Status TransferManager::WriteTupleIndexTablesAsync(
       });
 }
 
-Status TransferManager::WriteRootTupleIndexTable(
+absl::Status TransferManager::WriteRootTupleIndexTable(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
   TF_RET_CHECK(device_buffer.on_device_shape().IsTuple());
   if (ShapeUtil::TupleElementCount(device_buffer.on_device_shape()) == 0) {
@@ -277,7 +278,7 @@ Status TransferManager::WriteRootTupleIndexTable(
       stream, elements, device_buffer.on_device_shape(), &device_memory);
 }
 
-Status TransferManager::WriteRootTupleIndexTable(
+absl::Status TransferManager::WriteRootTupleIndexTable(
     se::Stream* stream, const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree) {
   TF_RET_CHECK(buffer_tree.shape().IsTuple());
   if (ShapeUtil::TupleElementCount(buffer_tree.shape()) == 0) {

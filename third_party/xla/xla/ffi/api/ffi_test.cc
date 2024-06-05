@@ -352,17 +352,19 @@ TEST(FfiTest, PointerAttr) {
 }
 
 struct MyData {
+  static TypeId id;
   std::string str;
 };
 
-TEST(FfiTest, UserData) {
-  static constexpr char kId[] = "my_data";
+TypeId MyData::id = {};  // zero-initialize type id
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data", &MyData::id);
 
+TEST(FfiTest, UserData) {
   MyData data{"foo"};
-  auto deleter = +[](void*) {};
 
   ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace(kId, &data, deleter));
+  TF_ASSERT_OK(execution_context.Insert(
+      ExecutionContext::TypeId(MyData::id.type_id), &data));
 
   CallFrameBuilder builder;
   auto call_frame = builder.Build();
@@ -372,7 +374,7 @@ TEST(FfiTest, UserData) {
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Ctx<UserData<kId, MyData>>().To(fn);
+  auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
 
   ServiceExecutableRunOptions service_run_options;
   service_run_options.mutable_run_options()->set_ffi_execution_context(

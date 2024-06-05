@@ -67,12 +67,13 @@ TEST_P(RemapPlanTest, ToFromProto) {
   plan.output_specs.push_back(ArraySpec{
       /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
 
-  plan.mappings.reserve(2);
-  plan.mappings.push_back(RemapPlan::Mapping{
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(RemapPlan::Mapping{
       /*in_array=*/0, /*out_array=*/1,
       /*from=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}},
       /*to=*/{RemapPlan::Interval{1, 4, 2}, RemapPlan::Interval{0, 4, 2}}});
-  plan.mappings.push_back(RemapPlan::Mapping{
+  plan.mappings->push_back(RemapPlan::Mapping{
       /*in_array=*/1, /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
       /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
@@ -83,7 +84,7 @@ TEST_P(RemapPlanTest, ToFromProto) {
       RemapPlan::FromProto(absl::bind_front(&Client::LookupDevice, client()),
                            plan_proto));
 
-  EXPECT_THAT(plan_copy.mappings, ElementsAreArray(plan.mappings));
+  EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
 
   EXPECT_THAT(plan_copy.output_specs, SizeIs(2));
   for (const auto& spec : plan_copy.input_specs) {
@@ -166,7 +167,8 @@ TEST_P(RemapPlanTest, InvalidInputArrayIndex) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/1,  // Invalid in_array
                          /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
@@ -193,7 +195,8 @@ TEST_P(RemapPlanTest, InvalidOutputArrayIndex) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0,
                          /*out_array=*/1,  // Invalid out_array
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
@@ -220,7 +223,8 @@ TEST_P(RemapPlanTest, InvalidIntervalCount) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(RemapPlan::Mapping{
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(RemapPlan::Mapping{
       /*in_array=*/0,
       /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, 1}},
@@ -250,9 +254,10 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
                   ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                                /*shape=*/Shape({2, 3}),
                                                /*shard_shape=*/Shape({2, 3}))});
-    plan.mappings.push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
-                                               /*from=*/{from},
-                                               /*to=*/{to}});
+    plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+    plan.mappings->push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
+                                                /*from=*/{from},
+                                                /*to=*/{to}});
     return plan.Validate();
   };
 
@@ -306,7 +311,8 @@ TEST_P(RemapPlanTest, AlreadyUsedInputShard) {
                 ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                              /*shape=*/Shape({4, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(RemapPlan::Mapping{
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(RemapPlan::Mapping{
       /*in_array=*/0,
       /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, 1}},
@@ -332,7 +338,8 @@ TEST_P(RemapPlanTest, UnassignedOutputShard) {
                 ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
                                              /*shape=*/Shape({4, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0,
                          /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
@@ -358,7 +365,8 @@ TEST_P(RemapPlanTest, AlreadyAssignedOutputShard) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(RemapPlan::Mapping{
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(RemapPlan::Mapping{
       /*in_array=*/0,
       /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{1, 2, 1}},
@@ -385,7 +393,8 @@ TEST_P(RemapPlanTest, InvalidOutputDevices) {
                 ConcreteEvenSharding::Create(GetDevices({1, 0}), MemoryKind(),
                                              /*shape=*/Shape({4, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0,
                          /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},

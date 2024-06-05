@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace xla {
 
-Status DynamicParameterBinding::Bind(
+absl::Status DynamicParameterBinding::Bind(
     const DynamicSizeParameter& dynamic_parameter,
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
@@ -67,18 +67,18 @@ std::string DynamicParameterBinding::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
+absl::Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
     TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
   return OkStatus();
 }
 
-Status DynamicParameterBinding::Verify(
+absl::Status DynamicParameterBinding::Verify(
     const HloComputation& computation) const {
   return ForEachBinding([&](const DynamicSizeParameter& dynamic_parameter,
                             const DynamicDimension& dynamic_dimension)
-                            -> Status {
+                            -> absl::Status {
     TF_RET_CHECK(dynamic_parameter.parameter_num >= 0 &&
                  dynamic_parameter.parameter_num <
                      computation.num_parameters());

@@ -38,8 +38,6 @@ class TpuExecutorInterface : public stream_executor::StreamExecutor {
  public:
   explicit TpuExecutorInterface(stream_executor::Platform* platform)
       : StreamExecutor(platform) {}
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
 
   class TemporaryDeviceMemory {
    public:
@@ -47,7 +45,7 @@ class TpuExecutorInterface : public stream_executor::StreamExecutor {
     virtual stream_executor::DeviceMemoryBase AsDeviceMemoryBase() const = 0;
   };
 
-  virtual StatusOr<std::unique_ptr<TemporaryDeviceMemory>>
+  virtual absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory>>
   CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
                               int64_t size) {
     LOG(FATAL) << "Unimplemented.";

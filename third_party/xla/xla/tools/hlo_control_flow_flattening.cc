@@ -145,7 +145,7 @@ int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
   return loop_bound;
 }
 
-Status HloControlFlowFlattening::FlattenWhileLoop(
+absl::Status HloControlFlowFlattening::FlattenWhileLoop(
     HloInstruction* while_hlo, const CallGraph& call_graph) const {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
   HloComputation* computation = while_hlo->parent();
@@ -264,7 +264,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveInfeed(
+absl::Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
   HloComputation* computation = infeed_hlo->parent();
@@ -326,7 +326,7 @@ HloControlFlowFlattening::RemoveRecvAndRecvDone(
   return std::make_pair(custom_call_recv, custom_call_recv_done);
 }
 
-Status HloControlFlowFlattening::RemoveOutfeed(
+absl::Status HloControlFlowFlattening::RemoveOutfeed(
     HloInstruction* outfeed_hlo) const {
   CHECK_EQ(outfeed_hlo->opcode(), HloOpcode::kOutfeed);
   HloComputation* computation = outfeed_hlo->parent();
@@ -409,7 +409,7 @@ absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
   return custom_call;
 }
 
-Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
+absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   std::string original_op_name(hlo->name());

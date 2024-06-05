@@ -724,13 +724,13 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 
 // Arbitrary user-defined context passed via the execution context side channel
 // to a custom call handlers.
-struct SomeExtraContext : public ffi::ExecutionContext::UserData {
+struct SomeExtraContext {
   explicit SomeExtraContext(int32_t value) : value(value) {}
   int32_t value;
 };
 
 static absl::Status ExecutionContext(ffi::Result<ffi::BufferBase>,
-                                     std::shared_ptr<SomeExtraContext> ctx) {
+                                     SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
   return absl::OkStatus();
 }

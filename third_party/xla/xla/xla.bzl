@@ -73,7 +73,7 @@ def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
 def xla_cc_test(name, deps = [], use_gpu = False, **kwargs):
     # Need to do it this way so that `tf_exec_properties` can read tags.
     _tags = kwargs.get("tags", [])
-    kwargs["tags"] = _tags + tf_gpu_tests_tags() + ["gpu_any"] if use_gpu else _tags
+    kwargs["tags"] = _tags + tf_gpu_tests_tags() if use_gpu else _tags
 
     native.cc_test(
         name = name,

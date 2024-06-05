@@ -114,8 +114,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status AllocateEvent(Event *event) override { return absl::OkStatus(); }
-
   absl::Status DeallocateEvent(Event *event) override {
     return absl::OkStatus();
   }
@@ -132,7 +130,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
     return Event::Status::kError;
   }
 
-  bool AllocateStream(Stream *stream) override { return true; }
   void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
@@ -157,9 +154,8 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
     return true;
   }
-
-  std::unique_ptr<EventInterface> CreateEventImplementation() override {
-    return nullptr;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    return std::make_unique<Event>(this, nullptr);
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
@@ -167,7 +163,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
           std::nullopt) override {
     auto stream =
         std::make_unique<Stream>(this, std::make_unique<host::HostStream>());
-    TF_RETURN_IF_ERROR(stream->Initialize(priority));
     return std::move(stream);
   }
 
@@ -175,11 +170,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
-
-  DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
-
-  absl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
-      const xla::Shape &shape);
 };
 
 }  // namespace interpreter

@@ -1103,6 +1103,13 @@ cc_test(
 cc_test(
     name = "validator_runner_test",
     srcs = ["validator_runner_test.cc"],
+    # Shared libraries that are built and loaded into internal Google applications are generally
+    # unsupported. One consequence of this lack of support is that AddressSanitizer's ODR checking
+    # will produce spurious failures with an upcoming Crosstool change. The workaround for this is
+    # to disable the ODR checking on affected tests.
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     tags = [
         "no_mac",
         "no_windows",

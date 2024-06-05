@@ -462,7 +462,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   }
 }
 
-Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
+absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
   for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
     auto copy_it = it++;  // Advance `it` before invalidation from erase.
     auto channel_id = copy_it->first;
@@ -496,7 +496,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
   return OkStatus();
 }
 
-Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
+absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.

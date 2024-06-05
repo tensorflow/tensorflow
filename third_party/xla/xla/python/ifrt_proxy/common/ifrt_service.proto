@@ -163,21 +163,21 @@ message ResponseMetadata {
   // ID of the operation this response belongs to.
   fixed64 op_id = 1;
 
-  // Status of the operation.
+  // absl::Status of the operation.
   //
   //    In case of "chunked" responses (i.e., the full logical response is
   //    spread across a sequence of IfrtResponse protos), the actual sequence of
-  //    IfrtResponse messages will follow only if this Status is OK in the very
-  //    first message. That is, in case of errors, server sends a single
+  //    IfrtResponse messages will follow only if this absl::Status is OK in the
+  //    very first message. That is, in case of errors, server sends a single
   //    IfrtResponse with the appropriate error included.
   //
   //    In case of "batched" operations (i.e., where the response is carrying
   //    the outcomes of multiple requests that were "batched" in the same
-  //    IfrtRequest proto - such as deleting a bunch of Arrays) this Status
-  //    field provides a way to quickly check if none of the individual
-  //    operations encountered errors. Clients should not rely on specific error
-  //    type or string when this is not OK, they should check the response
-  //    message for individual Statuses.
+  //    IfrtRequest proto - such as deleting a bunch of Arrays) this
+  //    absl::Status field provides a way to quickly check if none of the
+  //    individual operations encountered errors. Clients should not rely on
+  //    specific error type or string when this is not OK, they should check the
+  //    response message for individual absl::Statuses.
   tensorflow.StatusProto status = 2;
 }
 

@@ -48,7 +48,7 @@ namespace {
 // * Batch dimensions are the most major dimensions.
 // This requires transposing and reshaping of the lhs and rhs, and reshaping the
 // output batch to the original shape.
-Status CanonicalizeDot(HloDotInstruction* original_dot) {
+absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   auto computation = original_dot->parent();
   const auto& original_dnums = original_dot->dot_dimension_numbers();
   const int64_t num_batch_dims = original_dnums.lhs_batch_dimensions_size();

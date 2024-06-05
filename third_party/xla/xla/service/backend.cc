@@ -213,7 +213,7 @@ absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
           executor_b->GetDeviceDescription().name());
 }
 
-Status Backend::ResetDevices() {
+absl::Status Backend::ResetDevices() {
   return transfer_manager_->ResetDevices(stream_executors_);
 }
 

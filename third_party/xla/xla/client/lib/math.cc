@@ -93,7 +93,8 @@ static XlaOp DoWithUpcastToF32(XlaOp operand,
 
 // TODO(jlebar): Use this function in more places in this file to restrict the
 // domain of other functions.
-static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
+static absl::Status EnsureOperandIsRealFp(absl::string_view op_name,
+                                          XlaOp operand) {
   auto& b = *operand.builder();
   TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
   auto elem_ty = shape.element_type();

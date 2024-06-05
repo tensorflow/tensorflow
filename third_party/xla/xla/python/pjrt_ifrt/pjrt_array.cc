@@ -60,8 +60,9 @@ namespace {
 
 // Validates the sharding and PjRtBuffers have consistent device and memory
 // kind.
-Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
-                                  const PjRtArray::PjRtBuffers& pjrt_buffers) {
+absl::Status ValidateArrayCreationInput(
+    std::shared_ptr<const Sharding> sharding,
+    const PjRtArray::PjRtBuffers& pjrt_buffers) {
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
@@ -416,7 +417,7 @@ Future<> PjRtArray::CopyToHostBuffer(
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
-                promise = std::move(promise)](Status s) mutable {
+                promise = std::move(promise)](absl::Status s) mutable {
         promise.Set(std::move(s));
         literal = nullptr;
       });

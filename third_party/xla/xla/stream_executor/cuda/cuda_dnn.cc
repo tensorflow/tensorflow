@@ -4984,13 +4984,13 @@ static absl::StatusOr<cudnn_frontend::ExecutionPlan> GetExecPlanFromHeuristics(
     } else {
       VLOG(4) << "Failed to build cuDNN execution plan for opGraph "
               << opGraph.getTag()
-              << ". Status: " << CudnnStatusToString(status);
+              << ". absl::Status: " << CudnnStatusToString(status);
     }
   }
 
   LOG(FATAL) << "Failed to generate cuDNN execution plan for opGraph "
              << opGraph.getTag()
-             << ". Status of final plan: " << CudnnStatusToString(status);
+             << ". absl::Status of final plan: " << CudnnStatusToString(status);
 #else
   return absl::UnimplementedError("Supported only for cuDNN >= 8.8.0");
 #endif
@@ -5699,7 +5699,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
         filter_(std::move(filter)),
         conv_(std::move(conv)) {}
 
-  // Internal form of ToAlgorithmDesc without the StatusOr.
+  // Internal form of ToAlgorithmDesc without the absl::StatusOr.
   dnn::AlgorithmDesc MakeAlgorithmDesc() const {
     return {algo_id_, tensor_ops_enabled_, workspace_size_};
   }
@@ -6712,7 +6712,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
         conv_(std::move(conv)),
         activation_desc_(std::move(activation_desc)) {}
 
-  // Internal form of ToAlgorithmDesc without the StatusOr.
+  // Internal form of ToAlgorithmDesc without the absl::StatusOr.
   dnn::AlgorithmDesc MakeAlgorithmDesc() const {
     return {algo_id_, tensor_ops_enabled_, workspace_size_};
   }

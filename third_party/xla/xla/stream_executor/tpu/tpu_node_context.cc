@@ -28,10 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-using absl::StatusOr;
-
 /*static*/
-StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
+absl::StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =

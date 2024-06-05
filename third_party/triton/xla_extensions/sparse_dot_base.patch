@@ -1,8 +1,9 @@
 diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
+index 56f0b6b49..aa91ea9b8 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-@@ -1158,4 +1158,12 @@ section 9.7.13.4.1 for more details.
-   let extraClassDeclaration = extraDistributedDeclaration;
+@@ -1262,4 +1262,16 @@ section 9.7.13.4.1 for more details.
+   }];
  }
  
 +def SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding", "sparse_dot_meta_encoding"> {
@@ -10,14 +11,19 @@ diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/
 +
 +  let parameters = (ins "Attribute":$parent);
 +  let assemblyFormat = "`<``{` struct(params) `}``>`";
-+  let extraClassDeclaration = extraDistributedDeclaration;
++  let extraClassDeclaration = extraDistributedDeclaration # [{
++    SmallVector<unsigned> getContigPerThread() {
++      return getSizePerThread();
++    };
++  }];
 +}
 +
  #endif
 diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
+index 4966a5f73..d2bb33cfa 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-@@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/Tri
+@@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
  include "mlir/Dialect/Arith/IR/ArithBase.td"
  include "triton/Dialect/Triton/IR/TritonTypes.td"
  include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
@@ -25,8 +31,8 @@ diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/trito
  include "mlir/IR/OpBase.td"
  include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
  include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
-@@ -214,4 +215,19 @@ def TTG_LocalLoadOp : TTG_Op<"local_load
-   let results = (outs TT_Tensor:$result);
+@@ -232,4 +233,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [MemoryEffects<[MemWrite<SharedMemo
+   }];
  }
  
 +def TTNG_SparseDotOp : TTG_Op<"sparse_dot", [
@@ -46,9 +52,10 @@ diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/trito
 +
  #endif
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+index 0ce7ecf18..3736a1551 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -479,6 +479,119 @@ getDefaultBlockedEncoding(MLIRContext *c
+@@ -483,6 +483,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -70,7 +77,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 +
 +LogicalResult SparseDotOp::verify() {
 +  // Verify operand A.
-+  auto aTensorTy = getOperand(0).getType().cast<TensorOrMemDesc>();
++  auto aTensorTy = cast<TensorOrMemDesc>(getOperand(0).getType());
 +  auto aElemTy = aTensorTy.getElementType();
 +  if (!aElemTy.isF16() && !aElemTy.isBF16())
 +    return emitError("element type of operand A is not supported");
@@ -78,7 +85,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 +  if (aShape.size() != 2) return emitError("shape of operand A is incorrect");
 +
 +  // Verify operand B.
-+  auto bTensorTy = getOperand(1).getType().cast<TensorOrMemDesc>();
++  auto bTensorTy = cast<TensorOrMemDesc>(getOperand(1).getType());
 +  auto bElemTy = bTensorTy.getElementType();
 +  if (!bElemTy.isF16() && !bElemTy.isBF16())
 +    return emitError("element type of operand B is not supported");
@@ -86,7 +93,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 +  if (bShape.size() != 2) return emitError("shape of operand B is incorrect");
 +
 +  // Verify operand C.
-+  auto cTensorTy = getOperand(2).getType().cast<RankedTensorType>();
++  auto cTensorTy = cast<RankedTensorType>(getOperand(2).getType());
 +  auto cElemTy = cTensorTy.getElementType();
 +  if (!cElemTy.isF32())
 +    return emitError("element type of operand C is not supported");
@@ -101,7 +108,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 +    return emitError("operand element types do not match");
 +
 +  // Verify sparse metadata.
-+  auto metaTy = getOperand(3).getType().cast<RankedTensorType>();
++  auto metaTy = cast<RankedTensorType>(getOperand(3).getType());
 +  auto metaShape = metaTy.getShape();
 +  if (!metaTy.getElementType().isInteger(16) || metaShape.size() != 2)
 +    return emitError("sparse metadata tensor is invalid");
@@ -125,7 +132,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 +//--- SparseDotMetaEncodingAttr ---
 +unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
 +    ArrayRef<int64_t> shape, Type eltTy) const {
-+  auto mmaLayout = getParent().cast<NvidiaMmaEncodingAttr>();
++  auto mmaLayout = mlir::cast<NvidiaMmaEncodingAttr>(getParent());
 +  return product<int64_t>(shape) /
 +         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
 +}
@@ -169,9 +176,10 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
  } // namespace triton
  } // namespace mlir
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+index f8ece0f1c..435610817 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
-@@ -38,6 +38,14 @@ Value convertLayout(int opIdx, Conversio
+@@ -43,6 +43,14 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
                      const LLVMTypeConverter *typeConverter, Value thread);
  }
  
@@ -185,19 +193,19 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.
 +
  namespace {
  
- struct LocalLoadOpConversion
-@@ -59,6 +67,10 @@ public:
-             .isa<NvidiaMmaEncodingAttr>()) {
+ using namespace mlir;
+@@ -67,6 +75,10 @@ public:
+             cast<DotOperandEncodingAttr>(dstLayout).getParent())) {
        return lowerSharedToDotOperand(op, adaptor, getTypeConverter(), rewriter);
      }
-+    if (srcLayout.isa<SharedEncodingAttr>() &&
-+        dstLayout.isa<triton::gpu::SparseDotMetaEncodingAttr>()) {
++    if (isa<SharedEncodingAttr>(srcLayout) &&
++        isa<triton::gpu::SparseDotMetaEncodingAttr>(dstLayout)) {
 +      return lowerSharedToSparseMeta(op, adaptor, getTypeConverter(), rewriter);
 +    }
      return failure();
    }
  
-@@ -130,6 +142,29 @@ private:
+@@ -138,6 +150,26 @@ private:
      rewriter.replaceOp(op, res);
      return success();
    }
@@ -208,13 +216,10 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.
 +      const LLVMTypeConverter *typeConverter,
 +      ConversionPatternRewriter &rewriter) const {
 +    auto loc = op.getLoc();
-+    auto sparseEncoding = op.getResult()
-+                              .getType()
-+                              .cast<RankedTensorType>()
-+                              .getEncoding()
-+                              .cast<triton::gpu::SparseDotMetaEncodingAttr>();
++    auto sparseEncoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
++        cast<RankedTensorType>(op.getResult().getType()).getEncoding());
 +    auto llvmElemTy = typeConverter->convertType(
-+        op.getSrc().getType().cast<MemDescType>().getElementType());
++        cast<MemDescType>(op.getSrc().getType()).getElementType());
 +    auto smemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
 +                                                   llvmElemTy, rewriter);
 +    Value res = SharedToSparseDotOperand::convertLayout(
@@ -229,6 +234,7 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.
  struct ConvertLayoutOpOptimizedConversion
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
 new file mode 100644
+index 000000000..3011cf73d
 --- /dev/null
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
 @@ -0,0 +1,69 @@
@@ -255,7 +261,7 @@ new file mode 100644
 +    Value thread) {
 +  // Calculate tile size as number of mask elements (4xi4).
 +  NvidiaMmaEncodingAttr mmaLayout =
-+      sparseEncoding.getParent().cast<NvidiaMmaEncodingAttr>();
++      cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
 +  SmallVector<unsigned> shapePerCTATile = {
 +      kTileSize * mmaLayout.getWarpsPerCTA()[0],
 +      kTileSize / kMetadataElementsPerPackedValue};
@@ -272,7 +278,7 @@ new file mode 100644
 +  Value rowId = add(mul(warpGroupId, i32_val(kTileSize)), laneGroupId);
 +
 +  // Calculate number of tile repetitions.
-+  auto shape = tensor.getType().cast<MemDescType>().getShape();
++  auto shape = cast<MemDescType>(tensor.getType()).getShape();
 +  int repM = shape[0] / shapePerCTATile[0];
 +  int repK = shape[1] / shapePerCTATile[1];
 +  assert(repM > 0 && repK > 0);
@@ -302,9 +308,10 @@ new file mode 100644
 +}
 +}  // namespace SharedToSparseDotOperand
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
+index 374b9ec9e..1601806b4 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
-@@ -32,6 +32,12 @@ LogicalResult convertAsyncWGMMA(triton::
+@@ -32,6 +32,12 @@ LogicalResult convertAsyncWGMMA(triton::nvidia_gpu::DotAsyncOp op,
                                  const LLVMTypeConverter *typeConverter,
                                  ConversionPatternRewriter &rewriter,
                                  Value thread);
@@ -317,7 +324,7 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/thir
  namespace {
  struct DotOpConversion : public ConvertOpToLLVMPattern<triton::DotOp> {
    using ConvertOpToLLVMPattern<triton::DotOp>::ConvertOpToLLVMPattern;
-@@ -180,6 +186,18 @@ struct DotWaitOpConversion
+@@ -174,6 +180,18 @@ struct DotWaitOpConversion
      return success();
    }
  };
@@ -336,7 +343,7 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/thir
  } // namespace
  
  void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
-@@ -188,4 +206,5 @@ void mlir::triton::NVIDIA::populateDotOp
+@@ -182,4 +200,5 @@ void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
    patterns.add<DotOpConversion>(typeConverter, benefit);
    patterns.add<DotAsyncOpConversion>(typeConverter, benefit);
    patterns.add<DotWaitOpConversion>(typeConverter, benefit);
@@ -344,6 +351,7 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/thir
  }
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
 new file mode 100644
+index 000000000..34d9212d2
 --- /dev/null
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
 @@ -0,0 +1,339 @@
@@ -397,15 +405,15 @@ new file mode 100644
 +                               const LLVMTypeConverter *typeConverter,
 +                               ConversionPatternRewriter &rewriter) {
 +  // Get number of repetitions across the dimensions.
-+  auto aTensorTy = op.getA().getType().cast<RankedTensorType>();
-+  auto bTensorTy = op.getB().getType().cast<RankedTensorType>();
++  auto aTensorTy = cast<RankedTensorType>(op.getA().getType());
++  auto bTensorTy = cast<RankedTensorType>(op.getB().getType());
 +
-+  auto layoutA = aTensorTy.getEncoding().dyn_cast<DotOperandEncodingAttr>();
-+  auto layoutB = bTensorTy.getEncoding().dyn_cast<DotOperandEncodingAttr>();
++  auto layoutA = dyn_cast<DotOperandEncodingAttr>(aTensorTy.getEncoding());
++  auto layoutB = dyn_cast<DotOperandEncodingAttr>(bTensorTy.getEncoding());
 +  assert(layoutA != nullptr && layoutB != nullptr);
 +
 +  int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
-+  auto mmaEnc = layoutA.getParent().cast<NvidiaMmaEncodingAttr>();
++  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
 +  auto repA = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(aTensorTy),
 +                                 bitwidth, layoutA.getOpIdx());
 +  auto repB = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(bTensorTy),
@@ -435,7 +443,7 @@ new file mode 100644
 +  }
 +
 +  // Flatten accumulator values.
-+  auto dTensorTy = op.getD().getType().cast<RankedTensorType>();
++  auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
 +  auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
 +
 +  // Create `mma.sp` instruction for 4/8 core matrices.
@@ -512,7 +520,7 @@ new file mode 100644
 +                     Location loc, std::vector<unsigned int> instrShape,
 +                     bool trans, int dimWpt, Value warpId, MemDescType tensorTy,
 +                     Value baseDesc, int minor) {
-+  auto sharedLayout = tensorTy.getEncoding().cast<SharedEncodingAttr>();
++  auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
 +  int elemBytes = tensorTy.getElementTypeBitWidth() / 8;
 +  int elemsPerSwizzlingRow =
 +      kMmaLineSize / sharedLayout.getPerPhase() / elemBytes;
@@ -541,10 +549,10 @@ new file mode 100644
 +                                 ConversionPatternRewriter &rewriter,
 +                                 Value thread) {
 +  // Get number of repetitions across the dimensions.
-+  auto aTensorTy = op.getA().getType().cast<MemDescType>();
-+  auto bTensorTy = op.getB().getType().cast<MemDescType>();
-+  auto dTensorTy = op.getD().getType().cast<RankedTensorType>();
-+  auto mmaEnc = dTensorTy.getEncoding().cast<NvidiaMmaEncodingAttr>();
++  auto aTensorTy = cast<MemDescType>(op.getA().getType());
++  auto bTensorTy = cast<MemDescType>(op.getB().getType());
++  auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
++  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(dTensorTy.getEncoding());
 +
 +  auto shapePerCTA = getShapePerCTA(dTensorTy);
 +  auto shapePerCTATile = getShapePerCTATile(mmaEnc);
@@ -573,7 +581,7 @@ new file mode 100644
 +    auto sharedObj = getSharedMemoryObjectFromStruct(
 +        loc, arg, typeConverter->convertType(tensorTy.getElementType()),
 +        rewriter);
-+    auto sharedLayout = tensorTy.getEncoding().cast<SharedEncodingAttr>();
++    auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
 +    auto shape = getShapePerCTA(tensorTy);
 +    auto ord = sharedLayout.getOrder();
 +    int byteSize = aTensorTy.getElementTypeBitWidth() / 8;
@@ -671,9 +679,9 @@ new file mode 100644
 +                                 SparseDotOp::Adaptor adaptor,
 +                                 const LLVMTypeConverter *typeConverter,
 +                                 ConversionPatternRewriter &rewriter) {
-+  auto resultTy = op.getResult().getType().cast<RankedTensorType>();
++  auto resultTy = cast<RankedTensorType>(op.getResult().getType());
 +  NvidiaMmaEncodingAttr mmaLayout =
-+      resultTy.getEncoding().cast<NvidiaMmaEncodingAttr>();
++      cast<NvidiaMmaEncodingAttr>(resultTy.getEncoding());
 +
 +  if (mmaLayout.isAmpere()) {
 +    return convertSparseMMA(op, adaptor, typeConverter, rewriter);
@@ -687,9 +695,10 @@ new file mode 100644
 +      "Unsupported SparseDotOp found when converting TritonGPU to LLVM.");
 +}
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+index 738f0fe04..867939f65 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
-@@ -87,8 +87,8 @@ int64_t getSwizzlingFromLayout(const Sha
+@@ -88,8 +88,8 @@ int64_t getSwizzlingFromLayout(const SharedEncodingAttr &layout,
    return swizzlingByteWidth;
  }
  

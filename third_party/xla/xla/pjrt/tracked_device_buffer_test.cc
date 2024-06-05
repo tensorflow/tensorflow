@@ -28,12 +28,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
-                                                         LocalClient* client) {
+absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
+    const Shape& shape, LocalClient* client) {
   std::vector<stream_executor::DeviceMemoryBase> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
-      [&](const Shape& subshape, const ShapeIndex&) -> Status {
+      [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory device_memory,
             client->backend().memory_allocator()->Allocate(

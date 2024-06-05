@@ -121,8 +121,8 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
   return pass_through;
 }
 
-Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
-                                   const HloSharding& sharding) {
+absl::Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
+                                         const HloSharding& sharding) {
   for (auto& pass_through : LocatePassThroughDomainLinks(domain)) {
     HloInstruction* tuple = pass_through.operand->parent()->AddInstruction(
         HloInstruction::CreateTuple({pass_through.operand}));
@@ -153,8 +153,8 @@ std::shared_ptr<const HloSharding> CloneShardingForDomain(
   return std::make_shared<const HloSharding>(*single_sharding);
 }
 
-Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
-                                 const HloSharding& sharding) {
+absl::Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
+                                       const HloSharding& sharding) {
   VLOG(4) << "Applying " << sharding << " sharding";
   for (HloInstruction* instruction : domain.instructions) {
     // We only change instructions without sharding, since otherwise we might
@@ -342,8 +342,8 @@ absl::StatusOr<int64_t> ApplyDomainShardingPass(
   return assigned;
 }
 
-Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
-                           const HloSharding& sharding) {
+absl::Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
+                                 const HloSharding& sharding) {
   // None of the external normalizers handled the domain sharding, try to see
   // whether this is a single sharding first.
   auto single_sharding = sharding.ExtractSingleSharding();
@@ -438,14 +438,14 @@ std::string ShardingMetadata::ToString() const {
 /*static*/ absl::StatusOr<const ShardingMetadata*>
 ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
   if (metadata->Kind() != ShardingMetadata::KindName()) {
-    return Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "ShardingMetadata normalizer called with incorrect domain metadata");
   }
   return static_cast<const ShardingMetadata*>(metadata);
 }
 
-Status ShardingMetadata::NormalizeShardingDomain(
+absl::Status ShardingMetadata::NormalizeShardingDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
   if (metadata != nullptr) {
     TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,

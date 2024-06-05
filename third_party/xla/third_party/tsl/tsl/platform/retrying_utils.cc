@@ -54,8 +54,8 @@ double GenerateUniformRandomNumberBetween(double a, double b) {
 
 }  // namespace
 
-Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
-                                      const RetryConfig& config) {
+absl::Status RetryingUtils::CallWithRetries(
+    const std::function<absl::Status()>& f, const RetryConfig& config) {
   return CallWithRetries(
       f,
       [](int64_t micros) {
@@ -64,8 +64,8 @@ Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
       config);
 }
 
-Status RetryingUtils::CallWithRetries(
-    const std::function<Status()>& f,
+absl::Status RetryingUtils::CallWithRetries(
+    const std::function<absl::Status()>& f,
     const std::function<void(int64_t)>& sleep_usec, const RetryConfig& config) {
   int retries = 0;
   while (true) {
@@ -76,7 +76,7 @@ Status RetryingUtils::CallWithRetries(
     if (retries >= config.max_retries) {
       // Return AbortedError, so that it doesn't get retried again somewhere
       // at a higher level.
-      return Status(
+      return absl::Status(
           absl::StatusCode::kAborted,
           strings::StrCat(
               "All ", config.max_retries,
@@ -98,14 +98,15 @@ Status RetryingUtils::CallWithRetries(
   }
 }
 
-Status RetryingUtils::DeleteWithRetries(
-    const std::function<Status()>& delete_func, const RetryConfig& config) {
+absl::Status RetryingUtils::DeleteWithRetries(
+    const std::function<absl::Status()>& delete_func,
+    const RetryConfig& config) {
   bool is_retried = false;
   return RetryingUtils::CallWithRetries(
       [delete_func, &is_retried]() {
-        const Status status = delete_func();
+        const absl::Status status = delete_func();
         if (is_retried && status.code() == error::NOT_FOUND) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         is_retried = true;
         return status;

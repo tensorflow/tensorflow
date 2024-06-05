@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"

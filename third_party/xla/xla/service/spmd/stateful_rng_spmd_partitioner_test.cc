@@ -34,11 +34,25 @@ namespace xla {
 namespace spmd {
 namespace {
 
+int64_t CountInstructions(const HloComputation &computation, HloOpcode opcode) {
+  int64_t count = 0;
+  for (const auto &instruction : computation.instructions()) {
+    if (instruction->opcode() == opcode) {
+      count++;
+    }
+  }
+  return count;
+}
+
 class StatefulRngSpmdPartitionerTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
-      std::function<void(HloPassPipeline &pipeline)> add_passes = nullptr) {
+      std::function<void(HloPassPipeline &pipeline)> add_passes = nullptr,
+      int64_t threshold_for_windowed_einsum_mib = 1000000,
+      bool windowed_einsum_use_multiple_streams = false,
+      bool skip_checking_windowed_einsum_users = false,
+      bool disable_ag_rewrite_for_multiple_consumers = false) {
     TF_ASSIGN_OR_RETURN(
         auto module, ParseAndReturnVerifiedModule(
                          hlo_module, GetModuleConfigForTest(
@@ -51,8 +65,12 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
       add_passes(pass);
     }
     pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
-    pass.AddPass<StatefulRngSpmdPartitioner>(num_partitions,
-                                             /*num_replicas=*/1);
+    pass.AddPass<StatefulRngSpmdPartitioner>(
+        num_partitions,
+        /*num_replicas=*/1, threshold_for_windowed_einsum_mib,
+        windowed_einsum_use_multiple_streams,
+        skip_checking_windowed_einsum_users,
+        disable_ag_rewrite_for_multiple_consumers);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
@@ -114,6 +132,42 @@ ENTRY entry {
       PartitionComputation(hlo_string, /*num_partitions=*/2, add_passes));
   XLA_VLOG_LINES(1, module->ToString());
   VerifyNoAllReduce(module.get());
+}
+
+TEST_F(StatefulRngSpmdPartitionerTest,
+       EinsumDisableRewriteForAgWithMultipleConsumers) {
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(bf16[2,2048,24576]{2,1,0}, bf16[24576,98304]{1,0}, bf16[24576,98304]{1,0})->bf16[2,2048,98304]{2,1,0}}, num_partitions=4
+
+ENTRY main {
+  Arg_0.1 = bf16[2,2048,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = bf16[24576,98304]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  dot.5 = bf16[2,2048,98304]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+  Arg_2.3 = bf16[24576,98304]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  dot.6 = bf16[2,2048,98304]{2,1,0} dot(Arg_0.1, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,4]<=[4]}
+  ROOT add.8 = bf16[2,2048,98304]{2,1,0} add(dot.5, dot.6), sharding={devices=[1,1,4]<=[4]}
+}
+
+)";
+  // With disable_ag_rewrite_for_multiple_consumers set to true, we expect only
+  // 1 while loop to exist which is the rewritten windowed einsum loop for the
+  // first ag->dot pattern. The second dot which shares the same operand with
+  // the loop will remain as is.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, PartitionComputation(
+                       hlo_string, /*num_partitions=*/4, /*add_passes=*/nullptr,
+                       /*threshold_for_windowed_einsum_mib=*/0,
+                       /*windowed_einsum_use_multiple_streams=*/true,
+                       /*skip_checking_windowed_einsum_users=*/true,
+                       /*disable_ag_rewrite_for_multiple_consumers=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kWhile),
+            1);
+  EXPECT_EQ(CountInstructions(*module->entry_computation(), HloOpcode::kDot),
+            1);
+  EXPECT_EQ(
+      CountInstructions(*module->entry_computation(), HloOpcode::kAllGather),
+      1);
 }
 
 TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {

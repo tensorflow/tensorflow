@@ -526,6 +526,7 @@ cc_library(
     hdrs = ["symbolic_tile.h"],
     deps = [
         ":affine_map_printer",
+        ":indexing_analysis",
         ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -545,12 +546,13 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_test_utils",
         ":symbolic_tile",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        #"@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:test",
     ],
@@ -624,6 +626,16 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tiled_hlo_computation",
+    hdrs = ["tiled_hlo_computation.h"],
+    deps = [
+        ":tiled_hlo_instruction",
+        "//xla:util",
+        "@local_tsl//tsl/lib/gtl:iterator_range",
+    ],
+)
+
+cc_library(
     name = "symbolic_tile_analysis",
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
@@ -632,6 +644,7 @@ cc_library(
         ":indexing_map",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
+        ":tiled_hlo_computation",
         ":tiled_hlo_instruction",
         "//xla:status",
         "//xla/hlo/ir:hlo",
@@ -657,6 +670,7 @@ xla_cc_test(
     deps = [
         ":indexing_test_utils",
         ":symbolic_tile_analysis",
+        ":tiled_hlo_computation",
         ":tiled_hlo_instruction",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",

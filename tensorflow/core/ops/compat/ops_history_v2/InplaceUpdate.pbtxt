@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "InplaceUpdate"
   input_arg {
     name: "x"

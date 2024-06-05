@@ -131,4 +131,6 @@ defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;
 
 defvar MHLO_StaticShapeIntFpOrComplexTensor = HLO_StaticShapeIntFpOrComplexTensor;
 
+defvar MHLO_Static1DIntTensor = HLO_Static1DIntTensor;
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_BASE

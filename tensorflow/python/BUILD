@@ -134,6 +134,7 @@ py_strict_library(
         ":pywrap_tensorflow",
         ":pywrap_tfe",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
+        "//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/python/autograph",
@@ -285,6 +286,7 @@ py_strict_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:_pywrap_sparse_core_layout",
         "//tensorflow/python/tpu:datasets",
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
@@ -767,6 +769,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/compiler/tf2xla:tf2xla_opset",
@@ -799,6 +802,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -881,6 +885,7 @@ filegroup(
         "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
+        "//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",  # tensorflow_to_stablehlo
         "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
@@ -920,6 +925,7 @@ filegroup(
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",  # sparse_core_layouts
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -54,13 +55,15 @@ class MlirReductionFusion
   struct EmitterState;
   friend struct EmitterState;
 
-  absl::Status EmitReduction(EmitterState& state) const;
+  llvm::SmallVector<mlir::Value> EmitReduction(int group_id,
+                                               EmitterState& state) const;
 
-  std::vector<const HloInstruction*> reduction_heroes_;
-  // The roots that have reduction heroes.
-  std::vector<const HloInstruction*> reduction_roots_;
-  std::vector<const HloInstruction*> side_output_roots_;
-  int first_reduction_root_index_;
+  // The reduction heroes for each reduction group.
+  std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
+  // The roots that have reduction heroes for each reduction group.
+  std::vector<std::vector<const HloInstruction*>> reduction_roots_;
+  // The side output roots for each reduction group.
+  std::vector<std::vector<const HloInstruction*>> side_output_roots_;
 };
 
 }  // namespace gpu

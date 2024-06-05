@@ -77,7 +77,7 @@ class HloPassInterface {
   //      absl::string_view name() const override { return "my-new-pass"; }
   //
   //      using HloPassInterface::Run;
-  //      StatusOr<bool> Run(
+  //      absl::StatusOr<bool> Run(
   //        HloModule* module,
   //        const absl::flat_hash_set<absl::string_view>& execution_threads)
   //        override;
@@ -97,7 +97,7 @@ class HloPassInterface {
   // NOTE: This is a temporary default implementation that conservatively treats
   // all computations as changed. Eventually all passes should override this
   // method instead of Run() and Run() will call into this method instead.
-  virtual Status RunOnChangedComputations(
+  virtual absl::Status RunOnChangedComputations(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(bool changed, Run(module, execution_threads));
@@ -126,7 +126,7 @@ class HloPassInterface {
   //      absl::string_view name() const override { return "my-new-pass"; }
   //
   //      using HloPassInterface::RunOnModuleGroup;
-  //      StatusOr<bool> RunOnModuleGroup(
+  //      absl::StatusOr<bool> RunOnModuleGroup(
   //        HloModuleGroup* module_group,
   //        const absl::flat_hash_set<absl::string_view>& execution_threads)
   //        override;

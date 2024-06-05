@@ -59,24 +59,24 @@ class HloInstructionTest : public HloTestBase {
 // before their users, nodes not visited twice, etc.)
 class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
  public:
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("not implemented %s",
                          HloOpcodeString(hlo_instruction->opcode()));
   }
 
-  Status HandleParameter(HloInstruction* parameter) override {
+  absl::Status HandleParameter(HloInstruction* parameter) override {
     EXPECT_FALSE(count_.contains(parameter));
     count_[parameter] = GetCountsForNode(parameter);
     return OkStatus();
   }
 
-  Status HandleConstant(HloInstruction* constant) override {
+  absl::Status HandleConstant(HloInstruction* constant) override {
     EXPECT_FALSE(count_.contains(constant));
     count_[constant] = GetCountsForNode(constant);
     return OkStatus();
   }
 
-  Status HandleAdd(HloInstruction* add) override {
+  absl::Status HandleAdd(HloInstruction* add) override {
     auto lhs = add->operand(0);
     auto rhs = add->operand(1);
     EXPECT_FALSE(count_.contains(add));
@@ -86,7 +86,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  Status HandleNegate(HloInstruction* negate) override {
+  absl::Status HandleNegate(HloInstruction* negate) override {
     auto operand = negate->operand(0);
     EXPECT_FALSE(count_.contains(negate));
     EXPECT_TRUE(count_.contains(operand));
@@ -94,7 +94,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  Status HandleMap(HloInstruction* map) override {
+  absl::Status HandleMap(HloInstruction* map) override {
     EXPECT_FALSE(count_.contains(map));
     for (HloInstruction* arg : map->operands()) {
       EXPECT_TRUE(count_.contains(arg));
@@ -103,7 +103,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  Status HandleReduce(HloInstruction* reduce) override {
+  absl::Status HandleReduce(HloInstruction* reduce) override {
     auto arg = reduce->operand(0);
     auto init_value = reduce->operand(1);
     EXPECT_FALSE(count_.contains(reduce));
@@ -576,12 +576,12 @@ class NodeCollectorAndPostProcessor : public DfsHloVisitorWithDefault {
  public:
   NodeCollectorAndPostProcessor() {}
 
-  Status Postprocess(HloInstruction* hlo) override {
+  absl::Status Postprocess(HloInstruction* hlo) override {
     post_processed_nodes_.push_back(hlo);
     return OkStatus();
   }
 
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
     visited_nodes_.push_back(hlo_instruction);
     return OkStatus();
   }

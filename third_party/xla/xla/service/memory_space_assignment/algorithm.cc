@@ -942,8 +942,9 @@ void MsaAlgorithm::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("scheduleinfo", instruction_schedule_str_);
 }
 
-Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
-                                             int loop_end_idx, int loop_size) {
+absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
+                                                   int loop_end_idx,
+                                                   int loop_size) {
   // The MemoryBoundLoopOptimizer works with a minimum of three unrolled loop
   // iterations: previous, current, and next. So, we pick the second iteration
   // out of the loop as the current iteration.
@@ -1032,7 +1033,7 @@ Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1476,7 +1477,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         VLOG(2) << "Repacking.";
         auto repack_status =
             options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-        CHECK_EQ(repack_status.status(), OkStatus());
+        CHECK_EQ(repack_status.status(), absl::OkStatus());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         // For debug and testing purpose, also update allocations if
         // repack_after_every_allocation is on.
@@ -1524,7 +1525,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     VLOG(2) << "Final Repacking.";
     auto repack_status =
         options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-    CHECK_EQ(repack_status.status(), OkStatus());
+    CHECK_EQ(repack_status.status(), absl::OkStatus());
     VLOG(2) << "Final Repack complete. Modified = " << *repack_status;
   }
 
@@ -1912,7 +1913,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
         result_mark(AllocateSegment(request), result);
         if (request.require_no_copy_alternate_mem_allocation &&
             result != Result::kSuccess) {
-          Status failed_precondition = FailedPrecondition(
+          absl::Status failed_precondition = FailedPrecondition(
               "The value defined at %s requires allocation in the alternate "
               "memory, which could not be satisfied. This typically happens "
               "because more pinned buffers are live than the alternate memory "
@@ -3373,10 +3374,10 @@ void MsaAlgorithm::ImportRepackedSlicedAllocation(
           << "; Allocation: " << allocation->ToString();
 }
 
-Status MsaAlgorithm::AreRepackedSlicesValid(
+absl::Status MsaAlgorithm::AreRepackedSlicesValid(
     const RepackAllocationBlock& block) {
   if (!block.repacked_slice_data.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!block.original_slice_data.has_value()) {
     return InvalidArgumentStrCat(
@@ -3417,7 +3418,7 @@ Status MsaAlgorithm::AreRepackedSlicesValid(
         "mappings.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MsaAlgorithm::UncommitPendingChunks(

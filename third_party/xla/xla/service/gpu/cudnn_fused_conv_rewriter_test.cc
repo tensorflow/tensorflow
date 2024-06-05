@@ -19,7 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>  // NOLINT
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -68,8 +71,19 @@ namespace m = match;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
+// TODO: Use constexpr vector once XLA is compiled with C++20.
+const auto* kf16f32f64 = new std::vector<std::string>({"f16", "f32", "f64"});
+const auto* kf16f32 = new std::vector<std::string>({"f16", "f32"});
+
 class CudnnFusedConvRewriterHloTest : public HloTestBase {
  public:
+  bool IsCuda() {
+    return std::holds_alternative<se::CudaComputeCapability>(
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
+  }
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
         .default_stream_executor()
@@ -85,6 +99,13 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  public:
+  bool IsCuda() {
+    return std::holds_alternative<se::CudaComputeCapability>(
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
+  }
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
         .default_stream_executor()
@@ -119,7 +140,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : {"f16", "f32", "f64"}) {
+    for (absl::string_view type : *(IsCuda() ? kf16f32f64 : kf16f32)) {
       const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
@@ -157,7 +178,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : {"f16", "f32", "f64"}) {
+    for (absl::string_view type : *(IsCuda() ? kf16f32f64 : kf16f32)) {
       const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
@@ -170,6 +191,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 
   void TestF8(std::string pre_hlo_string, std::string custom_call_string,
               std::string serialized_graph_string) {
+    if (!IsCuda()) return;
     if (GetCudaComputeCapability().IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
       // On Hopper and newer architectures, test numerical correctness and
@@ -244,6 +266,23 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   }
 };
 
+#if GOOGLE_CUDA
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+#define MAYBE_SKIP_TEST(CAUSE)                                           \
+  do {                                                                   \
+    if (absl::string_view(CAUSE) == "F8")                                \
+      GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9."; \
+  } while (0)
+#else
+#define MAYBE_SKIP_TEST(CAUSE)
+#endif
+#else
+#define MAYBE_SKIP_TEST(CAUSE)                                \
+  do {                                                        \
+    GTEST_SKIP() << "ROCm does not support " CAUSE " fusion"; \
+  } while (0)
+#endif
+
 TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {
   // max(0, conv(x, w));
   TestMatchWithAllTypes(R"(
@@ -295,6 +334,81 @@ TEST_F(CudnnFusedConvRewriterTest, TestBias) {
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, Test3D) {
+  // max(0, conv(x, w) + bias);
+  std::string body = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,5,7,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,5,7,64] parameter(0)
+      filter = TYPE[3,3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,5,7,64] convolution(input, filter), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,5,7,64] broadcast(bias), dimensions={4}
+      add1 = TYPE[1,3,5,7,64] add(conv, broadcasted_bias)
+    )";
+
+  std::string relu = R"(
+      ROOT relu = TYPE[1,3,5,7,64] maximum(zeros, add1)
+    })";
+
+  std::string elu = R"(
+      cmp = pred[1,3,5,7,64] compare(add1, zeros), direction=GT
+      expm1 = TYPE[1,3,5,7,64] exponential-minus-one(add1)
+      ROOT elu = TYPE[1,3,5,7,64] select(cmp, add1, expm1)
+    })";
+
+  TestMatchWithAllTypes(body + relu);
+  if (!IsCuda()) TestMatchWithAllTypes(body + elu);
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestBiasMultiCall) {
+  // max(0, conv(x, w) + bias);
+  std::string code = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,<<<format>>>,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,<<<format>>>,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,<<<format>>>,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,<<<format>>>,64] broadcast(bias), dimensions={3}
+      add1 = TYPE[1,<<<format>>>,64] add(conv, broadcasted_bias)
+      ROOT relu = TYPE[1,<<<format>>>,64] maximum(zeros, add1)
+    })";
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+  replacements["<<<format>>>"] = "3,3";
+  TestMatchWithAllTypes(absl::StrReplaceAll(code, replacements));
+  replacements["<<<format>>>"] = "5,5";
+  TestMatchWithAllTypes(absl::StrReplaceAll(code, replacements));
+  replacements["<<<format>>>"] = "3,3";
+  TestMatchWithAllTypes(absl::StrReplaceAll(code, replacements));
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestBiasNoRelu) {
+  // conv(x, w) + bias;
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      ROOT add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
     })");
 }
 
@@ -365,8 +479,8 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
+  if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
+                      se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
                     "the Nvidia Ampere+ GPUs.";
   }
@@ -393,12 +507,11 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
 // number of input/output channels.  Check that we don't try to run this conv
 // with runtime fusion (or, if we do, that it works!).
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
+  if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
+                      se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
                     "the Nvidia Ampere+ GPUs.";
   }
-
   TestMatchWithAllTypes(R"(
     HloModule Test
     ENTRY Test {
@@ -415,8 +528,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
+  if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
+                      se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP()
         << "Conv-Bias-LeakyRelu fusion is supported and recommended with "
            "the Nvidia Ampere+ GPUs.";
@@ -730,9 +843,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -755,9 +866,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -791,9 +900,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInvscaledOutputF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -827,9 +934,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInvscaledOutputF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledF8Parameterized) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8Parameterized(
       // pre_hlo
       R"(
@@ -869,9 +974,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledF8Parameterized) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledBiasF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -913,9 +1016,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledBiasF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledReluF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -952,6 +1053,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledReluF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvAmaxF8) {
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -1001,6 +1103,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvAmaxF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvReluAmaxF8) {
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -1053,9 +1156,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvReluAmaxF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputMultipleUsersF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -1095,9 +1196,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputMultipleUsersF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputUnsupportedUserF8) {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
-  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
-#endif
+  MAYBE_SKIP_TEST("F8");
   TestF8(
       // pre_hlo
       R"(
@@ -1133,6 +1232,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputUnsupportedUserF8) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
+  MAYBE_SKIP_TEST("I8");
   // max(0, clamp(conv(x, w)))); for int8_t
   TestClamp(
       // pre_hlo
@@ -1167,6 +1267,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -1198,6 +1299,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -1238,6 +1340,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -1286,6 +1389,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -1333,6 +1437,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
 //   reshape(side_input * alpha).
 // Make sure we can pattern-match this.
 TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -1386,6 +1491,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
     HloModule Test
 
@@ -2054,6 +2160,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
+  MAYBE_SKIP_TEST("I8");
   const std::string_view module_str = R"(
     HloModule Test
 
@@ -2079,6 +2186,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
+  MAYBE_SKIP_TEST("I8");
   const std::string_view module_str = R"(
     HloModule Test
 
@@ -2104,6 +2212,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
+  MAYBE_SKIP_TEST("I8");
   const std::string_view module_str = R"(
     HloModule Test
 
@@ -2608,6 +2717,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
+  MAYBE_SKIP_TEST("I8");
   const std::string module_str = R"(
   HloModule Test
 
@@ -2663,6 +2773,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
+  MAYBE_SKIP_TEST("F64");
   const std::string module_str = R"(
   HloModule Test
 
@@ -2699,6 +2810,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
+  MAYBE_SKIP_TEST("I8");
   // clamp(max(0, conv(x, w)+bias)); for int8_t
   TestClamp(
       // pre_hlo
@@ -2740,6 +2852,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
 
 // Disabled per b/190854862 or nvbugs/3326122.
 TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
+  MAYBE_SKIP_TEST("I8");
   // max(0, convert<float>(conv<int32_t>(int8_x),
   // conv<int32_t>(int8_w))+float_bias)); int8_t to float via bias.
   TestClamp(
@@ -2775,6 +2888,7 @@ TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
 
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledInt8SideInputBiasInt8ToInt8) {
+  MAYBE_SKIP_TEST("I8");
   // clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
   // convert<int32_t>(int8_side_input) + bias)); for int8_t
   TestClamp(
@@ -2826,6 +2940,7 @@ TEST_F(CudnnFusedConvRewriterTest,
 
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledFloatSideInputBiasInt8ToInt8) {
+  MAYBE_SKIP_TEST("I8");
   // From:
   // convert<int8_t>(clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
   // float_side_input + bias))); To: convert<int8_t>(clamp(conv(int8_x, int8_w,
@@ -2878,6 +2993,7 @@ TEST_F(CudnnFusedConvRewriterTest,
 
 TEST_F(CudnnFusedConvRewriterTest,
        TestFusedConvWithScaledInt8SideInputBiasInt8ToFloat) {
+  MAYBE_SKIP_TEST("I8");
   // From:
   // clamp(max(0, alpha_conv * conv(x, w) + alpha_side *
   // convert<float>(int8_side_input) + bias)); To: clamp(conv(int8_x, int8_w,
@@ -2928,6 +3044,7 @@ TEST_F(CudnnFusedConvRewriterTest,
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
+  MAYBE_SKIP_TEST("I8");
   // Check that integer convolution without clamp to int8_t is not allowed.
   // convert<int8_t>(custom_call<int32_t>(int32_x, int32_w,
   // cudnnConvolutionForward))
@@ -2951,6 +3068,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
+  MAYBE_SKIP_TEST("I8");
   // Although bias and so on are fused with forward convolution,
   // it is still not allowed if the output is not clampped/converted to int8_t
   // max(0, alpha_conv * conv(x, w) + alpha_side * side_input + bias); for

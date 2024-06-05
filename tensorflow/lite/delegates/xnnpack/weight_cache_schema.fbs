@@ -1,0 +1,52 @@
+// Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This is a list of buffers with identifiers, to host the CPU-specific cache on disk.
+namespace tflite.xnnpack.cache.schema;
+
+// Schema version.
+file_identifier "V001";
+// File extension of written files.
+file_extension "xnn_weights";
+
+table Buffer {
+  // To uniquely identify a packed buffer we need to keep track of the packing
+  // algorithm and of the buffers that were used to generate it.
+  packing_algorithm_id: uint64;
+  weights_id: uint64;
+  bias_id: uint64;
+
+  /// The buffer data is appended after the flatbuffer to bypass 2GB file size
+  /// limitation. The offset is calculated relative to the base offset.
+  /// (i.e. beginning of the file + base_offset).
+  offset: uint64;
+
+  /// Size of the buffer in bytes.
+  size: uint64;
+}
+
+table PackedWeights {
+  /// A list of buffers.
+  buffers: [Buffer];
+
+  /// The serialized file is `flatbuffer_size` of bytes representing
+  /// `NamedBuffers` appended with a blob representing the buffer content.
+  flatbuffer_size: uint64;
+
+  /// Defines the base offset for the data appended to the file. That offset
+  /// may be needed to guarantee data alignment.
+  base_offset:uint64;
+}
+
+root_type PackedWeights;

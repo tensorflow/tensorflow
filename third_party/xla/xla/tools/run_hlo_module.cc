@@ -167,13 +167,14 @@ absl::StatusOr<Literal> ExecuteWithRunner(
   return std::move(result_status).value();
 }
 
-Status RunAndCompareInternal(
+absl::Status RunAndCompareInternal(
     std::unique_ptr<HloModule> test_module,
     const BufferAssignmentProto* buffer_assignment_proto,
     HloRunnerInterface* test_runner, HloRunnerInterface* reference_runner,
     std::minstd_rand0* engine, const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
-    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+    std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                               HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook,
     ModuleResult* test_run_result, ModuleResult* reference_run_result) {
@@ -325,7 +326,7 @@ Status RunAndCompareInternal(
   ErrorSpec error_spec(static_cast<float>(options.abs_error_bound),
                        static_cast<float>(options.rel_error_bound));
 
-  Status comparison_status =
+  absl::Status comparison_status =
       literal_comparison::Near(/*expected=*/reference_result,
                                /*actual=*/test_result,
                                /*error=*/error_spec,
@@ -345,7 +346,7 @@ struct ChunkResult {
   std::string module_name;
   ModuleResult test_result = ModuleResult::kDidntRun;
   ModuleResult reference_result = ModuleResult::kDidntRun;
-  Status status;
+  absl::Status status;
 
   bool operator<(const ChunkResult& other) const {
     if (test_result != other.test_result) {
@@ -412,13 +413,14 @@ std::string BuildResultsTable(absl::Span<const ChunkResult> chunk_results,
   return strstr.str();
 }
 
-Status RunIsolatedAndCompare(
+absl::Status RunIsolatedAndCompare(
     std::unique_ptr<HloModule> test_module,
     const BufferAssignmentProto* buffer_assignment_proto,
     HloRunnerInterface* test_runner, HloRunnerInterface* reference_runner,
     std::minstd_rand0* engine, const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
-    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+    std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                               HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
   CHECK(test_module);
@@ -439,12 +441,12 @@ Status RunIsolatedAndCompare(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(*test_module, /*deduplicate_modules=*/true));
 
-  Status status = OkStatus();
+  absl::Status status = OkStatus();
   for (std::unique_ptr<HloModule>& module : modules) {
     const std::string module_name = module->name();
     ModuleResult test_module_result = ModuleResult::kDidntRun;
     ModuleResult reference_module_result = ModuleResult::kDidntRun;
-    Status chunk_status = RunAndCompareInternal(
+    absl::Status chunk_status = RunAndCompareInternal(
         std::move(module), buffer_assignment_proto, test_runner,
         reference_runner, engine, options, iteration_literals_proto,
         reference_module_modifier_hook, config_modifier_hook,
@@ -460,13 +462,14 @@ Status RunIsolatedAndCompare(
 
 }  // namespace
 
-Status RunAndCompare(
+absl::Status RunAndCompare(
     std::unique_ptr<HloModule> test_module,
     const BufferAssignmentProto* buffer_assignment_proto,
     HloRunnerInterface* test_runner, HloRunnerInterface* reference_runner,
     std::minstd_rand0* engine, const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
-    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+    std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                               HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
   if (options.isolate_instructions) {
@@ -481,15 +484,17 @@ Status RunAndCompare(
       reference_module_modifier_hook, config_modifier_hook, nullptr, nullptr);
 }
 
-Status RunAndCompare(
+absl::Status RunAndCompare(
     const std::string& hlo_filename, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
-    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+    std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                               HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook,
-    std::function<Status(const RunHloModuleOptions& options, HloModule& module)>
+    std::function<absl::Status(const RunHloModuleOptions& options,
+                               HloModule& module)>
         compilation_env_modifier_hook) {
   BufferAssignmentProto buffer_assignment_proto;
   TF_ASSIGN_OR_RETURN(

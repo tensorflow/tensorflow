@@ -287,7 +287,8 @@ DnnSupport::FusedMHABackwardRunnerFromDesc(
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
-    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    dnn::DataType /*output_type*/, Stream* /*stream*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
     DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     DeviceMemoryBase filter_data,

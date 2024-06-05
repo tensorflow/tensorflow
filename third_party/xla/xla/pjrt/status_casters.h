@@ -25,7 +25,7 @@ namespace xla {
 
 // C++ -> Python caster helpers.
 //
-// Failing statuses become Python exceptions; OK Status() becomes None.
+// Failing statuses become Python exceptions; OK absl::Status() becomes None.
 //
 // Given there can be only a single global pybind11 type_caster for the
 // `absl::Status` type, and given XLA wants a custom exception being raised,

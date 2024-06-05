@@ -182,12 +182,6 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::unique_ptr<xla::PjRtExecutable> pjrt_executable) {
-  return std::unique_ptr<Executable>(new PjRtExecutable(
-      std::shared_ptr<xla::PjRtExecutable>(pjrt_executable.release())));
-}
-
-absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
   return std::unique_ptr<Executable>(
       new PjRtExecutable(std::move(pjrt_executable)));
@@ -201,16 +195,6 @@ absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
 absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
   DCHECK(this);
   return pjrt_executable_->SerializeExecutable();
-}
-
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client,
-    std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  return Create(client,
-                std::shared_ptr<xla::PjRtLoadedExecutable>(
-                    pjrt_loaded_executable.release()),
-                std::move(loaded_host_callbacks));
 }
 
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
@@ -355,7 +339,7 @@ PjRtLoadedExecutable::CreateInternal(
   auto append_arg = [&](const xla::PrimitiveType& element_type,
                         const xla::DimensionVector& dimensions,
                         const xla::HloSharding* sharding,
-                        MemoryKind memory_kind) -> Status {
+                        MemoryKind memory_kind) -> absl::Status {
     TF_ASSIGN_OR_RETURN(auto dtype, ToDType(element_type));
     output_dtypes.push_back(dtype);
     output_shapes.push_back(Shape(dimensions));
@@ -627,7 +611,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     result.status.OnReady(
         [all_loaded_host_callbacks = all_loaded_host_callbacks_,
          host_callback_states = std::move(host_callback_states)](
-            Status) mutable { all_loaded_host_callbacks.reset(); });
+            absl::Status) mutable { all_loaded_host_callbacks.reset(); });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.

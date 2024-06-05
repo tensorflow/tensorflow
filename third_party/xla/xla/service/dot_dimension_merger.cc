@@ -60,7 +60,7 @@ std::vector<int64_t> ShiftDimensions(absl::Span<const int64_t> dimensions,
 // Merge all batch dimensions into logically first one for both operands.
 class BatchDimensionMerger : public DfsHloRewriteVisitor {
  public:
-  Status HandleDot(HloInstruction* dot) override {
+  absl::Status HandleDot(HloInstruction* dot) override {
     const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
     const Shape& lhs_shape = dot->operand(0)->shape();
     const Shape& rhs_shape = dot->operand(1)->shape();

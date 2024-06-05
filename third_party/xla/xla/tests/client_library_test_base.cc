@@ -181,7 +181,8 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
+absl::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -207,7 +208,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   return OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     const xla::XlaComputation& computation, const Literal& /*expected*/,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -218,8 +219,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   // This is a recursive function. It's an std::function instead of a lambda
   // because it needs to capture itself. The index is the index of the argument
   // to try all layouts for.
-  std::function<Status(int64_t)> choose;
-  choose = [&, this](int64_t index) -> Status {
+  std::function<absl::Status(int64_t)> choose;
+  choose = [&, this](int64_t index) -> absl::Status {
     if (index < arguments.size()) {
       // Try out all layouts for the operand.
       TF_ASSIGN_OR_RETURN(auto literal,
@@ -293,7 +294,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   return ExecuteAndTransfer(computation, arguments, shape_with_layout);
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in,
     const Shape* shape_with_layout) {
@@ -355,7 +356,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   return OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in, ErrorSpec error,
     const Shape* shape_with_layout) {

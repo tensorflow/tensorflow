@@ -160,7 +160,7 @@ cc_library(
     name = "common_serdes",
     deps = [
         "//xla/python/ifrt:plugin_program_serdes",
-        "//xla/python/pjrt_ifrt:xla_program_serdes",
+        "//xla/python/ifrt/hlo:hlo_program_serdes",
     ],
     alwayslink = True,
 )

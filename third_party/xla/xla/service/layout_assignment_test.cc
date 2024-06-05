@@ -481,7 +481,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
       : LayoutAssignment(entry_computation_layout) {}
 
  protected:
-  Status PropagateBufferConstraint(
+  absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
     const LogicalBuffer& buffer = buffer_constraint.buffer();
@@ -803,7 +803,7 @@ TEST_F(LayoutAssignmentTest, LayoutAssignmentToTupleSiblingOperand) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_TRUE(error_status.ok());
 }
 
@@ -820,7 +820,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(
       error_status.message(),
@@ -1328,7 +1328,7 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
-Status AssignLayoutsToComputation(
+absl::Status AssignLayoutsToComputation(
     HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
     m->mutable_entry_computation_layout()

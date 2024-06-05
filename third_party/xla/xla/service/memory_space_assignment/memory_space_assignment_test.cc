@@ -113,7 +113,7 @@ int64_t ReservedScopedMemoryFn(
 }
 
 template <typename MessageType>
-StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
+absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
   tsl::protobuf::TextFormat::Parser parser;
   MessageType parsed_proto;
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
@@ -10344,7 +10344,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status ConcatBitcastAndSlicesAfterInstruction(
+  static absl::Status ConcatBitcastAndSlicesAfterInstruction(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class,
       int slices_start_after_index) {
@@ -10364,13 +10364,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
+  static absl::Status AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class) {
     bool found_non_copy_since_last_slice_start = true;
@@ -10394,13 +10394,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status OneSliceStartAfterInstructionWithNoCopyLikeBetween(
+  static absl::Status OneSliceStartAfterInstructionWithNoCopyLikeBetween(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class,
       int slices_start_after_index) {
@@ -10447,13 +10447,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                     first_slice_start_after_schedule_after, "."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status ConcatBitcastAndSlicesBeforeInstruction(
+  static absl::Status ConcatBitcastAndSlicesBeforeInstruction(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class,
       int slices_done_before_index) {
@@ -10474,13 +10474,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status
+  static absl::Status
   ConcatBitcastAndSliceDonesBeforeInstructionWithNoCopyLikeBetween(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class,
@@ -10507,13 +10507,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
   // - Concat-bitcast and all slices were found in the schedule used to
   //   construct schedule_to_class.
-  static Status ConcatBitcastAfterSliceDones(
+  static absl::Status ConcatBitcastAfterSliceDones(
       const std::vector<HloInstruction*>& schedule,
       const std::vector<InstructionClass>& schedule_to_class) {
     int concat_bitcast_index = -1;
@@ -10537,7 +10537,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return an OK status iff:
@@ -10553,7 +10553,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   //   slices_done_before_instruction_name in the schedule, with no
   //   non-copy-like instruction between AND
   // - concat_bitcast comes after all slice dones AND
-  static Status CheckSchedule(
+  static absl::Status CheckSchedule(
       const HloModule& module, const HloInstruction* concat_bitcast,
       std::string_view slices_start_after_instruction_name,
       std::string_view slices_done_before_instruction_name,
@@ -10629,10 +10629,10 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     TF_RETURN_IF_ERROR(
         ConcatBitcastAfterSliceDones(entry_schedule, schedule_to_class));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  // Returns OkStatus iff:
+  // Returns absl::OkStatus iff:
   // - Each slice is assigned a chunk that is the same size as the slice
   //   instruction's shape.
   // - When the slices of sliced_copy_result are sorted in expected spatial
@@ -10643,9 +10643,9 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   //   the slice chunks AND
   // - The size of the chunk assigned to the sliced_copy_result has the same
   //   size as the instruction's shape
-  static Status CheckSliceChunks(const PresetAssignments& assignments,
-                                 const HloInstruction* sliced_copy_result,
-                                 bool expect_bitcasted_io = false) {
+  static absl::Status CheckSliceChunks(const PresetAssignments& assignments,
+                                       const HloInstruction* sliced_copy_result,
+                                       bool expect_bitcasted_io = false) {
     const HloInstruction* concat_bitcast =
         (expect_bitcasted_io ? sliced_copy_result->operand(0)
                              : sliced_copy_result);
@@ -10699,7 +10699,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             << (result_chunk.has_value() ? result_chunk->ToString()
                                          : "no chunk assigned");
     if (sorted_slices.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Check that slices are assigned contiguous chunks that are spatially
@@ -10763,7 +10763,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                              ", to match its shape."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   SlicedPrefetchTest() {

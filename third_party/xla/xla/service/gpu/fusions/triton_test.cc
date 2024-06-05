@@ -16,11 +16,11 @@ limitations under the License.
 
 #include <optional>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 

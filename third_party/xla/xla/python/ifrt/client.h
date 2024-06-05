@@ -120,8 +120,15 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
   // extract shards without changing their per-shard interpretation and causing
-  // data copy/transfer. Using `ArrayCopySemantics::kAlwaysCopy` has an
-  // undefined behavior.
+  // data copy/transfer.
+  //
+  // There are constraints on `semantics`:
+  //
+  // * `ArrayCopySemantics::kAlwaysCopy` has an undefined behavior because
+  // `RemapArrays` does not copy data.
+  // * `ArrayCopySemantics::kReuseInput` is allowed only if the number of inputs
+  // is 1. This is safe because each input shard can be used only once.
+  // * `ArrayCopySemantics::kDonateInput` is always allowed.
   virtual absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   RemapArrays(const RemapPlan& plan,
               absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,

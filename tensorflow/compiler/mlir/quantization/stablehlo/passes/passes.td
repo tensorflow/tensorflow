@@ -228,5 +228,12 @@ def InsertCalibrationStatisticsSaverPass : Pass<"stablehlo-insert-calibration-st
     `CalibrationStatisticsSaver` op at the end of the function to collect their
     statistics.
   }];
+  let options = [
+    ListOption<"aggregator_ops_to_ignore_", "aggregator-ops-to-ignore", "std::string",
+               "Ops to ignore when inserting CalibrationStatisticsSaver.">,
+    Option<"calibration_data_dir_", "calibration-data-dir",
+        "std::string", /*default=*/"",
+        "The directory to save calibration data.">,
+  ];
   let dependentDialects = ["TF::TensorFlowDialect"];
 }

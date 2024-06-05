@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SdcaShrinkL1"
   input_arg {
     name: "weights"

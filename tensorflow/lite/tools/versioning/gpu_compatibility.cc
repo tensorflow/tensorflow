@@ -435,6 +435,41 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
 }
 
+absl::Status CheckAddMulBroadcastCompatibility(
+    const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1) {
+  if (input0.dims.size() > 1 && input1.dims.size() > 1 &&
+      input0.dims.size() != input1.dims.size()) {
+    const std::vector<int32_t>*longer_dims, *shorter_dims;
+    if (input0.dims.size() >= input1.dims.size()) {
+      longer_dims = &input0.dims;
+      shorter_dims = &input1.dims;
+    } else {
+      longer_dims = &input1.dims;
+      shorter_dims = &input0.dims;
+    }
+    bool is_broadcastable = false;
+
+    if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
+        longer_dims->at(0) == 1) {
+      // Broadcasting 3D to 4D with batch 1 works.
+      is_broadcastable = true;
+    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+               longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
+               shorter_dims->at(1) == 1) {
+      // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
+      is_broadcastable = true;
+    }
+
+    if (!is_broadcastable) {
+      return absl::UnimplementedError(
+          absl::StrCat("Doesn't support broadcasting - input0: [",
+                       absl::StrJoin(input0.dims, ","), "], input1: [",
+                       absl::StrJoin(input1.dims, ","), "]"));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 // Logics here used to be in TFLiteOperationParser:IsSupported()
@@ -449,12 +484,9 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       }
       const auto& input0 = op_sig.inputs.at(0);
       const auto& input1 = op_sig.inputs.at(1);
-      if (input0.dims.size() > 1 && input1.dims.size() > 1 &&
-          input0.dims.size() != input1.dims.size()) {
-        return absl::UnimplementedError(
-            absl::StrCat("ADD doesn't support broadcasting - input0: [",
-                         absl::StrJoin(input0.dims, ","), "], input1: [",
-                         absl::StrJoin(input1.dims, ","), "]"));
+      auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+      if (!broadcastable.ok()) {
+        return broadcastable;
       }
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
@@ -700,11 +732,13 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
               "MUL requires one tensor that not less than second in all "
               "dimensions.");
         }
-      } else if (input0.dims.size() > 1 && input1.dims.size() > 1) {
-        return absl::UnimplementedError(
-            absl::StrCat("MUL doesn't support broadcasting - input0: [",
-                         absl::StrJoin(input0.dims, ","), "], input1: [",
-                         absl::StrJoin(input1.dims, ","), "]"));
+      } else {
+        const auto& input0 = op_sig.inputs.at(0);
+        const auto& input1 = op_sig.inputs.at(1);
+        auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+        if (!broadcastable.ok()) {
+          return broadcastable;
+        }
       }
       const TfLiteMulParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));

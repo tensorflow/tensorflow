@@ -36,9 +36,9 @@ namespace tridiagonal {
 
 namespace {
 
-Status CheckSecondToLastDimension(const Shape& op_shape, int64_t rank,
-                                  int64_t expected,
-                                  const std::string& op_name) {
+absl::Status CheckSecondToLastDimension(const Shape& op_shape, int64_t rank,
+                                        int64_t expected,
+                                        const std::string& op_name) {
   const auto actual_num_dims = ShapeUtil::GetDimension(op_shape, rank - 2);
 
   if (actual_num_dims != expected) {
@@ -119,9 +119,9 @@ struct TridiagonalMatMulShapeParams {
   PrimitiveType element_type;
 };
 
-Status ValidateTridiagonalMatMulDiagonal(const Shape& diagonal_shape,
-                                         const std::string_view diagonal_name,
-                                         const Shape& rhs_shape) {
+absl::Status ValidateTridiagonalMatMulDiagonal(
+    const Shape& diagonal_shape, const std::string_view diagonal_name,
+    const Shape& rhs_shape) {
   const int64_t diagonal_rank = diagonal_shape.rank();
   const int64_t rhs_rank = rhs_shape.rank();
   if (diagonal_rank != rhs_rank) {

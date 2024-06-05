@@ -153,7 +153,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr);
+      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -274,7 +274,9 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
+  TF_ASSIGN_OR_RETURN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       executor,
       std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));

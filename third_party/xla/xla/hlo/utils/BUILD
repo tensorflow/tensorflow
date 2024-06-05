@@ -154,3 +154,19 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
+
+xla_cc_test(
+    name = "hlo_query_test",
+    srcs = [
+        "hlo_query_test.cc",
+    ],
+    deps = [
+        ":hlo_query",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)

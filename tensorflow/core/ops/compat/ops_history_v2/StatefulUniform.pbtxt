@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatefulUniform"
   input_arg {
     name: "resource"

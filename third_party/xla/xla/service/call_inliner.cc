@@ -55,7 +55,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   // Resolves the operands to the HLO instruction in the inlined (caller) graph,
   // and clones the HLO instruction into that graph with the new operands.
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
@@ -81,7 +81,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // Does not create new nodes for the parameter; rather, notes the mapping from
   // the subcomputation parameter node to the call operands in the caller
   // computation.
-  Status HandleParameter(HloInstruction* parameter) override {
+  absl::Status HandleParameter(HloInstruction* parameter) override {
     TF_RETURN_IF_ERROR(NoteMapping(
         parameter, call_->mutable_operand(parameter->parameter_number())));
     return OkStatus();
@@ -89,7 +89,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   // Wires the consumers of the call to instead point at the newly created root,
   // replacing the call operation in the caller computation.
-  Status FinishVisit(HloInstruction* root) override {
+  absl::Status FinishVisit(HloInstruction* root) override {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
@@ -119,8 +119,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   //
   // Returns an error status if the subcomputation_hlo is mapped more than
   // once.
-  Status NoteMapping(HloInstruction* subcomputation_hlo,
-                     HloInstruction* new_hlo) {
+  absl::Status NoteMapping(HloInstruction* subcomputation_hlo,
+                           HloInstruction* new_hlo) {
     auto result = subcomputation_hlo_to_new_hlo_.insert(
         std::make_pair(subcomputation_hlo, new_hlo));
     TF_RET_CHECK(result.second)
@@ -161,7 +161,7 @@ absl::StatusOr<bool> CallInliner::Run(
   // we'll always inline kCalls into their callers in the appropriate order.
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node)
-                                                -> Status {
+                                                -> absl::Status {
     if (!HloInstruction::IsThreadIncluded(
             node.computation()->execution_thread(), execution_threads)) {
       return OkStatus();

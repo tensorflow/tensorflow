@@ -100,7 +100,7 @@ TEST_F(GatherSimplifierTest, MakesStartIndexMapIdentity) {
 
   RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
   %operand = f32[33,34,35]{2,1,0} parameter(0)
-           CHECK: %[[OPERAND:.*]] = f32[35,33,34]{0,2,1} transpose(%operand)
+           CHECK: %[[OPERAND:.*]] = f32[35,33,34]{2,1,0} transpose(%operand)
            CHECK: %[[GATHER:.*]] = f32[42,3,1,2]{{.*}} gather(%[[OPERAND]],
       CHECK-SAME:    start_index_map={0,1,2},
            CHECK: ROOT {{.*}} = f32[42,1,2,3]{{.*}} transpose(%[[GATHER]])
@@ -126,7 +126,7 @@ TEST_F(GatherSimplifierTest, CollapsesSomeDims) {
   RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
            CHECK: %[[GATHER:.*]] = f32[42,1,7,1]{3,2,1,0} gather(
            CHECK: %[[COLLAPSED:.*]] = f32[42,7]{1,0} reshape(%[[GATHER]])
-           CHECK: ROOT {{.*}} = f32[7,42]{0,1} transpose(%[[COLLAPSED]]),
+           CHECK: ROOT {{.*}} = f32[7,42]{1,0} transpose(%[[COLLAPSED]]),
       CHECK-SAME: dimensions={1,0}
   )");
 }

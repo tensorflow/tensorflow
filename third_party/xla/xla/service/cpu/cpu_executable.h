@@ -73,7 +73,7 @@ class CpuExecutable : public Executable {
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
-  Status ExecuteComputeFunction(
+  absl::Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
@@ -108,6 +108,10 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
+
+  absl::Span<const BufferAllocation> GetAllocations() const override {
+    return assignment_->Allocations();
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

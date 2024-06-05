@@ -120,11 +120,6 @@ class CustomCallThunk : public Thunk {
   const HloComputation* called_computation_ = nullptr;
 };
 
-// Converts MLIR dictionary attribute attached to a custom call operation to a
-// custom call thunk attributes that are forwarded to the FFI handler.
-absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
-    mlir::DictionaryAttr dict);
-
 }  // namespace gpu
 }  // namespace xla
 

@@ -352,6 +352,13 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     }
   }
 
+  const int64_t num_devices = to_merge.tile_assignment().num_elements();
+  const int64_t new_num_tiles = Product(merged_tile_dims);
+  if (num_devices % new_num_tiles != 0 || new_num_tiles < minimum_tiles) {
+    return false;
+  }
+  int64_t replication;
+
   if (to_merge_man_dim >= 0) {
     int64_t man_group_size = to_merge.tile_assignment().dim(to_merge_man_dim);
     if (man_group_size != dst->tile_assignment().dim(dst_man_dim)) {
@@ -365,14 +372,14 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     merged_tile_dims.push_back(man_group_size);
     num_merge_groups *= man_group_size;
     num_dst_groups *= man_group_size;
+    if (num_devices % (new_num_tiles * man_group_size) != 0) {
+      return false;
+    }
+    replication = num_devices / (new_num_tiles * man_group_size);
+  } else {
+    replication = num_devices / new_num_tiles;
   }
 
-  const int64_t num_devices = to_merge.tile_assignment().num_elements();
-  const int64_t new_num_tiles = Product(merged_tile_dims);
-  if (num_devices % new_num_tiles != 0 || new_num_tiles < minimum_tiles) {
-    return false;
-  }
-  const int64_t replication = num_devices / new_num_tiles;
   if (replication > 1) {
     merged_tile_dims.push_back(replication);
   }
@@ -489,7 +496,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     };
     // Try to find the intersection of to_merge and dst replication groups, in
     // order to determine the merged tile assignment.
-    Status compatible =
+    absl::Status compatible =
         new_tile_array.EachStatus([&](absl::Span<const int64_t> indices,
                                       int64_t* device) -> absl::Status {
           DimensionVector to_merge_index(
@@ -531,7 +538,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
               *device = *it1;
               gm1.erase(it1);
               gm2.erase(it2);
-              return OkStatus();
+              return absl::OkStatus();
             } else if (*it1 < *it2) {
               it1++;
             } else {
@@ -1859,7 +1866,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
   auto computation = scatter.to_apply();
   // We only handle computations with 2 parameters and only 1 calculation.
   if (computation->instruction_count() != 3) {
-    return Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "Expected scatter reduce computation with 2 parameters and only 1 "
         "calculation");
@@ -1886,9 +1893,9 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
                           root_instruction->opcode());
   }
 
-  return Status(absl::StatusCode::kInvalidArgument,
-                "Expected scatter reduce computation which is "
-                "add/or/multiply/add/min/max");
+  return absl::Status(absl::StatusCode::kInvalidArgument,
+                      "Expected scatter reduce computation which is "
+                      "add/or/multiply/add/min/max");
 }
 
 namespace {
@@ -3149,15 +3156,15 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
   return result_shape;
 }
 
-Status CanonicalizeLayoutAfterShardingPropagation(
+absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, bool update_output_layout,
     bool update_parameters_layout) {
   if (!update_output_layout && !update_parameters_layout) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
                       module->layout_canonicalization_callback()(*module));
@@ -3183,7 +3190,7 @@ Status CanonicalizeLayoutAfterShardingPropagation(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace hlo_sharding_util

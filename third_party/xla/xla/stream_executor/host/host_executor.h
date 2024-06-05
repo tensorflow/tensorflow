@@ -21,7 +21,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -29,11 +32,13 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 
@@ -51,20 +56,28 @@ namespace host {
 // See stream_executor.h for description of the below operations.
 class HostExecutor : public StreamExecutor {
  public:
+  // A function that loads a kernel function from a given spec. If spec is not
+  // supported it returns an empty optional.
+  using KernelFunctionLoader = std::function<std::optional<
+      absl::StatusOr<std::unique_ptr<HostKernel::KernelFunction>>>(
+      const MultiKernelLoaderSpec& spec)>;
+
+  // Registers a kernel function loader in a static registry.
+  static void RegisterKernelFunctionLoader(KernelFunctionLoader loader);
+
   HostExecutor(Platform* platform, int device_ordinal)
       : StreamExecutor(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override {
-    return absl::UnimplementedError("Not Implemented");
-  }
+                         Kernel* kernel) override;
+
+  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
+
   absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                       const BlockDim& block_dims, const Kernel& kernel,
-                      const KernelArgs& args) override {
-    return absl::UnimplementedError("Not Implemented");
-  }
+                      const KernelArgs& args) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
@@ -106,13 +119,11 @@ class HostExecutor : public StreamExecutor {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status AllocateEvent(Event* event) override;
   absl::Status DeallocateEvent(Event* event) override;
   absl::Status RecordEvent(Stream* stream, Event* event) override;
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
   Event::Status PollForEventStatus(Event* event) override;
 
-  bool AllocateStream(Stream* stream) override;
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
@@ -137,11 +148,10 @@ class HostExecutor : public StreamExecutor {
     return true;
   }
 
-  std::unique_ptr<EventInterface> CreateEventImplementation() override;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override;
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
  private:
   int device_ordinal_;

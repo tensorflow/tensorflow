@@ -16,12 +16,8 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
-#include <utility>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/threadpool.h"
 

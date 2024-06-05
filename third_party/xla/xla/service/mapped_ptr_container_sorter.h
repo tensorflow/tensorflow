@@ -94,9 +94,9 @@ class MappedPtrContainerSorter {
   // - unmapped_index() returns an invalid index
   // - An internal error occurs. (This should theoretically not happen.)
   template <typename OrderedTy, typename UnorderedTy>
-  static Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
-                     const OrderedTy& ordered_container,
-                     UnorderedTy& unordered_container);
+  static absl::Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
+                           const OrderedTy& ordered_container,
+                           UnorderedTy& unordered_container);
 
  private:
   // A class for sorting the indices of the unordered_container.
@@ -114,8 +114,8 @@ class MappedPtrContainerSorter {
     // Specify the partial ordering value of a mapped element from the
     // unordered container. The partial ordering is amongst other mapped
     // elements.
-    Status AddMappedElement(size_t unordered_container_index,
-                            size_t partial_order);
+    absl::Status AddMappedElement(size_t unordered_container_index,
+                                  size_t partial_order);
 
     // Specify the index (amongst mapped elements), where an unmapped element
     // should be inserted. The unmapped element is inserted just after the
@@ -227,7 +227,8 @@ MappedPtrContainerSorter<PointedToTy>::InvalidIndexFn() {
 }
 
 template <typename PointedToTy>
-Status MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
+absl::Status
+MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
     size_t unordered_container_index, size_t partial_order) {
   if (partial_order >= mapped_element_indices_by_partial_order_.size()) {
     return InternalStrCat("invalid partial order: ", partial_order, " v max(",
@@ -440,7 +441,7 @@ void MappedPtrContainerSorter<PointedToTy>::Reorder(
 
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
-Status MappedPtrContainerSorter<PointedToTy>::Sort(
+absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;

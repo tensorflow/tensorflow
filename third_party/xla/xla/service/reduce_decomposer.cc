@@ -33,7 +33,7 @@ namespace {
 // Enforces property that all inputs to variadic reduction have same layout.
 class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction* hlo) override {
+  absl::Status HandleReduce(HloInstruction* hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
     std::vector<HloInstruction*> new_inputs;
     bool changed = false;
@@ -70,7 +70,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
   explicit ReduceDecomposerVisitor(HloPredicate custom_layout_allowed)
       : custom_layout_allowed_(std::move(custom_layout_allowed)) {}
 
-  Status HandleReduce(HloInstruction* hlo) override {
+  absl::Status HandleReduce(HloInstruction* hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
     auto shape = reduce->shape();
     if (custom_layout_allowed_ && custom_layout_allowed_(reduce)) {

@@ -687,7 +687,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -723,7 +723,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -779,7 +779,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           module->entry_computation()->root_instruction();
-      Status s = instruction->set_backend_config(*backend_config);
+      absl::Status s = instruction->set_backend_config(*backend_config);
       return s.ok() ? ::testing::AssertionSuccess()
                     : ::testing::AssertionFailure() << s.message();
     }

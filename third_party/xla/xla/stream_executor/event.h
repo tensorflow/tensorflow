@@ -43,14 +43,11 @@ class Event {
     kComplete,
   };
 
-  explicit Event(StreamExecutorInterface* stream_exec);  // NOLINT
+  Event(StreamExecutorInterface* stream_exec,
+        std::unique_ptr<EventInterface> implementation);
 
   // Releases any resources held by the Event object.
   ~Event();
-
-  // Performs any platform-specific or potentially error-generating
-  // initialization.
-  bool Init();
 
   // Returns the current Status for the event.
   Status PollForStatus();

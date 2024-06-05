@@ -72,33 +72,33 @@ class HostOffloader : public HloModulePass {
 
   // Process streamed inputs for the given computation, finding the relevant
   // move-to-device custom calls and inserting the appropriate copies.
-  Status HandleInputStreaming(HloComputation* computation);
+  absl::Status HandleInputStreaming(HloComputation* computation);
   // Process streamed outputs for the given computation, finding the relevant
   // move-to-host custom calls and inserting the appropriate copies.
-  Status HandleOutputStreaming(HloComputation* computation);
+  absl::Status HandleOutputStreaming(HloComputation* computation);
   // From a unique buffer on host memory, finds move-to-device custom calls
   // for this buffer and inserts the appropriate copies.
-  Status HandleStreamedBuffer(const HloBuffer& unique_buffer);
+  absl::Status HandleStreamedBuffer(const HloBuffer& unique_buffer);
   // Creates a copy to device for the input streaming custom call.
-  Status CreateCopyForInputStreaming(HloInstruction* custom_call);
+  absl::Status CreateCopyForInputStreaming(HloInstruction* custom_call);
   absl::StatusOr<bool> TryParameterStreaming(HloInstruction* custom_call);
   absl::StatusOr<bool> TryOutputStreaming(HloInstruction* custom_call);
-  Status HandleMoveToHostCustomCall(HloInstruction* custom_call);
+  absl::Status HandleMoveToHostCustomCall(HloInstruction* custom_call);
 
   // Handle memory-only offloading where the data is written to the host via a
   // dynamic-update-slice and is read back via a dynamic-slice.
-  Status MemoryOnlyOffloadStartingWithDus(
+  absl::Status MemoryOnlyOffloadStartingWithDus(
       const HloInstruction* dynamic_update_slice);
 
   // Handle memory-only offloading where the data is written to the host via a
   // copy and is read back via a copy.
-  Status MemoryOnlyOffloadStartingWithCopy(const HloInstruction* copy);
+  absl::Status MemoryOnlyOffloadStartingWithCopy(const HloInstruction* copy);
 
   // Handle memory-only offloading where there are no ops yet for data movement.
   // We will insert copies at the points where the annotations are.
-  Status MemoryOnlyOffloadInsertCopies(HloInstruction* custom_call);
+  absl::Status MemoryOnlyOffloadInsertCopies(HloInstruction* custom_call);
 
-  Status DynamifySlice(HloInstruction* slice);
+  absl::Status DynamifySlice(HloInstruction* slice);
 
   static constexpr std::array kAllowedPositionOpcodes = {
       HloOpcode::kBitcast,

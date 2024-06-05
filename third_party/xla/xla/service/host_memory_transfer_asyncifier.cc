@@ -42,13 +42,13 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
       : kHostMemorySpaceColor(host_memory_space_color) {}
   bool Changed() const { return changed_; }
 
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
     return OkStatus();
   }
 
   // Replace all dynamic-slice ops which slice from host memory to device memory
   // with an asynchronous dynamic-slice.
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override {
+  absl::Status HandleDynamicSlice(HloInstruction* dynamic_slice) override {
     // Check that the dynamic_slice and its first operand have layouts. This
     // pass must only be run after LayoutAssignment.
     HloInstruction* dynamic_slice_operand = dynamic_slice->mutable_operand(0);
@@ -95,7 +95,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
   // Replace all dynamic-update-slice ops which update into host memory from
   // device memory with an asynchronous dynamic-update-slice.
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override {
     // Check that the dynamic-update-slice and its first two operands have
     // layouts. This pass must only be run after LayoutAssignment.
@@ -152,7 +152,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
   // Replace all copy ops which copy from host memory to device memory or from
   // device memory to host memory with an asynchronous copy.
-  Status HandleCopy(HloInstruction* copy) override {
+  absl::Status HandleCopy(HloInstruction* copy) override {
     HloInstruction* operand = copy->mutable_operand(0);
     if (!operand->shape().has_layout()) {
       return InternalStrCat(operand->name(), " does not have a layout.");

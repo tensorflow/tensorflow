@@ -84,7 +84,8 @@ constexpr char kSPMDOpRotateRight[] = "_SPMDInternalOp_RotateRight";
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
+    HloInstruction* hlo) {
   if (!hlo->operand(0)->has_sharding()) {
     return DefaultAction(hlo);
   }
@@ -254,7 +255,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
+absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
@@ -390,7 +391,7 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
                                           kSPMDOpRotateRight, opaque);
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
     return partitioner->Partition(this, hlo);
   }

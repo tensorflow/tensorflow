@@ -45,7 +45,7 @@ namespace {
 // Combines the elements of to_combine into a single AllReduce op. All
 // entries in to_combine must be AllReduce ops with exactly one operand
 // and the same reduction operation.
-Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
+absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
     return OkStatus();
   }

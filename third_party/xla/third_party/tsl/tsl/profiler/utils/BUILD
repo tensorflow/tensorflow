@@ -446,6 +446,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/profiler/lib:connected_traceme",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
     ],

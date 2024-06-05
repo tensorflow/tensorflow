@@ -16,15 +16,16 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_workspace_rewriter.h"
 
 #include <optional>
-#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -32,26 +33,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
-#include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace fe = cudnn_frontend;
-namespace graph = fe::graph;
 
 // create cuDNN graphs from HloCustomCall
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(

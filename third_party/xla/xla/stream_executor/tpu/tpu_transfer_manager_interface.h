@@ -29,11 +29,11 @@ namespace xla {
 
 class TpuTransferManagerInterface : public xla::TransferManager {
  public:
-  virtual Status TransferBuffersToInfeed(
+  virtual absl::Status TransferBuffersToInfeed(
       se::StreamExecutor* executor,
       const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) = 0;
 
-  virtual Status LinearizeToBuffers(
+  virtual absl::Status LinearizeToBuffers(
       const LiteralSlice& literal, const Shape& device_shape,
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
 

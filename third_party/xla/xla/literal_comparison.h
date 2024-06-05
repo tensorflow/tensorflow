@@ -36,17 +36,17 @@ namespace literal_comparison {
 
 // Returns ok if the given shapes have the same rank, dimension sizes, and
 // primitive types.
-Status EqualShapes(const Shape& expected, const Shape& actual);
+absl::Status EqualShapes(const Shape& expected, const Shape& actual);
 
 // Returns ok if the given literals share identical dynamic shapes and
 // dimension sizes.
-Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
-                                       const LiteralSlice& actual);
+absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
+                                             const LiteralSlice& actual);
 
 // Returns ok if the expected and actual literals are (bitwise) equal for all
 // elements in the literal. Also, asserts that the rank, dimensions sizes, and
 // primitive type are equal.
-Status Equal(const LiteralSlice& expected, const LiteralSlice& actual);
+absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual);
 
 // Structure that contains the distribution of absolute and relative errors,
 // bucketized into five buckets: [0.0001, 0.001, 0.01, 0.1, 1].
@@ -88,9 +88,9 @@ using MiscompareCallback = std::function<void(
 //
 // If miscompare_callback is nullptr, Near will return an error on the first
 // detected mismatch.
-Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, std::optional<bool> detailed_message,
-            const MiscompareCallback& miscompare_callback);
+absl::Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
+                  const ErrorSpec& error, std::optional<bool> detailed_message,
+                  const MiscompareCallback& miscompare_callback);
 
 // Calling ToString on a literal with over 100 million elements takes around
 // 3 minutes.  The utility of printing a literal with >1000 elements is

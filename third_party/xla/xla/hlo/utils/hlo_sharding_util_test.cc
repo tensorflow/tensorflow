@@ -529,6 +529,17 @@ TEST(HloShardingUtilTest,
   EXPECT_EQ(result, output_sharding);
 }
 
+TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
+  TileAssignment tile_assignment({16, 4});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  // Subgroup sharding
+  //  {devices=[16,4]<=[64] last_tile_dims={manual, replicated}}
+  HloSharding dst = HloSharding::Subgroup(tile_assignment, subgroup_types);
+  HloSharding to_merge = dst;
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+}
+
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
   TileAssignment tile_assignment({1, 2, 2});
   std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL};

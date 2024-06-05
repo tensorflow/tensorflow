@@ -32,17 +32,18 @@ class TestPjRtHostMemoryForDeviceManager
  public:
   ~TestPjRtHostMemoryForDeviceManager() override = default;
 
-  StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data, size_t src_size,
-                                     const Shape& host_shape,
-                                     const Shape& device_shape) override {
+  absl::StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data,
+                                           size_t src_size,
+                                           const Shape& host_shape,
+                                           const Shape& device_shape) override {
     auto chunk = PjRtChunk::AllocateDefault(src_size);
     std::memcpy(chunk.data(), src_data, src_size);
     return chunk;
   }
 
-  Status ToHostLayout(const void* src_data, size_t src_size,
-                      const Shape& src_shape, void* dst_data, size_t dst_size,
-                      const Shape& dst_shape) override {
+  absl::Status ToHostLayout(const void* src_data, size_t src_size,
+                            const Shape& src_shape, void* dst_data,
+                            size_t dst_size, const Shape& dst_shape) override {
     CHECK_EQ(src_size, dst_size);
     std::memcpy(dst_data, src_data, src_size);
     return OkStatus();

@@ -270,7 +270,7 @@ TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeCombiner) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
-      ScatterExpander::kEliminateIndeterminisitcScatters);
+      ScatterExpander::kEliminateIndeterministicScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
@@ -300,7 +300,7 @@ TEST_F(ScatterExpanderTest, EliminateScatterWithNonAssociativeCombiner) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
-      ScatterExpander::kEliminateIndeterminisitcScatters);
+      ScatterExpander::kEliminateIndeterministicScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
@@ -330,7 +330,7 @@ TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeFp32Combiner) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
-      ScatterExpander::kEliminateIndeterminisitcScatters);
+      ScatterExpander::kEliminateIndeterministicScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);

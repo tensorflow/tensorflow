@@ -1843,14 +1843,14 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
 
-    Status Append(absl::string_view data) override {
+    absl::Status Append(absl::string_view data) override {
       absl::StrAppend(data_, data);
       return OkStatus();
     }
 
-    Status Close() override { return OkStatus(); }
-    Status Flush() override { return OkStatus(); }
-    Status Sync() override { return OkStatus(); }
+    absl::Status Close() override { return OkStatus(); }
+    absl::Status Flush() override { return OkStatus(); }
+    absl::Status Sync() override { return OkStatus(); }
 
    private:
     std::string* data_;

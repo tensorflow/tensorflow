@@ -145,7 +145,7 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
-Status EmitCallToParallelForkJoin(
+absl::Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
     absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
     llvm::Function* parallel_function, absl::string_view name);

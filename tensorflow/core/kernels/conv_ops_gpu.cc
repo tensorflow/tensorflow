@@ -363,9 +363,9 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       return absl::InvalidArgumentError("No DNN in stream executor.");
     }
     if (!dnn->GetMIOpenConvolveAlgorithms(
-            kind, se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
-            filter_desc, filter_ptr, output_desc, output_ptr, conv_desc,
-            &scratch_allocator, &algorithms)) {
+            kind, se::dnn::ToDataType<T>::value, se::dnn::ToDataType<T>::value,
+            stream, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+            output_ptr, conv_desc, &scratch_allocator, &algorithms)) {
       return errors::Unknown(
           "Failed to get convolution algorithm. This is probably "
           "because MIOpen failed to initialize, so try looking to "

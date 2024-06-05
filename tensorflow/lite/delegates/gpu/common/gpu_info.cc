@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 
 namespace tflite {
@@ -979,6 +980,17 @@ bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
     }
   }
   return false;
+}
+
+absl::Status GpuInfo::GetMinSubGroupSize(int& min_sub_group_size) const {
+  auto begin = supported_subgroup_sizes.begin();
+  auto end = supported_subgroup_sizes.end();
+  auto min = std::min_element(begin, end);
+  if (min == end) {
+    return absl::InternalError("No supported subgroup sizes");
+  }
+  min_sub_group_size = *min;
+  return absl::OkStatus();
 }
 
 bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {

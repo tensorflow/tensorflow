@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FusedBatchNormGradV2"
   input_arg {
     name: "y_backprop"

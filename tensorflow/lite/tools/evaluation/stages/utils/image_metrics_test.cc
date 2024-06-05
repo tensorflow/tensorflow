@@ -20,7 +20,6 @@ limitations under the License.
 #include <cmath>
 #include <cstdlib>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {

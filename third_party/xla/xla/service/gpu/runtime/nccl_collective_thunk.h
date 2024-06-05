@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -155,7 +155,7 @@ class NcclCollectiveThunk : public Thunk {
 
    private:
     absl::Mutex mu_;
-    absl::node_hash_map<se::StreamExecutor*, se::Event> events_
+    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
         ABSL_GUARDED_BY(mu_);
   };
 
@@ -271,7 +271,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
     str = llvm_ir::DumpToString(op.getOperation());
   }
 
-  return Status(
+  return absl::Status(
       status.code(),
       absl::StrFormat(
           "%s\n"
@@ -320,9 +320,9 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // communicator to enable zero-copy collectives.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
-                            const std::vector<DeviceBufferPair>& buffers,
-                            NcclApi::NcclCommHandle comm);
+absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
+                                  const std::vector<DeviceBufferPair>& buffers,
+                                  NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

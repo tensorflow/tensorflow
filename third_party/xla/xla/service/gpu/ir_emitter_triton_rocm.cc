@@ -69,19 +69,22 @@ absl::Status CreateTritonPipeline(
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
+      absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
+      config.num_ctas));
   pm.addPass(mt::gpu::createCoalescePass());
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
+  // TODO ROCm Check if we want to compare MI100 and greater
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(true));
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
                                          config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createPrefetchPass());
 
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
+  // TODO ROCm Check if we want to compare MI100 and greater
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(true));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mt::gpu::createReorderInstructionsPass());

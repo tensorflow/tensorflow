@@ -814,7 +814,10 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@ml_dtypes//:float8",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
@@ -897,6 +900,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "no_rocm",
     ],
     deps = [
         ":client_library_test_base",
@@ -916,7 +920,10 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # Run dot tests with auto-tuning disabled.  This just does a basic sanity check
@@ -931,6 +938,7 @@ xla_test(
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
+        "no_rocm",
     ],
     deps = [
         ":client_library_test_base",
@@ -950,7 +958,10 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # Run dot tests with dot canonicalization after the layout assignment pass.
@@ -966,6 +977,7 @@ xla_test(
         "gpu",
         "interpreter",
     ],
+    shard_count = 50,
     tags = [
         "nozapfhahn",
         "optonly",
@@ -988,12 +1000,16 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
+    shard_count = 20,
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
@@ -1012,7 +1028,7 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    tags = ["test_hlo_pjrt_runner"],
+    # TODO(b/245550554): enable Pjrt runner for scatter test once it's fixed.
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1041,6 +1057,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "no_rocm",
     ],
     deps = [
         ":client_library_test_base",
@@ -1060,7 +1077,10 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
@@ -1647,7 +1667,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    shard_count = 20,
+    shard_count = 40,
     tags = [
         "optonly",
     ],
@@ -1784,6 +1804,7 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client/lib:constants",
         "//xla/ffi",
+        "//xla/ffi:attribute_map",
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_status",
@@ -1907,7 +1928,10 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:test",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
@@ -2492,6 +2516,7 @@ xla_cc_test(
         ":local_client_aot_test_computation.o",
     ],
     linkstatic = 1,
+    tags = ["no_aarch64"],  # b/341355246
     deps = [
         "//xla:executable_run_options",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -2655,6 +2680,7 @@ xla_cc_test(
 xla_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
+    shard_count = 50,
     deps = [
         ":literal_test_util",
         ":local_client_test_base",

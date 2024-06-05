@@ -80,8 +80,8 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (0,
-      ((th_x + bl_x * 128) floordiv 3) mod 2,
-       (th_x + bl_x * 128) mod 3,
+      ((bl_x * 128 + th_x) floordiv 3) mod 2,
+       (bl_x * 128 + th_x) mod 3,
        ((bl_x * 64 + th_x floordiv 2) floordiv 3) mod 5)
     domain:
     th_x in [0, 127]

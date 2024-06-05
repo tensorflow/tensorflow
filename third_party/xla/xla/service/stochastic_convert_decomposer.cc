@@ -32,8 +32,8 @@ limitations under the License.
 
 namespace xla {
 
-Status DecomposeStochasticConvert(HloComputation* comp,
-                                  HloInstruction* instruction) {
+absl::Status DecomposeStochasticConvert(HloComputation* comp,
+                                        HloInstruction* instruction) {
   CHECK(instruction->opcode() == HloOpcode::kStochasticConvert)
       << "requires a stochastic_convert instruction to decompose, but got: "
       << instruction->opcode();

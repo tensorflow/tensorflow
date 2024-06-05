@@ -45,6 +45,8 @@ using ::tensorflow::quantization::PyFunctionLibrary;
 using CalibrationStatisticsFlatMap =
     absl::flat_hash_map<std::string, CalibrationStatistics>;
 
+}  // namespace
+
 // Reads the calibration statistics from the given directory.
 absl::StatusOr<CalibrationStatisticsFlatMap> ReadStatistics(
     absl::string_view calibration_data_dir) {
@@ -62,8 +64,6 @@ absl::StatusOr<CalibrationStatisticsFlatMap> ReadStatistics(
   }
   return statistics_map;
 }
-
-}  // namespace
 
 absl::Status AddCalibrationStatistics(
     mlir::ModuleOp module_op, absl::string_view calibration_data_dir,
@@ -100,6 +100,16 @@ absl::Status AddCalibrationStatistics(
     aggregator_op->setAttr("max", builder.getF32FloatAttr(max_value));
   });
   return status;
+}
+
+bool IsCalibrationRequired(mlir::ModuleOp module_op) {
+  bool calibration_required = false;
+  module_op.walk(
+      [&calibration_required](
+          mlir::TF::CalibrationStatisticsSaverOp statistics_saver_op) {
+        calibration_required = true;
+      });
+  return calibration_required;
 }
 
 }  // namespace stablehlo::quantization

@@ -126,10 +126,10 @@ CycleType ShouldDecomposeWithCycleType(
 
 // Constructs the frontend attributes for the two decomposed CollectivePermute
 // instructions.
-Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
-                             CycleType cycle_type,
-                             xla::FrontendAttributes& cp1_attr,
-                             xla::FrontendAttributes& cp2_attr) {
+absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
+                                   CycleType cycle_type,
+                                   xla::FrontendAttributes& cp1_attr,
+                                   xla::FrontendAttributes& cp2_attr) {
   cp1_attr = cp->frontend_attributes();
   cp2_attr = cp->frontend_attributes();
   auto validation_it =
@@ -177,11 +177,9 @@ Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
 
 // Decomposes a CollectivePermute instruction with a cycle in its source-target
 // pairs into two CollectivePermute instructions.
-Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
-                                       HloComputation* computation,
-                                       HloModule* module,
-                                       int64_t next_channel_id,
-                                       CycleType cycle_type) {
+absl::Status DecomposeCollectivePermuteCycle(
+    HloCollectivePermuteInstruction* cp, HloComputation* computation,
+    HloModule* module, int64_t next_channel_id, CycleType cycle_type) {
   const SourceTargetPairs& pairs = cp->source_target_pairs();
   int64_t num_pairs = pairs.size();
   // A forward cycle has its backedge at the end as in

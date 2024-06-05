@@ -177,16 +177,16 @@ xla_test(
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:gemm_rewriter",
         "//xla/service/gpu:gpu_executable",
-        "//xla/service/gpu:variant_visitor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/tests:filecheck",
+        "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -447,6 +447,7 @@ xla_cc_test(
 xla_test(
     name = "gpu_triton_custom_call_test",
     srcs = ["gpu_triton_custom_call_test.cc"],
+    tags = ["no_rocm"], #TODO(rocm) TEMP
     backends = [
         "gpu_a100",
         "gpu_v100",
@@ -530,7 +531,7 @@ xla_test(
     srcs = ["gpu_kernel_tiling_test.cc"],
     backends = [
         "gpu_p100",
-    ] + if_oss(["gpu"]),
+    ] + if_oss(["gpu_any"]),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -918,7 +919,7 @@ xla_test(
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
         "gpu_a100",
-    ] + if_oss(["gpu"]),
+    ] + if_oss(["gpu_any"]),
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
@@ -929,21 +930,25 @@ xla_test(
 
 xla_test(
     name = "gpu_sparse_dot_test",
-    srcs = ["gpu_sparse_dot_test.cc"],
+    srcs = if_cuda_is_configured(["gpu_sparse_dot_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_h100",
     ],
-    deps = [
-        ":gpu_codegen_test",
-        "//third_party/half:includes",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-    ],
+    tags = ["no_oss"],  # b/340304923
+    deps = if_cuda_is_configured(
+        [
+            ":gpu_codegen_test",
+            "@com_google_googletest//:gtest",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:span",
+            "//third_party/half:includes",
+            "//xla:literal",
+            "//xla:literal_util",
+            "//xla/tests:xla_internal_test_main",
+        ],
+        ["@local_tsl//tsl/platform:test_main"],  # b/317293391
+    ),
 )
 
 xla_test(

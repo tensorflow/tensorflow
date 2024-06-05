@@ -63,27 +63,19 @@ class HloFusionAnalysis {
 
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 
-  const std::vector<const HloInstruction*>& fusion_roots() const {
+  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_roots() const {
     return fusion_roots_;
   }
-
-  // TODO(b/336597139): Merge with fusion_roots() and only return
-  // HloInstructionAdaptor. This function is added temporarily to make
-  // transition easier and avoid breaking the existing code.
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_root_adaptors() const {
-    return fusion_->GetRoots();
-  }
-
   HloInstructionAdaptor fusion_root(int64_t i) const {
-    return HloInstructionAdaptor(*fusion_roots_[i], fusion_.get());
+    return fusion_roots_[i];
   }
   int64_t fusion_root_count() const { return fusion_roots_.size(); }
 
-  const std::vector<const HloInstruction*>& fusion_heroes() const {
+  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_heroes() const {
     return fusion_heroes_;
   }
   HloInstructionAdaptor fusion_hero(int64_t i) const {
-    return HloInstructionAdaptor(*fusion_heroes_[i], fusion_.get());
+    return fusion_heroes_[i];
   }
   int64_t fusion_hero_count() const { return fusion_heroes_.size(); }
 
@@ -113,8 +105,8 @@ class HloFusionAnalysis {
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::unique_ptr<HloFusionAdaptor> fusion,
-                    std::vector<const HloInstruction*> fusion_roots,
-                    std::vector<const HloInstruction*> fusion_heroes,
+                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots,
+                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
                     InputOutputInfo input_output_info);
@@ -122,11 +114,18 @@ class HloFusionAnalysis {
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
+
+  // Owning pointer to the fusion adaptor object.
   std::unique_ptr<HloFusionAdaptor> fusion_;
-  // TODO(shyshkov): Change fusion_roots_ and fusion_heroes_ to store
-  // HloInstructionAdaptor.
-  std::vector<const HloInstruction*> fusion_roots_;
-  std::vector<const HloInstruction*> fusion_heroes_;
+
+  // A list of all roots of the fusion. The instruction adaptors have `fusion_`
+  // as their parent and should not outlive `fusion_`.
+  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots_;
+
+  // A list of all heroes of the fusion. The instruction adaptors have `fusion_`
+  // as their parent and should not outlive `fusion_`.
+  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes_;
+
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
   InputOutputInfo input_output_info_;

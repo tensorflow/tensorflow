@@ -440,100 +440,104 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   explicit HloCostAnalysis(ShapeSizeFunction shape_size,
                            const Properties& per_second_rates = {});
 
-  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
-  Status HandleConstant(const HloInstruction* constant) override;
-  Status HandleIota(const HloInstruction* iota) override;
-  Status HandleGetTupleElement(
+  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  absl::Status HandleConstant(const HloInstruction* constant) override;
+  absl::Status HandleIota(const HloInstruction* iota) override;
+  absl::Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleSelect(const HloInstruction* hlo) override;
-  Status HandleCompare(const HloInstruction* compare) override;
-  Status HandleClamp(const HloInstruction* clamp) override;
-  Status HandleReducePrecision(const HloInstruction* hlo) override;
-  Status HandleConcatenate(const HloInstruction* concatenate) override;
-  Status HandleAsyncStart(const HloInstruction* async_start) override;
-  Status HandleAsyncUpdate(const HloInstruction* async_update) override;
-  Status HandleAsyncDone(const HloInstruction* async_done) override;
-  Status HandleCopyStart(const HloInstruction* send) override;
-  Status HandleCopyDone(const HloInstruction* send_done) override;
-  Status HandleSend(const HloInstruction* send) override;
-  Status HandleSendDone(const HloInstruction* send_done) override;
-  Status HandleRecv(const HloInstruction* recv) override;
-  Status HandleRecvDone(const HloInstruction* recv_done) override;
-  Status HandleConvert(const HloInstruction* convert) override;
-  Status HandleCopy(const HloInstruction* copy) override;
-  Status HandleDomain(const HloInstruction* domain) override;
-  Status HandleDot(const HloInstruction* dot) override;
-  Status HandleConvolution(const HloInstruction* convolution) override;
-  Status HandleFft(const HloInstruction* fft) override;
-  Status HandleTriangularSolve(const HloInstruction* hlo) override;
-  Status HandleCholesky(const HloInstruction* hlo) override;
-  Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
-  Status HandleAllGather(const HloInstruction* hlo) override;
-  Status HandleAllGatherStart(const HloInstruction* hlo) override;
-  Status HandleAllGatherDone(const HloInstruction* hlo) override;
-  Status HandleAllReduce(const HloInstruction* crs) override;
-  Status HandleReduceScatter(const HloInstruction* hlo) override;
-  Status HandleAllReduceStart(const HloInstruction* hlo) override;
-  Status HandleAllReduceDone(const HloInstruction* hlo) override;
-  Status HandleAllToAll(const HloInstruction* hlo) override;
-  Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
-  Status HandleCollectivePermute(const HloInstruction* hlo) override;
-  Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
-  Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
-  Status HandleReplicaId(const HloInstruction* hlo) override;
-  Status HandlePartitionId(const HloInstruction* hlo) override;
-  Status HandleInfeed(const HloInstruction* infeed) override;
-  Status HandleOutfeed(const HloInstruction* outfeed) override;
-  Status HandleRng(const HloInstruction* random) override;
-  Status HandleRngBitGenerator(const HloInstruction* random) override;
-  Status HandleRngGetAndUpdateState(const HloInstruction* random) override;
-  Status HandleReverse(const HloInstruction* reverse) override;
-  Status HandleSort(const HloInstruction* sort) override;
-  Status HandleParameter(const HloInstruction* parameter) override;
-  Status HandleReduce(const HloInstruction* reduce) override;
-  Status HandleBatchNormTraining(
+  absl::Status HandleSelect(const HloInstruction* hlo) override;
+  absl::Status HandleCompare(const HloInstruction* compare) override;
+  absl::Status HandleClamp(const HloInstruction* clamp) override;
+  absl::Status HandleReducePrecision(const HloInstruction* hlo) override;
+  absl::Status HandleConcatenate(const HloInstruction* concatenate) override;
+  absl::Status HandleAsyncStart(const HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(const HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(const HloInstruction* async_done) override;
+  absl::Status HandleCopyStart(const HloInstruction* send) override;
+  absl::Status HandleCopyDone(const HloInstruction* send_done) override;
+  absl::Status HandleSend(const HloInstruction* send) override;
+  absl::Status HandleSendDone(const HloInstruction* send_done) override;
+  absl::Status HandleRecv(const HloInstruction* recv) override;
+  absl::Status HandleRecvDone(const HloInstruction* recv_done) override;
+  absl::Status HandleConvert(const HloInstruction* convert) override;
+  absl::Status HandleCopy(const HloInstruction* copy) override;
+  absl::Status HandleDomain(const HloInstruction* domain) override;
+  absl::Status HandleDot(const HloInstruction* dot) override;
+  absl::Status HandleConvolution(const HloInstruction* convolution) override;
+  absl::Status HandleFft(const HloInstruction* fft) override;
+  absl::Status HandleTriangularSolve(const HloInstruction* hlo) override;
+  absl::Status HandleCholesky(const HloInstruction* hlo) override;
+  absl::Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherDone(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(const HloInstruction* crs) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceDone(const HloInstruction* hlo) override;
+  absl::Status HandleAllToAll(const HloInstruction* hlo) override;
+  absl::Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
+  absl::Status HandleReplicaId(const HloInstruction* hlo) override;
+  absl::Status HandlePartitionId(const HloInstruction* hlo) override;
+  absl::Status HandleInfeed(const HloInstruction* infeed) override;
+  absl::Status HandleOutfeed(const HloInstruction* outfeed) override;
+  absl::Status HandleRng(const HloInstruction* random) override;
+  absl::Status HandleRngBitGenerator(const HloInstruction* random) override;
+  absl::Status HandleRngGetAndUpdateState(
+      const HloInstruction* random) override;
+  absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleSort(const HloInstruction* sort) override;
+  absl::Status HandleParameter(const HloInstruction* parameter) override;
+  absl::Status HandleReduce(const HloInstruction* reduce) override;
+  absl::Status HandleBatchNormTraining(
       const HloInstruction* batch_norm_training) override;
-  Status HandleBatchNormInference(
+  absl::Status HandleBatchNormInference(
       const HloInstruction* batch_norm_inference) override;
-  Status HandleBatchNormGrad(const HloInstruction* batch_norm_grad) override;
-  Status HandleFusion(const HloInstruction* fusion) override;
-  Status HandleCall(const HloInstruction* call) override;
-  Status HandleCustomCall(const HloInstruction* custom_call) override;
-  Status HandleSlice(const HloInstruction* slice) override;
-  Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleBatchNormGrad(
+      const HloInstruction* batch_norm_grad) override;
+  absl::Status HandleFusion(const HloInstruction* fusion) override;
+  absl::Status HandleCall(const HloInstruction* call) override;
+  absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
+  absl::Status HandleSlice(const HloInstruction* slice) override;
+  absl::Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
+  absl::Status HandleDynamicUpdateSlice(
       const HloInstruction* dynamic_update_slice) override;
-  Status HandleTuple(const HloInstruction* tuple) override;
-  Status HandleMap(const HloInstruction* map) override;
-  Status HandleReduceWindow(const HloInstruction* reduce_window) override;
-  Status HandleSelectAndScatter(const HloInstruction* instruction) override;
-  Status HandleBitcast(const HloInstruction* bitcast) override;
-  Status HandleBroadcast(const HloInstruction* broadcast) override;
-  Status HandlePad(const HloInstruction* pad) override;
-  Status HandleReshape(const HloInstruction* reshape) override;
-  Status HandleDynamicReshape(const HloInstruction* reshape) override;
-  Status HandleAddDependency(const HloInstruction* add_dependency) override;
-  Status HandleAfterAll(const HloInstruction* token) override;
-  Status HandleTranspose(const HloInstruction* transpose) override;
-  Status HandleWhile(const HloInstruction* xla_while) override;
-  Status HandleConditional(const HloInstruction* conditional) override;
-  Status HandleGather(const HloInstruction* gather) override;
-  Status HandleScatter(const HloInstruction* hlo) override;
-  Status HandleGetDimensionSize(const HloInstruction* get_size) override;
-  Status HandleSetDimensionSize(const HloInstruction* set_size) override;
-  Status HandleTopK(const HloInstruction* topk) override;
-  Status FinishVisit(const HloInstruction* root) override;
+  absl::Status HandleTuple(const HloInstruction* tuple) override;
+  absl::Status HandleMap(const HloInstruction* map) override;
+  absl::Status HandleReduceWindow(const HloInstruction* reduce_window) override;
+  absl::Status HandleSelectAndScatter(
+      const HloInstruction* instruction) override;
+  absl::Status HandleBitcast(const HloInstruction* bitcast) override;
+  absl::Status HandleBroadcast(const HloInstruction* broadcast) override;
+  absl::Status HandlePad(const HloInstruction* pad) override;
+  absl::Status HandleReshape(const HloInstruction* reshape) override;
+  absl::Status HandleDynamicReshape(const HloInstruction* reshape) override;
+  absl::Status HandleAddDependency(
+      const HloInstruction* add_dependency) override;
+  absl::Status HandleAfterAll(const HloInstruction* token) override;
+  absl::Status HandleTranspose(const HloInstruction* transpose) override;
+  absl::Status HandleWhile(const HloInstruction* xla_while) override;
+  absl::Status HandleConditional(const HloInstruction* conditional) override;
+  absl::Status HandleGather(const HloInstruction* gather) override;
+  absl::Status HandleScatter(const HloInstruction* hlo) override;
+  absl::Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  absl::Status HandleSetDimensionSize(const HloInstruction* set_size) override;
+  absl::Status HandleTopK(const HloInstruction* topk) override;
+  absl::Status FinishVisit(const HloInstruction* root) override;
 
-  Status Preprocess(const HloInstruction* hlo) override;
-  Status Postprocess(const HloInstruction* hlo) override;
+  absl::Status Preprocess(const HloInstruction* hlo) override;
+  absl::Status Postprocess(const HloInstruction* hlo) override;
 
   // Enable efficient updates if a known small set of instructions within an
   // HLO graph was modified.
   // Updates the cost analysis by removing one instruction.
-  Status RemoveInstruction(HloInstruction* instruction);
+  absl::Status RemoveInstruction(HloInstruction* instruction);
   // Updates the cost analysis by re-doing the analysis of one instruction.
-  Status RevisitInstruction(HloInstruction* instruction);
+  absl::Status RevisitInstruction(HloInstruction* instruction);
 
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
@@ -607,14 +611,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
  protected:
   // Computes the bytes accessed based on the outputs produced by the fusion
   // instruction.
-  virtual Status FusionProcessOutputBytesAccessed(const HloInstruction* fusion);
+  virtual absl::Status FusionProcessOutputBytesAccessed(
+      const HloInstruction* fusion);
 
   // Computes the bytes accessed (read) based on the inputs consumed by the
   // fusion instruction.
-  virtual Status FusionProcessOperandBytesRead(const HloInstruction* fusion);
+  virtual absl::Status FusionProcessOperandBytesRead(
+      const HloInstruction* fusion);
 
   // Computes memory access to all larger constants in the fusion instruction.
-  virtual Status FusionCountConstantsMemoryAccess(const HloInstruction* fusion);
+  virtual absl::Status FusionCountConstantsMemoryAccess(
+      const HloInstruction* fusion);
 
   // Allows exclusion of certain types of inputs from bytes accessed during
   // FusionProcessOperandBytesRead.
@@ -657,7 +664,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
-  Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
+  absl::Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
 
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
@@ -672,7 +679,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Traverses a fusion counting total utilization of every instruction inside.
   // Currently implemented non-trivially only in the GPU cost analysis.
-  virtual Status FusionCalculateUtilizations(const HloInstruction* fusion);
+  virtual absl::Status FusionCalculateUtilizations(
+      const HloInstruction* fusion);
 
   HloToProperties hlo_properties_;
 

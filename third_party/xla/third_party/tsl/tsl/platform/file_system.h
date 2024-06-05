@@ -69,17 +69,17 @@ class FileSystem {
   ///
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual tsl::Status NewRandomAccessFile(
+  virtual absl::Status NewRandomAccessFile(
       const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
     return NewRandomAccessFile(fname, nullptr, result);
   }
 
-  virtual tsl::Status NewRandomAccessFile(
+  virtual absl::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) {
     // We duplicate these methods due to Google internal coding style prevents
     // virtual functions with default arguments. See PR #41615.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -94,15 +94,15 @@ class FileSystem {
   ///
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual tsl::Status NewWritableFile(const std::string& fname,
-                                      std::unique_ptr<WritableFile>* result) {
+  virtual absl::Status NewWritableFile(const std::string& fname,
+                                       std::unique_ptr<WritableFile>* result) {
     return NewWritableFile(fname, nullptr, result);
   }
 
-  virtual tsl::Status NewWritableFile(const std::string& fname,
-                                      TransactionToken* token,
-                                      std::unique_ptr<WritableFile>* result) {
-    return OkStatus();
+  virtual absl::Status NewWritableFile(const std::string& fname,
+                                       TransactionToken* token,
+                                       std::unique_ptr<WritableFile>* result) {
+    return absl::OkStatus();
   }
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -116,15 +116,15 @@ class FileSystem {
   ///
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual tsl::Status NewAppendableFile(const std::string& fname,
-                                        std::unique_ptr<WritableFile>* result) {
+  virtual absl::Status NewAppendableFile(
+      const std::string& fname, std::unique_ptr<WritableFile>* result) {
     return NewAppendableFile(fname, nullptr, result);
   }
 
-  virtual tsl::Status NewAppendableFile(const std::string& fname,
-                                        TransactionToken* token,
-                                        std::unique_ptr<WritableFile>* result) {
-    return OkStatus();
+  virtual absl::Status NewAppendableFile(
+      const std::string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) {
+    return absl::OkStatus();
   }
 
   /// \brief Creates a readonly region of memory with the file context.
@@ -137,50 +137,51 @@ class FileSystem {
   ///
   /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
   /// and the object should be deleted when is not used.
-  virtual tsl::Status NewReadOnlyMemoryRegionFromFile(
+  virtual absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
     return NewReadOnlyMemoryRegionFromFile(fname, nullptr, result);
   }
 
-  virtual tsl::Status NewReadOnlyMemoryRegionFromFile(
+  virtual absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual tsl::Status FileExists(const std::string& fname) {
+  virtual absl::Status FileExists(const std::string& fname) {
     return FileExists(fname, nullptr);
   }
 
-  virtual tsl::Status FileExists(const std::string& fname,
-                                 TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status FileExists(const std::string& fname,
+                                  TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
   /// for each file.
   virtual bool FilesExist(const std::vector<string>& files,
-                          std::vector<Status>* status) {
+                          std::vector<absl::Status>* status) {
     return FilesExist(files, nullptr, status);
   }
 
   virtual bool FilesExist(const std::vector<string>& files,
-                          TransactionToken* token, std::vector<Status>* status);
+                          TransactionToken* token,
+                          std::vector<absl::Status>* status);
 
   /// \brief Returns the immediate children in the given directory.
   ///
   /// The returned paths are relative to 'dir'.
-  virtual tsl::Status GetChildren(const std::string& dir,
-                                  std::vector<string>* result) {
+  virtual absl::Status GetChildren(const std::string& dir,
+                                   std::vector<string>* result) {
     return GetChildren(dir, nullptr, result);
   }
 
-  virtual tsl::Status GetChildren(const std::string& dir,
-                                  TransactionToken* token,
-                                  std::vector<string>* result) {
-    return OkStatus();
+  virtual absl::Status GetChildren(const std::string& dir,
+                                   TransactionToken* token,
+                                   std::vector<string>* result) {
+    return absl::OkStatus();
   }
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
@@ -205,15 +206,15 @@ class FileSystem {
   ///  * OK - no errors
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
-  virtual tsl::Status GetMatchingPaths(const std::string& pattern,
-                                       std::vector<string>* results) {
+  virtual absl::Status GetMatchingPaths(const std::string& pattern,
+                                        std::vector<string>* results) {
     return GetMatchingPaths(pattern, nullptr, results);
   }
 
-  virtual tsl::Status GetMatchingPaths(const std::string& pattern,
-                                       TransactionToken* token,
-                                       std::vector<string>* results) {
-    return OkStatus();
+  virtual absl::Status GetMatchingPaths(const std::string& pattern,
+                                        TransactionToken* token,
+                                        std::vector<string>* results) {
+    return absl::OkStatus();
   }
 
   /// \brief Checks if the given filename matches the pattern.
@@ -224,23 +225,23 @@ class FileSystem {
   virtual bool Match(const std::string& filename, const std::string& pattern);
 
   /// \brief Obtains statistics for the given path.
-  virtual tsl::Status Stat(const std::string& fname, FileStatistics* stat) {
+  virtual absl::Status Stat(const std::string& fname, FileStatistics* stat) {
     return Stat(fname, nullptr, stat);
   }
 
-  virtual tsl::Status Stat(const std::string& fname, TransactionToken* token,
-                           FileStatistics* stat) {
-    return OkStatus();
+  virtual absl::Status Stat(const std::string& fname, TransactionToken* token,
+                            FileStatistics* stat) {
+    return absl::OkStatus();
   }
 
   /// \brief Deletes the named file.
-  virtual tsl::Status DeleteFile(const std::string& fname) {
+  virtual absl::Status DeleteFile(const std::string& fname) {
     return DeleteFile(fname, nullptr);
   }
 
-  virtual tsl::Status DeleteFile(const std::string& fname,
-                                 TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status DeleteFile(const std::string& fname,
+                                  TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Creates the specified directory.
@@ -248,13 +249,13 @@ class FileSystem {
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory with name dirname already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
-  virtual tsl::Status CreateDir(const std::string& dirname) {
+  virtual absl::Status CreateDir(const std::string& dirname) {
     return CreateDir(dirname, nullptr);
   }
 
-  virtual tsl::Status CreateDir(const std::string& dirname,
-                                TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status CreateDir(const std::string& dirname,
+                                 TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Creates the specified directory and all the necessary
@@ -263,21 +264,21 @@ class FileSystem {
   ///  * OK - successfully created the directory and sub directories, even if
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
-  virtual tsl::Status RecursivelyCreateDir(const std::string& dirname) {
+  virtual absl::Status RecursivelyCreateDir(const std::string& dirname) {
     return RecursivelyCreateDir(dirname, nullptr);
   }
 
-  virtual tsl::Status RecursivelyCreateDir(const std::string& dirname,
-                                           TransactionToken* token);
+  virtual absl::Status RecursivelyCreateDir(const std::string& dirname,
+                                            TransactionToken* token);
 
   /// \brief Deletes the specified directory.
-  virtual tsl::Status DeleteDir(const std::string& dirname) {
+  virtual absl::Status DeleteDir(const std::string& dirname) {
     return DeleteDir(dirname, nullptr);
   }
 
-  virtual tsl::Status DeleteDir(const std::string& dirname,
-                                TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status DeleteDir(const std::string& dirname,
+                                 TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Deletes the specified directory and all subdirectories and files
@@ -304,48 +305,49 @@ class FileSystem {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  virtual tsl::Status DeleteRecursively(const std::string& dirname,
-                                        int64_t* undeleted_files,
-                                        int64_t* undeleted_dirs) {
+  virtual absl::Status DeleteRecursively(const std::string& dirname,
+                                         int64_t* undeleted_files,
+                                         int64_t* undeleted_dirs) {
     return DeleteRecursively(dirname, nullptr, undeleted_files, undeleted_dirs);
   }
 
-  virtual tsl::Status DeleteRecursively(const std::string& dirname,
-                                        TransactionToken* token,
-                                        int64_t* undeleted_files,
-                                        int64_t* undeleted_dirs);
+  virtual absl::Status DeleteRecursively(const std::string& dirname,
+                                         TransactionToken* token,
+                                         int64_t* undeleted_files,
+                                         int64_t* undeleted_dirs);
 
   /// \brief Stores the size of `fname` in `*file_size`.
-  virtual tsl::Status GetFileSize(const std::string& fname, uint64* file_size) {
+  virtual absl::Status GetFileSize(const std::string& fname,
+                                   uint64* file_size) {
     return GetFileSize(fname, nullptr, file_size);
   }
 
-  virtual tsl::Status GetFileSize(const std::string& fname,
-                                  TransactionToken* token, uint64* file_size) {
-    return OkStatus();
+  virtual absl::Status GetFileSize(const std::string& fname,
+                                   TransactionToken* token, uint64* file_size) {
+    return absl::OkStatus();
   }
 
   /// \brief Overwrites the target if it exists.
-  virtual tsl::Status RenameFile(const std::string& src,
-                                 const std::string& target) {
+  virtual absl::Status RenameFile(const std::string& src,
+                                  const std::string& target) {
     return RenameFile(src, target, nullptr);
   }
 
-  virtual tsl::Status RenameFile(const std::string& src,
-                                 const std::string& target,
-                                 TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status RenameFile(const std::string& src,
+                                  const std::string& target,
+                                  TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Copy the src to target.
-  virtual tsl::Status CopyFile(const std::string& src,
-                               const std::string& target) {
+  virtual absl::Status CopyFile(const std::string& src,
+                                const std::string& target) {
     return CopyFile(src, target, nullptr);
   }
 
-  virtual tsl::Status CopyFile(const std::string& src,
-                               const std::string& target,
-                               TransactionToken* token);
+  virtual absl::Status CopyFile(const std::string& src,
+                                const std::string& target,
+                                TransactionToken* token);
 
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
@@ -365,12 +367,12 @@ class FileSystem {
   ///  * NOT_FOUND - The path entry does not exist.
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
-  virtual tsl::Status IsDirectory(const std::string& fname) {
+  virtual absl::Status IsDirectory(const std::string& fname) {
     return IsDirectory(fname, nullptr);
   }
 
-  virtual tsl::Status IsDirectory(const std::string& fname,
-                                  TransactionToken* token);
+  virtual absl::Status IsDirectory(const std::string& fname,
+                                   TransactionToken* token);
 
   /// \brief Returns whether the given path is on a file system
   /// that has atomic move capabilities. This can be used
@@ -382,7 +384,8 @@ class FileSystem {
   ///         so has_atomic_move holds the above information.
   ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
   ///  TF
-  virtual Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
+  virtual absl::Status HasAtomicMove(const std::string& path,
+                                     bool* has_atomic_move);
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches() { FlushCaches(nullptr); }
@@ -476,67 +479,67 @@ class FileSystem {
   // Transaction related API
 
   /// \brief Starts a new transaction
-  virtual tsl::Status StartTransaction(TransactionToken** token) {
+  virtual absl::Status StartTransaction(TransactionToken** token) {
     *token = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Adds `path` to transaction in `token`
-  virtual tsl::Status AddToTransaction(const std::string& path,
-                                       TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status AddToTransaction(const std::string& path,
+                                        TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Ends transaction
-  virtual tsl::Status EndTransaction(TransactionToken* token) {
-    return OkStatus();
+  virtual absl::Status EndTransaction(TransactionToken* token) {
+    return absl::OkStatus();
   }
 
   /// \brief Get token for `path` or start a new transaction and add `path` to
   /// it.
-  virtual tsl::Status GetTokenOrStartTransaction(const std::string& path,
-                                                 TransactionToken** token) {
+  virtual absl::Status GetTokenOrStartTransaction(const std::string& path,
+                                                  TransactionToken** token) {
     *token = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Return transaction for `path` or nullptr in `token`
-  virtual tsl::Status GetTransactionForPath(const std::string& path,
-                                            TransactionToken** token) {
+  virtual absl::Status GetTransactionForPath(const std::string& path,
+                                             TransactionToken** token) {
     *token = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Decode transaction to human readable string.
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
   /// \brief Set File System Configuration Options
-  virtual Status SetOption(const string& key, const string& value) {
+  virtual absl::Status SetOption(const string& key, const string& value) {
     return errors::Unimplemented("SetOption");
   }
 
   /// \brief Set File System Configuration Option
-  virtual tsl::Status SetOption(const std::string& name,
-                                const std::vector<string>& values) {
+  virtual absl::Status SetOption(const std::string& name,
+                                 const std::vector<string>& values) {
     return errors::Unimplemented("SetOption");
   }
 
   /// \brief Set File System Configuration Option
-  virtual tsl::Status SetOption(const std::string& name,
-                                const std::vector<int64_t>& values) {
+  virtual absl::Status SetOption(const std::string& name,
+                                 const std::vector<int64_t>& values) {
     return errors::Unimplemented("SetOption");
   }
 
   /// \brief Set File System Configuration Option
-  virtual tsl::Status SetOption(const std::string& name,
-                                const std::vector<double>& values) {
+  virtual absl::Status SetOption(const std::string& name,
+                                 const std::vector<double>& values) {
     return errors::Unimplemented("SetOption");
   }
 
   /// \brief Set File System ACL checker.
   ///
   /// No checks are enforced if a FileAcl is never set.
-  virtual tsl::Status SetFileAcl(std::shared_ptr<FileAcl> file_acl) {
+  virtual absl::Status SetFileAcl(std::shared_ptr<FileAcl> file_acl) {
     return errors::Unimplemented("SetFileAcl");
   }
 
@@ -581,48 +584,49 @@ class WrappedFileSystem : public FileSystem {
  public:
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  tsl::Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     return fs_->NewRandomAccessFile(fname, (token ? token : token_), result);
   }
 
-  tsl::Status NewWritableFile(const std::string& fname, TransactionToken* token,
-                              std::unique_ptr<WritableFile>* result) override {
+  absl::Status NewWritableFile(const std::string& fname,
+                               TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) override {
     return fs_->NewWritableFile(fname, (token ? token : token_), result);
   }
 
-  tsl::Status NewAppendableFile(
+  absl::Status NewAppendableFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<WritableFile>* result) override {
     return fs_->NewAppendableFile(fname, (token ? token : token_), result);
   }
 
-  tsl::Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return fs_->NewReadOnlyMemoryRegionFromFile(fname, (token ? token : token_),
                                                 result);
   }
 
-  tsl::Status FileExists(const std::string& fname,
-                         TransactionToken* token) override {
+  absl::Status FileExists(const std::string& fname,
+                          TransactionToken* token) override {
     return fs_->FileExists(fname, (token ? token : token_));
   }
 
   bool FilesExist(const std::vector<string>& files, TransactionToken* token,
-                  std::vector<Status>* status) override {
+                  std::vector<absl::Status>* status) override {
     return fs_->FilesExist(files, (token ? token : token_), status);
   }
 
-  tsl::Status GetChildren(const std::string& dir, TransactionToken* token,
-                          std::vector<string>* result) override {
+  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+                           std::vector<string>* result) override {
     return fs_->GetChildren(dir, (token ? token : token_), result);
   }
 
-  tsl::Status GetMatchingPaths(const std::string& pattern,
-                               TransactionToken* token,
-                               std::vector<string>* results) override {
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                TransactionToken* token,
+                                std::vector<string>* results) override {
     return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 
@@ -630,51 +634,51 @@ class WrappedFileSystem : public FileSystem {
     return fs_->Match(filename, pattern);
   }
 
-  tsl::Status Stat(const std::string& fname, TransactionToken* token,
-                   FileStatistics* stat) override {
+  absl::Status Stat(const std::string& fname, TransactionToken* token,
+                    FileStatistics* stat) override {
     return fs_->Stat(fname, (token ? token : token_), stat);
   }
 
-  tsl::Status DeleteFile(const std::string& fname,
-                         TransactionToken* token) override {
+  absl::Status DeleteFile(const std::string& fname,
+                          TransactionToken* token) override {
     return fs_->DeleteFile(fname, (token ? token : token_));
   }
 
-  tsl::Status CreateDir(const std::string& dirname,
-                        TransactionToken* token) override {
+  absl::Status CreateDir(const std::string& dirname,
+                         TransactionToken* token) override {
     return fs_->CreateDir(dirname, (token ? token : token_));
   }
 
-  tsl::Status RecursivelyCreateDir(const std::string& dirname,
-                                   TransactionToken* token) override {
+  absl::Status RecursivelyCreateDir(const std::string& dirname,
+                                    TransactionToken* token) override {
     return fs_->RecursivelyCreateDir(dirname, (token ? token : token_));
   }
 
-  tsl::Status DeleteDir(const std::string& dirname,
-                        TransactionToken* token) override {
+  absl::Status DeleteDir(const std::string& dirname,
+                         TransactionToken* token) override {
     return fs_->DeleteDir(dirname, (token ? token : token_));
   }
 
-  tsl::Status DeleteRecursively(const std::string& dirname,
-                                TransactionToken* token,
-                                int64_t* undeleted_files,
-                                int64_t* undeleted_dirs) override {
+  absl::Status DeleteRecursively(const std::string& dirname,
+                                 TransactionToken* token,
+                                 int64_t* undeleted_files,
+                                 int64_t* undeleted_dirs) override {
     return fs_->DeleteRecursively(dirname, (token ? token : token_),
                                   undeleted_files, undeleted_dirs);
   }
 
-  tsl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                          uint64* file_size) override {
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+                           uint64* file_size) override {
     return fs_->GetFileSize(fname, (token ? token : token_), file_size);
   }
 
-  tsl::Status RenameFile(const std::string& src, const std::string& target,
-                         TransactionToken* token) override {
+  absl::Status RenameFile(const std::string& src, const std::string& target,
+                          TransactionToken* token) override {
     return fs_->RenameFile(src, target, (token ? token : token_));
   }
 
-  tsl::Status CopyFile(const std::string& src, const std::string& target,
-                       TransactionToken* token) override {
+  absl::Status CopyFile(const std::string& src, const std::string& target,
+                        TransactionToken* token) override {
     return fs_->CopyFile(src, target, (token ? token : token_));
   }
 
@@ -682,13 +686,13 @@ class WrappedFileSystem : public FileSystem {
     return fs_->TranslateName(name);
   }
 
-  tsl::Status IsDirectory(const std::string& fname,
-                          TransactionToken* token) override {
+  absl::Status IsDirectory(const std::string& fname,
+                           TransactionToken* token) override {
     return fs_->IsDirectory(fname, (token ? token : token_));
   }
 
-  Status HasAtomicMove(const std::string& path,
-                       bool* has_atomic_move) override {
+  absl::Status HasAtomicMove(const std::string& path,
+                             bool* has_atomic_move) override {
     return fs_->HasAtomicMove(path, has_atomic_move);
   }
 
@@ -702,26 +706,26 @@ class WrappedFileSystem : public FileSystem {
     return fs_->Basename(path);
   }
 
-  tsl::Status StartTransaction(TransactionToken** token) override {
+  absl::Status StartTransaction(TransactionToken** token) override {
     return fs_->StartTransaction(token);
   }
 
-  tsl::Status AddToTransaction(const std::string& path,
-                               TransactionToken* token) override {
+  absl::Status AddToTransaction(const std::string& path,
+                                TransactionToken* token) override {
     return fs_->AddToTransaction(path, (token ? token : token_));
   }
 
-  tsl::Status EndTransaction(TransactionToken* token) override {
+  absl::Status EndTransaction(TransactionToken* token) override {
     return fs_->EndTransaction(token);
   }
 
-  tsl::Status GetTransactionForPath(const std::string& path,
-                                    TransactionToken** token) override {
+  absl::Status GetTransactionForPath(const std::string& path,
+                                     TransactionToken** token) override {
     return fs_->GetTransactionForPath(path, token);
   }
 
-  tsl::Status GetTokenOrStartTransaction(const std::string& path,
-                                         TransactionToken** token) override {
+  absl::Status GetTokenOrStartTransaction(const std::string& path,
+                                          TransactionToken** token) override {
     return fs_->GetTokenOrStartTransaction(path, token);
   }
 
@@ -749,7 +753,7 @@ class RandomAccessFile {
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual tsl::Status Name(StringPiece* result) const {
+  virtual absl::Status Name(StringPiece* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
@@ -768,12 +772,12 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
-  virtual tsl::Status Read(uint64 offset, size_t n, StringPiece* result,
-                           char* scratch) const = 0;
+  virtual absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                            char* scratch) const = 0;
 
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
-  virtual tsl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
+  virtual absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
     return errors::Unimplemented(
         "Read(uint64, size_t, absl::Cord*) is not "
         "implemented");
@@ -795,15 +799,15 @@ class WritableFile {
   virtual ~WritableFile() = default;
 
   /// \brief Append 'data' to the file.
-  virtual tsl::Status Append(StringPiece data) = 0;
+  virtual absl::Status Append(StringPiece data) = 0;
 
 #if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
-  virtual tsl::Status Append(const absl::Cord& cord) {
+  virtual absl::Status Append(const absl::Cord& cord) {
     for (StringPiece chunk : cord.Chunks()) {
       TF_RETURN_IF_ERROR(Append(chunk));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
 
@@ -814,7 +818,7 @@ class WritableFile {
   /// Typical return codes (not guaranteed to be exhaustive):
   ///  * OK
   ///  * Other codes, as returned from Flush()
-  virtual tsl::Status Close() = 0;
+  virtual absl::Status Close() = 0;
 
   /// \brief Flushes the file and optionally syncs contents to filesystem.
   ///
@@ -826,13 +830,13 @@ class WritableFile {
   /// eventually flush the contents.  If the OS or machine crashes
   /// after a successful flush, the contents may or may not be
   /// persisted, depending on the implementation.
-  virtual tsl::Status Flush() = 0;
+  virtual absl::Status Flush() = 0;
 
   // \brief Returns the name of the file.
   ///
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
-  virtual tsl::Status Name(StringPiece* result) const {
+  virtual absl::Status Name(StringPiece* result) const {
     return errors::Unimplemented("This filesystem does not support Name()");
   }
 
@@ -842,14 +846,14 @@ class WritableFile {
   /// of the file have been persisted to the filesystem; if the OS
   /// or machine crashes after a successful Sync, the contents should
   /// be properly saved.
-  virtual tsl::Status Sync() = 0;
+  virtual absl::Status Sync() = 0;
 
   /// \brief Retrieves the current write position in the file, or -1 on
   /// error.
   ///
   /// This is an optional operation, subclasses may choose to return
   /// errors::Unimplemented.
-  virtual tsl::Status Tell(int64_t* position) {
+  virtual absl::Status Tell(int64_t* position) {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }
@@ -903,11 +907,11 @@ class FileSystemRegistry {
   typedef std::function<FileSystem*()> Factory;
 
   virtual ~FileSystemRegistry() = default;
-  virtual tsl::Status Register(const std::string& scheme, Factory factory) = 0;
-  virtual tsl::Status Register(const std::string& scheme,
-                               std::unique_ptr<FileSystem> filesystem) = 0;
+  virtual absl::Status Register(const std::string& scheme, Factory factory) = 0;
+  virtual absl::Status Register(const std::string& scheme,
+                                std::unique_ptr<FileSystem> filesystem) = 0;
   virtual FileSystem* Lookup(const std::string& scheme) = 0;
-  virtual tsl::Status GetRegisteredFileSystemSchemes(
+  virtual absl::Status GetRegisteredFileSystemSchemes(
       std::vector<std::string>* schemes) = 0;
 };
 

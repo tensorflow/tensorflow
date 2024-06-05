@@ -288,22 +288,28 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   if (used_by_host()) {
     TF_RETURN_IF_ERROR(
         ifrt_restore_tensor_registry.SetUsedByHost(runtime_name));
+
+    xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
+        ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
+
+    restored_tensor_future.OnReady(
+        [tensor_promise = std::move(tensor_promise)](
+            absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+          if (!restored_tensor.ok()) {
+            std::move(tensor_promise).SetError(restored_tensor.status());
+            return;
+          }
+          std::move(tensor_promise)
+              .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                  tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
+        });
+  } else {
+    // If not used by host, set the future to be ready immediately with an empty
+    // tensor so that it does not block the graph execution.
+    std::move(tensor_promise)
+        .Set<tensorflow::tfrt_stub::FallbackTensor>(
+            tensorflow::tfrt_stub::FallbackTensor());
   }
-
-  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
-      ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
-
-  restored_tensor_future.OnReady(
-      [tensor_promise = std::move(tensor_promise)](
-          absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
-        if (!restored_tensor.ok()) {
-          std::move(tensor_promise).SetError(restored_tensor.status());
-          return;
-        }
-        std::move(tensor_promise)
-            .Set<tensorflow::tfrt_stub::FallbackTensor>(
-                tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
-      });
   // Return the name as the key
   tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
   key_tensor.scalar<tsl::tstring>()() = runtime_name;

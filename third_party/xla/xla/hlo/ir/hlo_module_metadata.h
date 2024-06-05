@@ -44,7 +44,7 @@ class HloModuleMetadata {
 
   // Marks the currently running pass as finished. Returns NotFound if metadata
   // for the currently running pass cannot be found.
-  Status RecordPassEnd();
+  absl::Status RecordPassEnd();
 
   const std::optional<HloModuleMetadataProto>& prepartitioning_metadata()
       const {
@@ -63,7 +63,7 @@ class HloModuleMetadata {
   void add_partitioned_module_id(int64_t id) {
     module_metadata_.add_partitioned_module_ids(id);
   }
-  Status set_custom_metadata(const ::tsl::protobuf::Message& message);
+  absl::Status set_custom_metadata(const ::tsl::protobuf::Message& message);
 
   absl::StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
@@ -72,37 +72,39 @@ class HloModuleMetadata {
   }
 
   // Setters for the current HloPassMetadata.
-  Status set_current_pass_name(const std::string& pass_name) {
+  absl::Status set_current_pass_name(const std::string& pass_name) {
     return MutateCurrentHloPassMetadata(
         [&pass_name](HloPassMetadata* pass_metadata) {
           pass_metadata->set_pass_name(pass_name);
         });
   }
-  Status set_current_pass_pipeline_name(const std::string& pipeline_name) {
+  absl::Status set_current_pass_pipeline_name(
+      const std::string& pipeline_name) {
     return MutateCurrentHloPassMetadata(
         [&pipeline_name](HloPassMetadata* pass_metadata) {
           pass_metadata->set_pipeline_name(pipeline_name);
         });
   }
-  Status add_current_pass_dump_filename(const std::string& dump_filename) {
+  absl::Status add_current_pass_dump_filename(
+      const std::string& dump_filename) {
     return MutateCurrentHloPassMetadata(
         [&dump_filename](HloPassMetadata* pass_metadata) {
           pass_metadata->add_dump_filenames(dump_filename);
         });
   }
-  Status set_current_pass_module_changed(bool module_changed) {
+  absl::Status set_current_pass_module_changed(bool module_changed) {
     return MutateCurrentHloPassMetadata(
         [&module_changed](HloPassMetadata* pass_metadata) {
           pass_metadata->set_module_changed(module_changed);
         });
   }
-  Status set_current_pass_module_id(int64_t module_id) {
+  absl::Status set_current_pass_module_id(int64_t module_id) {
     return MutateCurrentHloPassMetadata(
         [&module_id](HloPassMetadata* pass_metadata) {
           pass_metadata->set_module_id(module_id);
         });
   }
-  Status add_current_pass_module_group_module_id(int64_t module_id) {
+  absl::Status add_current_pass_module_group_module_id(int64_t module_id) {
     return MutateCurrentHloPassMetadata(
         [&module_id](HloPassMetadata* pass_metadata) {
           pass_metadata->add_module_group_module_ids(module_id);
@@ -115,7 +117,7 @@ class HloModuleMetadata {
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
-  Status MutateCurrentHloPassMetadata(
+  absl::Status MutateCurrentHloPassMetadata(
       absl::FunctionRef<void(HloPassMetadata*)> mutator);
 
   HloModuleMetadataProto module_metadata_;

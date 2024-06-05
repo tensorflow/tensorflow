@@ -24,16 +24,16 @@ limitations under the License.
 namespace xla {
 
 // Converts an MHLO/CHLO module string to an mlir::Module.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context);
 
 // Converts an CHLO/MHLO module to XLA HLO.
-Status MlirToXlaComputation(mlir::ModuleOp module,
-                            XlaComputation& xla_computation,
-                            bool use_tuple_args, bool return_tuple);
+absl::Status MlirToXlaComputation(mlir::ModuleOp module,
+                                  XlaComputation& xla_computation,
+                                  bool use_tuple_args, bool return_tuple);
 
 // Converts an MHLO/CHLO module string to an XLA computation.
-Status ParseMlirModuleStringAndConvertToXlaComputation(
+absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple);
 
@@ -62,7 +62,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
 // on portable artifacts that are outside of the compatibility window.
 // `ParseMlirModuleString` uses this method, and should be preferred to directly
 // calling `UpgradeVersionedStablehlo` where possible.
-Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module);
+absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module);
 
 }  // namespace xla
 

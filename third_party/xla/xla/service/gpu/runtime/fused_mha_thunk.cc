@@ -65,6 +65,13 @@ std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
              : std::nullopt;
 }
 
+absl::Status FusedMHAThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHARunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHAOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
+}
+
 absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase lhs_bmm1_buffer =
@@ -141,6 +148,13 @@ FusedMHABackwardThunk::GetOrCreateRunner(
              .first;
   }
   return *it->second;
+}
+
+absl::Status FusedMHABackwardThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHABackwardRunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHABackwardOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
 }
 
 absl::Status FusedMHABackwardThunk::ExecuteOnStream(

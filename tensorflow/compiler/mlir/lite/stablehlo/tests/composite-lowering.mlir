@@ -187,3 +187,56 @@ func.func @gelu(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: gelu
 // CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<2xf32>) -> tensor<2xf32>
 
+// CHECK-LABEL  func.func @jax_image_resize_nearest
+func.func @jax_image_resize_nearest(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
+  %1 = mhlo.composite "odml.jax_resize_nearest_neighbor2d" %arg0 {composite_attributes = {output_size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.jax_resize_nearest_neighbor2d.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  return %1 : tensor<1x4x4x10xf32>
+}
+func.func private @XlaCallModule_odml.jax_resize_nearest_neighbor2d.impl_0(%arg0: tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32> {
+  %0 = call @XlaCallModule__resize_0(%arg0) : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  return %0 : tensor<1x4x4x10xf32>
+}
+func.func private @XlaCallModule__resize_0(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
+  %0 = mhlo.constant dense<2> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  %2 = mhlo.constant dense<4.000000e+00> : tensor<f32>
+  %3 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  %4 = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  %5 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf32>
+  %6 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %7 = mhlo.add %5, %6 : tensor<4xf32>
+  %8 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %9 = mhlo.multiply %7, %8 : tensor<4xf32>
+  %10 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %11 = mhlo.divide %9, %10 : tensor<4xf32>
+  %12 = mhlo.floor %11 : tensor<4xf32>
+  %13 = mhlo.convert %12 : (tensor<4xf32>) -> tensor<4xi32>
+  %14 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %15 = mhlo.compare  LT, %13, %14,  SIGNED : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %16 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %17 = mhlo.add %13, %16 : tensor<4xi32>
+  %18 = mhlo.select %15, %17, %13 : tensor<4xi1>, tensor<4xi32>
+  %19 = "mhlo.broadcast_in_dim"(%18) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<4xi32>) -> tensor<4x1xi32>
+  %20 = "mhlo.gather"(%arg0, %19) <{dimension_numbers = #mhlo.gather<offset_dims = [0, 2, 3], collapsed_slice_dims = [1], start_index_map = [1], index_vector_dim = 1>, slice_sizes = dense<[1, 1, 2, 10]> : tensor<4xi64>}> : (tensor<1x2x2x10xf32>, tensor<4x1xi32>) -> tensor<1x4x2x10xf32>
+  %21 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf32>
+  %22 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %23 = mhlo.add %21, %22 : tensor<4xf32>
+  %24 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %25 = mhlo.multiply %23, %24 : tensor<4xf32>
+  %26 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %27 = mhlo.divide %25, %26 : tensor<4xf32>
+  %28 = mhlo.floor %27 : tensor<4xf32>
+  %29 = mhlo.convert %28 : (tensor<4xf32>) -> tensor<4xi32>
+  %30 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %31 = mhlo.compare  LT, %29, %30,  SIGNED : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %32 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %33 = mhlo.add %29, %32 : tensor<4xi32>
+  %34 = mhlo.select %31, %33, %29 : tensor<4xi1>, tensor<4xi32>
+  %35 = "mhlo.broadcast_in_dim"(%34) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<4xi32>) -> tensor<4x1xi32>
+  %36 = "mhlo.gather"(%20, %35) <{dimension_numbers = #mhlo.gather<offset_dims = [0, 1, 3], collapsed_slice_dims = [2], start_index_map = [2], index_vector_dim = 1>, slice_sizes = dense<[1, 4, 1, 10]> : tensor<4xi64>}> : (tensor<1x4x2x10xf32>, tensor<4x1xi32>) -> tensor<1x4x4x10xf32>
+  return %36 : tensor<1x4x4x10xf32>
+}
+
+// CHECK:  %cst = arith.constant dense<4> : tensor<2xi32>
+// CHECK:  %0 = "tfl.resize_nearest_neighbor"(%arg0, %cst) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x2x2x10xf32>, tensor<2xi32>) -> tensor<1x4x4x10xf32>
+// CHECK:  return %0 : tensor<1x4x4x10xf32>

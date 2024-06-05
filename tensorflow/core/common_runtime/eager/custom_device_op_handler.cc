@@ -67,7 +67,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
   }
 
   // The op will be placed on physical device. However, it contains custom
-  // device tensor handles. The tensor handles will be copy to physical device
+  // device tensor handles. The tensor handles will be copied to physical device
   // first.
   if (op->HasCustomDeviceInput()) {
     auto inputs = op->GetInputs();

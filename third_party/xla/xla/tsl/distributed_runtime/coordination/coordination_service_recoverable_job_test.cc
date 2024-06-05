@@ -15,10 +15,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/support/channel_arguments.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
@@ -27,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
@@ -46,12 +51,12 @@ constexpr char kServiceLeader[] = "/job:parameter_server/replica:0/task:0";
 class TestCoordinationClientCache : public CoordinationClientCache {
  public:
   void AddTask(const std::string& target, CoordinationClient* client) {
-    mutex_lock l(clients_mu_);
+    absl::MutexLock l(&clients_mu_);
     clients_.emplace(target, client);
   }
 
-  CoordinationClient* GetClient(const string& target) override {
-    mutex_lock l(clients_mu_);
+  CoordinationClient* GetClient(const std::string& target) override {
+    absl::MutexLock l(&clients_mu_);
     if (auto it = clients_.find(target); it != clients_.end()) {
       return it->second;
     }
@@ -59,15 +64,15 @@ class TestCoordinationClientCache : public CoordinationClientCache {
   }
 
   std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const string& target) override {
+      const std::string& target) override {
     LOG(ERROR) << "GetOwnedClient is not supported.";
     return nullptr;
   }
 
  private:
-  mutex clients_mu_;
+  absl::Mutex clients_mu_;
   absl::flat_hash_map<std::string, CoordinationClient*> clients_
-      TF_GUARDED_BY(clients_mu_);
+      ABSL_GUARDED_BY(clients_mu_);
 };
 
 class TestCoordinationServiceTaskState {
@@ -229,37 +234,37 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
 TEST_F(CoordinationServiceRecoverableJobTest,
        UnrecoverableWorkerFailurePropagated) {
   Initialize();
-  TF_ASSERT_OK(state_worker_0_.ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For unrecoverable task, error propagates to all connected tasks.
-  EXPECT_TRUE(errors::IsInternal(state_ps_0_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_ps_1_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_worker_0_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_worker_1_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_ps_0_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_ps_1_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_worker_0_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_worker_1_.GetStatus()));
 }
 
 TEST_F(CoordinationServiceRecoverableJobTest,
        UnrecoverablePSFailurePropagated) {
   Initialize();
-  TF_ASSERT_OK(state_ps_0_.ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(state_ps_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For unrecoverable task, error propagates to all connected tasks.
-  EXPECT_TRUE(errors::IsInternal(state_ps_0_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_ps_1_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_worker_0_.GetStatus()));
-  EXPECT_TRUE(errors::IsInternal(state_worker_1_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_ps_0_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_ps_1_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_worker_0_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_worker_1_.GetStatus()));
 }
 
 TEST_F(CoordinationServiceRecoverableJobTest,
        RecoverableWorkerFailureNotPropagated) {
   AddJobToRecoverableJobs(kWorkerJobName);
   Initialize();
-  TF_ASSERT_OK(state_worker_0_.ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For recoverable task, error does not propagate.
   EXPECT_TRUE(state_ps_0_.GetStatus().ok());
   EXPECT_TRUE(state_ps_1_.GetStatus().ok());
-  EXPECT_TRUE(errors::IsInternal(state_worker_0_.GetStatus()));
+  EXPECT_TRUE(absl::IsInternal(state_worker_0_.GetStatus()));
   EXPECT_TRUE(state_worker_1_.GetStatus().ok());
 }
 

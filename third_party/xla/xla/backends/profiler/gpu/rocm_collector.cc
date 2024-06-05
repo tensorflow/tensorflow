@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -223,8 +224,8 @@ class PerDeviceCollector {
     stats.occupancy_pct /= device_properties_.maxThreadsPerMultiProcessor;
 
     err = hipOccupancyMaxPotentialBlockSize(
-        &stats.min_grid_size, &stats.suggested_block_size, static_cast<const void*>(params.func_ptr),
-        params.dynamic_smem_size, 0);
+        &stats.min_grid_size, &stats.suggested_block_size,
+        static_cast<const void*>(params.func_ptr), params.dynamic_smem_size, 0);
 
     if (err != hipError_t::hipSuccess) {
       return {};
@@ -578,8 +579,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
         start_gputime_ns_(start_gputime_ns),
-        num_gpus_(options.num_gpus),
-        per_device_collector_(options.num_gpus) {}
+        num_gpus_(options.num_gpus) {}
 
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override;
   void Flush() override;
@@ -613,9 +613,10 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   absl::flat_hash_map<uint32_t, RocmTracerEvent> auxiliary_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
-  const std::vector<RocmTracerEvent> ApiActivityInfoExchange();
+  const std::vector<RocmTracerEvent> ApiActivityInfoExchange()
+      TF_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
-  absl::flat_hash_map<const uint32_t, PerDeviceCollector> per_device_collector_;
+  absl::flat_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
 };
 //==========
 

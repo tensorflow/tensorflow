@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSparseMaximum"
   input_arg {
     name: "a_indices"

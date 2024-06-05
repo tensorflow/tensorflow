@@ -36,10 +36,10 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
         bfloat16_support_(bfloat16_support),
         bfloat16_conversion_folding_(bfloat16_conversion_folding) {}
 
-  Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
 
   // Special handling for all-reduce which can have a tuple output.
-  Status HandleAllReduce(HloInstruction* crs) override;
+  absl::Status HandleAllReduce(HloInstruction* crs) override;
 
   static bool Run(HloComputation* computation,
                   const FloatSupport* bfloat16_support,
@@ -53,17 +53,18 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
  private:
   // Checks if the HLO has a BF16 -> F32 conversion as input, or a F32 -> BF16
   // conversion as output, and folds them to the HLO itself if feasible.
-  Status TryFoldBF16Conversions(HloInstruction* hlo);
+  absl::Status TryFoldBF16Conversions(HloInstruction* hlo);
 
   // Folds the F32 -> BF16 conversions from the HLO's output.
   //
   // Precondition: all of the HLO's users are F32 -> BF16 conversions.
-  Status FoldOutputConversions(HloInstruction* hlo);
+  absl::Status FoldOutputConversions(HloInstruction* hlo);
 
   // Folds the BF16 -> F32 conversion operand to the HLO.
   //
   // Precondition: the operand is a BF16 -> F32 conversion.
-  Status FoldOperandConversion(HloInstruction* hlo, int64_t operand_index);
+  absl::Status FoldOperandConversion(HloInstruction* hlo,
+                                     int64_t operand_index);
 
   HloComputation* computation_;
   const FloatSupport* bfloat16_support_;
@@ -71,7 +72,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
 };
 
-Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
+absl::Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
     HloInstruction* hlo) {
   std::vector<HloInstruction*> materialized_users = hlo->users();
   hlo->mutable_shape()->set_element_type(BF16);
@@ -84,7 +85,7 @@ Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
   return OkStatus();
 }
 
-Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
+absl::Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
     HloInstruction* hlo, int64_t operand_index) {
   // The operand is a convert from BF16 to F32.
   auto operand = hlo->mutable_operand(operand_index);
@@ -114,7 +115,7 @@ bool AllUsersAreF32ToBF16Converts(const HloInstruction* hlo) {
 
 }  // namespace
 
-Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
+absl::Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
     HloInstruction* hlo) {
   std::vector<int64_t> bf16_to_f32_operands;
   bool has_other_f32_operands = false;
@@ -157,7 +158,8 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
   return OkStatus();
 }
 
-Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
+absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
+    HloInstruction* hlo) {
   // Do not fold BF16 conversions for instructions related to tuples, entry and
   // exit of a computation, fusion, convert, side-effecting instructions,
   // in-place operations and control flow.
@@ -186,7 +188,8 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
   return TryFoldBF16Conversions(hlo);
 }
 
-Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
+absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
+    HloInstruction* crs) {
   if (crs->HasSideEffectNoRecurse()) {
     // Do not perform optimization on side-effected AllReduce.
     return OkStatus();

@@ -38,7 +38,7 @@ void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
     done(status);
     return;
   }
-  status = stream_->RecordEvent(&done_event_.get());
+  status = stream_->RecordEvent(done_event_.get().get());
   if (!status.ok()) {
     done(status);
     return;

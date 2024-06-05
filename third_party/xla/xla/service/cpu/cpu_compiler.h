@@ -195,19 +195,19 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile,
-                      llvm::TargetMachine* target_machine,
-                      const CompileOptions& compile_options,
-                      bool is_mlir_compile = false);
+  absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
+                            llvm::TargetMachine* target_machine,
+                            const CompileOptions& compile_options,
+                            bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
-  Status RunHloPassesThroughLayoutAssn(
+  absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
       LLVMTargetMachineFeatures* target_machine_features,
       bool is_mlir_compile = false);
 
   // Runs HLO passes after layout assignment.
-  Status RunHloPassesAfterLayoutAssn(
+  absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features,
       const CompileOptions& compile_options, bool is_mlir_compile);

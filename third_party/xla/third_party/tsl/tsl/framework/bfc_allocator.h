@@ -27,6 +27,7 @@ limitations under the License.
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/allocator_retry.h"
 #include "tsl/framework/shared_counter.h"
+#include "tsl/lib/core/bits.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
@@ -536,28 +537,6 @@ class BFCAllocator : public Allocator {
   // Structures immutable after construction
   size_t memory_limit_ = 0;
 
-  inline int Log2FloorNonZeroSlow(uint64 n) {
-    int r = 0;
-    while (n > 0) {
-      r++;
-      n >>= 1;
-    }
-    return r - 1;
-  }
-
-  // Returns floor(log2(n)).
-  inline int Log2FloorNonZero(uint64 n) {
-#if defined(__GNUC__)
-    return 63 ^ __builtin_clzll(n);
-#elif defined(PLATFORM_WINDOWS) && (_WIN64)
-    unsigned long index;
-    _BitScanReverse64(&index, n);
-    return index;
-#else
-    return Log2FloorNonZeroSlow(n);
-#endif
-  }
-
   // Map from bin size to Bin
   Bin* BinFromIndex(BinNum index) {
     return reinterpret_cast<Bin*>(&(bins_space_[index * sizeof(Bin)]));
@@ -567,7 +546,7 @@ class BFCAllocator : public Allocator {
   }
   BinNum BinNumForSize(size_t bytes) {
     uint64 v = std::max<size_t>(bytes, 256) >> kMinAllocationBits;
-    int b = std::min(kNumBins - 1, Log2FloorNonZero(v));
+    int b = std::min(kNumBins - 1, tsl::Log2Floor64(v));
     return b;
   }
   Bin* BinForSize(size_t bytes) { return BinFromIndex(BinNumForSize(bytes)); }

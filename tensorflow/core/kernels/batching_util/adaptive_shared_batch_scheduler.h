@@ -639,7 +639,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
                              {"_r", 2} /*root_event*/});
       },
-      profiler::ContextType::kAdaptiveSharedBatchScheduler,
+      tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
   const int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
@@ -798,7 +798,7 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
                 "ASBSQueue::Schedule",
                 {{"batching_input_task_size", task_size}});
           },
-          profiler::ContextType::kAdaptiveSharedBatchScheduler,
+          tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
           this->current_batch_->traceme_context_id());
       current_batch_->AddTask(std::move(task));
       num_enqueued_tasks_++;

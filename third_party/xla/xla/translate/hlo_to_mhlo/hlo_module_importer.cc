@@ -99,7 +99,7 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 }
 }  // namespace
 
-Status HloModuleImporter::Import(const HloModule& hlo_module) {
+absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
   module.setName(hlo_module.name());
   module->setAttr(
@@ -154,10 +154,10 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
                            flatten_computation_args_result_)
                            .status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
+absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
   DebugOptions debug_options;
   TF_ASSIGN_OR_RETURN(
       auto module_config,

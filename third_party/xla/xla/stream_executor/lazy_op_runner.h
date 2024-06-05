@@ -66,7 +66,7 @@ inline absl::StatusOr<DnnSupport*> GetDnnFromStream(Stream* stream) {
 //   struct Config;
 //
 //   // Use a StreamExecutor to create an OpRunner.
-//   static StatusOr<OpRunner<Config>> OpRunnerFromDesc(
+//   static absl::StatusOr<OpRunner<Config>> OpRunnerFromDesc(
 //       const AlgorithmDesc& desc, Config config, StreamExecutor* stream);
 // };
 template <typename Op>

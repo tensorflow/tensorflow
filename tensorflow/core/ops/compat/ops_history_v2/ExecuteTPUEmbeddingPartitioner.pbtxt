@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExecuteTPUEmbeddingPartitioner"
   output_arg {
     name: "common_config"

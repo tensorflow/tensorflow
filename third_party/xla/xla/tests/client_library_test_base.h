@@ -198,11 +198,11 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
       const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
-  Status ComputeAndCompareLiteralWithStatus(
+  absl::Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_layout = nullptr);
-  Status ComputeAndCompareLiteralWithStatus(
+  absl::Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       absl::Span<GlobalData* const> arguments, ErrorSpec error,
       const Shape* shape_with_layout = nullptr);
@@ -422,13 +422,13 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   ExecutionOptions execution_options_;
 
  private:
-  Status ComputeAndCompareLiteralWithAllOutputLayouts(
+  absl::Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,
                                const std::string& error_message)>&
           verify_output);
-  Status ComputeAndCompareLiteralWithAllInputLayouts(
+  absl::Status ComputeAndCompareLiteralWithAllInputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,

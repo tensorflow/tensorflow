@@ -258,6 +258,102 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
+TEST_F(GemmFusionTest, DynamicSliceIsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  dot_lhs = f32[2,18] parameter(0)
+  dynamic_slice_input = f32[2,64,2] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1_2 = s32[] constant(0)
+  dynamic_slice = f32[1,64,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1_2, start_index1_2),
+                  dynamic_slice_sizes={1,64,2}
+  reshape = f32[64,2] reshape(dynamic_slice)
+  ROOT dot = f16[18,64] dot(dot_lhs, reshape),
+             lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
+                             se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Constant()))));
+}
+
+TEST_F(GemmFusionTest, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[2,64,2] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ds0 = f32[1,64,2] dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,64,2}
+  a = f32[64,2] reshape(ds0)
+  ds1 = f32[1,64,2] dynamic-slice(p0, p3, p2, p1), dynamic_slice_sizes={1,64,2}
+  b = f32[64,2] reshape(ds1)
+  ROOT d = f16[64,64] dot(a, b),
+           lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
+                             se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  // TODO(b/339810582): Don't duplicate scalar parameters to dot fusions,
+  // because they are never tiled differently.
+  // TODO(b/339814210): Don't count scalar parameters towards dot fusion
+  // parameter limit.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
+                            m::Parameter(), m::Parameter(), m::Parameter(),
+                            m::Parameter(), m::Parameter()))));
+}
+
+TEST_F(GemmFusionTest, DoNotFuseDynamicSliceOfNonMajorFragments) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  dot_lhs = f32[2,4]{1,0} parameter(0)
+  dynamic_slice_input = f32[4,5,2]{2,1,0} parameter(1)
+  c0 = s32[] constant(0)
+  c2 = s32[] constant(2)
+  dynamic_slice = f32[4,1,2]{2,1,0} dynamic-slice(dynamic_slice_input, c0, c2, c0),
+                  dynamic_slice_sizes={4,1,2}
+  reshape = f32[4,2]{1,0} reshape(dynamic_slice)
+  ROOT dot = f32[4,4]{1,0} dot(dot_lhs, reshape),
+             lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  // FusionDecision "Unsupported dynamic slice on non-major-most dimension."
+  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+}
+
+TEST_F(GemmFusionTest, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  dot_lhs = f32[2,4]{1,0} parameter(0)
+  dynamic_slice_input = f32[5,5]{1,0} parameter(1)
+  start_index0 = s32[] constant(2)
+  start_index1 = s32[] constant(0)
+  dynamic_slice = f32[2,5]{1,0} dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={2,5}
+  ROOT d = f32[4,5]{1,0} dot(dot_lhs, dynamic_slice),
+           lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
+                             se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Constant(), m::Constant()))));
+}
+
 TEST_F(GemmFusionTest, SliceToDegenerateIsSkipped) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

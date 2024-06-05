@@ -87,13 +87,13 @@ class HloDomainMap {
   // kDomain instruction of the same kind, hence defining an empty domain.
   // If that is the case, create the empty domain and call the proper
   // normalizer.
-  Status TryProcessEmptyDomain(HloInstruction* instruction);
+  absl::Status TryProcessEmptyDomain(HloInstruction* instruction);
 
-  Status Populate(HloComputation* computation);
+  absl::Status Populate(HloComputation* computation);
 
   // Inserts the provided domain into the ones tracked by this object,
   // creating a new domain ID.
-  Status InsertDomain(std::unique_ptr<DomainMetadata::Domain> domain);
+  absl::Status InsertDomain(std::unique_ptr<DomainMetadata::Domain> domain);
 
   // From the given instruction, expands operand and user wise, the set of
   // instructions which can be reached without crossing a kDomain instruction
@@ -101,8 +101,8 @@ class HloDomainMap {
   // The domain data structure will be populated with all the reached
   // instructions, and the boundaries of the domain, with the kDomain
   // instructions encountered while expanding the reach.
-  Status ExpandDomain(HloInstruction* instruction,
-                      DomainMetadata::Domain* domain) const;
+  absl::Status ExpandDomain(HloInstruction* instruction,
+                            DomainMetadata::Domain* domain) const;
 
   // Creates a domain data structure using the ExpandDomain() API.
   absl::StatusOr<std::unique_ptr<DomainMetadata::Domain>> CreateDomain(
@@ -117,7 +117,7 @@ class HloDomainMap {
 
   // Populates domain_metadata_id_ that maps each HloInstruction to the unique
   // ID of its associated domain metatadata.
-  Status PopulateDomainMetadataMap();
+  absl::Status PopulateDomainMetadataMap();
 
   std::string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;

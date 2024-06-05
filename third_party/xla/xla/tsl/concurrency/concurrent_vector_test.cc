@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 

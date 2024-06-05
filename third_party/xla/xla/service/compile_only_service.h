@@ -53,27 +53,28 @@ class CompileOnlyService : public Service {
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
 
-  Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                          GetDeviceHandlesResponse* result) override {
+  absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
-  Status TransferToServer(const TransferToServerRequest* arg,
-                          TransferToServerResponse* result) override {
+  absl::Status TransferToServer(const TransferToServerRequest* arg,
+                                TransferToServerResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                          TransferToInfeedResponse* result) override {
+  absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                                TransferToInfeedResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                             TransferFromOutfeedResponse* result) override {
+  absl::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  Status ResetDevice(const ResetDeviceRequest* arg,
-                     ResetDeviceResponse* result) override {
+  absl::Status ResetDevice(const ResetDeviceRequest* arg,
+                           ResetDeviceResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
 

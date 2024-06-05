@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Gather"
   input_arg {
     name: "params"

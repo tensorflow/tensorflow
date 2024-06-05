@@ -103,7 +103,7 @@ class HloAliasAnalysis {
   explicit HloAliasAnalysis(const HloModule* module);
 
   // Verify various invariants of the alias analysis.
-  Status Verify() const;
+  absl::Status Verify() const;
 
   const HloModule* module_;
 

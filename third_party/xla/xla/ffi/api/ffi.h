@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_FFI_API_FFI_H_
 #define XLA_FFI_API_FFI_H_
 
-#include <string_view>
 #ifdef XLA_FFI_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_FFI_H_
 
 #include <algorithm>
+#include <cassert>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -567,26 +568,50 @@ struct CtxDecoding<PlatformStream<T>> {
 // UserData
 //===----------------------------------------------------------------------===//
 
+// All user data types that are passed via the execution context must be
+// registered with the XLA FFI ahead of time to get unique type id.
+using TypeId = XLA_FFI_TypeId;  // NOLINT
+
+inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
+                                   std::string_view name,
+                                   XLA_FFI_TypeId* type_id) {
+  XLA_FFI_TypeId_Register_Args args;
+  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
+  args.type_id = type_id;
+  return api->XLA_FFI_TypeId_Register(&args);
+}
+
+#define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
+  XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
+#define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N)  \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
+      xla_ffi_type_##N##_registered_ =                 \
+          [] { return ::xla::ffi::RegisterType(API, NAME, TYPE_ID); }()
+
 // A type tag for automatic decoding user data passed via the execution context.
-template <const char* id, typename T>
+template <typename T>
 struct UserData {};
 
-template <const char* id, typename T>
-struct CtxDecoding<UserData<id, T>> {
+template <typename T>
+struct CtxDecoding<UserData<T>> {
   using Type = T*;
+
+  static_assert(std::is_same_v<decltype(T::id), TypeId>,
+                "UserData type must have a static `TypeId id` field");
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    static constexpr std::string_view id_view = {id};
-
     XLA_FFI_ExecutionContext_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;
     args.ctx = ctx;
-    args.id = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
-                               id_view.data(), id_view.size()};
+    args.type_id = &T::id;
     args.data = nullptr;
+
+    assert(args.type_id->type_id > 0 && "type must be registered with XLA FFI");
 
     if (XLA_FFI_Error* err = api->XLA_FFI_ExecutionContext_Get(&args); err) {
       diagnostic.Emit("Failed to get user data from execution context: ")

@@ -43,7 +43,7 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
   return alias_.element(output_index).has_value();
 }
 
-Status HloInputOutputAliasConfig::SetUpAlias(
+absl::Status HloInputOutputAliasConfig::SetUpAlias(
     const ShapeIndex& output_index, int64_t param_number,
     const ShapeIndex& param_index,
     HloInputOutputAliasConfig::AliasKind must_alias) {
@@ -182,7 +182,7 @@ void HloInputOutputAliasConfig::ForEachAlias(AliasFn fn) const {
       });
 }
 
-Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
+absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
     AliasFnWithStatus fn) const {
   return alias_.ForEachElementWithStatus(
       [&](const ShapeIndex& output_index, std::optional<Alias> aliased) {
@@ -193,7 +193,7 @@ Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
       });
 }
 
-Status HloInputOutputAliasConfig::Verify(
+absl::Status HloInputOutputAliasConfig::Verify(
     const HloModule& module,
     absl::FunctionRef<int64_t(const Shape&)> size_func) const {
   std::vector<ShapeTree<bool>> param_has_seen;
@@ -203,7 +203,7 @@ Status HloInputOutputAliasConfig::Verify(
     param_has_seen.emplace_back(param->shape());
   }
   return ForEachAliasWithStatus([&](const ShapeIndex& output_index,
-                                    const Alias& alias) -> Status {
+                                    const Alias& alias) -> absl::Status {
     TF_RET_CHECK(0 <= alias.parameter_number);
     TF_RET_CHECK(entry->num_parameters() > alias.parameter_number);
     const Shape& param_shape =
@@ -250,8 +250,8 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-Status HloBufferDonorConfig::AddBufferDonor(int64_t param_number,
-                                            const ShapeIndex& param_index) {
+absl::Status HloBufferDonorConfig::AddBufferDonor(
+    int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
   VLOG(4) << "Register the parameter " << param_number << " at index "
           << param_index.ToString() << " as a buffer donor.";
@@ -259,8 +259,8 @@ Status HloBufferDonorConfig::AddBufferDonor(int64_t param_number,
   return OkStatus();
 }
 
-Status HloBufferDonorConfig::RemoveBufferDonor(int64_t param_number,
-                                               const ShapeIndex& param_index) {
+absl::Status HloBufferDonorConfig::RemoveBufferDonor(
+    int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
   buffer_donor_.erase(BufferDonor(param_number, param_index));
   return OkStatus();
@@ -319,7 +319,7 @@ bool HloBufferDonorConfig::ParameterIsBufferDonor(
   return it != buffer_donor_.end();
 }
 
-Status HloBufferDonorConfig::Verify(const HloModule& module) const {
+absl::Status HloBufferDonorConfig::Verify(const HloModule& module) const {
   const HloComputation* entry = module.entry_computation();
   const auto& alias_config = module.input_output_alias_config();
   for (const auto& donor : buffer_donor_) {

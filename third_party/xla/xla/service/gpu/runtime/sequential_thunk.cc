@@ -28,8 +28,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using ::tsl::profiler::ScopedAnnotation;
-
 SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
     : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
 

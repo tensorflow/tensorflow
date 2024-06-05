@@ -102,29 +102,6 @@ void RemoveUnusedAndUninitializedGlobals(
 
 }  // namespace
 
-void ForAllThunks(const std::function<void(Thunk*)>& fn,
-                  ThunkSequence* thunk_sequence) {
-  for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
-    if (thunk->kind() == Thunk::kConditional) {
-      auto* cond_thunk = tensorflow::down_cast<ConditionalThunk*>(thunk.get());
-      for (const std::unique_ptr<SequentialThunk>& branch_thunks :
-           cond_thunk->branch_thunks()) {
-        ForAllThunks(fn, &branch_thunks->thunks());
-      }
-    } else if (thunk->kind() == Thunk::kSequential) {
-      auto* sequential_thunk =
-          tensorflow::down_cast<SequentialThunk*>(thunk.get());
-      ForAllThunks(fn, &sequential_thunk->thunks());
-    } else if (thunk->kind() == Thunk::kWhile) {
-      auto* while_thunk = tensorflow::down_cast<WhileThunk*>(thunk.get());
-      ForAllThunks(fn, &while_thunk->condition_thunk_sequence()->thunks());
-      ForAllThunks(fn, &while_thunk->body_thunk_sequence()->thunks());
-    } else {
-      fn(thunk.get());
-    }
-  }
-}
-
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
@@ -234,10 +211,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
-  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
-               thunk_sequence.get());
-  results.executable = std::move(thunk_sequence);
+  results.executable = ir_emitter->ConsumeThunkSequence();
 
   return results;
 }

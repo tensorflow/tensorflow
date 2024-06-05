@@ -62,7 +62,7 @@ class InterpreterCompiler : public Compiler {
   se::Platform::Id PlatformId() const override;
 
  private:
-  Status RunHloOptimization(HloModule* hlo_module);
+  absl::Status RunHloOptimization(HloModule* hlo_module);
 
   InterpreterCompiler(const InterpreterCompiler&) = delete;
   InterpreterCompiler& operator=(const InterpreterCompiler&) = delete;

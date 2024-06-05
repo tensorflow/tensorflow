@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 #include "tsl/platform/errors.h"
@@ -174,8 +173,8 @@ SplitAndCreateArraysFromHostBuffer(
                   kImmutableUntilTransferCompletes,
               [tensor, slice_idx]() {
                 // Keep tensor alive
-                LOG(INFO) << "Done with host buffer for slice " << slice_idx
-                          << " at " << tensor.data();
+                VLOG(2) << "Done with host buffer for slice " << slice_idx
+                        << " at " << tensor.data();
               }));
       arrays.push_back(std::move(array));
       device_iter++;

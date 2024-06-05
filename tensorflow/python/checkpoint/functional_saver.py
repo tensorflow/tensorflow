@@ -284,7 +284,7 @@ class MultiDeviceSaver:
 
           if (checkpoint_key, slice_spec) in self._keys_to_restore_fn:
             raise ValueError(
-                "Recieved multiple tensors with the same checkpoint key and "
+                "Received multiple tensors with the same checkpoint key and "
                 "slice spec. This is invalid because one will overwrite the "
                 "other in the checkpoint. This indicates a bug in the "
                 "Checkpoint key-generation.")

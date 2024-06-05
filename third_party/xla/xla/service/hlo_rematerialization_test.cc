@@ -47,6 +47,88 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
 
+class AsyncRematerializationTest : public RematerializationTestBase {
+ protected:
+  absl::StatusOr<bool> RunHloRematerialization(
+      int64_t memory_limit_bytes, HloModule* module,
+      const absl::flat_hash_map<HloComputation*, int64_t>&
+          async_computation_parallelism,
+      int64_t min_remat_size = 0) {
+    TF_EXPECT_OK(verifier().Run(module).status());
+    if (!module->has_schedule()) {
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
+          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      TF_EXPECT_OK(scheduler.Run(module).status());
+    }
+    HloRematerialization::RematerializationModeConfig config(
+        /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+    auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+    HloCostAnalysis cost_analysis(shape_size_func);
+    HloRematerialization::Options options(
+        cost_analysis, config, memory_limit_bytes,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+        min_remat_size, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_computation_parallelism=*/async_computation_parallelism);
+    HloRematerialization::RematerializationSizes sizes;
+    HloRematerialization remat(options, sizes);
+    return remat.Run(module, {HloInstruction::kMainExecutionThread});
+  }
+
+  static constexpr int64_t kNumParallelThreads = 16;
+};
+
+TEST_F(AsyncRematerializationTest, AsyncComputation) {
+  constexpr std::string_view hlo = R"(
+HloModule async, is_scheduled=true
+
+%offload_computation {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[1024]{0} broadcast(f32[] %reshape), dimensions={}
+  %negate = f32[1024]{0} negate(f32[1024]{0} %broadcast)
+  %concatenate = f32[2048]{0} concatenate(f32[1024]{0} %negate, f32[1024]{0} %negate), dimensions={0}
+  %slice = f32[1]{0} slice(f32[2048]{0} %concatenate), slice={[0:1]}
+  %concatenate.1 = f32[1025]{0} concatenate(f32[1024]{0} %broadcast, f32[1]{0} %slice), dimensions={0}
+  ROOT %slice.1 = f32[1]{0} slice(f32[1025]{0} %concatenate.1), slice={[0:1]}
+}
+
+%main_computation {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[1024]{0} broadcast(f32[] %reshape), dimensions={}
+  %negate = f32[1024]{0} negate(f32[1024]{0} %broadcast)
+  %concatenate = f32[2048]{0} concatenate(f32[1024]{0} %negate, f32[1024]{0} %negate), dimensions={0}
+  %slice = f32[1]{0} slice(f32[2048]{0} %concatenate), slice={[0:1]}
+  %concatenate.1 = f32[1025]{0} concatenate(f32[1024]{0} %broadcast, f32[1]{0} %slice), dimensions={0}
+  ROOT %slice.1 = f32[1]{0} slice(f32[1025]{0} %concatenate.1), slice={[0:1]}
+}
+
+ENTRY %main {
+  %param = f32[1]{0} parameter(0)
+  %call-start = ((f32[1]{0}), f32[1]{0}, s32[]) call-start(f32[1]{0} %param), to_apply=%offload_computation, async_execution_thread="offload"
+  %call-done = f32[1]{0} call-done(((f32[1]{0}), f32[1]{0}, s32[]) %call-start)
+  ROOT %call = f32[1]{0} call(f32[1]{0} %call-done), to_apply=%main_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* call_start = FindInstruction(module.get(), "call-start");
+  // Computation requires 16KB without rematerialization, but uses only 12KB
+  // with rematerialization so pick a memory limit between these values (14KB).
+  // Asynchronous computation will run on 16 devices and we do not rematerialize
+  // it, so it will reserve 16 * 16Kb from the memory limit.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHloRematerialization(
+          /*memory_limit_bytes=*/kNumParallelThreads * 16 * 1024 + 14 * 1024,
+          module.get(),
+          {{call_start->async_wrapped_computation(), kNumParallelThreads}}));
+  EXPECT_TRUE(changed);
+}
+
 // Inherits methods to create rematerializable computations. See
 // RematerializationTestBase for more.
 class RecomputeAndCompressHloRematerializationTest
@@ -80,7 +162,8 @@ class RecomputeAndCompressHloRematerializationTest
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
-        /*host_memory_offload_config=*/std::nullopt);
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     absl::StatusOr<bool> result = remat.Run(module);
@@ -1105,7 +1188,8 @@ class CompressingRematerializationTest : public RematerializationTestBase {
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, ChooseCompactLayoutForShape,
-        /*host_memory_offload_config=*/std::nullopt);
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
@@ -1314,7 +1398,8 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
-        host_memory_offload_config);
+        host_memory_offload_config,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
