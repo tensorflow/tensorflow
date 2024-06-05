@@ -539,6 +539,10 @@ struct ErrorUtil {
 template <typename T>
 struct PlatformStream {};
 
+// Context decoding for platform stream.
+//
+// Example: Ffi::Bind().Ctx<PlatformStream<cudaStream_t>()
+//                     .To([](cudaStream_t stream) { ... });
 template <typename T>
 struct CtxDecoding<PlatformStream<T>> {
   using Type = T;
@@ -554,7 +558,7 @@ struct CtxDecoding<PlatformStream<T>> {
     args.ctx = ctx;
     args.stream = nullptr;
 
-    if (XLA_FFI_Error* error = api->XLA_FFI_Stream_Get(&args); error) {
+    if (XLA_FFI_Error* error = api->XLA_FFI_Stream_Get(&args)) {
       diagnostic.Emit("Failed to get platform stream: ")
           << internal::ErrorUtil::GetErrorMessage(api, error);
       internal::ErrorUtil::DestroyError(api, error);
@@ -564,6 +568,94 @@ struct CtxDecoding<PlatformStream<T>> {
     return reinterpret_cast<T>(args.stream);
   }
 };
+
+//===----------------------------------------------------------------------===//
+// ScratchAllocator
+//===----------------------------------------------------------------------===//
+
+// Interface for "scratch" allocator for device memory, which deallocates all
+// buffers it has allocated at destruction.
+//
+// WARNING: It is illegal to keep scratch allocator alive after returning from
+// the FFI handler as it relies on execution context whose lifetime is bound to
+// the particular call to FFI handler.
+class ScratchAllocator {
+ public:
+  ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+                   DiagnosticEngine& diagnostic);
+  ~ScratchAllocator();
+
+  ScratchAllocator(ScratchAllocator&&) = default;
+  ScratchAllocator& operator=(ScratchAllocator&&) = default;
+
+  std::optional<void*> Allocate(size_t size, size_t alignment = 1);
+
+ private:
+  struct Allocation {
+    size_t size;
+    void* data;
+  };
+
+  const XLA_FFI_Api* api_;
+  XLA_FFI_ExecutionContext* ctx_;
+
+  DiagnosticEngine& diagnostic_;
+  std::vector<Allocation> allocations_;
+};
+
+// Context decoding for scratch allocator.
+//
+// Example: Ffi::Bind().Ctx<ScratchAllocator>()
+//                     .To([](ScratchAllocator scratch) { ... });
+template <>
+struct CtxDecoding<ScratchAllocator> {
+  using Type = ScratchAllocator;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return ScratchAllocator(api, ctx, diagnostic);
+  }
+};
+
+inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
+                                                       size_t alignment) {
+  XLA_FFI_DeviceMemory_Allocate_Args args;
+  args.struct_size = XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.ctx = ctx_;
+  args.size = size;
+  args.alignment = alignment;
+  args.data = nullptr;
+  if (XLA_FFI_Error* error = api_->XLA_FFI_DeviceMemory_Allocate(&args)) {
+    diagnostic_.Emit("Failed to allocate scratch memory: ")
+        << internal::ErrorUtil::GetErrorMessage(api_, error);
+    internal::ErrorUtil::DestroyError(api_, error);
+    return std::nullopt;
+  }
+  return args.data;
+}
+
+inline ScratchAllocator::ScratchAllocator(const XLA_FFI_Api* api,
+                                          XLA_FFI_ExecutionContext* ctx,
+                                          DiagnosticEngine& diagnostic)
+    : api_(api), ctx_(ctx), diagnostic_(diagnostic) {}
+
+inline ScratchAllocator::~ScratchAllocator() {
+  for (Allocation& alloc : allocations_) {
+    XLA_FFI_DeviceMemory_Free_Args args;
+    args.struct_size = XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.ctx = ctx_;
+    args.size = alloc.size;
+    args.data = alloc.data;
+    if (XLA_FFI_Error* error = api_->XLA_FFI_DeviceMemory_Free(&args)) {
+      diagnostic_.Emit("Failed to free scratch memory: ")
+          << internal::ErrorUtil::GetErrorMessage(api_, error);
+      internal::ErrorUtil::DestroyError(api_, error);
+    }
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // UserData
@@ -591,10 +683,15 @@ inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
       xla_ffi_type_##N##_registered_ =                 \
           [] { return ::xla::ffi::RegisterType(API, NAME, TYPE_ID); }()
 
-// A type tag for automatic decoding user data passed via the execution context.
+// A type tag for automatic decoding user data passed via the execution
+// context.
 template <typename T>
 struct UserData {};
 
+// Context decoding for user data of type `T`.
+//
+// Example: Ffi::Bind().Ctx<UserData<MyData>>()
+//                     .To([](MyData* data) { ... });
 template <typename T>
 struct CtxDecoding<UserData<T>> {
   using Type = T*;

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -495,6 +496,48 @@ TEST(FfiTest, UserData) {
 
   CallOptions options;
   options.execution_context = &execution_context;
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, ScratchAllocator) {
+  static void* kAddr = reinterpret_cast<void*>(0xDEADBEEF);
+
+  // A test only memory allocator that returns a fixed memory address.
+  struct TestDeviceMemoryAllocator final : public se::DeviceMemoryAllocator {
+    TestDeviceMemoryAllocator() : se::DeviceMemoryAllocator(nullptr) {}
+
+    absl::StatusOr<se::OwningDeviceMemory> Allocate(int, uint64_t size, bool,
+                                                    int64_t) final {
+      return se::OwningDeviceMemory(se::DeviceMemoryBase(kAddr, size), 0, this);
+    }
+
+    absl::Status Deallocate(int, se::DeviceMemoryBase mem) final {
+      EXPECT_EQ(mem.opaque(), kAddr);
+      return absl::OkStatus();
+    }
+
+    absl::StatusOr<se::Stream*> GetStream(int) final {
+      return absl::UnimplementedError("Not implemented");
+    }
+  };
+
+  auto fn = [&](ScratchAllocator scratch_allocator) {
+    auto mem = scratch_allocator.Allocate(1024);
+    EXPECT_EQ(*mem, kAddr);
+    return Error::Success();
+  };
+
+  TestDeviceMemoryAllocator allocator;
+
+  auto handler = Ffi::Bind().Ctx<ScratchAllocator>().To(fn);
+
+  CallFrame call_frame = CallFrameBuilder().Build();
+
+  CallOptions options;
+  options.allocator = &allocator;
 
   auto status = Call(*handler, call_frame, options);
 

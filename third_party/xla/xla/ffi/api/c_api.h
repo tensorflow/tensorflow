@@ -429,6 +429,41 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Stream_Get_Args, stream);
 typedef XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
+// Device memory allocation
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_DeviceMemory_Allocate_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  size_t size;
+  size_t alignment;
+  void* data;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_DeviceMemory_Allocate_Args, data);
+
+// Allocates a block of memory on the device bound to the execution context.
+typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
+    XLA_FFI_DeviceMemory_Allocate_Args* args);
+
+struct XLA_FFI_DeviceMemory_Free_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  size_t size;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_DeviceMemory_Free_Args, data);
+
+// Frees previously allocated device memory.
+typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
+    XLA_FFI_DeviceMemory_Free_Args* args);
+
+//===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
 
@@ -447,6 +482,8 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_TypeId_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD
