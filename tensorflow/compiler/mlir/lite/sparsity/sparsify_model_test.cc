@@ -27,7 +27,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
@@ -36,10 +35,6 @@ namespace mlir {
 namespace lite {
 namespace {
 
-class NoopErrorReporter : public ::tflite::ErrorReporter {
- public:
-  int Report(const char* format, std::va_list args) override { return 0; }
-};
 
 TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
   std::string expected_key = tflite::optimize::kTfLiteReducedPrecisionKey;
@@ -63,8 +58,7 @@ TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
 
   // Sparsify and create output model
   flatbuffers::FlatBufferBuilder output_builder;
-  NoopErrorReporter reporter;
-  ASSERT_EQ(SparsifyModel(input_model, &output_builder, &reporter), kTfLiteOk);
+  ASSERT_EQ(SparsifyModel(input_model, &output_builder), kTfLiteOk);
   auto output_fbm = tflite::FlatBufferModel::BuildFromBuffer(
       reinterpret_cast<const char*>(output_builder.GetCurrentBufferPointer()),
       output_builder.GetSize());
