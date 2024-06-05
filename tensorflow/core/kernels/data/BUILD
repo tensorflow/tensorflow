@@ -297,6 +297,7 @@ tf_kernel_library(
         "//tensorflow/core/data:serialization_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
