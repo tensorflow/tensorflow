@@ -62,13 +62,13 @@ xla_cc_binary(
 )
 
 xla_cc_binary(
-    name = "cuda_hlo_runner_main",
+    name = "hlo_runner_main_gpu",
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
     tags = [
         "gpu",
         "nomac",
-    ],
+    ] + tf_gpu_tests_tags(),
     deps = [
         ":functional_hlo_runner",
         ":hlo_runner_flags",
@@ -81,7 +81,6 @@ xla_cc_binary(
         "//xla/pjrt/distributed:service",
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
-        "//xla/stream_executor:cuda_platform",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -91,7 +90,11 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_google([
+    ] + if_cuda([
+        "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]) + if_google([
         "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
     ]),
 )

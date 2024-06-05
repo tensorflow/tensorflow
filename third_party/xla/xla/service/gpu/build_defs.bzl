@@ -77,7 +77,7 @@ def gen_gpu_hlo_compile_tests(
     """Macro to generate Bazel tests for compiling HLO files on a GPU.
 
     This macro creates individual Bazel test targets for each specified HLO file.
-    These tests use the `cuda_hlo_runner_main` binary to attempt to compile the HLO
+    These tests use the `hlo_runner_main_gpu` binary to attempt to compile the HLO
     files.
 
     Parses num_hosts, num_devices_per_host and num_replicas for each filename in `hlo_files`.
@@ -181,6 +181,6 @@ def gen_gpu_hlo_compile_tests(
                     "--use_spmd_partitioning=true",
                     hlo_path,
                 ] + xla_flags,
-                data = ["//xla/tools/multihost_hlo_runner:cuda_hlo_runner_main", data_label],
+                data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu", data_label],
                 tags = backend_tags[backend] + ["requires-mem:16g"] + tags,
             )
