@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any
-
 class MergerException(Exception): ...
 
-def MergerRead(*args, **kwargs) -> Any: ...
+def MergerRead(*args, **kwargs): ...
