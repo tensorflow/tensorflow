@@ -784,8 +784,17 @@ void Interval::Print(std::ostream& out) const {
   out << '[' << lower << ", " << upper << "]";
 }
 
+int64_t Interval::GetLoopTripCount() const {
+  if (!IsFeasible()) {
+    return 0;
+  }
+  DCHECK((static_cast<absl::int128>(upper) - lower + 1) <=
+         std::numeric_limits<int64_t>::max());
+  return upper - lower + 1;
+}
+
 Interval::ComparisonResult Interval::operator>(const Interval& b) const {
-  if (NumElements() == 0 || b.NumElements() == 0) {
+  if (!IsFeasible() || !b.IsFeasible()) {
     return {std::nullopt};
   }
   if (lower > b.upper) {
@@ -799,7 +808,7 @@ Interval::ComparisonResult Interval::operator>(const Interval& b) const {
 
 Interval::ComparisonResult Interval::operator==(const Interval& b) const {
   Interval intersection = Intersect(b);
-  if (intersection.NumElements() == 0) return {false};
+  if (!intersection.IsFeasible()) return {false};
   if (intersection.IsPoint() && IsPoint() && b.IsPoint()) {
     return {true};
   }

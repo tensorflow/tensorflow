@@ -259,6 +259,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_use_shardonnay(false);
 
+  opts.set_xla_gpu_shard_autotuning(false);
+
   return opts;
 }
 
@@ -1706,6 +1708,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_use_shardonnay",
       bool_setter_for(&DebugOptions::set_xla_use_shardonnay),
       debug_options->xla_use_shardonnay(), "Whether to use Shardonnay."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_shard_autotuning",
+      bool_setter_for(&DebugOptions::set_xla_gpu_shard_autotuning),
+      debug_options->xla_gpu_shard_autotuning(),
+      "Shard autotuning between participating compiler processes (typically in "
+      "multi-host setups) and join the results when it's done."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

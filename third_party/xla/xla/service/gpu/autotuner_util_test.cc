@@ -81,6 +81,8 @@ results {
   }
 })";
 
+  void SetUp() override { AutotunerUtil::ClearAutotuneResults(); }
+
   std::string GetUniqueTempFilePath(absl::string_view suffix) {
     std::string filename = TempDir();
     CHECK(tsl::Env::Default()->CreateUniqueFileName(&filename,
@@ -112,21 +114,20 @@ results {
 };
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                          &results));
+  EXPECT_GT(results.results_size(), 0);
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
@@ -136,9 +137,8 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
@@ -147,27 +147,36 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_Protobuf) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {

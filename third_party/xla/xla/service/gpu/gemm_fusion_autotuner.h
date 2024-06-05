@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -49,10 +50,12 @@ class GemmFusionAutotuner : public HloModulePass {
  public:
   explicit GemmFusionAutotuner(const AutotuneConfig& config,
                                const int32_t toolkit_version,
-                               tsl::thread::ThreadPool* thread_pool)
+                               tsl::thread::ThreadPool* thread_pool,
+                               const MultiProcessKeyValueStore& key_value_store)
       : config_(config),
         toolkit_version_(toolkit_version),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        key_value_store_(key_value_store) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
@@ -65,6 +68,7 @@ class GemmFusionAutotuner : public HloModulePass {
   const AutotuneConfig config_;
   const int32_t toolkit_version_;
   tsl::thread::ThreadPool* thread_pool_;
+  MultiProcessKeyValueStore key_value_store_;
 };
 
 // Autotuner implementation.

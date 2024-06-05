@@ -168,6 +168,7 @@ xla_test(
         "gpu",
     ],
     data = [
+        "data/multiple_gemm_fusions.hlo",
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",
         "data/single_device.hlo",
@@ -179,8 +180,8 @@ xla_test(
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
         "//xla/tests:filecheck",
-        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",

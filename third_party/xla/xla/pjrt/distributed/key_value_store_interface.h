@@ -45,6 +45,12 @@ class KeyValueStoreInterface {
   virtual absl::Status Set(std::string_view key, std::string_view value) = 0;
 };
 
+struct MultiProcessKeyValueStore {
+  std::shared_ptr<KeyValueStoreInterface> key_value_store;
+  int process_index = 0;
+  int process_count = 1;
+};
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_KEY_VALUE_STORE_INTERFACE_H_
