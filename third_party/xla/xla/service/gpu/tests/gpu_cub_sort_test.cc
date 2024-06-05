@@ -33,6 +33,15 @@ namespace xla {
 namespace gpu {
 namespace {
 
+bool HloWasRewrittenToUseCubSort(const HloModule& module) {
+  for (const auto& pass_metadata : module.metadata().proto().pass_metadata()) {
+    if (pass_metadata.pass_name() == "gpu-sort-rewriter") {
+      return pass_metadata.module_changed();
+    }
+  }
+  return false;
+}
+
 // ----- Sort keys
 
 class CubSortKeysTest : public HloTestBase,
@@ -60,6 +69,11 @@ ENTRY main {
       kHloTpl,
       primitive_util::LowercasePrimitiveTypeName(std::get<0>(GetParam())),
       std::get<1>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                          GetOptimizedModule(hlo_str));
+  EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
@@ -94,6 +108,10 @@ HloModule TestSortPairs
 compare {
   %lhs = $0[] parameter(0)
   %rhs = $0[] parameter(1)
+  // Note that only the keys (first operand of `sort`) are sorted and the values
+  // (second operand of `sort`) are ignored. For the case where this sort is
+  // part of a TopK decomposition, this works fine, because CUB sort is stable
+  // and `values` are actually the unique indices, produced by an iota.
   %v0 = $1[] parameter(2)
   %v1 = $1[] parameter(3)
   ROOT %comp = pred[] compare(%lhs, %rhs), direction=$2
@@ -110,6 +128,11 @@ ENTRY main {
       primitive_util::LowercasePrimitiveTypeName(std::get<0>(GetParam())),
       primitive_util::LowercasePrimitiveTypeName(std::get<1>(GetParam())),
       std::get<2>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                          GetOptimizedModule(hlo_str));
+  EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));

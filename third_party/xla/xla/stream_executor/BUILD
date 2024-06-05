@@ -882,6 +882,11 @@ alias(
     actual = "//xla/stream_executor/rocm:all_runtime",
 )
 
+alias(
+    name = "sycl_platform",
+    actual = "//xla/stream_executor/sycl:all_runtime",
+)
+
 # TODO(ezhulenev): This should be removed.
 cc_library(
     name = "stream_executor_bundle",

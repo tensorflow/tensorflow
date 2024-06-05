@@ -1004,6 +1004,7 @@ xla_test(
 
 xla_test(
     name = "gpu_cub_sort_test",
+    size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
     shard_count = 15,

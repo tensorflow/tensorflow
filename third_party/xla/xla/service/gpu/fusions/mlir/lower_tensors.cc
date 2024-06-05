@@ -265,6 +265,22 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
+// Swaps pairs of values in the vector: [0, 1, 2, 3] -> [1, 0, 3, 2].
+Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
+  // There is a `vector.extract_strided_slice` op that would be useful here, but
+  // it actually requires the strides to be 1.
+  auto ty = mlir::cast<mlir::VectorType>(vector.getType());
+  int size = ty.getNumElements();
+  Value result = vector;
+  for (int i = 0; i < size; i += 2) {
+    auto v0 = b.create<mlir::vector::ExtractOp>(vector, i);
+    auto v1 = b.create<mlir::vector::ExtractOp>(vector, i + 1);
+    result = b.create<mlir::vector::InsertOp>(v1, result, i);
+    result = b.create<mlir::vector::InsertOp>(v0, result, i + 1);
+  }
+  return result;
+}
+
 struct RewriteTransferRead
     : mlir::OpRewritePattern<mlir::vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -284,22 +300,28 @@ struct RewriteTransferRead
     if (vector_type.getElementType().isInteger(1)) {
       vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
     }
-    auto gep =
-        CreateGep(source, linear_index, rewriter, vector_type.getElementType());
+    mlir::Type gep_element_type = vector_type.getElementType();
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      gep_element_type = b.getI8Type();
+    }
+    auto gep = CreateGep(source, linear_index, rewriter, gep_element_type);
 
-    mlir::LLVMTypeConverter converter(rewriter.getContext());
+    mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
-    auto loc = op.getLoc();
     auto loaded =
-        rewriter.create<mlir::LLVM::LoadOp>(loc, llvm_vector_type, gep)
-            .getResult();
+        b.create<mlir::LLVM::LoadOp>(llvm_vector_type, gep).getResult();
 
     if (source.getType().getElementType().isInteger(1)) {
-      Value zero = rewriter.create<mlir::arith::ConstantOp>(
-          loc,
+      Value zero = b.create<mlir::arith::ConstantOp>(
           mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
-      loaded = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
-                                              loaded, zero);
+      loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
+    } else if (source.getType().getElementType().isInteger(4)) {
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      loaded = PermutePairsInVector(loaded, b);
     }
 
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
@@ -381,13 +403,22 @@ struct RewriteTransferWrite
     auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
     auto element_type = tensor_dest.getType().getElementType();
 
-    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
     mlir::Value vector_value = op.getVector();
     if (op.getVectorType().getElementType().isInteger(1)) {
       vector_value = b.create<arith::ExtUIOp>(
           op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
           vector_value);
     }
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      element_type = rewriter.getI8Type();
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      vector_value = PermutePairsInVector(vector_value, b);
+    }
+    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());

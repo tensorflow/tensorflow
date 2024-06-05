@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
@@ -160,6 +161,10 @@ class Compiler {
     // Registry of MLIR dialects and plugins to be loaded during optimization.
     // If non-null, it will be used to construct relevant MLIR contexts.
     mlir::DialectRegistry* registry = nullptr;
+
+    int process_index = 0;
+    int process_count = 1;
+    std::shared_ptr<KeyValueStoreInterface> key_value_store;
   };
 
   virtual ~Compiler() = default;
