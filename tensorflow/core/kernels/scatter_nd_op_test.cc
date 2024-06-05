@@ -180,12 +180,12 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 99});
+  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "indices[2] = [99] does not index into shape [5,3]"))
+      s.ToString(), "indices[1] = [99] does not index into shape [5,3]"))
       << s;
 }
 
