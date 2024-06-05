@@ -154,6 +154,7 @@ release. It may break some edge cases of TensorFlow API usage.
       delegate features.
     * Flatbuffer version update:
         * `GetTemporaryPointer()` bug fixed.
+    * Add int64 data type support for dynamic update slice's indice tensor. 
 
 * `tf.data`
     * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written

@@ -4052,7 +4052,7 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   let arguments = (ins
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
-    TFL_I32Tensor:$start_indices
+    TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (

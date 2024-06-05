@@ -352,7 +352,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_DYNAMIC_UPDATE_SLICE,
-             Register_DYNAMIC_UPDATE_SLICE());
+             Register_DYNAMIC_UPDATE_SLICE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_PROD,
              Register_UNSORTED_SEGMENT_PROD());
   AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MAX,
