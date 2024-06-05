@@ -177,15 +177,6 @@ class GpuExecutable : public Executable {
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);
 
-  // If `block_host_until_done` is false, execution will not block the host
-  // until the kernels have completed. This is used as an optimization for
-  // clients, such as Tensorflow, that use a single stream of execution for
-  // computations, and allow host-side deallocation from the allocator before
-  // GPU execution completes.
-  absl::Status ExecuteThunksOrXlaRuntime(
-      const ServiceExecutableRunOptions* run_options,
-      const BufferAllocations& buffer_allocations, bool block_host_until_done);
-
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
