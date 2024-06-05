@@ -36,6 +36,8 @@ class WhileThunk final : public Thunk {
 
   absl::Status Execute(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const final;
+
  private:
   BufferAllocation::Slice cond_buffer_;
   ThunkSequence cond_sequence_;

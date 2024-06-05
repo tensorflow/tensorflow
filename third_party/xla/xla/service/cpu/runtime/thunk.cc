@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/runtime/buffer_use.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -80,6 +81,15 @@ absl::Status ThunkSequence::Execute(const Thunk::ExecuteParams& params) {
     TF_RETURN_IF_ERROR(thunk->Execute(params));
   }
   return absl::OkStatus();
+}
+
+ThunkSequence::BufferUses ThunkSequence::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (auto& thunk : *this) {
+    BufferUses uses = thunk->buffer_uses();
+    buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
+  }
+  return buffer_uses;
 }
 
 }  // namespace xla::cpu

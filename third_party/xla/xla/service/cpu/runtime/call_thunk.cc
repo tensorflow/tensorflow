@@ -32,4 +32,8 @@ absl::Status CallThunk::Execute(const ExecuteParams& params) {
   return called_sequence_.Execute(params);
 }
 
+CallThunk::BufferUses CallThunk::buffer_uses() const {
+  return called_sequence_.buffer_uses();
+}
+
 }  // namespace xla::cpu

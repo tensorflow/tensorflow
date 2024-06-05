@@ -37,6 +37,8 @@ class OutfeedThunk final : public Thunk {
 
   absl::Status Execute(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const final;
+
  private:
   std::vector<OutfeedBuffer> outfeed_buffers_;
 };

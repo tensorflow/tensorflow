@@ -76,4 +76,15 @@ absl::Status ConditionalThunk::Execute(const ExecuteParams& params) {
                   branch_index_buffer_.size());
 }
 
+ConditionalThunk::BufferUses ConditionalThunk::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (const auto& branch_sequence : branch_sequences_) {
+    for (const auto& thunk : branch_sequence) {
+      BufferUses uses = thunk->buffer_uses();
+      buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
+    }
+  }
+  return buffer_uses;
+}
+
 }  // namespace xla::cpu

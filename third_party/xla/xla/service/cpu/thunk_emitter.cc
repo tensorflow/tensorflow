@@ -249,7 +249,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        buffers.arguments, buffers.results,
                                         kernel.name, se::ThreadDim());
 }
 
@@ -261,7 +262,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        buffers.arguments, buffers.results,
                                         kernel.name, se::ThreadDim());
 }
 
@@ -273,7 +275,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
 
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), buffers,
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                        buffers.arguments, buffers.results,
                                         kernel.name, se::ThreadDim());
 }
 
@@ -360,21 +363,26 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
                                        std::move(body_thunk));
 }
 
-absl::StatusOr<std::vector<BufferAllocation::Slice>>
+absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
 ThunkEmitter::GetHostKernelAllocationSlices(const HloInstruction* instruction) {
-  std::vector<BufferAllocation::Slice> buffers;
-  auto add_buffers = [&](const HloInstruction* instr) -> absl::Status {
+  HostKernelAllocationSlices slices;
+
+  auto add_buffers = [&](std::vector<BufferAllocation::Slice>& buffers,
+                         const HloInstruction* instr) -> absl::Status {
     for (const auto& indexed : ShapeUtil::GetLeafShapes(instr->shape())) {
       TF_ASSIGN_OR_RETURN(buffers.emplace_back(),
                           GetAllocationSlice(instr, indexed.index));
     }
     return absl::OkStatus();
   };
+
   for (HloInstruction* operand : instruction->operands()) {
-    TF_RETURN_IF_ERROR(add_buffers(operand));
+    TF_RETURN_IF_ERROR(add_buffers(slices.arguments, operand));
   }
-  TF_RETURN_IF_ERROR(add_buffers(instruction));
-  return buffers;
+
+  TF_RETURN_IF_ERROR(add_buffers(slices.results, instruction));
+
+  return slices;
 }
 
 }  // namespace xla::cpu

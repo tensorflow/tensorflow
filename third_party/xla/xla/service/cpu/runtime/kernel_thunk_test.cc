@@ -68,9 +68,9 @@ TEST(KernelThunkTest, AddF32) {
 
   BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
   BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
-  std::vector<BufferAllocation::Slice> slices = {in_slice, out_slice};
 
-  KernelThunk thunk({"add_f32"}, slices, "add_f32", se::ThreadDim(4));
+  KernelThunk thunk({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+                    se::ThreadDim(4));
 
   AddF32HostKernels host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};

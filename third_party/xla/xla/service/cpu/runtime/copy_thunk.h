@@ -16,12 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_COPY_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_COPY_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "xla/pjrt/transpose.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
@@ -38,6 +37,11 @@ class CopyThunk final : public Thunk {
             const Shape& destination_shape);
 
   absl::Status Execute(const ExecuteParams& params) final;
+
+  BufferUses buffer_uses() const final {
+    return {{source_buffer_, BufferUse::kRead},
+            {destination_buffer_, BufferUse::kWrite}};
+  }
 
  private:
   BufferAllocation::Slice source_buffer_;

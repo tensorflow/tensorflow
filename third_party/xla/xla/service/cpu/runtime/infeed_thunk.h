@@ -38,6 +38,8 @@ class InfeedThunk final : public Thunk {
 
   absl::Status Execute(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const final;
+
  private:
   std::vector<InfeedBuffer> infeed_buffers_;
 };

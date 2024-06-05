@@ -29,6 +29,8 @@ class CallThunk final : public Thunk {
 
   absl::Status Execute(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const final;
+
  private:
   ThunkSequence called_sequence_;
 };

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/xfeed_manager.h"
@@ -80,6 +81,14 @@ absl::Status InfeedThunk::Execute(const ExecuteParams& params) {
   }
 
   return absl::OkStatus();
+}
+
+InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
+    buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
+  }
+  return buffer_uses;
 }
 
 }  // namespace xla::cpu

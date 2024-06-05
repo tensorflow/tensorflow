@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
@@ -36,11 +37,13 @@ limitations under the License.
 
 namespace xla::cpu {
 
-KernelThunk::KernelThunk(Info info,
-                         absl::Span<const BufferAllocation::Slice> buffers,
-                         std::string kernel_name, se::ThreadDim thread_dim)
+KernelThunk::KernelThunk(
+    Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
+    absl::Span<const BufferAllocation::Slice> results_buffers,
+    std::string kernel_name, se::ThreadDim thread_dim)
     : Thunk(Kind::kKernel, std::move(info)),
-      buffers_(buffers.begin(), buffers.end()),
+      arguments_buffers_(arguments_buffers.begin(), arguments_buffers.end()),
+      results_buffers_(results_buffers.begin(), results_buffers.end()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim) {}
 
@@ -48,17 +51,28 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat(
-      "Launch host kernel %s with %d buffer arguments: %s", kernel_name_,
-      buffers_.size(), thread_dim_.ToString());
+      "Launch host kernel %s with %d arguments buffers and %d results buffers: "
+      "#threads=%s",
+      kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
+      thread_dim_.ToString());
 
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffers_data;
-  buffers_data.reserve(buffers_.size());
+  buffers_data.reserve(arguments_buffers_.size() + results_buffers_.size());
 
   int64_t arg_num = 0;
-  for (BufferAllocation::Slice& buffer : buffers_) {
+  for (BufferAllocation::Slice& buffer : arguments_buffers_) {
     TF_ASSIGN_OR_RETURN(buffers_data.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(buffer));
     VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", arg_num++,
+                                  buffer.ToString(),
+                                  buffers_data.back().opaque());
+  }
+
+  int64_t res_num = 0;
+  for (BufferAllocation::Slice& buffer : results_buffers_) {
+    TF_ASSIGN_OR_RETURN(buffers_data.emplace_back(),
+                        params.buffer_allocations->GetDeviceAddress(buffer));
+    VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)", res_num++,
                                   buffer.ToString(),
                                   buffers_data.back().opaque());
   }
@@ -70,10 +84,21 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
 
   // TODO(ezhulenev): Instead of using HostKernel directly we should be going
   // through the stream executor APIs.
-  se::host::HostKernel kernel(buffers_.size(), kernel_ptr, nullptr);
+  se::host::HostKernel kernel(buffers_data.size(), kernel_ptr, nullptr);
   TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
 
   return absl::OkStatus();
+}
+
+KernelThunk::BufferUses KernelThunk::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
+    buffer_uses.emplace_back(buffer, BufferUse::kRead);
+  }
+  for (const BufferAllocation::Slice& buffer : results_buffers_) {
+    buffer_uses.emplace_back(buffer, BufferUse::kWrite);
+  }
+  return buffer_uses;
 }
 
 }  // namespace xla::cpu

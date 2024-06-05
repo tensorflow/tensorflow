@@ -31,6 +31,8 @@ class ConditionalThunk final : public Thunk {
 
   absl::Status Execute(const ExecuteParams& params) final;
 
+  BufferUses buffer_uses() const final;
+
  private:
   BufferAllocation::Slice branch_index_buffer_;
   std::vector<ThunkSequence> branch_sequences_;
