@@ -15,16 +15,24 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk_executor.h"
 
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -73,6 +81,76 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
   }
 
   return ThunkExecutor(std::move(thunk_sequence), std::move(defs));
+}
+
+ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
+                                          TaskRunner runner)
+    : executor(executor),
+      runner(std::move(runner)),
+      counters(executor->nodes_defs().size()),
+      nodes(executor->nodes_defs().size()),
+      done(executor->sink().size()) {
+  for (NodeId id = 0; id < nodes.size(); ++id) {
+    const NodeDef& node_def = executor->node_def(id);
+    counters[id].store(node_def.in_edges.size(), std::memory_order_relaxed);
+    nodes[id] = Node{id, &counters[id], &node_def.out_edges};
+  }
+}
+
+absl::Status ThunkExecutor::Execute(const Thunk::ExecuteParams& params,
+                                    TaskRunner runner) {
+  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
+
+  ReadyQueue ready_queue(source_.begin(), source_.end());
+  TF_RETURN_IF_ERROR(Execute(state.get(), params, std::move(ready_queue)));
+
+  tsl::profiler::TraceMe trace("ThunkExecutor::Execute (wait for done)");
+  state->done.Wait();
+
+  return absl::OkStatus();
+}
+
+absl::Status ThunkExecutor::Execute(ExecuteState* state,
+                                    const Thunk::ExecuteParams& params,
+                                    ReadyQueue ready_queue) {
+  tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
+  CHECK(!ready_queue.empty()) << "Ready queue must not be empty";
+
+  for (int64_t i = 0; i < ready_queue.size(); ++i) {
+    NodeId id = ready_queue[i];
+    Node& node = state->nodes[id];
+
+    // Push the tail of the ready queue to the task runner.
+    if (i < ready_queue.size() - 1) {
+      ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
+      ready_queue.erase(ready_queue.begin() + i + 1, ready_queue.end());
+      state->runner([&params, state, tail = std::move(tail)]() mutable {
+        // TODO(ezhulenev): Add proper error handling.
+        CHECK_OK(state->executor->Execute(state, params, std::move(tail)));
+      });
+    }
+
+    // Execute thunk for the given node id.
+    Thunk& thunk = *state->executor->thunk_sequence_[id];
+    // TODO(ezhulenev): Add proper error handling.
+    CHECK_OK(thunk.Execute(params));
+
+    // Append ready nodes to the back of the queue.
+    for (NodeId out_edge : *node.out_edges) {
+      Node& out_node = state->nodes[out_edge];
+
+      int64_t cnt = out_node.counter->fetch_sub(1, std::memory_order_relaxed);
+      DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
+      if (cnt == 1) ready_queue.push_back(out_edge);
+    }
+
+    // Drop done counter if the node has no out-edges.
+    if (node.out_edges->empty()) {
+      state->done.DecrementCount();
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 std::string ThunkExecutor::ToString() const {
