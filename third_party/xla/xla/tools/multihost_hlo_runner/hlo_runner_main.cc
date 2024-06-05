@@ -93,9 +93,6 @@ struct HloRunnerConfig {
   bool disable_all_hlo_passes = false;
   bool use_spmd_partitioning = false;
   bool is_spmd_partitioned_module = false;
-  std::string xla_dump_to = "";
-  bool xla_dump_as_text = false;
-  bool xla_dump_as_proto = false;
   std::string hlo_argument_mode = "use_random_inputs";
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
@@ -190,15 +187,6 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   out.num_partitions = opts.num_partitions < 0
                            ? std::nullopt
                            : std::optional<int>(opts.num_partitions);
-  out.xla_dump_to = opts.xla_dump_to;
-  out.xla_text_dump_mode =
-      opts.xla_dump_as_text
-          ? FunctionalHloRunner::XlaTextDumpMode::kDumpAsText
-          : FunctionalHloRunner::XlaTextDumpMode::kNotDumpAsText;
-  out.xla_proto_dump_mode =
-      opts.xla_dump_as_proto
-          ? FunctionalHloRunner::XlaProtoDumpMode::kDumpAsProto
-          : FunctionalHloRunner::XlaProtoDumpMode::kNotDumpAsProto;
   return out;
 }
 
@@ -293,12 +281,6 @@ int main(int argc, char** argv) {
                 "The module is the partitioned result of SPMD. Setting this "
                 "flag also "
                 "disables all HLO passes and sets use_spmd_partitioning."),
-      tsl::Flag("xla_dump_to", &opts.xla_dump_to,
-                "A directory to dump xla debug data to."),
-      tsl::Flag("xla_dump_as_text", &opts.xla_dump_as_text,
-                "Whether to dump xla debug data as text."),
-      tsl::Flag("xla_dump_as_proto", &opts.xla_dump_as_proto,
-                "Whether to dump xla debug data as protobuf."),
       tsl::Flag("hlo_argument_mode", &opts.hlo_argument_mode,
                 "Specify how arguments to the HLO module are generated. "
                 "Accepted values: "
