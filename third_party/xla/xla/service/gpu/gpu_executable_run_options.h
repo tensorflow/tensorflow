@@ -67,21 +67,9 @@ class GpuExecutableRunOptions {
     return *this;
   }
 
-  enum class MockNcclTopoModel { kGCPA3, kNvidia };
-  // Gets the nccl network topology used in mocking calls.
-  MockNcclTopoModel mock_nccl_topo_model() const {
-    return mock_nccl_topo_model_;
-  }
-  GpuExecutableRunOptions& set_mock_nccl_topo_model(
-      MockNcclTopoModel mock_nccl_topo_model) {
-    mock_nccl_topo_model_ = mock_nccl_topo_model;
-    return *this;
-  }
-
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_nccl_collectives_ = false;
-  MockNcclTopoModel mock_nccl_topo_model_ = MockNcclTopoModel::kGCPA3;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   NcclCliqueIdCallback nccl_clique_id_callback_;
 };
