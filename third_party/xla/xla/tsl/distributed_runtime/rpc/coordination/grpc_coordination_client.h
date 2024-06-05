@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "third_party/grpc/include/grpcpp/channel.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"
 

@@ -36,6 +36,7 @@ cc_library(
     srcs = ["grpc_coordination_service_impl.cc"],
     hdrs = ["grpc_coordination_service_impl.h"],
     deps = [
+        "//third_party/grpc:gpr",
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
