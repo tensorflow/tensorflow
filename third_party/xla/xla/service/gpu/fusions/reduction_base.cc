@@ -77,6 +77,26 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
     return 1;
   }
 
+  if (for_mlir) {
+    // MLIR vectorizes loads/stores explicitly and therefore doesn't need
+    // unrolling and the associated heuristics.
+
+    // 16 byte vector loads are often slower than 8 byte loads.
+    if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
+      return 2;
+    }
+    if (analysis.input_output_info().smallest_input_dtype_bits >= 64) {
+      return 1;
+    }
+
+    // Like above, if the size of the minor dimension is not sufficiently large,
+    // the vectorization is not helpful.
+    if (num_threads * 4 > minor_dim) {
+      return 2;
+    }
+    return minor_dim % 4 == 0 ? 4 : 2;
+  }
+
   if (MayPreventVectorization(analysis.fusion())) {
     return 1;
   }
@@ -101,11 +121,7 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
     return 1;
   }
 
-  if (!for_mlir) {
-    return 1;
-  }
-
-  return minor_dim % 4 == 0 ? 4 : 2;
+  return 1;
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,

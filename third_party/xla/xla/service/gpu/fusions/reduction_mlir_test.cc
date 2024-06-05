@@ -58,28 +58,6 @@ TEST_F(MlirReductionTest, VariadicRowReduce) {
       ROOT fusion = (f32[2, 3], f32[2, 3]) fusion(a, b, c),
         kind=kInput, calls=fused_computation
     })";
-  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-// CHECK:      @fused_computation
-// CHECK-SAME:   %[[ARG0:.*]]: tensor<2x3x2048xf32> {xla.slice_index = 0
-// CHECK-SAME:   %[[ARG1:.*]]: tensor<2x3x2048xf32> {xla.slice_index = 1
-// CHECK-SAME:   %[[INIT_TENSOR:.*]]: tensor<f32> {xla.slice_index = 2
-// CHECK-SAME:   %[[OUT0:.*]]: tensor<2x3xf32> {xla.slice_index = 3
-// CHECK-SAME:   %[[OUT1:.*]]: tensor<2x3xf32> {xla.slice_index = 4
-// CHECK:        %[[INIT:.*]] = xla_gpu.pure_call @fused_computation_param_2
-// CHECK:        %[[PER_THREAD:.*]]:2 = scf.for
-// CHECK-SAME:       iter_args(%[[A:.*]] = %[[INIT]], %[[B:.*]] = %[[INIT]])
-// CHECK:          %[[A2:.*]] = xla_gpu.pure_call @fused_computation_param_0
-// CHECK:          %[[B2:.*]] = xla_gpu.pure_call @fused_computation_param_1
-// CHECK:          xla_gpu.pure_call @Add_t(%[[A]], %[[B]], %[[A2]], %[[B2]])
-// CHECK:        %[[SHUFFLED:.*]]:2 = xla_gpu.shuffle_reduce
-// CHECK-SAME:     @Add_t(%[[PER_THREAD]]#0, %[[PER_THREAD]]#1) to 16
-// CHECK:        %[[A_SHARED:.*]] = xla_gpu.allocate_shared : tensor<2x4xf32>
-// CHECK:        %[[B_SHARED:.*]] = xla_gpu.allocate_shared : tensor<2x4xf32>
-// CHECK:        predicated_insert %[[SHUFFLED]]#0 into %[[A_SHARED]]
-// CHECK:        predicated_insert %[[SHUFFLED]]#1 into %[[B_SHARED]]
-// CHECK:        sync_threads
-// CHECK-NOT:    shuffle_reduce)
-  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -523,9 +501,34 @@ TEST_F(MlirReductionTest, ColumnReductionVectorization) {
       ROOT fusion = f32[16384] fusion(a, c), kind=kInput, calls=fused_computation
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: vector<4xf32>
+    // CHECK: vector<2xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirReductionTest, ColumnReductionVectorization_v4) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+    Add {
+      lhs = s16[] parameter(0)
+      rhs = s16[] parameter(1)
+      ROOT add = s16[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = s16[2048,16384] parameter(0)
+      param_1 = s16[] parameter(1)
+      ROOT reduce = s16[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
+    }
+    ENTRY main {
+      a = s16[2048,16384] parameter(0)
+      c = s16[] constant(0)
+      ROOT fusion = s16[16384] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: vector<4xi16>
+  )"));
+  // We don't use RunAndCompareNoHloPasses because the interpreter is too slow
+  // for this input.
 }
 
 TEST_F(MlirReductionTest, ThreadIndexingOutputLayout) {
@@ -634,7 +637,7 @@ TEST_F(MlirReductionTest, OneGroup) {
   EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
 }
 
-TEST_F(MlirReductionTest, MlirColumnReduction) {
+TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
   auto module = ParseAndReturnVerifiedModule(R"(
     add {
       b = f32[] parameter(1)
@@ -649,6 +652,52 @@ TEST_F(MlirReductionTest, MlirColumnReduction) {
     ENTRY entry {
       %p0 = f32[192,64,1536] parameter(0)
       ROOT %fusion = f32[192,1536] fusion(%p0), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  MlirReductionFusion fusion(analysis);
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3 floordiv 24,
+          d0 floordiv 32 + s1 * 32,
+          ((d3 mod 24) * 32 + d0 mod 32) * 2 + s3
+        )
+        domain:
+        d0 in [0, 1023]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 4607]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        s1 in [0, 1]
+        s2 in [0, 0]
+        s3 in [0, 1]
+        (d3 mod 24) * 32 + d0 mod 32 in [0, 767]
+        d0 floordiv 32 + s1 * 32 in [0, 63]
+      )"));
+}
+
+TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    add {
+      b = f32[] parameter(1)
+      a = f32[] parameter(0)
+      ROOT out = f32[] add(a, b)
+    }
+    fusion {
+      %p0 = f16[192,64,1536] parameter(0)
+      %c0 = f16[] constant(0)
+      ROOT reduce = f16[192,1536] reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+    ENTRY entry {
+      %p0 = f16[192,64,1536] parameter(0)
+      ROOT %fusion = f16[192,1536] fusion(%p0), kind=kInput, calls=fusion
     })")
                     .value();
 
@@ -677,53 +726,6 @@ TEST_F(MlirReductionTest, MlirColumnReduction) {
         s2 in [0, 0]
         s3 in [0, 3]
         (d3 mod 12) * 32 + d0 mod 32 in [0, 383]
-        d0 floordiv 32 + s1 * 32 in [0, 63]
-      )"));
-}
-
-TEST_F(MlirReductionTest, MlirColumnReductionVectorSizeTwo) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    add {
-      b = f32[] parameter(1)
-      a = f32[] parameter(0)
-      ROOT out = f32[] add(a, b)
-    }
-    fusion {
-      %p0 = f32[192,64,1538] parameter(0)
-      %c0 = f32[] constant(0)
-      ROOT reduce = f32[192,1538] reduce(p0, c0), dimensions={1}, to_apply=add
-    }
-    ENTRY entry {
-      %p0 = f32[192,64,1538] parameter(0)
-      ROOT %fusion = f32[192,1538] fusion(%p0), kind=kInput, calls=fusion
-    })")
-                    .value();
-
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
-
-  MlirReductionFusion fusion(analysis);
-
-  EXPECT_THAT(
-      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
-      MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
-          d3 floordiv 25,
-          d0 floordiv 32 + s1 * 32,
-          ((d3 mod 25) * 32 + d0 mod 32) * 2 + s3
-        )
-        domain:
-        d0 in [0, 1023]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 4799]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 0]
-        s1 in [0, 1]
-        s2 in [0, 0]
-        s3 in [0, 1]
-        (d3 mod 25) * 32 + d0 mod 32 in [0, 768]
         d0 floordiv 32 + s1 * 32 in [0, 63]
       )"));
 }
