@@ -2450,13 +2450,13 @@ LogicalResult DynamicStitchOp::verify() {
 //===----------------------------------------------------------------------===//
 
 // Verifies that,
-// * Arity of the op is at most two.
+// * Arity of the op is one or two.
 //
 // TODO(hinsu): Verify einsum equation attribute.
 LogicalResult EinsumOp::verify() {
   EinsumOp op = *this;
-  if (op.getN() > 2) {
-    return op.emitOpError("supports at most two operands");
+  if (op.getN() != 1 && op.getN() != 2) {
+    return op.emitOpError("must have 1 or 2 operands");
   }
   return success();
 }

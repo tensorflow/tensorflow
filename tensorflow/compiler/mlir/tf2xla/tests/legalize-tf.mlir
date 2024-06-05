@@ -774,7 +774,8 @@ func.func @einsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4x
 
 // CHECK-LABEL: func @unary_einsum
 func.func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
-  // CHECK:  mhlo.unary_einsum
+  // CHECK:  mhlo.constant{{.*}}1.000000e+00
+  // CHECK:  mhlo.einsum{{.*}}",ab->aa"
   %0 = "tf.Einsum"(%arg0) {equation = "ab->aa"} : (tensor<2x3xf32>) -> tensor<2x2xf32>
   func.return %0: tensor<2x2xf32>
 }
