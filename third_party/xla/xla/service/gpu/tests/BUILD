@@ -71,6 +71,7 @@ xla_test(
     srcs = ["dynamic_slice_fusion_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["notsan"],  # TODO(b/345034145): Fix tsan error.
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
