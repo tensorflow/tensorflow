@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -302,9 +306,12 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view target, bool inplace) {
+  mlir::MLIRContext* context = mlir_module->getContext();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
-  mlir::PassManager pm(mlir_module->getContext());
+  mlir::PassManager pm(context);
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -314,7 +321,11 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (!mlir::succeeded(pm.run(mlir_module))) {
-    return xla::InvalidArgument("CHLO => [MHLO+Shape] => StableHLO failed");
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(
+        absl::StrCat("CHLO => [MHLO+Shape] => StableHLO failed;\n\nDetailed "
+                     "error from MLIR: ",
+                     status.message()));
   }
 
   // Avoid mutating the original module if it will be reused elsewhere
@@ -327,9 +338,13 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Serialize portable artifact
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
-  if (failed(
-          mlir::stablehlo::serializePortableArtifact(mlir_module, target, os)))
-    return xla::InvalidArgument("Failed to serialize StableHLO");
+  if (failed(mlir::stablehlo::serializePortableArtifact(mlir_module, target,
+                                                        os))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to serialize StableHLO;\n\nDetailed error from MLIR: ",
+        status.message()));
+  }
   return buffer;
 }
 
