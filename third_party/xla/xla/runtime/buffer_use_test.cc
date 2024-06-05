@@ -21,10 +21,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-TEST(BufferUseTest, EqualityTest) {
-  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
-
-  BufferAllocation::Slice slice0(&alloc0, 0, 10);
+TEST(BufferUseTest, Equality) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice0(&alloc, 0, 10);
 
   BufferUse use0(slice0, BufferUse::MemoryAccess::kRead);
   BufferUse use1(slice0, BufferUse::MemoryAccess::kWrite);
@@ -32,6 +31,24 @@ TEST(BufferUseTest, EqualityTest) {
 
   EXPECT_NE(use0, use1);
   EXPECT_EQ(use0, use2);
+}
+
+TEST(BufferUseTest, ReadWriteSet) {
+  BufferUse::ReadWriteSet rwset;
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  BufferAllocation::Slice slice0(&alloc, 0, 10);
+  BufferAllocation::Slice slice1(&alloc, 5, 10);
+  BufferAllocation::Slice slice2(&alloc, 10, 10);
+
+  rwset.Add(BufferUse::Read(slice0));
+  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Read(slice1)}));
+  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice1)}));
+  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Write(slice2)}));
+
+  rwset.Add(BufferUse::Read(slice1));
+  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice2)}));
 }
 
 }  // namespace

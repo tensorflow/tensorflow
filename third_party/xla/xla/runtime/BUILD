@@ -16,9 +16,13 @@ package_group(
 
 cc_library(
     name = "buffer_use",
+    srcs = ["buffer_use.cc"],
     hdrs = ["buffer_use.h"],
     deps = [
         "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_RUNTIME_BUFFER_USE_H_
 #define XLA_RUNTIME_BUFFER_USE_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -32,6 +34,36 @@ class BufferUse {
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
       : slice_(slice), access_(access) {}
+
+  static BufferUse Read(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kRead);
+  }
+
+  static BufferUse Write(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kWrite);
+  }
+
+  // ReadWriteSet tracks a set of read and write buffer slices.
+  class ReadWriteSet {
+   public:
+    ReadWriteSet();
+
+    void Add(BufferUse use);
+    void AddRead(BufferAllocation::Slice slice);
+    void AddWrite(BufferAllocation::Slice slice);
+
+    void AddAll(absl::Span<const BufferUse> uses);
+
+    // Returns true if any of the buffer use(s) has a conflict with tracked
+    // buffer slice reads or writes.
+    bool HasConflicts(const BufferUse& use) const;
+    bool HasConflicts(absl::Span<const BufferUse> uses) const;
+    bool HasConflicts(const ReadWriteSet& other);
+
+   private:
+    absl::flat_hash_set<BufferAllocation::Slice> read_;
+    absl::flat_hash_set<BufferAllocation::Slice> write_;
+  };
 
   bool operator==(const BufferUse& other) const {
     return slice_ == other.slice_ && access_ == other.access_;

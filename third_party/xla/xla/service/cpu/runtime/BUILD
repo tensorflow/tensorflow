@@ -50,6 +50,36 @@ cc_library(
 )
 
 cc_library(
+    name = "thunk_executor",
+    srcs = ["thunk_executor.cc"],
+    hdrs = ["thunk_executor.h"],
+    deps = [
+        ":thunk",
+        "//xla/runtime:buffer_use",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_executor_test",
+    srcs = ["thunk_executor_test.cc"],
+    deps = [
+        ":thunk",
+        ":thunk_executor",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "call_thunk",
     srcs = ["call_thunk.cc"],
     hdrs = ["call_thunk.h"],
