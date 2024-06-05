@@ -286,6 +286,8 @@ struct AutotunerUtil {
   static absl::Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
+
+  static bool ResultCacheIsEmpty();
 };
 
 }  // namespace gpu
