@@ -11798,5 +11798,24 @@ TEST_F(AlgebraicSimplifierTest, SinkCbrtThroughMax) {
       root, GmockMatch(m::Cbrt(m::Maximum(m::Parameter(0), m::Parameter(1)))));
 }
 
+// Reshape of broadcast should be rewritten as reduce window because reshape
+// only combines dimension introduced by the broadcast with a previous dimension
+TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastToReduceWindow) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[8,136,128] parameter(0)
+        broadcast = f32[8,136,15,128] broadcast(a), dimensions={0,1,3}
+        ROOT reshape = f32[8,2040,128] reshape(broadcast)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_is_layout_sensitive(true);
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduceWindow);
+}
+
 }  // namespace
 }  // namespace xla
