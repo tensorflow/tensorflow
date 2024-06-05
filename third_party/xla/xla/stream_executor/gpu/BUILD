@@ -594,6 +594,34 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "gpu_cudamallocasync_allocator_test",
+    srcs = if_gpu_is_configured(["gpu_cudamallocasync_allocator_test.cc"]),
+    backends = ["gpu_any"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        "//xla:types",
+        "//xla/service:platform_util",
+        "//xla/stream_executor",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:device_id",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/cuda:cuda_platform",
+        ":gpu_cudamallocasync_allocator_header",
+    ]),
+)
+
 # TODO(tlongeri): Remove gpu_cudamallocasync_allocator header/impl split
 tsl_gpu_library(
     name = "gpu_cudamallocasync_allocator_header",

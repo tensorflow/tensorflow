@@ -145,7 +145,7 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     visibility = [
-        "//learning/brain/experimental/tfq:__pkg__",
+        "//learning/brain/experimental/tfq:__subpackages__",
         "//tensorflow/core/function/transform:__subpackages__",
         "//tensorflow/python/eager:__subpackages__",
     ],
