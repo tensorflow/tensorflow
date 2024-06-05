@@ -22,6 +22,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace test {
@@ -36,6 +39,21 @@ TEST(TensorMatcherTest, BasicPod) {
   int16_t in1 = 100;
   expected.push_back(Tensor(in1));
   int16_t in2 = 16;
+  expected.push_back(Tensor(in2));
+
+  EXPECT_THAT(expected,
+              ElementsAre(TensorEq(Tensor(in1)), TensorEq(Tensor(in2))));
+}
+
+TEST(TensorMatcherTest, Basic4Bit) {
+  Tensor in1(DT_INT4, TensorShape({1}));
+  in1.flat<int4>()(0) = static_cast<int4>(7);
+
+  Tensor in2(DT_UINT4, TensorShape({1}));
+  in2.flat<uint4>()(0) = static_cast<uint4>(15);
+
+  std::vector<Tensor> expected;
+  expected.push_back(Tensor(in1));
   expected.push_back(Tensor(in2));
 
   EXPECT_THAT(expected,
