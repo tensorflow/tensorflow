@@ -4614,7 +4614,7 @@ xla_test(
         "//xla/service:reshape_mover",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:dnn",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",

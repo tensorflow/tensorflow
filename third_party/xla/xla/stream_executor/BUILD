@@ -58,9 +58,7 @@ bzl_library(
 
 # These are the headers that constitute StreamExecutor public API. Clients should not depend on
 # this filegroup directly, but instead depend on a `stream_executor` target that implements these
-# headers. We also have a header-only `stream_executor_headers` target, but currently this is
-# an implementation detail of StreamExecutor and has internal visibility.
-#
+# headers.
 # TODO(ezhulenev): Remove from public API headers that are exported via standalone public libraries,
 # e.g. `platform` and `platform_manager` should be added with an explicit dependency.
 filegroup(
@@ -101,50 +99,44 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-# This is a list of dependencies required for building `stream_executor` target (and required for
-# making `stream_executor_headers` self-contained, which means that you can include any of the
-# public API headers and don't worry about adding dependencies).
-STREAM_EXECUTOR_DEPENDENCIES = [
-    ":device_description_proto_cc",
-    ":host_or_device_scalar",
-    "@com_google_absl//absl/algorithm:container",
-    "@com_google_absl//absl/base:core_headers",
-    "@com_google_absl//absl/container:inlined_vector",
-    "@com_google_absl//absl/meta:type_traits",
-    "@com_google_absl//absl/container:node_hash_map",
-    "@com_google_absl//absl/functional:any_invocable",
-    "@com_google_absl//absl/memory",
-    "@com_google_absl//absl/status",
-    "@com_google_absl//absl/strings",
-    "@com_google_absl//absl/synchronization",
-    "@com_google_absl//absl/types:span",
-    "//xla/stream_executor/platform",
-    "@local_tsl//tsl/framework:device_id",
-    "@local_tsl//tsl/framework:device_type",
-    "@local_tsl//tsl/lib/gtl:int_type",
-    "@local_tsl//tsl/platform:env",
-    "@local_tsl//tsl/platform:errors",
-    "@local_tsl//tsl/platform:ml_dtypes",
-    "@local_tsl//tsl/platform:logging",
-    "@local_tsl//tsl/platform:status",
-    "@local_tsl//tsl/platform:statusor",
-    "@local_tsl//tsl/platform:types",
-    "@local_tsl//tsl/protobuf:dnn_proto_cc",
-]
-
 cc_library(
     name = "stream_executor",
     hdrs = [
         ":stream_executor_api_headers",
         ":stream_executor_plugin_headers",
     ],
-    deps = STREAM_EXECUTOR_DEPENDENCIES + [
+    deps = [
+        ":device_description_proto_cc",
+        ":host_or_device_scalar",
         ":stream_executor_h",
         ":stream_executor_pimpl",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/framework:device_id",
+        "@local_tsl//tsl/framework:device_type",
+        "@local_tsl//tsl/lib/gtl:int_type",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
+        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         ":stream_executor_impl",
         "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
@@ -154,11 +146,6 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor public libraries
 #===--------------------------------------------------------------------------------------------===#
-
-# Some of the StreamExecutor libraries that do not depend on StreamExecutor itself (Stream, Kernel,
-# Event, etc.) exported as standalone libraries (these libraries should not depend on
-# `stream_executor` and `stream_executor_headers` targets). This is mostly a historical artifact of
-# an era when StreamExecutor was a part of Tensorflow.
 
 tf_proto_library(
     name = "device_description_proto",
@@ -449,7 +436,7 @@ cc_library(
 # interfaces (interfaces that define platform-specific API).
 #
 # External clients of StreamExecutor should depend on `stream_executor` target (links StreamExecutor
-# implementation in static build configuration), or a header only `stream_executor_headers`.
+# implementation in static build configuration).
 
 cc_library(
     name = "stream_executor_h",
@@ -509,27 +496,6 @@ cc_library(
 # StreamExecutor internal implementation (visible to StreamExecutor platform implementations)
 #===--------------------------------------------------------------------------------------------===#
 
-# This header-only library is an internal implementation detail of StreamExecutor (to break
-# dependency cycles between internal libraries). All StreamExecutor clients should depend on a
-# regular `stream_executor` target that also provides an implementation for all headers.
-cc_library(
-    name = "stream_executor_headers",
-    hdrs = [
-        ":stream_executor_api_headers",
-        ":stream_executor_plugin_headers",
-    ],
-    tags = ["avoid_dep"],
-    visibility = [":internal"],
-    deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
-        "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
-    ]) + [
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:thread_annotations",
-    ],
-)
-
 cc_library(
     name = "plugin_registry",
     srcs = ["plugin_registry.cc"],
@@ -552,11 +518,6 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor private implementation (has private visibility)
 #===--------------------------------------------------------------------------------------------===#
-
-# Targets that implement StreamExecutor APIs are private, and should not be used outside of
-# `stream_executor` package. Clients should depend on `stream_executor` (headers and
-# implementation) or `stream_executor_headers` (only headers, if there is a reason not to link
-# implementation) if they want to use StreamExecutor.
 
 cc_library(
     name = "allocator_stats",
@@ -820,7 +781,6 @@ cc_library(
         ":platform",
         ":platform_manager",
         ":scratch_allocator",
-        ":stream_executor_headers",
         ":stream_executor_pimpl",
         "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
     ],
