@@ -104,22 +104,46 @@ class Span {
 // Error
 //===----------------------------------------------------------------------===//
 
+enum class ErrorCode : uint8_t {
+  kOk = XLA_FFI_Error_Code_OK,
+  kCancelled = XLA_FFI_Error_Code_CANCELLED,
+  kUnknown = XLA_FFI_Error_Code_UNKNOWN,
+  kInvalidArgument = XLA_FFI_Error_Code_INVALID_ARGUMENT,
+  kDeadlineExceeded = XLA_FFI_Error_Code_DEADLINE_EXCEEDED,
+  kNotFound = XLA_FFI_Error_Code_NOT_FOUND,
+  kAlreadyExists = XLA_FFI_Error_Code_ALREADY_EXISTS,
+  kPermissionDenied = XLA_FFI_Error_Code_PERMISSION_DENIED,
+  kResourceExhausted = XLA_FFI_Error_Code_RESOURCE_EXHAUSTED,
+  kFailedPrecondition = XLA_FFI_Error_Code_FAILED_PRECONDITION,
+  kAborted = XLA_FFI_Error_Code_ABORTED,
+  kOutOfRange = XLA_FFI_Error_Code_OUT_OF_RANGE,
+  kUnimplemented = XLA_FFI_Error_Code_UNIMPLEMENTED,
+  kInternal = XLA_FFI_Error_Code_INTERNAL,
+  kUnavailable = XLA_FFI_Error_Code_UNAVAILABLE,
+  kDataLoss = XLA_FFI_Error_Code_DATA_LOSS,
+  kUnauthenticated = XLA_FFI_Error_Code_UNAUTHENTICATED,
+};
+
 class Error {
  public:
   Error() = default;
-  Error(XLA_FFI_Error_Code errc, std::string message)
+
+  Error(ErrorCode errc, std::string message)
       : errc_(errc), message_(std::move(message)) {}
+
+  Error(XLA_FFI_Error_Code errc, std::string message)
+      : Error(static_cast<ErrorCode>(errc), std::move(message)) {}
 
   static Error Success() { return Error(); }
 
-  bool success() const { return errc_ == XLA_FFI_Error_Code_OK; }
+  bool success() const { return errc_ == ErrorCode::kOk; }
   bool failure() const { return !success(); }
 
-  std::optional<XLA_FFI_Error_Code> errc() const { return errc_; }
+  std::optional<ErrorCode> errc() const { return errc_; }
   const std::string& message() const { return message_; }
 
  private:
-  XLA_FFI_Error_Code errc_;
+  ErrorCode errc_ = ErrorCode::kOk;
   std::string message_;
 };
 
@@ -474,7 +498,7 @@ struct ResultEncoding<Error> {
     XLA_FFI_Error_Create_Args args;
     args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
     args.priv = nullptr;
-    args.errc = *error.errc();
+    args.errc = static_cast<XLA_FFI_Error_Code>(*error.errc());
     args.message = error.message().c_str();
     return api->XLA_FFI_Error_Create(&args);
   }
