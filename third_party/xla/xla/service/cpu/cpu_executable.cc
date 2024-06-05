@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -155,8 +156,10 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
 
   executable->jit_ = std::move(jit);
-  executable->thunks_ = std::move(thunks);
   executable->host_kernels_ = HostKernels(executable->jit_.get());
+
+  TF_ASSIGN_OR_RETURN(executable->thunks_,
+                      ThunkExecutor::Create(std::move(thunks)));
 
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {

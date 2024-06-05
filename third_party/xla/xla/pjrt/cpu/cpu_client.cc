@@ -85,6 +85,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -1607,7 +1608,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       cpu::Thunk::ExecuteParams execute_params = {
           &cpu_executable->host_kernels(), &allocations,
           cpu::runtime::GetXfeedManager(run_options.device_ordinal())};
-      TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(execute_params));
+
+      TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(
+          execute_params, [&](cpu::ThunkExecutor::Task task) {
+            client_->eigen_intraop_device()->getPool()->Schedule(
+                cpu::ThunkExecutor::ToStdFunction(std::move(task)));
+          }));
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1652,7 +1658,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
          tuplized_arg = std::move(tuplized_arg),
          donation_transactions = std::move(donation_transactions),
          execute_event = std::move(ready_on_exit).Release(),
-         input_deps_avs = std::move(input_deps_avs_copy)]() mutable {
+         input_deps_avs = std::move(input_deps_avs_copy),
+         eigen_device = client()->eigen_intraop_device()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,
           // when it is ready, all input buffers must have been allocated. So,
           // we are safe to allocate and copy memory here. Since `execute_event`
@@ -1715,7 +1722,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             cpu::BufferAllocations allocations(buffer_device_mem);
             cpu::Thunk::ExecuteParams execute_params = {
                 &cpu_executable->host_kernels(), &allocations};
-            status = cpu_executable->thunks().Execute(execute_params);
+            status = cpu_executable->thunks().Execute(
+                execute_params, [&](cpu::ThunkExecutor::Task task) {
+                  eigen_device->getPool()->Schedule(
+                      cpu::ThunkExecutor::ToStdFunction(std::move(task)));
+                });
 
           } else {
             status =

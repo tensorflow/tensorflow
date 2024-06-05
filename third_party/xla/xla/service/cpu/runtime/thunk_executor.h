@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/fixed_array.h"
@@ -44,6 +47,15 @@ class ThunkExecutor {
   using Task = absl::AnyInvocable<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
+  // Converts a Task (absl::AnyInvocable) to a std::function. Task is not
+  // copyable, so we need to wrap it into a std::shared_ptr to be able to pass
+  // to thread pools (Eigen) that expect copyable std::function task type.
+  static std::function<void()> ToStdFunction(Task task) {
+    return [shared_task = std::make_shared<Task>(std::move(task))] {
+      (*shared_task)();
+    };
+  }
+
   // Nodes identified by their index in the captured ThunkSequence.
   using NodeId = int64_t;
 
@@ -61,8 +73,11 @@ class ThunkExecutor {
     std::vector<NodeId> out_edges;
   };
 
-  // Executes the thunk sequence using the prepared dataflow graph.
-  absl::Status Execute(const Thunk::ExecuteParams& params, TaskRunner runner);
+  // Executes the thunk sequence using the prepared dataflow graph. Executor
+  // uses runner to execute ready tasks concurrently. If runner is not provided,
+  // executes all tasks in the caller thread.
+  absl::Status Execute(const Thunk::ExecuteParams& params,
+                       TaskRunner runner = nullptr);
 
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
   const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }

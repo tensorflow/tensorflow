@@ -41,16 +41,20 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
     : thunk_sequence_(std::move(thunk_sequence)),
       nodes_defs_(std::move(nodes_defs)) {
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
-    // Mark nodes with 0 in-edges as source nodes.
+    // Mark nodes with empty in-edges as source nodes.
     if (nodes_defs_[i].in_edges.empty()) {
       source_.push_back(i);
     }
 
-    // Mark nodes with 0 out-edges as sink nodes.
+    // Mark nodes with empty out-edges as sink nodes.
     if (nodes_defs_[i].out_edges.empty()) {
       sink_.push_back(i);
     }
   }
+
+  // Sanity check that all vectors are empty or all vectors are non-empty.
+  CHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
+        (source_.empty() && sink_.empty() && thunk_sequence_.empty()));
 }
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
@@ -99,9 +103,10 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
 
 absl::Status ThunkExecutor::Execute(const Thunk::ExecuteParams& params,
                                     TaskRunner runner) {
-  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
-
   ReadyQueue ready_queue(source_.begin(), source_.end());
+  if (ready_queue.empty()) return absl::OkStatus();
+
+  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
   TF_RETURN_IF_ERROR(Execute(state.get(), params, std::move(ready_queue)));
 
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute (wait for done)");
@@ -121,7 +126,7 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
     Node& node = state->nodes[id];
 
     // Push the tail of the ready queue to the task runner.
-    if (i < ready_queue.size() - 1) {
+    if (state->runner && i < ready_queue.size() - 1) {
       ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
       ready_queue.erase(ready_queue.begin() + i + 1, ready_queue.end());
       state->runner([&params, state, tail = std::move(tail)]() mutable {
