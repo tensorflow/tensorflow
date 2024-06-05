@@ -1375,15 +1375,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const GemmBackendConfig &gemm_backend_config =
         gpu_backend_config.gemm_backend_config();
 
-    if (gemm_backend_config.beta() != 0.0 &&
-        existing_gemm->operand(2)->shape().element_type() != BF16 &&
-        existing_gemm->operand(2)->shape().element_type() != F16) {
-      VLOG(1) << "The scaling and conversion of the result of "
-              << existing_gemm->ToShortString()
-              << " is not fused into the FP8 Custom Call because it "
-                 "conflicts with the existing fusion of the addition of a "
-                 "matrix bias with element type other than BF16 or F16.";
-      return absl::OkStatus();
+    if (gemm_backend_config.beta() != 0.0) {
+      if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+          existing_gemm->operand(2)->shape().element_type() != F16) {
+        VLOG(1) << "The scaling and conversion of the result of "
+                << existing_gemm->ToShortString()
+                << " is not fused into the FP8 Custom Call because it "
+                   "conflicts with the existing fusion of the addition of a "
+                   "matrix bias with element type other than BF16 or F16.";
+        return absl::OkStatus();
+      } else {
+        // Turn off the output to operand aliasing, since the fp8 output and
+        // bf16/fp16 bias have different sizes.
+        xla::Cast<HloCustomCallInstruction>(existing_gemm)
+            ->set_output_to_operand_aliasing({});
+      }
     }
 
     // If necessary, invert the scaling factor of D and convert to F32.
@@ -1402,15 +1408,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> new_gemm =
         existing_gemm->CloneWithNewShape(instr->shape());
-
-    // The F8ConvertD may change the output dtype. We need to turn off the
-    // output to operand aliasing when it happens.
-    if (gemm_backend_config.beta() != 0.0 &&
-        !ShapeUtil::Equal(existing_gemm->operand(2)->shape(),
-                          new_gemm->shape())) {
-      xla::Cast<HloCustomCallInstruction>(new_gemm.get())
-          ->set_output_to_operand_aliasing({});
-    }
 
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
 

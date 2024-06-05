@@ -6510,7 +6510,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
       )");
 }
 
-TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasWithDAmaxF8) {
 #if GOOGLE_CUDA && CUDA_VERSION < 12000
   GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
 #endif  // CUDA_VERSION < 12000
@@ -6521,6 +6521,12 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 
   const char* hlo_text = R"(
     HloModule test
+
+    apply {
+      a = f16[] parameter(0)
+      b = f16[] parameter(1)
+      ROOT c = f16[] maximum(a, b)
+    }
 
     ENTRY test {
       x = <<F8E4M3>>[16,32] parameter(0)
@@ -6541,15 +6547,18 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
       y_unscaled = f16[32,16] multiply(y_f16, y_scale_bcast)
       dot_a = f16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       dot_a_bias = f16[16,16] add(dot_a, b_ones)
+      abs_dot_a = f16[16,16] abs(dot_a_bias)
+      c0 = f16[] constant(-inf)
+      amax = f16[] reduce(abs_dot_a, c0), dimensions={0,1}, to_apply=apply
       dot_a_scaled = f16[16,16] divide(dot_a_bias, z_scale_bcast)
       c1 = f16[] constant(-<<F8E4M3_AMAX>>)
       c1_bcast = f16[16,16] broadcast(c1), dimensions={}
       c2 = f16[] constant(<<F8E4M3_AMAX>>)
       c2_bcast = f16[16,16] broadcast(c2), dimensions={}
       dot_a_clamped = f16[16,16] clamp(c1_bcast, dot_a_scaled, c2_bcast)
-      ROOT dot_a_f8 = <<F8E4M3>>[16,16] convert(dot_a_clamped)
-          }
-
+      dot_a_f8 = <<F8E4M3>>[16,16] convert(dot_a_clamped)
+      ROOT result = (<<F8E4M3>>[16,16], f16[]) tuple(dot_a_f8, amax)
+    }
 )";
 
   CheckFp8IfSupported(hlo_text, ErrorSpec{0.1, 0.1});
@@ -6559,7 +6568,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
                    /*f8_rewrite=*/true),
       R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f16[16,16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> <<F8E4M3>>[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f16[16,16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> (<<F8E4M3>>[16,16], f16[]) {
 ; CHECK:    [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6568,7 +6577,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 ; CHECK:         [[P3:%[^ ]+]] = f16[] parameter(4)
 ; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-PTX:         [[P4:%[^ ]+]] = f16[] parameter(5)
-; CHECK-PTX:       [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
+; CHECK-PTX:       [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, f32[], s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
 ; CHECK-NOT:       output_to_operand_aliasing
 ; CHECK-GCN:       [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
