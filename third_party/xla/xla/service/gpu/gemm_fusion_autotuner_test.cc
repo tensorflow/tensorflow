@@ -434,6 +434,7 @@ ENTRY e {
 }
 
 // Modify block_k back to 16 once b/337839570 is fixed.
+// TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -462,15 +463,25 @@ ENTRY %e {
                                         /*thread_pool=*/nullptr,
                                         /*layout_canonicalization_callback=*/{},
                                         /*is_autotuning_compilation=*/true}),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat(
-              "Compilation result discarded due to register spilling")));
+      ::testing::AnyOf(
+          tsl::testing::StatusIs(
+              tsl::error::CANCELLED,
+              absl::StrFormat(
+                  "Compilation result discarded due to register spilling")),
+          // Hopper can't spill registers since wgmma instructions are
+          // asynchronous, instead it just runs out of them.
+          tsl::testing::StatusIs(
+              tsl::error::RESOURCE_EXHAUSTED,
+              absl::StrFormat("Register allocation failed"))));
 }
 
 // Modify block_k back to 16 once b/337839570 is fixed.
+// TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest,
        DoNotFilterOutAutotuningKernelSpillingRegisters) {
+  if (GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Hopper and newer runs out of registers for such HLOs";
+  }
   const std::string kHloText = R"(
 HloModule m
 
