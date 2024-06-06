@@ -361,12 +361,6 @@ class MemorySpaceAssignment {
   // alternate_memory_assignments_.
   void RemoveAssignmentForInstruction(const HloInstruction* instruction);
 
-  // Returns the estimated elapsed duration of the hlo module in seconds. It
-  // uses the 'allocations' argument to determine the location (default memory
-  // or alternate memory) of each operand and output of an instruction.
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
-
   HloModule* module_;
   const Options& options_;
   std::vector<HloInstruction*> flattened_instructions_;
