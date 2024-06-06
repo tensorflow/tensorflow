@@ -813,8 +813,8 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
   // TODO(b/293186653): investigate we should turn on strict shape checking for
   // GPU.
   if (device_type == DEVICE_GPU ||
-      (DeviceFactory::IsPluggableDevice(device_name) &&
-      GetPjRtClient(DeviceType(device_name)).ok())) {
+      (DeviceFactory::IsPluggableDevice(device_type.type_string()) &&
+       GetPjRtClient(device_type).ok())) {
     options.strict_shape_checking = false;
   }
   // Note: TF does not use PJRT host callbacks as of today. Setting this option
