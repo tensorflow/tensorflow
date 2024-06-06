@@ -472,10 +472,7 @@ TEST_F(CudnnNormRewriterTest, LayerNorm4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
-// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNorm4D12Degenerate2) {
-  GTEST_SKIP()
-      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -834,10 +831,7 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
-// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNormTrain4D12Degenerate2) {
-  GTEST_SKIP()
-      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -1381,10 +1375,7 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
-// TODO(https://github.com/openxla/xla/issues/13361): re-enable.
 TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
-  GTEST_SKIP()
-      << "Reenable when https://github.com/openxla/xla/issues/13361 is fixed";
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif

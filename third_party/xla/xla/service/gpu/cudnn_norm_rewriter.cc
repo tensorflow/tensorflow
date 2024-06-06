@@ -970,13 +970,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "Layer norm input dimensions not supported.";
         return absl::OkStatus();
       }
-      for (int i = 0; i < norm_dims.size(); ++i) {
-        if (x.Instr()->shape().dimensions(norm_dims[i]) !=
-            scale->shape().dimensions(i)) {
-          VLOG(1) << "Layer norm input dimensions not supported.";
-          return absl::OkStatus();
-        }
-      }
 
       // Verify the broadcasts of scale and bias.
       if (!ShapeUtil::EqualIgnoringElementType(
