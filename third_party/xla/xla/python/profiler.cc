@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
@@ -163,7 +164,10 @@ void BuildProfilerSubmodule(nb::module_& m) {
       throw xla::XlaRuntimeError(
           "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
     }
-    RegisterProfiler(static_cast<const PJRT_Api*>(c_api.data()));
+    absl::Status status =
+        TryRegisterProfiler(static_cast<const PJRT_Api*>(c_api.data()));
+    LOG_IF(WARNING, !status.ok())
+        << "Registering plugin profiler failed: " << status;
   });
 
   nb::class_<ProfilerSessionWrapper> profiler_session_class(profiler,
