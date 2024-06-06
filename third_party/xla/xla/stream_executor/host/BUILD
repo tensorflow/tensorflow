@@ -113,6 +113,7 @@ xla_cc_test(
         ":host_kernel_c_api",
         ":host_platform",
         ":jit_host_kernel_function",
+        ":ptr_host_kernel_function",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel_factory",
@@ -172,6 +173,22 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
+)
+
+cc_library(
+    name = "ptr_host_kernel_function",
+    srcs = ["ptr_host_kernel_function.cc"],
+    hdrs = ["ptr_host_kernel_function.h"],
+    deps = [
+        ":host_executor",
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,  # static kernel function loader registration
 )
 
 cc_library(

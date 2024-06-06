@@ -92,7 +92,7 @@ static absl::StatusOr<std::unique_ptr<StreamExecutor>> NewStreamExecutor() {
   return stream_exec;
 }
 
-TEST(HostKernelTest, Addition1D) {
+TEST(HostKernelTest, InternalAddition1D) {
   auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
                                                       "XLAEigen", 2);
 
@@ -113,7 +113,7 @@ TEST(HostKernelTest, Addition1D) {
   EXPECT_EQ(out, expected);
 }
 
-TEST(HostKernelTest, Addition3D) {
+TEST(HostKernelTest, InternalAddition3D) {
   auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
                                                       "XLAEigen", 2);
 
@@ -130,6 +130,34 @@ TEST(HostKernelTest, Addition3D) {
   std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
 
   TF_ASSERT_OK(kernel.Launch(ThreadDim(2, 2, 3), args));
+
+  std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
+                                   23, 25, 27, 29, 31, 33};
+  EXPECT_EQ(out, expected);
+}
+
+TEST(HostKernelTest, Addition3D) {
+  // Lets pretend there is a 3-dimensional 2x2x3 data
+  std::vector<int32_t> lhs = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  std::vector<int32_t> rhs = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21};
+  std::vector<int32_t> out = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddInProcessSymbol(reinterpret_cast<void*>(AddI32), "Addition_kernel");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add,
+                          KernelFactory::Create(executor.get(), spec));
+
+  const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
+  TF_ASSERT_OK(executor->Launch(stream.get(), ThreadDim(2, 2, 3), BlockDim(1),
+                                *add, kargs));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};
