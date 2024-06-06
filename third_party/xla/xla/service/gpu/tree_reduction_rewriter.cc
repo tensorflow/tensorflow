@@ -58,10 +58,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // MLIR emitters only support race-free reductions.
     // TODO(jreiffers: Verify performance and implement atomics for reductions
     // if needed.
-    if (!hlo->GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_mlir_emitters() &&
+    if (hlo->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_mlir_emitter_level() < 4 &&
         IsMinMaxReduction(hlo)) {
       // TODO(cheshire): Also enable for integers.
       VLOG(1) << "Not performing tree expansion on min/max-reduction: "

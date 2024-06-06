@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusions.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -108,8 +109,8 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
                          .GetModule()
                          ->config()
                          .debug_options();
-  auto check_mlir_emitters = [&](bool check = true) {
-    if (!opts.xla_gpu_enable_mlir_emitters()) {
+  auto check_mlir_emitters = [&](int64_t required_level, bool check = true) {
+    if (opts.xla_gpu_mlir_emitter_level() < required_level) {
       return false;
     }
     CHECK(!check ||
@@ -150,14 +151,14 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      if (check_mlir_emitters()) {
+      if (check_mlir_emitters(/*required_level=*/2)) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        if (check_mlir_emitters()) {
+        if (check_mlir_emitters(/*required_level=*/2)) {
           return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
               analysis);
         }
@@ -168,31 +169,31 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
         return *std::move(copy_fusion);
       }
 
-      if (check_mlir_emitters()) {
+      if (check_mlir_emitters(/*required_level=*/1)) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      if (check_mlir_emitters()) {
+      if (check_mlir_emitters(/*required_level=*/4)) {
         return std::make_unique<MlirReductionFusion>(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      if (check_mlir_emitters(false)) {
+      if (check_mlir_emitters(/*required_level=*/2, false)) {
         return std::make_unique<MlirScatterFusion>(analysis);
       }
       return std::make_unique<ScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      if (check_mlir_emitters()) {
+      if (check_mlir_emitters(/*required_level=*/3)) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
       return std::make_unique<TransposeFusion>(analysis.device_info(),
                                                analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-      if (check_mlir_emitters()) {
+      if (check_mlir_emitters(/*required_level=*/2)) {
         return std::make_unique<MlirConcatenateFusion>(analysis);
       }
       return std::make_unique<ConcatenateFusion>(analysis);

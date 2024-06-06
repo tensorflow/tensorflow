@@ -73,7 +73,7 @@ MlirEmitterTestBaseImpl::MlirEmitterTestBaseImpl() {
 
 DebugOptions MlirEmitterTestBaseImpl::GetDebugOptionsForTest() {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_mlir_emitters(true);
+  debug_options.set_xla_gpu_mlir_emitter_level(4);
   return debug_options;
 }
 
