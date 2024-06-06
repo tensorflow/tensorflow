@@ -1533,11 +1533,11 @@ SmallBitVector IndexingMap::RemoveUnusedDimensions() {
 }
 
 void IndexingMap::ResetToKnownEmpty() {
-  affine_map_ = AffineMap::get(GetMLIRContext());
-  dim_vars_.clear();
-  range_vars_.clear();
-  rt_vars_.clear();
-  constraints_.clear();
+  auto zero = getAffineConstantExpr(0, GetMLIRContext());
+  affine_map_ = AffineMap::get(
+      affine_map_.getNumDims(), affine_map_.getNumSymbols(),
+      llvm::SmallVector<AffineExpr>(affine_map_.getNumResults(), zero),
+      GetMLIRContext());
   is_known_empty_ = true;
 }
 

@@ -1546,6 +1546,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   const DebugOptions debug_opts = module->config().debug_options();
+  // TODO better.
+  if (!options.is_autotuning_compilation) {
+    AutotunerUtil::SetPerFusionAutotuneCacheDir(
+        debug_opts.xla_gpu_per_fusion_autotune_cache_dir());
+  }
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();

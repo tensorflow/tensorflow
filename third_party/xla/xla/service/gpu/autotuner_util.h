@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -288,6 +289,12 @@ struct AutotunerUtil {
   static void ClearAutotuneResults();
 
   static bool ResultCacheIsEmpty();
+
+  // Empty filename means no file based caching.
+  static void SetPerFusionAutotuneCacheDir(std::string_view autotune_cache_dir);
+
+  // Empty filename means no file based caching.
+  static std::string GetPerFusionAutotuneCacheDir();
 };
 
 }  // namespace gpu

@@ -803,7 +803,9 @@ message DebugOptions {
   // details.
   bool xla_use_shardonnay = 302;
 
-  // Next id: 304
+  string xla_gpu_per_fusion_autotune_cache_dir = 304;
+
+  // Next id: 305
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

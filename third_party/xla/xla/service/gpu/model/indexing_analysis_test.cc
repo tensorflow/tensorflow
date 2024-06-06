@@ -330,6 +330,11 @@ TEST_F(IndexingAnalysisTest, ReshapeNothing) {
   output_indexing.Simplify();
   EXPECT_THAT(output_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
+  // Even though the indexing is known empty, the rank of the map should still
+  // be 1.
+  EXPECT_EQ(
+      output_indexing.indexing_maps[0].begin()->GetAffineMap().getNumResults(),
+      1);
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
