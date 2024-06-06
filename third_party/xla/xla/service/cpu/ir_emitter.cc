@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/FMF.h"
@@ -213,7 +214,8 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, absl::string_view function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order,
-    bool allow_reassociation) {
+    bool allow_reassociation,
+    absl::Span<const llvm::Attribute::AttrKind> function_attributes) {
   std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
@@ -259,6 +261,11 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
 
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
+
+  for (llvm::Attribute::AttrKind attr : function_attributes) {
+    ir_function->addFnAttr(attr);
+  }
+
   InsertOrDie(&emitted_functions_,
               ComputationToEmit{computation, allow_reassociation}, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
