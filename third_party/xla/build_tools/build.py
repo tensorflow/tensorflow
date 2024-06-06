@@ -41,7 +41,7 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     keep_going=True,
     nobuild_tests_only=True,
     features="layering_check",
-    profile="/tf/pkg/profile.json.gz",
+    profile="profile.json.gz",
     flaky_test_attempts=3,
     jobs=150,
 )
