@@ -179,8 +179,10 @@ class JsonEventWriter {
       if (event_type == JsonEventCounter::kCompleteEventWithFlow) {
         output_->Append(R"(,"bind_id":)", event.flow_id());
         if (event.has_flow_category()) {
-          ContextType type = GetSafeContextType(event.flow_category());
-          if (type != ContextType::kGeneric && type != ContextType::kLegacy) {
+          tsl::profiler::ContextType type =
+              tsl::profiler::GetSafeContextType(event.flow_category());
+          if (type != tsl::profiler::ContextType::kGeneric &&
+              type != tsl::profiler::ContextType::kLegacy) {
             const char* category = tsl::profiler::GetContextTypeString(type);
             output_->Append(R"(,"cat":")", category, R"(")");
           }
@@ -209,7 +211,8 @@ class JsonEventWriter {
       } else {  // async events
         output_->Append(R"(,"id":)", event.flow_id());
         if (event.has_flow_category()) {
-          ContextType type = GetSafeContextType(event.flow_category());
+          tsl::profiler::ContextType type =
+              tsl::profiler::GetSafeContextType(event.flow_category());
           const char* category = tsl::profiler::GetContextTypeString(type);
           output_->Append(R"(,"cat":")", category, R"(")");
         }
