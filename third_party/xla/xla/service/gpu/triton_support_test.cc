@@ -448,8 +448,9 @@ ENTRY e {
       HloOpcodeString(opcode));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
-  const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm___computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
@@ -460,14 +461,13 @@ ENTRY e {
   } else {
     const se::DeviceDescription dev_info =
         TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-    EXPECT_THAT(
-        TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                      computation, GetCudaComputeCapability(), dev_info,
-                      config_, /*output_tile_sizes=*/{}, &llvm_module_,
-                      &EmitMatMul, mlir_context_),
-        tsl::testing::StatusIs(
-            absl::StatusCode::kInternal,
-            ::testing::HasSubstr("Failed to compile Triton kernel")));
+    EXPECT_THAT(TritonWrapper(*TritonFusionAnalysis::Execute(*computation),
+                              "test_fn", fusion, GetCudaComputeCapability(),
+                              dev_info, config_, /*output_tile_sizes=*/{},
+                              &llvm_module_, &EmitMatMul, mlir_context_),
+                tsl::testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("Failed to compile Triton kernel")));
   }
 }
 
@@ -605,8 +605,9 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloTest));
 
-  const HloComputation* computation =
-      hlo_module->GetComputationWithName("triton_gemm___computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
@@ -617,7 +618,7 @@ ENTRY e {
               ::testing::HasSubstr("Unsupported output data type for Dot op."));
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                    computation, GetCudaComputeCapability(), dev_info, config_,
+                    fusion, GetCudaComputeCapability(), dev_info, config_,
                     /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul,
                     mlir_context_),
       tsl::testing::StatusIs(
@@ -646,8 +647,9 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloTest));
 
-  const HloComputation* computation =
-      hlo_module->GetComputationWithName("triton_gemm___computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
@@ -658,7 +660,7 @@ ENTRY e {
               ::testing::HasSubstr("Multiple batch dimensions"));
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                    computation, GetCudaComputeCapability(), dev_info, config_,
+                    fusion, GetCudaComputeCapability(), dev_info, config_,
                     /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul,
                     mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInternal,
@@ -741,8 +743,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
 
-  const HloComputation* computation =
-      module->GetComputationWithName("triton_softmax_computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
@@ -754,14 +757,13 @@ ENTRY main {
   } else {
     const se::DeviceDescription dev_info =
         TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-    EXPECT_THAT(
-        TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                      computation, GetCudaComputeCapability(), dev_info,
-                      config_, /*output_tile_sizes=*/{}, &llvm_module_,
-                      &EmitSoftMax, mlir_context_),
-        tsl::testing::StatusIs(
-            absl::StatusCode::kInternal,
-            ::testing::HasSubstr("Failed to compile Triton kernel")));
+    EXPECT_THAT(TritonWrapper(*TritonFusionAnalysis::Execute(*computation),
+                              "test_fn", fusion, GetCudaComputeCapability(),
+                              dev_info, config_, /*output_tile_sizes=*/{},
+                              &llvm_module_, &EmitSoftMax, mlir_context_),
+                tsl::testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("Failed to compile Triton kernel")));
   }
 }
 
@@ -988,8 +990,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloTest));
 
-  const HloComputation* computation =
-      hlo_module->GetComputationWithName("triton_softmax_computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
       *computation, HloOpcode::kReduce);
@@ -1001,7 +1004,7 @@ ENTRY main {
                                    "or a convert of a constant."));
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                    computation, GetCudaComputeCapability(), dev_info, config_,
+                    fusion, GetCudaComputeCapability(), dev_info, config_,
                     /*output_tile_sizes=*/{1, 127}, &llvm_module_, &EmitSoftMax,
                     mlir_context_),
       tsl::testing::StatusIs(
@@ -1038,8 +1041,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloTest));
 
-  const HloComputation* computation =
-      hlo_module->GetComputationWithName("triton_softmax_computation");
+  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const HloComputation* computation = fusion->fused_instructions_computation();
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
       *computation, HloOpcode::kReduce);
@@ -1051,7 +1055,7 @@ ENTRY main {
       ::testing::HasSubstr("Unsupported reduction computation by Triton."));
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
-                    computation, GetCudaComputeCapability(), dev_info, config_,
+                    fusion, GetCudaComputeCapability(), dev_info, config_,
                     /*output_tile_sizes=*/{1, 127}, &llvm_module_, &EmitSoftMax,
                     mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,

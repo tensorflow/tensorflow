@@ -36,6 +36,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -63,7 +65,7 @@ struct TritonWrapperResult {
 absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const TritonFusionAnalysis& analysis,
-                         const HloComputation* computation,
+                         const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
                          const TritonGemmConfig& config,
                          const std::vector<int64_t>& output_tile_sizes);
@@ -78,7 +80,7 @@ absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const TritonFusionAnalysis& analysis,
-                        const HloComputation* computation,
+                        const HloFusionInstruction* fusion,
                         mlir::triton::FuncOp fn, const TritonGemmConfig& config,
                         const std::vector<int64_t>& output_tile_sizes);
 
@@ -91,14 +93,14 @@ LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
 absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const TritonFusionAnalysis& analysis,
-                         const HloComputation* computation,
+                         const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
                          const TritonGemmConfig& config,
                          const std::vector<int64_t>& output_tile_sizes);
 
 using TritonIrEmitter = std::function<absl::Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
-    const TritonFusionAnalysis& analysis, const HloComputation*,
+    const TritonFusionAnalysis& analysis, const HloFusionInstruction*,
     mlir::triton::FuncOp, const TritonGemmConfig&,
     const std::vector<int64_t>&)>;
 
@@ -110,7 +112,7 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 // MatMul and SoftMax above are some such IR generators.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const se::GpuComputeCapability& cc,
+    const HloFusionInstruction* fusion, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
@@ -119,7 +121,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 // use TritonWrapper instead.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation,
+    const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context);

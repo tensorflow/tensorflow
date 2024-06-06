@@ -181,7 +181,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(
-              /*analysis=*/{}, impl_fn_name, hlo_computation,
+              /*analysis=*/{}, impl_fn_name, &fusion,
               ir_emitter_context.gpu_compute_capability(),
               ir_emitter_context.gpu_device_info(), config,
               /*output_tile_sizes=*/launch_config.output_tile_sizes,
@@ -210,7 +210,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
                                              *hlo_computation, config.split_k));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
-          TritonWrapper(analysis, impl_fn_name, hlo_computation,
+          TritonWrapper(analysis, impl_fn_name, &fusion,
                         ir_emitter_context.gpu_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
                         /*output_tile_sizes=*/{},
