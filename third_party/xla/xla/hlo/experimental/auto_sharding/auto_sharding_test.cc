@@ -1269,34 +1269,31 @@ ENTRY %Scatter {
 }
 
 TEST_F(AutoShardingTest, GatherTest) {
-  constexpr absl::string_view kHloString = R"(
+  const char* const hlo_string = R"(
 HloModule module
-ENTRY %entry {
-  %param0 = f32[256,1024]{0,1} parameter(0)
-  %param1 = s32[128,512,1]{2,1,0} parameter(1)
-  ROOT %gather = f32[128,512,1024]{2,1,0} gather(f32[256,1024]{0,1} %param0, s32[128,512,1]{2,1,0} %param1), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,1024}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+
+ENTRY %module {
+  parameter.0 = s32[262144,2]{1,0} parameter(0), sharding={devices=[16,1,16]<=[256] last_tile_dim_replicate}
+  parameter.1 = f32[512,712,4096]{2,1,0} parameter(1), sharding={devices=[16,1,16]<=[256]}
+  ROOT gather = f32[262144,4096]{1,0} gather(parameter.1, parameter.0), offset_dims={1}, collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=1, slice_sizes={1,1,4096} //, sharding={devices=[16,16]<=[256]}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_shape = {16, 16};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
   auto* gather = FindInstruction(module.get(), "gather");
   ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      AnyOf(
-          op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
-          op::Sharding("{devices=[1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
-          op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"),
-          op::Sharding("{devices=[2,1,1,2]0,2,1,3 last_tile_dim_replicate}")));
-  auto gather_sharding = gather->sharding();
-  TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
+  EXPECT_THAT(gather, op::Sharding("{devices=[16,16]<=[256]}"));
 }
 
 TEST_F(AutoShardingTest, GatherTestNoReshard) {

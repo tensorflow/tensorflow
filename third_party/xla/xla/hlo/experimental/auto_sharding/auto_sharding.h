@@ -358,10 +358,6 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
     const CallGraph& call_graph,
     std::vector<std::optional<HloSharding>>& input_shardings);
 
-bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
-                              const std::vector<ShardingStrategy>& two,
-                              bool is_reshape);
-
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
