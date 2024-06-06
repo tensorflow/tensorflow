@@ -4095,9 +4095,19 @@ absl::Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
     if (!hlo->operand(0)->sharding().IsManual()) {
       // We replicate the predicate of the conditional (the first operand) so
       // that all partitions follow the same control flow.
-      cond = GetPartitionedHlo(hlo->operand(0))
-                 .Reshard(HloSharding::Replicate())
-                 .hlo();
+      if (hlo->operand(0)->sharding().IsManualSubgroup()) {
+        auto grouped_sharding = hlo_sharding_util::GetManualSubgroupSharding(
+            hlo->operand(0)->sharding());
+        grouped_sharding.sharding = HloSharding::Replicate();
+        cond =
+            GetPartitionedHlo(hlo->operand(0))
+                .Reshard(hlo_sharding_util::UngroupSharding(grouped_sharding))
+                .hlo();
+      } else {
+        cond = GetPartitionedHlo(hlo->operand(0))
+                   .Reshard(HloSharding::Replicate())
+                   .hlo();
+      }
     }
     return b_.AddInstruction(HloInstruction::CreateConditional(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,

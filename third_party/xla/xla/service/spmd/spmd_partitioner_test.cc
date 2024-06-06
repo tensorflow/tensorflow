@@ -4400,6 +4400,41 @@ ENTRY entry {
                           op::Shape("f32[4,5]")));
 }
 
+TEST_P(SpmdPartitioningTest, ConditionalPartialManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+Negate {
+  x = f32[4] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT negate = f32[4] negate(x), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+}
+
+Identity {
+  y = f32[4] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT copy = f32[4] copy(y), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+}
+
+ENTRY entry {
+  %param.0 = pred[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={replicated, manual}}
+  %param.1 = f32[4] parameter(1), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  %param.2 = f32[4] parameter(2), sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+  ROOT cond = f32[4] conditional(%param.0, %param.1, %param.2),
+    true_computation=Negate, false_computation=Identity, sharding={devices=[2,2]<=[4] last_tile_dims={manual}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("pred[]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[2]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("f32[2]"));
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(param0, param1, param2),
+                          op::Shape("f32[2]")));
+}
+
 TEST_P(SpmdPartitioningTest, WhileManual) {
   absl::string_view hlo_string = R"(
 HloModule module
