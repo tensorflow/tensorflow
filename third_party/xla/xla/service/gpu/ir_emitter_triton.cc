@@ -2783,8 +2783,10 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
-      return absl::FailedPreconditionError(
-          "Triton support is only enabled for Ampere GPUs and up.");
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Triton support is only enabled for Ampere GPUs (compute ",
+          "capability 8.0) and up, but got compute capability ", ccCuda.major,
+          ".", ccCuda.minor, "."));
     }
   }
 
@@ -2815,8 +2817,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
-      return absl::FailedPreconditionError(
-          "Triton support is only enabled for Ampere GPUs and up.");
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Triton support is only enabled for Ampere GPUs (compute ",
+          "capability 8.0) and up, but got compute capability ", ccCuda.major,
+          ".", ccCuda.minor, "."));
     }
   }
 

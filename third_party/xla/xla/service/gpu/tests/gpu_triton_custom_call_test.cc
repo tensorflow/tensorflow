@@ -196,8 +196,8 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
       CompileToExecutable(std::move(module), /*run_optimization_passes=*/false),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
 }
 
 class TritonCustomCallTest : public HloTestBase {};

@@ -64,20 +64,13 @@ bzl_library(
 filegroup(
     name = "stream_executor_api_headers",
     srcs = [
-        "allocator_stats.h",
-        "command_buffer.h",
         "data_type.h",
         "device_description.h",
         "device_memory.h",
         "device_memory_allocator.h",
         "event.h",
-        "executor_cache.h",
-        "host_memory_allocation.h",
         "kernel.h",
-        "kernel_spec.h",
         "launch_dim.h",
-        "memory_allocation.h",
-        "module_spec.h",
         "numeric_options.h",
         "platform.h",
         "platform_manager.h",
@@ -94,7 +87,6 @@ filegroup(
     srcs = [
         "blas.h",
         "dnn.h",
-        "fft.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -106,8 +98,14 @@ cc_library(
         ":stream_executor_plugin_headers",
     ],
     deps = [
+        ":allocator_stats",
+        ":command_buffer",
         ":device_description_proto_cc",
+        ":fft",
         ":host_or_device_scalar",
+        ":kernel_spec",
+        ":memory_allocation",
+        ":module_spec",
         ":stream_executor_h",
         ":stream_executor_pimpl",
         "//xla/stream_executor/platform",
@@ -523,14 +521,14 @@ cc_library(
     name = "allocator_stats",
     srcs = ["allocator_stats.cc"],
     hdrs = ["allocator_stats.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":internal"],
     deps = ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(
     name = "command_buffer",
     hdrs = ["command_buffer.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":internal"],
     deps = [
         ":device_memory",
         ":kernel",
@@ -795,6 +793,7 @@ xla_cc_test(
     srcs = ["kernel_test.cc"],
     deps = [
         ":device_memory",
+        ":kernel_spec",
         ":stream_executor",
         ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
