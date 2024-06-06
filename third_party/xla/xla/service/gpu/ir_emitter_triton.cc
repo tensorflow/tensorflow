@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -846,13 +847,15 @@ Value EmitTiledBroadcast(
 absl::StatusOr<Value> EmitTiledHloInstruction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const TiledHloInstruction& tiled_hlo, mlir::triton::FuncOp fn, Value pid,
+    const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
+    mlir::triton::FuncOp fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
 
-  if (hlo->opcode() == HloOpcode::kParameter) {
+  if (fusion->IsUserOf(tiled_hlo.hlo())) {
     auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-        b, pid, tiled_hlo, fn.getArgument(tiled_hlo.hlo()->parameter_number()));
+        b, pid, tiled_hlo, fn.getArgument(fusion->operand_index(hlo)));
+
     return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
   }
 
@@ -898,14 +901,15 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 absl::StatusOr<Value> EmitTiledScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
     Value pid) {
   absl::flat_hash_map<const TiledHloInstruction*, Value> values;
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
-    TF_ASSIGN_OR_RETURN(Value result,
-                        EmitTiledHloInstruction(b, libdevice_path, device_info,
-                                                *tiled_hlo, fn, pid, values));
+    TF_ASSIGN_OR_RETURN(Value result, EmitTiledHloInstruction(
+                                          b, libdevice_path, device_info,
+                                          fusion, *tiled_hlo, fn, pid, values));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second)
         << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
@@ -2492,7 +2496,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       TiledHloComputation tiled_hlo_computation,
       symbolic_tile_analysis.ComputeTiledHloInstructions(output_tile_sizes));
   TF_ASSIGN_OR_RETURN(Value result,
-                      EmitTiledScope(b, libdevice_path, device_info,
+                      EmitTiledScope(b, libdevice_path, device_info, fusion,
                                      tiled_hlo_computation, fn, pid));
 
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();

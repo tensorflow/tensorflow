@@ -25,7 +25,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -50,6 +52,8 @@ class SymbolicTileAnalysis {
   // a diagnostic if the construction fails for any reason.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
       const HloComputation& computation, mlir::MLIRContext* ctx);
+  static SymbolicTileAnalysisOrError AnalyzeFusion(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(

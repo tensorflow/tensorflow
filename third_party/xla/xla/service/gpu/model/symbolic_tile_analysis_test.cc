@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -66,8 +67,11 @@ class SymbolicTileAnalysisTest : public HloTestBase {
  public:
   bool SetAnalysis(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeComputation(*module->entry_computation(),
-                                                 &mlir_context_);
+        SymbolicTileAnalysis::AnalyzeComputation(
+            *module->entry_computation()
+                 ->root_instruction()
+                 ->fused_instructions_computation(),
+            &mlir_context_);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       analysis_ = std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -89,12 +93,17 @@ max {
   ROOT m = f32[] maximum(p0, p1)
 }
 
-ENTRY main {
+fusion {
   p0 = f32[2,97]{1,0} parameter(0)
   constant = f32[] constant(-inf)
   reduce = f32[2] reduce(p0, constant), dimensions={1}, to_apply=max
   broadcast = f32[2,97]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = f32[2,97]{1,0} subtract(p0, broadcast)
+}
+
+ENTRY main {
+  p0 = f32[2,97]{1,0} parameter(0)
+  ROOT fusion = f32[2,97]{1,0} fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_TRUE(SetAnalysis(module.get()));
@@ -136,11 +145,16 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, ElementwiseDiamondCSEIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[2,97] parameter(0)
   exp = f32[2,97] exponential(p0)
   log = f32[2,97] log(p0)
   ROOT subtract = f32[2,97] subtract(exp, log)
+}
+
+ENTRY main {
+  p0 = f32[2,97] parameter(0)
+  ROOT fusion = f32[2,97] fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_TRUE(SetAnalysis(module.get()));
@@ -157,12 +171,78 @@ ENTRY main {
   EXPECT_EQ(p0_from_subtract0, p0_from_subtract1);
 }
 
+TEST_F(SymbolicTileAnalysisTest, ProducerConsumerFusionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+fusion.1 {
+  p0 = f32[2,97] parameter(0)
+  constant = f32[] constant(-inf)
+  exp = f32[2,97] exponential(p0)
+  ROOT reduce = f32[2] reduce(exp, constant), dimensions={1}, to_apply=max
+}
+
+fusion.2 {
+  p0 = f32[2] parameter(0)
+  p1 = f32[2,97] parameter(1)
+  broadcast = f32[2,97]{1,0} broadcast(p0), dimensions={0}
+  ROOT subtract = f32[2,97] subtract(p1, broadcast)
+}
+
+ENTRY main {
+  p0 = f32[2,97] parameter(0)
+  producer = f32[2] fusion(p0), kind=kLoop, calls=fusion.1
+  ROOT consumer = f32[2,97] fusion(producer, p0), kind=kLoop, calls=fusion.2
+})"));
+
+  const auto* consumer = module->entry_computation()->root_instruction();
+  const auto* producer = consumer->operand(0);
+
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis.ComputeTiledHloInstructions(/*tile_parameters=*/{1, 97}));
+
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
+
+  const TiledHloInstruction* p0_from_producer =
+      root->operand(1)->operand(0)->operand(0)->operand(0);
+  const TiledHloInstruction* p0_from_consumer = root->operand(0);
+
+  EXPECT_EQ(p0_from_producer, p0_from_consumer);
+
+  EXPECT_THAT(*p0_from_producer,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
+    (d0) -> (d0, 0)
+    domain: d0 in [0, 1]
+  )"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, TransposeOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[8,16,4] parameter(0)
   ROOT transpose = f32[4,8,16] transpose(p0), dimensions={2,0,1}
+}
+
+ENTRY main {
+  p0 = f32[8,16,4] parameter(0)
+  ROOT fusion = f32[4,8,16] fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_TRUE(SetAnalysis(module.get()));
@@ -194,11 +274,16 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, SliceOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[8,16] parameter(0)
   slice.0 = f32[4,8] slice(p0), slice={[0:4], [2:10]}
   slice.1 = f32[4,8] slice(p0), slice={[3:7], [4:12]}
   ROOT add = f32[4,8] add(slice.0, slice.1)
+}
+
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  ROOT fusion = f32[4,8] fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_TRUE(SetAnalysis(module.get()));
@@ -241,12 +326,18 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedDot) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   p1 = f32[2,3]{1,0} parameter(1)
   ROOT dot = f32[1,3]{1,0} dot(p0, p1),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  ROOT fusion = f32[1,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_FALSE(SetAnalysis(module.get()));
@@ -255,9 +346,14 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedReshape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT reshape = f32[2] reshape(p0)
+}
+
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_FALSE(SetAnalysis(module.get()));
@@ -266,9 +362,14 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedBitcast) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT bitcast = f32[2] bitcast(p0)
+}
+
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_FALSE(SetAnalysis(module.get()));
@@ -277,10 +378,36 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,3]{1,0} parameter(0)
   p1 = f32[1,3]{1,0} parameter(1)
   ROOT concatenate = f32[2,3] concatenate(p0, p1), dimensions={0}
+}
+
+ENTRY main {
+  p0 = f32[1,3]{1,0} parameter(0)
+  p1 = f32[1,3]{1,0} parameter(1)
+  ROOT fusion = f32[2,3] fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+
+  EXPECT_FALSE(SetAnalysis(module.get()));
+}
+
+TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  add = f32[32] add(p0, p1)
+  subtract = f32[32] subtract(p0, p1)
+  ROOT tuple = (f32[32], f32[32]) tuple(add, subtract)
+}
+
+ENTRY main {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  ROOT fusion = (f32[32], f32[32]) fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
 
   EXPECT_FALSE(SetAnalysis(module.get()));
