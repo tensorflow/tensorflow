@@ -25,11 +25,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -47,20 +49,31 @@ namespace xla {
 
 // Identifies one array input of an HloInstruction.
 struct HloOperandIndex {
-  // The operand number in which the array value appears.
-  int64_t operand_number;
+  using MyTuple = std::tuple<int64_t, const ShapeIndex&>;
 
-  // The shape index within the operand in which the array value appears.
-  ShapeIndex operand_index;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloOperandIndex& hlo_operand_index) {
+    return H::combine(std::move(h), hlo_operand_index.ToTuple());
+  }
 
-  bool operator==(const HloOperandIndex& other) const {
-    return operand_number == other.operand_number &&
-           operand_index == other.operand_index;
+  friend bool operator==(const HloOperandIndex& lhs,
+                         const HloOperandIndex& rhs) {
+    return lhs.ToTuple() == rhs.ToTuple();
   }
 
   bool operator!=(const HloOperandIndex& other) const {
     return !(*this == other);
   }
+
+  MyTuple ToTuple() const {
+    return std::make_tuple(operand_number, std::cref(operand_index));
+  }
+
+  // The operand number in which the array value appears.
+  int64_t operand_number;
+
+  // The shape index within the operand in which the array value appears.
+  ShapeIndex operand_index;
 };
 
 // Analysis which identifies all HLO values and their uses in an HLO module.
