@@ -37,12 +37,22 @@ using ::testing::ElementsAreArray;
 
 class BaseEmbeddingLookupOpModel : public SingleOpModel {
  public:
-  BaseEmbeddingLookupOpModel(std::initializer_list<int> index_shape,
-                             std::initializer_list<int> weight_shape,
-                             TensorType weight_type = TensorType_FLOAT32,
-                             TensorType output_type = TensorType_FLOAT32) {
+  BaseEmbeddingLookupOpModel(
+      std::initializer_list<int> index_shape,
+      std::initializer_list<int> weight_shape,
+      TensorType weight_type = TensorType_FLOAT32,
+      TensorType output_type = TensorType_FLOAT32,
+      const std::vector<float>& per_channel_quantization_scales = {}) {
     input_ = AddInput(TensorType_INT32);
-    weight_ = AddInput(weight_type);
+    if (per_channel_quantization_scales.empty()) {
+      weight_ = AddInput(weight_type);
+    } else {
+      std::vector<int64_t> per_channel_quantization_offsets(
+          per_channel_quantization_scales.size(), 0);
+      weight_ = AddInput({weight_type, weight_shape, 0, 0, 0, 0, true,
+                          per_channel_quantization_scales,
+                          per_channel_quantization_offsets, 0});
+    }
     output_ = AddOutput(output_type);
     SetBuiltinOp(BuiltinOperator_EMBEDDING_LOOKUP, BuiltinOptions_NONE, 0);
     BuildInterpreter({index_shape, weight_shape});
@@ -97,6 +107,22 @@ class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
 
   void SetSignedWeight(std::initializer_list<float> data) {
     SignedSymmetricQuantizeAndPopulate(weight_, data);
+  }
+};
+
+class PerAxisHybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
+ public:
+  PerAxisHybridEmbeddingLookupOpModel(
+      std::initializer_list<int> index_shape,
+      std::initializer_list<int> weight_shape,
+      const std::vector<float>& per_channel_quantization_scales,
+      TensorType type)
+      : BaseEmbeddingLookupOpModel(index_shape, weight_shape, type,
+                                   TensorType_FLOAT32,
+                                   per_channel_quantization_scales) {}
+
+  void SetSignedWeight(std::initializer_list<float> data) {
+    PerChannelSymmetricQuantizeAndPopulate(weight_, data);
   }
 };
 
@@ -258,6 +284,72 @@ TEST(EmbeddingLookupHybridOpTest, Simple3DTestQuantized) {
                   0,   1,   2,   3,   10,  11,  12,  13,   // Row 0
                   200, 201, 202, 203, 210, 211, 212, 213,  // Row 2
               }));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple2DTestInt8) {
+  PerAxisHybridEmbeddingLookupOpModel m(
+      {3}, {3, 8}, {0.00102, 0.0089, 0.016772}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple3DTestInt8) {
+  PerAxisHybridEmbeddingLookupOpModel m(
+      {3}, {3, 2, 4}, {0.00102, 0.0089, 0.016772}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple4DTestInt8) {
+  PerAxisHybridEmbeddingLookupOpModel m(
+      {3}, {3, 2, 2, 2}, {0.00102, 0.0089, 0.016772}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
 }
 
 }  // namespace
