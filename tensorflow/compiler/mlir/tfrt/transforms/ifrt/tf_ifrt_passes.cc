@@ -92,6 +92,12 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
 
+  // Decompose resource ops as resource variables are loaded by ReadVariableOp
+  // and can be lowered to IfrtLoadVariableOp in the subsequent
+  // SinkVariableAsNamedArrayPass.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
   // Sink variable tensor as named array in IFRT.
   pm.addPass(CreateSinkVariableAsNamedArrayPass());
 }

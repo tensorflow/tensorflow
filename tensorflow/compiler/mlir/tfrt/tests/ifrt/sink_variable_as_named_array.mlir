@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -sink-variable-as-named-array %s | FileCheck %s
+// RUN: tf-tfrt-opt -split-input-file -tf-device-decompose-resource-ops -sink-variable-as-named-array %s | FileCheck %s
 
 // -----
 // Basic test: all variables tensors are for devices and sinked as named ifrt arrays
@@ -24,22 +24,22 @@ module {
 // -----
 // Variable tensor for host can still be used.
 //
-// CHECK-LABEL:  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
+// CHECK-LABEL:  func.func @serving_default(%arg0: tensor<1x3xf32>) -> (tensor<1x1xf32>, tensor<1x1xf32>) {
 // CHECK:  "tf.VarHandleOp"
 // CHECK-NOT:  [[VARIABLE:%.*]] = "tf.ReadVariableOp"
 // CHECK-NEXT:  [[KEY:%.*]], [[FUTURE:%.*]] = "tf.IfrtLoadVariable"
 // CHECK-SAME:    used_by_host = true
-// CHECK-NEXT:  "tf.MatMul"(%arg0, [[FUTURE]])
+// CHECK-NEXT:  [[MATRES:%.*]] = "tf.MatMul"(%arg0, [[FUTURE]])
 // CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"(%arg0, [[KEY]]) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}>
-// CHECK-NEXT:    return [[RES]] : tensor<1x1xf32>
+// CHECK-NEXT:    return [[RES]], [[MATRES]] : tensor<1x1xf32>, tensor<1x1xf32>
 //
 module {
-  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
+  func.func @serving_default(%arg0: tensor<1x3xf32>) -> (tensor<1x1xf32>, tensor<1x1xf32>) {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
     %3 = "tf.MatMul"(%arg0, %2) : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
     %result = "tf.IfrtCall"(%arg0, %2) <{program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<1x3xf32>, tensor<3x1xf32>) -> (tensor<1x1xf32>)
-    return %result : tensor<1x1xf32>
+    return %result, %3 : tensor<1x1xf32>, tensor<1x1xf32>
   }
 }
 
@@ -48,7 +48,7 @@ module {
 //
 // CHECK-LABEL:  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK:  "tf.VarHandleOp"
-// CHECK-NOT:  [[VARIABLE:%.*]] = "tf.ReadVariableOp"
+// CHECK-NOT:   tf.ReadVariableOp
 // CHECK-NEXT:  [[KEY:%.*]], [[FUTURE:%.*]] = "tf.IfrtLoadVariable"
 // CHECK-SAME:    used_by_host = true
 // CHECK-NEXT:  [[RES:%.*]] = "tf.MatMul"(%arg0, [[FUTURE]])
@@ -86,5 +86,24 @@ module {
   func.func @__initializer(%arg0: tensor<*x!tf_type.string>) -> tensor<i32> {
     %0 = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
     return %0 : tensor<i32>
+  }
+}
+
+
+// -----
+//  Decomposable Resource Ops usage
+//
+// CHECK-LABEL:  func.func @serving_default
+// CHECK:      "tf.VarHandleOp"
+// CHECK-NEXT: "tf.IfrtLoadVariable"
+// CHECK-NEXT: "tf.GatherV2"
+// CHECK-NEXT:  return 
+//
+module {
+  func.func @serving_default() -> tensor<1x3xbf16> {
+    %cst = "tf.Const"() <{value = dense<[1]> : tensor<1xi32>}> : () -> tensor<1xi32>
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "Variable"}> : () -> tensor<!tf_type.resource<tensor<2x3xbf16>>>
+    %1 = "tf.ResourceGather"(%0, %cst) <{batch_dims = 0 : i64, validate_indices = true}> : (tensor<!tf_type.resource<tensor<2x3xbf16>>>, tensor<1xi32>) -> tensor<1x3xbf16>
+    return %1: tensor<1x3xbf16>
   }
 }
