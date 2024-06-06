@@ -34,8 +34,8 @@ xla_cc_binary(
     ] + tf_gpu_tests_tags(),
     deps = [
         ":functional_hlo_runner",
-        ":hlo_runner_flags",
         "//xla:debug_options_flags",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed",
@@ -48,6 +48,7 @@ xla_cc_binary(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
@@ -71,8 +72,8 @@ xla_cc_binary(
     ] + tf_gpu_tests_tags(),
     deps = [
         ":functional_hlo_runner",
-        ":hlo_runner_flags",
         "//xla:debug_options_flags",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed",
@@ -86,6 +87,7 @@ xla_cc_binary(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
@@ -146,18 +148,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "hlo_runner_flags",
-    srcs = ["hlo_runner_flags.cc"],
-    hdrs = ["hlo_runner_flags.h"],
-    deps = [
-        ":functional_hlo_runner",
-        "//xla/pjrt:pjrt_executable",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
