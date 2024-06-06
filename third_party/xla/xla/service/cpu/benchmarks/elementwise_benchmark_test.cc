@@ -36,21 +36,21 @@ static void BM_AddF32(benchmark::State& state) {
     HloModule add_f32_$d0
 
     add {
-      p0 = f32[$d0] parameter(0)
-      p1 = f32[$d0] parameter(1)
-      ROOT add = f32[$d0] add(p0, p1)
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      p1 = f32[1,2,1,$d0,256] parameter(1)
+      ROOT add = f32[1,2,1,$d0,256] add(p0, p1)
     }
 
     ENTRY e {
-      p0 = f32[$d0] parameter(0)
-      p1 = f32[$d0] parameter(1)
-      ROOT fusion = f32[$d0] fusion(p0, p1), kind=kLoop, calls=add
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      p1 = f32[1,2,1,$d0,256] parameter(1)
+      ROOT fusion = f32[1,2,1,$d0,256] fusion(p0, p1), kind=kLoop, calls=add
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {d0});
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
 
