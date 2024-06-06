@@ -1023,51 +1023,9 @@ absl::StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
     GlobalPyRefManager()->CollectGarbage();
     nb::gil_scoped_release gil_release;
-    std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
-    // The sharding conversions are tried in the order of narrowness (e.g.,
-    // ShardingParamSharding is an IFRT-level sharding, whereas HloSharding is
-    // a IFRT-XLA level sharding).
-    if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
-      ifrt_sharding =
-          ifrt::SingleDeviceSharding::Create(devices[0], dst_memory_kind);
-    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::OpaqueSharding>(
-                   &ifrt_array_ptr->sharding());
-               in_sharding != nullptr) {
-      ifrt_sharding =
-          ifrt::OpaqueSharding::Create(std::move(devices), dst_memory_kind);
-    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::ConcreteSharding>(
-                   &ifrt_array_ptr->sharding());
-               in_sharding != nullptr) {
-      ifrt_sharding = ifrt::ConcreteSharding::Create(
-          std::move(devices), dst_memory_kind, in_sharding->shape(),
-          in_sharding->shard_shapes());
-    } else if (const auto* in_sharding =
-                   llvm::dyn_cast<ifrt::ConcreteEvenSharding>(
-                       &ifrt_array_ptr->sharding());
-               in_sharding != nullptr) {
-      ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
-          std::move(devices), dst_memory_kind, in_sharding->shape(),
-          in_sharding->shard_shape());
-    } else if (const auto* in_sharding =
-                   llvm::dyn_cast<ifrt::ShardingParamSharding>(
-                       &ifrt_array_ptr->sharding());
-               in_sharding != nullptr) {
-      TF_ASSIGN_OR_RETURN(ifrt_sharding,
-                          ifrt::ShardingParamSharding::Create(
-                              in_sharding->sharding_param(), std::move(devices),
-                              dst_memory_kind));
-    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::HloSharding>(
-                   &ifrt_array_ptr->sharding());
-               in_sharding != nullptr) {
-      ifrt_sharding = ifrt::HloSharding::Create(
-          std::move(devices), dst_memory_kind, in_sharding->xla_hlo_sharding());
-    } else {
-      return InvalidArgument(
-          "resharding only supported for ifrt::SingleDeviceSharding, "
-          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, "
-          "ifrt::ConcreteEvenSharding, ifrt::ShardingParamSharding, and "
-          "ifrt::HloSharding.");
-    }
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<const ifrt::Sharding> ifrt_sharding,
+                        ifrt_array_ptr->sharding().WithDeviceAssignment(
+                            devices, dst_memory_kind));
     TF_ASSIGN_OR_RETURN(out_array, ifrt_array_ptr->Reshard(
                                        std::move(ifrt_sharding),
                                        ifrt::ArrayCopySemantics::kReuseInput));
