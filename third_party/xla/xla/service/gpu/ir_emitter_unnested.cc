@@ -2777,8 +2777,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               stream_assignment.GetAsyncExecutionStreamIds(async_done));
           AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
               Thunk::ThunkInfo::WithProfileAnnotation(instr),
-              streams.source_stream_id,
-              std::vector<ExecutionStreamId>{streams.destination_stream_id}));
+              streams.source_stream_id, streams.destination_stream_id));
           return absl::OkStatus();
         }
         default:
@@ -2823,8 +2822,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               stream_assignment.GetAsyncExecutionStreamIds(async_start));
           AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
               Thunk::ThunkInfo::WithProfileAnnotation(instr),
-              streams.destination_stream_id,
-              std::vector<ExecutionStreamId>{streams.source_stream_id}));
+              streams.destination_stream_id, streams.source_stream_id));
           return EmitFusion(Cast<HloFusionInstruction>(wrapped));
         }
         default:

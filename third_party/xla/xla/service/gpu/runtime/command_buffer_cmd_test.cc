@@ -265,11 +265,11 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
   commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
-  commands.Emplace<BarrierCmd>(s1, std::vector<ExecutionStreamId>{s0});
+  commands.Emplace<BarrierCmd>(s1, s0);
   commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_c, slice_b, byte_length);
-  commands.Emplace<BarrierCmd>(s0, std::vector<ExecutionStreamId>{s1});
+  commands.Emplace<BarrierCmd>(s0, s1);
   commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_d, slice_c, byte_length);
-  commands.Emplace<BarrierCmd>(s1, std::vector<ExecutionStreamId>{s0});
+  commands.Emplace<BarrierCmd>(s1, s0);
   commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_e, slice_d, byte_length);
 
   ServiceExecutableRunOptions run_options;

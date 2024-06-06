@@ -1507,22 +1507,19 @@ CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 BarrierCmd::BarrierCmd(ExecutionStreamId execution_stream_id,
-                       std::vector<ExecutionStreamId> from_stream_ids)
-    : CommandBufferCmd(execution_stream_id),
-      from_stream_ids_(std::move(from_stream_ids)) {}
+                       ExecutionStreamId from_stream_id)
+    : CommandBufferCmd(execution_stream_id), from_stream_id_(from_stream_id) {}
 
 absl::Status BarrierCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 const RecordParams& record_params,
                                 se::CommandBuffer* command_buffer) {
-  for (const ExecutionStreamId& from_stream_id : from_stream_ids_) {
-    VLOG(5) << "BarrierCmd from stream " << from_stream_id.value()
-            << " to stream " << execution_stream_id().value();
-    if (from_stream_id != execution_stream_id()) {
-      TF_RETURN_IF_ERROR(command_buffer->Barrier(
-          CommandBufferCmd::GetExecutionScope(record_params, from_stream_id),
-          CommandBufferCmd::GetExecutionScope(record_params,
-                                              execution_stream_id())));
-    }
+  VLOG(5) << "BarrierCmd from stream " << from_stream_id_.value()
+          << " to stream " << execution_stream_id().value();
+  if (from_stream_id_ != execution_stream_id()) {
+    TF_RETURN_IF_ERROR(command_buffer->Barrier(
+        CommandBufferCmd::GetExecutionScope(record_params, from_stream_id_),
+        CommandBufferCmd::GetExecutionScope(record_params,
+                                            execution_stream_id())));
   }
   return absl::OkStatus();
 }

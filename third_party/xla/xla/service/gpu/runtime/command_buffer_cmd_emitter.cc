@@ -179,9 +179,8 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
-  return std::make_unique<BarrierCmd>(
-      thunk.execution_stream_id(),
-      std::vector<ExecutionStreamId>{thunk.nccl_execution_stream_id()});
+  return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
+                                      thunk.nccl_execution_stream_id());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
@@ -209,7 +208,7 @@ static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
 
 static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
   return std::make_unique<BarrierCmd>(thunk.stream_id(),
-                                      thunk.wait_for_stream_ids());
+                                      thunk.wait_for_stream_id());
 }
 
 //===----------------------------------------------------------------------===//

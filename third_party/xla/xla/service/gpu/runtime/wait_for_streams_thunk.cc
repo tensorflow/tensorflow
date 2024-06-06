@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 
-#include <string>
-#include <utility>
-
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/stream.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -29,19 +27,12 @@ absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream,
                       Thunk::GetStreamForExecution(stream_id_, params));
 
-  VLOG(5) << "Waiting for stream ids: "
-          << absl::StrJoin(
-                 wait_for_stream_ids_, ", ",
-                 [&](std::string* s, const ExecutionStreamId& stream_id) {
-                   absl::StrAppend(s, stream_id.value());
-                 });
-  for (const auto& stream_id : wait_for_stream_ids_) {
-    TF_ASSIGN_OR_RETURN(se::Stream * wait_on_stream,
-                        Thunk::GetStreamForExecution(stream_id, params));
+  VLOG(5) << "Waiting for stream id: " << wait_for_stream_id_;
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * wait_on_stream,
+      Thunk::GetStreamForExecution(wait_for_stream_id_, params));
 
-    TF_RETURN_IF_ERROR(stream->WaitFor(wait_on_stream));
-  }
-  return absl::OkStatus();
+  return stream->WaitFor(wait_on_stream);
 }
 
 }  // namespace xla::gpu

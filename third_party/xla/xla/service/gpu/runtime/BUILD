@@ -1222,11 +1222,10 @@ cc_library(
     srcs = ["wait_for_streams_thunk.cc"],
     hdrs = ["wait_for_streams_thunk.h"],
     deps = [
-        "//xla/service:global_device_id",
-        "//xla/service/gpu/runtime:thunk",
+        ":thunk",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

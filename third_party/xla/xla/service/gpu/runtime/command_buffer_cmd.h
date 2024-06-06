@@ -901,20 +901,20 @@ class CustomCallCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
-// BarrierCmd insert barriers from the execution scope created from the
+// BarrierCmd insert a barrier from the execution scope created from the
 // 'from_stream_id' to the execution scope created from the
 // 'execution_stream_id', e.g. Async operator lowered to command buffer requires
 // a barrier from the launching stream to the async operator's execution stream.
 //
 // In other words, all future commands added to `execution_stream_id` are
 // guaranteed to begin executing only after all already-added commands in
-// `from_stream_ids` have completed.
+// `from_stream_id` have completed.
 //===----------------------------------------------------------------------===//
 
 class BarrierCmd : public CommandBufferCmd {
  public:
   BarrierCmd(ExecutionStreamId execution_stream_id,
-             std::vector<ExecutionStreamId> from_stream_ids);
+             ExecutionStreamId from_stream_id);
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -923,7 +923,7 @@ class BarrierCmd : public CommandBufferCmd {
   BufferUsageVector buffers() override;
 
  private:
-  const std::vector<ExecutionStreamId> from_stream_ids_;
+  const ExecutionStreamId from_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//
