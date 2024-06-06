@@ -30,18 +30,18 @@ namespace tsl {
 class DeviceIdManager {
  public:
   // Adds a mapping from tf_device_id to platform_device_id.
-  static Status InsertTfPlatformDeviceIdPair(
+  static absl::Status InsertTfPlatformDeviceIdPair(
       const DeviceType& type, TfDeviceId tf_device_id,
       PlatformDeviceId platform_device_id);
 
   // Gets the platform_device_id associated with tf_device_id. Returns OK if
   // found.
-  static Status TfToPlatformDeviceId(const DeviceType& type,
-                                     TfDeviceId tf_device_id,
-                                     PlatformDeviceId* platform_device_id);
+  static absl::Status TfToPlatformDeviceId(
+      const DeviceType& type, TfDeviceId tf_device_id,
+      PlatformDeviceId* platform_device_id);
 
   // Gets all tf_device_ids that are on the platform with `platform_device_id`.
-  static StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
+  static absl::StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
       const DeviceType& type, PlatformDeviceId platform_device_id);
 
   // Clears the map. Used in unit tests only.

@@ -49,7 +49,7 @@ void CheckValidTfDeviceId(const DeviceType& type,
       << ", visible device count: " << visible_device_count;
 }
 
-Status ParseVisibleDeviceList(
+absl::Status ParseVisibleDeviceList(
     const std::string& visible_device_list, const int visible_device_count,
     std::vector<PlatformDeviceId>* visible_device_order) {
   visible_device_order->clear();
@@ -91,10 +91,10 @@ Status ParseVisibleDeviceList(
         "visible_device_list contained a duplicate entry: ",
         visible_device_list);
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
+absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
     const absl::flat_hash_map<std::string, int64_t>&
         session_option_device_counts,
     absl::string_view device_type, absl::string_view visible_device_list,
@@ -123,12 +123,12 @@ StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
   return num_tf_devices;
 }
 
-StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
+absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type) {
   const TfDeviceId tf_device_id(GetTfDeviceIdFromDeviceParsedName(device_name));
   PlatformDeviceId platform_device_id;
-  Status platform_id_status = DeviceIdManager::TfToPlatformDeviceId(
+  absl::Status platform_id_status = DeviceIdManager::TfToPlatformDeviceId(
       device_type, tf_device_id, &platform_device_id);
   if (platform_id_status.ok()) {
     return platform_device_id.value();
@@ -136,7 +136,7 @@ StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
   return platform_id_status;
 }
 
-StatusOr<int> GetDeviceIdFromDeviceParsedName(
+absl::StatusOr<int> GetDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type) {
   auto platform_id =

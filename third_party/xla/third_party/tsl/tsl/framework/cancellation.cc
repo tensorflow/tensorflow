@@ -39,10 +39,10 @@ CancellationManager::CancellationManager(CancellationManager* parent)
 void CancellationManager::StartCancel() {
   // An "OK" status will not be logged by a callback registered by
   // RegisterCallbackWithErrorLogging.
-  StartCancelWithStatus(OkStatus());
+  StartCancelWithStatus(absl::OkStatus());
 }
 
-void CancellationManager::StartCancelWithStatus(const Status& status) {
+void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
   gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks_to_run;
   std::forward_list<CancellationManager*> children_to_cancel;
   Notification* cancelled_notification = nullptr;
@@ -233,9 +233,9 @@ bool CancellationManager::IsCancelling() {
   return is_cancelling_;
 }
 
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    CancelCallback callback,
-                                    std::function<void()>* deregister_fn) {
+absl::Status RegisterCancellationCallback(
+    CancellationManager* cancellation_manager, CancelCallback callback,
+    std::function<void()>* deregister_fn) {
   if (cancellation_manager) {
     CancellationToken token = cancellation_manager->get_cancellation_token();
     if (!cancellation_manager->RegisterCallback(token, std::move(callback))) {
@@ -249,7 +249,7 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
                "not be registered.";
     *deregister_fn = []() {};
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace tsl
