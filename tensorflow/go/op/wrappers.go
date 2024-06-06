@@ -40184,6 +40184,20 @@ func ResourceSparseApplyAdagradUpdateSlots(value bool) ResourceSparseApplyAdagra
 // That is for rows we have grad for, we update var and accum as follows:
 // accum += grad * grad
 // var -= lr * grad * (1 / sqrt(accum))
+
+// 1) "lr(learning rate)" must be scalar tensor(Float type). It "cannot be" "JUST A SCALAR". 
+// 2) All the 4 parameters - (var, accum, lr and grad) "HAVE TO BE" of "same dtype" - either "float" or "complex" type. 
+// 	  One cannot be different from others.
+//    If atleast 1 of 4 have a "different datatype", the session crashes and the runtime will get disconnected.
+// 3) Each "value" in the indices tensor, will act as a "pointer to the corresponding INDEX POSITION in both the var and accum tensors." 
+//    The maxValueOf(indices) + 1 "MUST BE EQUAL TO THE" len(var) and len(accum) individually.
+//    For example: 
+//               indices = [1, 2, 3, 4] then var = [1.0, 2.0, 3.0, 4.0, 5.0], accum = [1.1, 1.2, 1.3, 1.4, 1.5]
+//               indices = [0, 1, 2, 3] then var = [1.0, 2.0, 3.0, 4.0], accum = [1.1, 1.2, 1.3, 1.4]
+// 4) len(indices) MUST STRICTLY BE EQUAL TO len(grad).
+// 5) len(var) MUST BE "EQUAL TO" len(accum) 
+// 6) The "values" in "var" and "accum" can be "unsorted as well"
+
 //
 // Arguments:
 //
