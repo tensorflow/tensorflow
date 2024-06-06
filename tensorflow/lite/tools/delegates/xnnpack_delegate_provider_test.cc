@@ -27,7 +27,8 @@ namespace tools {
 namespace {
 
 TEST(XNNPackDelegateProviderTest, Test) {
-  const char kFakeCacheParam[] = "/tmp/random/path";
+  const std::string kFakeCacheParam =
+      testing::TempDir() + "/XNNPackDelegateProviderTest.xnnpack_cache";
 
   const auto& providers = GetRegisteredDelegateProviders();
   ASSERT_EQ(providers.size(), 1);

@@ -36,9 +36,9 @@ struct Buffer;
 struct BufferBuilder;
 struct BufferT;
 
-struct PackedWeights;
-struct PackedWeightsBuilder;
-struct PackedWeightsT;
+struct BufferList;
+struct BufferListBuilder;
+struct BufferListT;
 
 struct BufferT : public ::flatbuffers::NativeTable {
   typedef Buffer TableType;
@@ -155,24 +155,22 @@ inline ::flatbuffers::Offset<Buffer> CreateBuffer(
 
 ::flatbuffers::Offset<Buffer> CreateBuffer(::flatbuffers::FlatBufferBuilder &_fbb, const BufferT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct PackedWeightsT : public ::flatbuffers::NativeTable {
-  typedef PackedWeights TableType;
+struct BufferListT : public ::flatbuffers::NativeTable {
+  typedef BufferList TableType;
   std::vector<std::unique_ptr<tflite::xnnpack::cache::schema::BufferT>> buffers{};
-  uint64_t flatbuffer_size = 0;
   uint64_t base_offset = 0;
-  PackedWeightsT() = default;
-  PackedWeightsT(const PackedWeightsT &o);
-  PackedWeightsT(PackedWeightsT&&) FLATBUFFERS_NOEXCEPT = default;
-  PackedWeightsT &operator=(PackedWeightsT o) FLATBUFFERS_NOEXCEPT;
+  BufferListT() = default;
+  BufferListT(const BufferListT &o);
+  BufferListT(BufferListT&&) FLATBUFFERS_NOEXCEPT = default;
+  BufferListT &operator=(BufferListT o) FLATBUFFERS_NOEXCEPT;
 };
 
-struct PackedWeights FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef PackedWeightsT NativeTableType;
-  typedef PackedWeightsBuilder Builder;
+struct BufferList FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef BufferListT NativeTableType;
+  typedef BufferListBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_BUFFERS = 4,
-    VT_FLATBUFFER_SIZE = 6,
-    VT_BASE_OFFSET = 8
+    VT_BASE_OFFSET = 6
   };
   /// A list of buffers.
   const ::flatbuffers::Vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>> *buffers() const {
@@ -181,15 +179,7 @@ struct PackedWeights FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   ::flatbuffers::Vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>> *mutable_buffers() {
     return GetPointer<::flatbuffers::Vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>> *>(VT_BUFFERS);
   }
-  /// The serialized file is `flatbuffer_size` of bytes representing
-  /// `NamedBuffers` appended with a blob representing the buffer content.
-  uint64_t flatbuffer_size() const {
-    return GetField<uint64_t>(VT_FLATBUFFER_SIZE, 0);
-  }
-  bool mutate_flatbuffer_size(uint64_t _flatbuffer_size = 0) {
-    return SetField<uint64_t>(VT_FLATBUFFER_SIZE, _flatbuffer_size, 0);
-  }
-  /// Defines the base offset for the data appended to the file. That offset
+  /// Defines the base offset for the data in the file. That offset
   /// may be needed to guarantee data alignment.
   uint64_t base_offset() const {
     return GetField<uint64_t>(VT_BASE_OFFSET, 0);
@@ -202,65 +192,57 @@ struct PackedWeights FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_BUFFERS) &&
            verifier.VerifyVector(buffers()) &&
            verifier.VerifyVectorOfTables(buffers()) &&
-           VerifyField<uint64_t>(verifier, VT_FLATBUFFER_SIZE, 8) &&
            VerifyField<uint64_t>(verifier, VT_BASE_OFFSET, 8) &&
            verifier.EndTable();
   }
-  PackedWeightsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(PackedWeightsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static ::flatbuffers::Offset<PackedWeights> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const PackedWeightsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BufferListT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BufferListT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<BufferList> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BufferListT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
-struct PackedWeightsBuilder {
-  typedef PackedWeights Table;
+struct BufferListBuilder {
+  typedef BufferList Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
   void add_buffers(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>>> buffers) {
-    fbb_.AddOffset(PackedWeights::VT_BUFFERS, buffers);
-  }
-  void add_flatbuffer_size(uint64_t flatbuffer_size) {
-    fbb_.AddElement<uint64_t>(PackedWeights::VT_FLATBUFFER_SIZE, flatbuffer_size, 0);
+    fbb_.AddOffset(BufferList::VT_BUFFERS, buffers);
   }
   void add_base_offset(uint64_t base_offset) {
-    fbb_.AddElement<uint64_t>(PackedWeights::VT_BASE_OFFSET, base_offset, 0);
+    fbb_.AddElement<uint64_t>(BufferList::VT_BASE_OFFSET, base_offset, 0);
   }
-  explicit PackedWeightsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+  explicit BufferListBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ::flatbuffers::Offset<PackedWeights> Finish() {
+  ::flatbuffers::Offset<BufferList> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<PackedWeights>(end);
+    auto o = ::flatbuffers::Offset<BufferList>(end);
     return o;
   }
 };
 
-inline ::flatbuffers::Offset<PackedWeights> CreatePackedWeights(
+inline ::flatbuffers::Offset<BufferList> CreateBufferList(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>>> buffers = 0,
-    uint64_t flatbuffer_size = 0,
     uint64_t base_offset = 0) {
-  PackedWeightsBuilder builder_(_fbb);
+  BufferListBuilder builder_(_fbb);
   builder_.add_base_offset(base_offset);
-  builder_.add_flatbuffer_size(flatbuffer_size);
   builder_.add_buffers(buffers);
   return builder_.Finish();
 }
 
-inline ::flatbuffers::Offset<PackedWeights> CreatePackedWeightsDirect(
+inline ::flatbuffers::Offset<BufferList> CreateBufferListDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>> *buffers = nullptr,
-    uint64_t flatbuffer_size = 0,
     uint64_t base_offset = 0) {
   auto buffers__ = buffers ? _fbb.CreateVector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>>(*buffers) : 0;
-  return tflite::xnnpack::cache::schema::CreatePackedWeights(
+  return tflite::xnnpack::cache::schema::CreateBufferList(
       _fbb,
       buffers__,
-      flatbuffer_size,
       base_offset);
 }
 
-::flatbuffers::Offset<PackedWeights> CreatePackedWeights(::flatbuffers::FlatBufferBuilder &_fbb, const PackedWeightsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+::flatbuffers::Offset<BufferList> CreateBufferList(::flatbuffers::FlatBufferBuilder &_fbb, const BufferListT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 inline BufferT *Buffer::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<BufferT>(new BufferT());
@@ -300,118 +282,95 @@ inline ::flatbuffers::Offset<Buffer> CreateBuffer(::flatbuffers::FlatBufferBuild
       _size);
 }
 
-inline PackedWeightsT::PackedWeightsT(const PackedWeightsT &o)
-      : flatbuffer_size(o.flatbuffer_size),
-        base_offset(o.base_offset) {
+inline BufferListT::BufferListT(const BufferListT &o)
+      : base_offset(o.base_offset) {
   buffers.reserve(o.buffers.size());
   for (const auto &buffers_ : o.buffers) { buffers.emplace_back((buffers_) ? new tflite::xnnpack::cache::schema::BufferT(*buffers_) : nullptr); }
 }
 
-inline PackedWeightsT &PackedWeightsT::operator=(PackedWeightsT o) FLATBUFFERS_NOEXCEPT {
+inline BufferListT &BufferListT::operator=(BufferListT o) FLATBUFFERS_NOEXCEPT {
   std::swap(buffers, o.buffers);
-  std::swap(flatbuffer_size, o.flatbuffer_size);
   std::swap(base_offset, o.base_offset);
   return *this;
 }
 
-inline PackedWeightsT *PackedWeights::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = std::unique_ptr<PackedWeightsT>(new PackedWeightsT());
+inline BufferListT *BufferList::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<BufferListT>(new BufferListT());
   UnPackTo(_o.get(), _resolver);
   return _o.release();
 }
 
-inline void PackedWeights::UnPackTo(PackedWeightsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+inline void BufferList::UnPackTo(BufferListT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
   { auto _e = buffers(); if (_e) { _o->buffers.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->buffers[_i]) { _e->Get(_i)->UnPackTo(_o->buffers[_i].get(), _resolver); } else { _o->buffers[_i] = std::unique_ptr<tflite::xnnpack::cache::schema::BufferT>(_e->Get(_i)->UnPack(_resolver)); }; } } else { _o->buffers.resize(0); } }
-  { auto _e = flatbuffer_size(); _o->flatbuffer_size = _e; }
   { auto _e = base_offset(); _o->base_offset = _e; }
 }
 
-inline ::flatbuffers::Offset<PackedWeights> PackedWeights::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const PackedWeightsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
-  return CreatePackedWeights(_fbb, _o, _rehasher);
+inline ::flatbuffers::Offset<BufferList> BufferList::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BufferListT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBufferList(_fbb, _o, _rehasher);
 }
 
-inline ::flatbuffers::Offset<PackedWeights> CreatePackedWeights(::flatbuffers::FlatBufferBuilder &_fbb, const PackedWeightsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+inline ::flatbuffers::Offset<BufferList> CreateBufferList(::flatbuffers::FlatBufferBuilder &_fbb, const BufferListT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const PackedWeightsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const BufferListT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _buffers = _o->buffers.size() ? _fbb.CreateVector<::flatbuffers::Offset<tflite::xnnpack::cache::schema::Buffer>> (_o->buffers.size(), [](size_t i, _VectorArgs *__va) { return CreateBuffer(*__va->__fbb, __va->__o->buffers[i].get(), __va->__rehasher); }, &_va ) : 0;
-  auto _flatbuffer_size = _o->flatbuffer_size;
   auto _base_offset = _o->base_offset;
-  return tflite::xnnpack::cache::schema::CreatePackedWeights(
+  return tflite::xnnpack::cache::schema::CreateBufferList(
       _fbb,
       _buffers,
-      _flatbuffer_size,
       _base_offset);
 }
 
-inline const tflite::xnnpack::cache::schema::PackedWeights *GetPackedWeights(const void *buf) {
-  return ::flatbuffers::GetRoot<tflite::xnnpack::cache::schema::PackedWeights>(buf);
+inline const tflite::xnnpack::cache::schema::BufferList *GetBufferList(const void *buf) {
+  return ::flatbuffers::GetRoot<tflite::xnnpack::cache::schema::BufferList>(buf);
 }
 
-inline const tflite::xnnpack::cache::schema::PackedWeights *GetSizePrefixedPackedWeights(const void *buf) {
-  return ::flatbuffers::GetSizePrefixedRoot<tflite::xnnpack::cache::schema::PackedWeights>(buf);
+inline const tflite::xnnpack::cache::schema::BufferList *GetSizePrefixedBufferList(const void *buf) {
+  return ::flatbuffers::GetSizePrefixedRoot<tflite::xnnpack::cache::schema::BufferList>(buf);
 }
 
-inline PackedWeights *GetMutablePackedWeights(void *buf) {
-  return ::flatbuffers::GetMutableRoot<PackedWeights>(buf);
+inline BufferList *GetMutableBufferList(void *buf) {
+  return ::flatbuffers::GetMutableRoot<BufferList>(buf);
 }
 
-inline tflite::xnnpack::cache::schema::PackedWeights *GetMutableSizePrefixedPackedWeights(void *buf) {
-  return ::flatbuffers::GetMutableSizePrefixedRoot<tflite::xnnpack::cache::schema::PackedWeights>(buf);
+inline tflite::xnnpack::cache::schema::BufferList *GetMutableSizePrefixedBufferList(void *buf) {
+  return ::flatbuffers::GetMutableSizePrefixedRoot<tflite::xnnpack::cache::schema::BufferList>(buf);
 }
 
-inline const char *PackedWeightsIdentifier() {
-  return "V001";
-}
-
-inline bool PackedWeightsBufferHasIdentifier(const void *buf) {
-  return ::flatbuffers::BufferHasIdentifier(
-      buf, PackedWeightsIdentifier());
-}
-
-inline bool SizePrefixedPackedWeightsBufferHasIdentifier(const void *buf) {
-  return ::flatbuffers::BufferHasIdentifier(
-      buf, PackedWeightsIdentifier(), true);
-}
-
-inline bool VerifyPackedWeightsBuffer(
+inline bool VerifyBufferListBuffer(
     ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifyBuffer<tflite::xnnpack::cache::schema::PackedWeights>(PackedWeightsIdentifier());
+  return verifier.VerifyBuffer<tflite::xnnpack::cache::schema::BufferList>(nullptr);
 }
 
-inline bool VerifySizePrefixedPackedWeightsBuffer(
+inline bool VerifySizePrefixedBufferListBuffer(
     ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifySizePrefixedBuffer<tflite::xnnpack::cache::schema::PackedWeights>(PackedWeightsIdentifier());
+  return verifier.VerifySizePrefixedBuffer<tflite::xnnpack::cache::schema::BufferList>(nullptr);
 }
 
-inline const char *PackedWeightsExtension() {
-  return "xnn_weights";
-}
-
-inline void FinishPackedWeightsBuffer(
+inline void FinishBufferListBuffer(
     ::flatbuffers::FlatBufferBuilder &fbb,
-    ::flatbuffers::Offset<tflite::xnnpack::cache::schema::PackedWeights> root) {
-  fbb.Finish(root, PackedWeightsIdentifier());
+    ::flatbuffers::Offset<tflite::xnnpack::cache::schema::BufferList> root) {
+  fbb.Finish(root);
 }
 
-inline void FinishSizePrefixedPackedWeightsBuffer(
+inline void FinishSizePrefixedBufferListBuffer(
     ::flatbuffers::FlatBufferBuilder &fbb,
-    ::flatbuffers::Offset<tflite::xnnpack::cache::schema::PackedWeights> root) {
-  fbb.FinishSizePrefixed(root, PackedWeightsIdentifier());
+    ::flatbuffers::Offset<tflite::xnnpack::cache::schema::BufferList> root) {
+  fbb.FinishSizePrefixed(root);
 }
 
-inline std::unique_ptr<tflite::xnnpack::cache::schema::PackedWeightsT> UnPackPackedWeights(
+inline std::unique_ptr<tflite::xnnpack::cache::schema::BufferListT> UnPackBufferList(
     const void *buf,
     const ::flatbuffers::resolver_function_t *res = nullptr) {
-  return std::unique_ptr<tflite::xnnpack::cache::schema::PackedWeightsT>(GetPackedWeights(buf)->UnPack(res));
+  return std::unique_ptr<tflite::xnnpack::cache::schema::BufferListT>(GetBufferList(buf)->UnPack(res));
 }
 
-inline std::unique_ptr<tflite::xnnpack::cache::schema::PackedWeightsT> UnPackSizePrefixedPackedWeights(
+inline std::unique_ptr<tflite::xnnpack::cache::schema::BufferListT> UnPackSizePrefixedBufferList(
     const void *buf,
     const ::flatbuffers::resolver_function_t *res = nullptr) {
-  return std::unique_ptr<tflite::xnnpack::cache::schema::PackedWeightsT>(GetSizePrefixedPackedWeights(buf)->UnPack(res));
+  return std::unique_ptr<tflite::xnnpack::cache::schema::BufferListT>(GetSizePrefixedBufferList(buf)->UnPack(res));
 }
 
 }  // namespace schema
