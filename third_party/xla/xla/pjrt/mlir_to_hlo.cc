@@ -371,23 +371,8 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
                                       std::optional<int64_t> plugin_version,
                                       absl::string_view target, bool inplace) {
   // Current PJRT users expect 12 weeks forward compat
-  // VHLO support added in PJRT API v41
-  // TODO (b/344930098): Allow VHLO interop and remove the all_stablehlo check
-  bool all_stablehlo = true;
-  module->walk([&](mlir::Operation* op) {
-    if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect>(
-            op->getDialect())) {
-      all_stablehlo = false;
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (!all_stablehlo ||
-      (plugin_version.has_value() && plugin_version.value() < 41)) {
-    return SerializeUsingNativeBytecode(module, plugin_version);
-  }
-  return SerializeUsingVersionedStablehlo(module, target, inplace);
+  // VHLO support added in PJRT API v41, flip to send VHLO in near future.
+  return SerializeUsingNativeBytecode(module, plugin_version);
 }
 
 }  // namespace xla
