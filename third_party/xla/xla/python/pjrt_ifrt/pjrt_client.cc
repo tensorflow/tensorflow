@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

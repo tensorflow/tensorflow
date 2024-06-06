@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"

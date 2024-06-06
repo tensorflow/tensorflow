@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
 

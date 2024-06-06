@@ -21,13 +21,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

@@ -22,13 +22,24 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
