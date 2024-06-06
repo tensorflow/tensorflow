@@ -80,7 +80,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Serialize portable artifact.
     TF_ASSIGN_OR_RETURN(std::string serialized,
                         xla::SerializeUsingVersionedStablehlo(
-                            *module, mlir::stablehlo::getCurrentVersion()));
+                            *module, mlir::stablehlo::getMinimumVersion()));
     return serialized;
   }
 
