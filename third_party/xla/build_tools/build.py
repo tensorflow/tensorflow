@@ -20,7 +20,8 @@ the specifics of the VM as possible. The only Kokoro-specific things that are
 assumed are:
   * that `KOKORO_JOB_NAME` is set, which is used to decide what build to run.
   * and all code ends up in `$PWD/github/$REPO_NAME`.
-The script also assumes that the working directory never changes.
+The script also assumes that the working directory never changes modulo `cd`ing
+into the repo that should be built (mostly `github/xla`, but also JAX and TF).
 """
 import dataclasses
 import enum
@@ -35,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 
 # TODO(ddunleavy): move this to the bazelrc
-_DEFAULT_OPTIONS = dict(
+_DEFAULT_BAZEL_OPTIONS = dict(
     test_output="errors",
     keep_going=True,
     nobuild_tests_only=True,
@@ -55,11 +56,12 @@ class BuildType(enum.Enum):
   GPU_CONTINUOUS = enum.auto()
 
 
-@dataclasses.dataclass(**_KW_ONLY_IF_PYTHON310)
+@dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
 
   type_: BuildType
+  repo: str
   configs: Tuple[str, ...] = ()
   target_patterns: Tuple[str, ...] = _DEFAULT_TARGET_PATTERNS
   tag_filters: Tuple[str, ...] = ()
@@ -97,11 +99,12 @@ def nvidia_gpu_build_with_compute_capability(
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
       type_=type_,
+      repo="xla",
       configs=("warnings", "rbe_linux_cuda_nvcc"),
       tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
-          **_DEFAULT_OPTIONS,
+          **_DEFAULT_BAZEL_OPTIONS,
       ),
       # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
       docker_image="gcr.io/tensorflow-sigs/build@sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545",
@@ -110,6 +113,7 @@ def nvidia_gpu_build_with_compute_capability(
 
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
+    repo="xla",
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
     tag_filters=(
@@ -118,11 +122,12 @@ _CPU_X86_BUILD = Build(
         "-requires-gpu-nvidia",
         "-requires-gpu-amd",
     ),
-    options=_DEFAULT_OPTIONS,
+    options=_DEFAULT_BAZEL_OPTIONS,
     docker_image="gcr.io/tensorflow-sigs/build:latest-python3.11",
 )
 _CPU_ARM64_BUILD = Build(
     type_=BuildType.CPU_ARM64,
+    repo="xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
     target_patterns=_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
     tag_filters=(
@@ -132,7 +137,7 @@ _CPU_ARM64_BUILD = Build(
         "-not_run:arm",
         "-requires-gpu-amd",
     ),
-    options={**_DEFAULT_OPTIONS, "build_tests_only": True},
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     docker_image="us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python",
 )
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
@@ -193,7 +198,7 @@ def main():
       [
           "docker", "run",
           "--name", "xla",
-          "-w", "/github/xla",
+          "-w", f"/github/{build.repo}",
           "-itd",
           "--rm",
           "-v", "./github:/github",
