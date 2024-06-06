@@ -1,1 +1,14 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+@@ -136,7 +136,9 @@
+         "//libc:__support_cpp_bit",
+         "//libc:__support_cpp_type_traits",
+         "//libc:__support_fputil_basic_operations",
++        "//libc:__support_fputil_fenv_impl",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:hdr_fenv_macros",
+         "//libc:hdr_math_macros",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
