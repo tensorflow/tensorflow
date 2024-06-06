@@ -743,3 +743,44 @@ module {
 // CHECK-LABEL: @transfer_read
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
 // CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<2xf32>
+
+// -----
+
+module {
+  func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
+                               %v1: vector<2xi1>, %v2: vector<2xi1>) -> tensor<43xi1> {
+    %c16 = arith.constant 16 : index
+    %c22 = arith.constant 22 : index
+    %out = vector.transfer_write %v1, %arg0[%c16] : vector<2xi1>, tensor<43xi1>
+    %out2 = vector.transfer_write %v2, %out[%c22] : vector<2xi1>, tensor<43xi1>
+    func.return %out2 : tensor<43xi1>
+  }
+}
+
+// CHECK-LABEL: @transfer_write_i1
+// CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
+// CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
+// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK:           %[[V1_EXT:.*]] = arith.extui %[[V1]]
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK:           %[[V2_EXT:.*]] = arith.extui %[[V2]]
+// CHECK-NEXT:      llvm.store %[[V2_EXT]], %[[PTR2]]
+
+// -----
+
+module {
+  func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vector<2xi1> {
+    %c16 = arith.constant 16 : index
+    %false = arith.constant false
+    %out = vector.transfer_read %arg0[%c16], %false : tensor<43xi1>, vector<2xi1>
+    func.return %out : vector<2xi1>
+  }
+}
+
+// CHECK-LABEL: @transfer_read_i1
+// CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr
+// CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
+// CHECK:           return %[[CAST]] : vector<2xi1>

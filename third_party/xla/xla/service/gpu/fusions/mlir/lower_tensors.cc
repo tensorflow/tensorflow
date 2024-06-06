@@ -279,16 +279,31 @@ struct RewriteTransferRead
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index = GetLinearIndex(source, op.getIndices(), rewriter);
-    Type element_type = source.getType().getElementType();
-    auto gep = CreateGep(source, linear_index, rewriter, element_type);
+
+    mlir::VectorType vector_type = op.getVectorType();
+    if (vector_type.getElementType().isInteger(1)) {
+      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
+    }
+    auto gep =
+        CreateGep(source, linear_index, rewriter, vector_type.getElementType());
 
     mlir::LLVMTypeConverter converter(rewriter.getContext());
-    auto llvm_vector_type = converter.convertType(op.getVectorType());
-    auto load =
-        rewriter.create<mlir::LLVM::LoadOp>(gep.getLoc(), llvm_vector_type, gep)
+    auto llvm_vector_type = converter.convertType(vector_type);
+    auto loc = op.getLoc();
+    auto loaded =
+        rewriter.create<mlir::LLVM::LoadOp>(loc, llvm_vector_type, gep)
             .getResult();
+
+    if (source.getType().getElementType().isInteger(1)) {
+      Value zero = rewriter.create<mlir::arith::ConstantOp>(
+          loc,
+          mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
+      loaded = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
+                                              loaded, zero);
+    }
+
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getType(), load);
+        op, op.getType(), loaded);
     return success();
   }
 };
@@ -368,17 +383,20 @@ struct RewriteTransferWrite
 
     auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
     mlir::Value vector_value = op.getVector();
+    if (op.getVectorType().getElementType().isInteger(1)) {
+      vector_value = b.create<arith::ExtUIOp>(
+          op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
+          vector_value);
+    }
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
-    vector_value = rewriter
-                       .create<mlir::UnrealizedConversionCastOp>(
-                           gep.getLoc(), llvm_type, vector_value)
-                       .getResult(0);
-    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), vector_value, gep);
+    vector_value =
+        b.create<mlir::UnrealizedConversionCastOp>(llvm_type, vector_value)
+            .getResult(0);
+    b.create<mlir::LLVM::StoreOp>(vector_value, gep);
 
-    op.replaceAllUsesWith(mlir::ValueRange{op.getSource()});
-    op.erase();
+    rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
     return success();
   }
 };
