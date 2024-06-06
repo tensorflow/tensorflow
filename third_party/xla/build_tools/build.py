@@ -32,7 +32,6 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 
 # TODO(ddunleavy): move this to the bazelrc
@@ -161,9 +160,9 @@ def _write_to_sponge_config(key, value) -> None:
     f.write(f"{key},{value}\n")
 
 
-def sh(args, **kwargs):
+def sh(args, check=True, **kwargs):
   logging.info("Starting process: %s", " ".join(args))
-  return subprocess.run(args, **kwargs)  # pylint: disable=subprocess-run-check
+  return subprocess.run(args, check=check, **kwargs)
 
 
 def _pull_docker_image_with_retries(image_url: str, retries=3) -> None:
@@ -176,9 +175,7 @@ def _pull_docker_image_with_retries(image_url: str, retries=3) -> None:
   # write SHA of image to the sponge config
   _write_to_sponge_config("TF_INFO_DOCKER_IMAGE", image_url)
 
-  pull_proc = sh(
-      ["docker", "pull", image_url], check=True, capture_output=True, text=True
-  )
+  pull_proc = sh(["docker", "pull", image_url], capture_output=True, text=True)
   # TODO(ddunleavy): get sha
   # _write_to_sponge_config("TF_INFO_DOCKER_SHA", sha)
 
@@ -189,7 +186,7 @@ def main():
   kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
   build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
 
-  sh(["./github/xla/.kokoro/generate_index_html.sh", "index.html"], check=True)
+  sh(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
 
   _pull_docker_image_with_retries(build.docker_image)
 
@@ -206,7 +203,6 @@ def main():
           "bash",
       ],
       # pyformat: enable
-      check=True,
   )
 
   # TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
@@ -218,10 +214,9 @@ def main():
             r"s/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g",
             "github/xla/.bazelrc",
         ],
-        check=True,
     )
 
-  sh(["docker", "exec", "xla", *build.bazel_test_command()], check=True)
+  sh(["docker", "exec", "xla", *build.bazel_test_command()])
 
   sh(["docker", "exec", "xla", "bazel", "analyze-profile", "profile.json.gz"])
 
