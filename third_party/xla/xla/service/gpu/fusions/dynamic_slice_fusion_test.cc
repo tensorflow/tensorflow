@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/gpu/address_computation_fusion_rewriter.h"
+#include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -875,7 +875,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1012,7 +1012,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1061,7 +1061,7 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1105,7 +1105,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallLegacyAPI) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1143,7 +1143,7 @@ TEST_F(DynamicSliceFusionTest, NilTupleLegacyAPI) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2459,7 +2459,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2534,7 +2534,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2633,7 +2633,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUS) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2729,7 +2729,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  AddressComputationFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(PLATFORM);
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 

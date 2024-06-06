@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/address_computation_fusion_rewriter.h"
+#include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -390,7 +390,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 
 }  // namespace
 
-absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
+absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<HloInstruction*,

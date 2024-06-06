@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_ADDRESS_COMPUTATION_FUSION_REWRITER_H_
-#define XLA_SERVICE_GPU_ADDRESS_COMPUTATION_FUSION_REWRITER_H_
+#ifndef XLA_SERVICE_GPU_DYNAMIC_SLICE_FUSION_REWRITER_H_
+#define XLA_SERVICE_GPU_DYNAMIC_SLICE_FUSION_REWRITER_H_
 
 #include <string>
 #include <utility>
@@ -67,13 +67,13 @@ namespace gpu {
 //        }}
 //  }
 //
-class AddressComputationFusionRewriter : public HloModulePass {
+class DynamicSliceFusionRewriter : public HloModulePass {
  public:
   absl::string_view name() const override {
     return "address-computation-fusion-rewriter";
   }
 
-  explicit AddressComputationFusionRewriter(std::string platform_name)
+  explicit DynamicSliceFusionRewriter(std::string platform_name)
       : platform_name_(std::move(platform_name)) {}
 
   using HloPassInterface::Run;
@@ -88,4 +88,4 @@ class AddressComputationFusionRewriter : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_ADDRESS_COMPUTATION_FUSION_REWRITER_H_
+#endif  // XLA_SERVICE_GPU_DYNAMIC_SLICE_FUSION_REWRITER_H_

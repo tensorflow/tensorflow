@@ -3232,9 +3232,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "address_computation_fusion_rewriter",
-    srcs = ["address_computation_fusion_rewriter.cc"],
-    hdrs = ["address_computation_fusion_rewriter.h"],
+    name = "dynamic_slice_fusion_rewriter",
+    srcs = ["dynamic_slice_fusion_rewriter.cc"],
+    hdrs = ["dynamic_slice_fusion_rewriter.h"],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -3263,10 +3263,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "address_computation_fusion_rewriter_test",
-    srcs = if_cuda_is_configured(["address_computation_fusion_rewriter_test.cc"]),
+    name = "dynamic_slice_fusion_rewriter_test",
+    srcs = if_cuda_is_configured(["dynamic_slice_fusion_rewriter_test.cc"]),
     deps = [
-        ":address_computation_fusion_rewriter",
+        ":dynamic_slice_fusion_rewriter",
         ":gpu_device_info_for_tests",
         "//xla:shape_util",
         "//xla/client:xla_builder",
@@ -3353,7 +3353,7 @@ cc_library(
         ":gpu_p2p_pipeliner",
         ":pipelined_p2p_rewriter",
         ":collective_permute_cycle_decomposer",
-        ":address_computation_fusion_rewriter",
+        ":dynamic_slice_fusion_rewriter",
         ":gemv_rewriter",
         ":algorithm_checker",
         ":alias_passthrough_params",

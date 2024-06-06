@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/address_computation_fusion_rewriter.h"
+#include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -47,9 +47,9 @@ limitations under the License.
 #define PLATFORM "GPU"
 namespace xla::gpu {
 
-class AddressComputationFusionRewriterTest : public HloTestBase {};
+class DynamicSliceFusionRewriterTest : public HloTestBase {};
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemm) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
     HloModule test
 
@@ -106,11 +106,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWithWorkspace) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test
 
@@ -171,11 +171,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
     HloModule test
 
@@ -238,11 +238,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotRoot) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
   const char* hlo = R"(
     HloModule test
 
@@ -301,12 +301,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest,
-       SimpleGemmOperandHasMultipleUsers) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
   const char* hlo = R"(
     HloModule test
 
@@ -369,12 +368,11 @@ TEST_F(AddressComputationFusionRewriterTest,
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest,
-       SimpleGemmOperandsHaveMultipleUsers) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
   const char* hlo = R"(
     HloModule test
 
@@ -452,11 +450,11 @@ TEST_F(AddressComputationFusionRewriterTest,
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   const char* hlo = R"(
     HloModule test
 
@@ -519,11 +517,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotContiguousSlice) {
   const char* hlo = R"(
     HloModule test
 
@@ -558,11 +556,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             std::nullopt);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   const char* hlo = R"(
     HloModule test
 
@@ -601,11 +599,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             std::nullopt);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
   const char* hlo = R"(
     HloModule test
 
@@ -680,11 +678,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
   const char* hlo = R"(
     HloModule test
 
@@ -743,11 +741,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
   const char* hlo = R"(
     HloModule test
 
@@ -806,11 +804,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
   const char* hlo = R"(
     HloModule test
 
@@ -870,11 +868,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
   const char* hlo = R"(
     HloModule test
 
@@ -928,7 +926,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
@@ -949,7 +947,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCall) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$memcpy",
              /*operands=*/
@@ -998,8 +996,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCall) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(
-      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            DynamicSliceFusionRewriter(PLATFORM), expected);
 }
 
 void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
@@ -1007,7 +1005,7 @@ void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, PLATFORM);
 
-TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
+TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Void",
              /*operands=*/
@@ -1051,11 +1049,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(
-      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            DynamicSliceFusionRewriter(PLATFORM), expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
+TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "Callback_Void",
@@ -1112,11 +1110,11 @@ TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(
-      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            DynamicSliceFusionRewriter(PLATFORM), expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
+TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   XlaBuilder b(TestName());
   auto custom_call = CustomCall(
       &b, "Callback_Void",
@@ -1196,11 +1194,11 @@ TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(
-      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            DynamicSliceFusionRewriter(PLATFORM), expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
+TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "Callback_Void",
@@ -1225,11 +1223,10 @@ TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo->ToString(),
-                            AddressComputationFusionRewriter(PLATFORM),
-                            std::nullopt);
+                            DynamicSliceFusionRewriter(PLATFORM), std::nullopt);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemm) {
+TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
   const char* hlo = R"(
     HloModule test
 
@@ -1290,11 +1287,11 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
+TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test
 
@@ -1360,12 +1357,11 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest,
-       DynamicSimpleGemmWorkspaceIgnored) {
+TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
     HloModule test
 
@@ -1432,11 +1428,11 @@ TEST_F(AddressComputationFusionRewriterTest,
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmNotRoot) {
+TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
   const char* hlo = R"(
     HloModule test
 
@@ -1499,11 +1495,11 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemm) {
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
   const char* hlo = R"(
     HloModule test
 
@@ -1563,11 +1559,11 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmNotRoot) {
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
   const char* hlo = R"(
     HloModule test
 
@@ -1636,11 +1632,11 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test
 
@@ -1719,11 +1715,11 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 
-TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
+TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
     HloModule test
 
@@ -1787,7 +1783,7 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
                             expected);
 }
 

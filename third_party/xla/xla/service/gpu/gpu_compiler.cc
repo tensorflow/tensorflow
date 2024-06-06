@@ -109,7 +109,6 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gather_simplifier.h"
-#include "xla/service/gpu/address_computation_fusion_rewriter.h"
 #include "xla/service/gpu/algorithm_checker.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -121,6 +120,7 @@ limitations under the License.
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
 #include "xla/service/gpu/double_buffer_loop_unrolling.h"
+#include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
@@ -1251,10 +1251,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_enable_address_computation_fusion()) {
-    HloPassPipeline pipeline("address-computation");
+    HloPassPipeline pipeline("dynamic-slice");
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         se::PlatformManager::PlatformWithId(PlatformId()));
-    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
+    pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
