@@ -247,11 +247,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
                       ir_emitter_->EmitElementalHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
-  // invocation, for now we assume that we always emit a full loop.
   return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
                                         buffers.arguments, buffers.results,
-                                        kernel.name, se::ThreadDim());
+                                        kernel.name, kernel.thread_dims);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
@@ -260,11 +258,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_->EmitFusionHostKernel(fusion));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
-  // invocation, for now we assume that we always emit a full loop.
   return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
                                         buffers.arguments, buffers.results,
-                                        kernel.name, se::ThreadDim());
+                                        kernel.name, kernel.thread_dims);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -273,11 +269,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
                       ir_emitter_->EmitReductionHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
-  // invocation, for now we assume that we always emit a full loop.
   return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
                                         buffers.arguments, buffers.results,
-                                        kernel.name, se::ThreadDim());
+                                        kernel.name, kernel.thread_dims);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(

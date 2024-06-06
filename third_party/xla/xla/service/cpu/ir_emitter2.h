@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
 
@@ -88,13 +89,11 @@ class IrEmitter2 {
     std::vector<llvm_ir::IrArray> results;
   };
 
-  // A symbol name in the LLVM module that defines a host kernel.
-  //
-  // TODO(ezhulenev): In addition to a symbol name we also need to know the
-  // block and thread sizes.
+  // Emitted kernel information that defines how to launch it at run time.
   struct KernelInfo {
-    explicit KernelInfo(std::string name) : name(std::move(name)) {}
     std::string name;
+    se::BlockDim block_dims;
+    se::ThreadDim thread_dims;
   };
 
   // Returns all the kernels emitted so far via this emitter.

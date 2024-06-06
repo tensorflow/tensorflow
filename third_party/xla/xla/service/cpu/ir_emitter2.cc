@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -272,7 +273,9 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
 
   TF_RETURN_IF_ERROR(EmitElementalLoops(b, instr, element_generator,
                                         kernel_prototype.results));
-  return kernels_.emplace_back(kernel_prototype.function->getName().str());
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
@@ -306,7 +309,9 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
 
   TF_RETURN_IF_ERROR(EmitElementalLoops(b, fusion, element_generator,
                                         kernel_prototype.results));
-  return kernels_.emplace_back(kernel_prototype.function->getName().str());
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
