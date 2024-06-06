@@ -99,8 +99,10 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
         return lhs_align * rhs_align;
       case mlir::AffineExprKind::FloorDiv:
       case mlir::AffineExprKind::CeilDiv:
-      case mlir::AffineExprKind::Mod:
         return 1;
+      case mlir::AffineExprKind::Mod:
+        // (a * c) % (b * c) = (a % b) * c.
+        return std::gcd(lhs_align, rhs_align);
       default:
         llvm_unreachable("expr is none of the binary expressions");
     }

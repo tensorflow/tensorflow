@@ -326,3 +326,58 @@ module {
 // CHECK:      %[[WRITTEN:.*]] = vector.transfer_write %[[INNER]]#1, %{{.*}}[%[[I]], %[[BASE]]]
 // CHECK:      scf.yield %[[WRITTEN]], %[[INNER]]#0
 
+// -----
+
+#map = affine_map<(d0)[s0] -> ((d0 * 4) mod 64 + s0)>
+module {
+  func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c63 = arith.constant 63 : index
+    %cst = arith.constant 0.0 : f32
+    %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
+      %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
+        %idx = xla_gpu.apply_indexing #map(%i in [0, 63])[%j in [0, 1]]
+        %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
+        %added = arith.addf %iter1, %extracted : f32
+        scf.yield %added : f32
+      }
+      scf.yield %inner : f32
+    }
+    return %outer : f32
+  }
+}
+
+// CHECK: #[[$MAP:.*]] = affine_map<(d0) -> ((d0 mod 16) * 4)>
+// CHECK-LABEL: @remainder_with_modulo
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: scf.for %[[I:.*]] = %[[C0]]
+// CHECK: %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[I]]
+// CHECK: vector.transfer_read {{.*}}[%[[BASE]]]
+
+// -----
+
+#map = affine_map<(d0)[s0] -> ((d0 * 4) mod 65 + s0)>
+module {
+  func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %c63 = arith.constant 63 : index
+    %cst = arith.constant 0.0 : f32
+    %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
+      %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
+        %idx = xla_gpu.apply_indexing #map(%i in [0, 63])[%j in [0, 1]]
+        %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
+        %added = arith.addf %iter1, %extracted : f32
+        scf.yield %added : f32
+      }
+      scf.yield %inner : f32
+    }
+    return %outer : f32
+  }
+}
+
+// CHECK-LABEL: @remainder_with_modulo_misaligned
+// CHECK-NOT: vector.transfer_read
