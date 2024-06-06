@@ -99,6 +99,9 @@ class CollectivePipeliner : public HloModulePass {
     bool should_allow_control_dependencies = false;
     HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
     HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
+    // Determines whether a loop invariant instruction can be considered
+    // in the pipelining chain.
+    bool should_add_loop_invariant_op_in_chain = false;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
