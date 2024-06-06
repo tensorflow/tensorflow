@@ -388,7 +388,7 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
           raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
-  if (raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning) {
+  if (build_options.num_partitions() > 1) {
     build_options.set_use_spmd_partitioning(true);
   }
   if (!build_options.has_device_assignment() &&
@@ -400,17 +400,6 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
     build_options.set_device_assignment(device_assignment);
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
-  if (task_id == 0) {
-    // Overwrite xla_dump_to only if it's not empty, to preserve `xla_dump_to`
-    // from parsed XLA_FLAGS env (already populated in debug_options).
-    if (!raw_options.xla_dump_to.empty()) {
-      debug_options.set_xla_dump_to(raw_options.xla_dump_to);
-    }
-    debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
-                                           XlaTextDumpMode::kDumpAsText);
-    debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
-                                            XlaProtoDumpMode::kDumpAsProto);
-  }
 
   switch (raw_options.hlo_passes_mode) {
     case HloPassesMode::kRunXLABackendOnly:
@@ -470,10 +459,6 @@ ExecutableBuildOptions
 FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
     const ExecutionOptions& execution_options) {
   ExecutableBuildOptions build_options;
-  if (execution_options.has_debug_options()) {
-    *build_options.mutable_debug_options() = execution_options.debug_options();
-    build_options.mutable_debug_options()->set_xla_dump_to("");
-  }
   if (execution_options.has_shape_with_output_layout()) {
     build_options.set_result_layout(
         Shape(execution_options.shape_with_output_layout()));

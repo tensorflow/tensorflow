@@ -99,16 +99,10 @@ class FunctionalHloRunner {
     kStandardCompile
   };
 
-  enum class SpmdMode { kUseSpmdPartitioning, kNotUseSpmdPartitioning };
-
   enum class SpmdPartitionedMode {
     kIsSpmdPartitionedModule,
     kIsNotSpmdPartitionedModule
   };
-
-  enum class XlaTextDumpMode { kDumpAsText, kNotDumpAsText };
-
-  enum class XlaProtoDumpMode { kDumpAsProto, kNotDumpAsProto };
 
   enum class ModuleArgumentMode {
     // Use device ID (casted to proper type) as arguments.
@@ -166,7 +160,6 @@ class FunctionalHloRunner {
   // A CompileOptions object can be created from this with CreateCompileOptions.
   struct RawCompileOptions {
     HloPassesMode hlo_passes_mode = HloPassesMode::kStandardCompile;
-    SpmdMode spmd_mode = SpmdMode::kNotUseSpmdPartitioning;
     // We can set additional build options by specifying an ExecutionOptions
     // message.
     //
@@ -177,10 +170,6 @@ class FunctionalHloRunner {
     std::optional<int> num_partitions = 1;
     // See the comment on xla::MultiSliceConfig.
     std::optional<int> num_slices = std::nullopt;
-    // A directory to dump xla debug data to.
-    std::string xla_dump_to = "";
-    XlaTextDumpMode xla_text_dump_mode = XlaTextDumpMode::kNotDumpAsText;
-    XlaProtoDumpMode xla_proto_dump_mode = XlaProtoDumpMode::kNotDumpAsProto;
   };
 
   // The options controlling the execution of the HLO module.

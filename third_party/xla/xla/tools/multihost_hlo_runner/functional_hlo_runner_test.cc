@@ -209,7 +209,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
       FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   raw_compile_options.num_replicas = 1;
   raw_compile_options.num_partitions = 16;
-  raw_compile_options.xla_dump_to = dump_dir;
+  *debug_options.mutable_xla_dump_to() = dump_dir;
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());

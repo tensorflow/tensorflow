@@ -90,12 +90,6 @@ struct HloRunnerConfig {
   int32_t num_partitions = 1;
   bool log_output = false;
   bool run_xla_backend_only = false;
-  bool disable_all_hlo_passes = false;
-  bool use_spmd_partitioning = false;
-  bool is_spmd_partitioned_module = false;
-  std::string xla_dump_to = "";
-  bool xla_dump_as_text = false;
-  bool xla_dump_as_proto = false;
   std::string hlo_argument_mode = "use_random_inputs";
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
@@ -106,15 +100,6 @@ struct HloRunnerConfig {
 }  // namespace
 
 namespace xla {
-
-static void PreprocessFlags(HloRunnerConfig& opts) {
-  if (opts.is_spmd_partitioned_module) {
-    opts.use_spmd_partitioning = true;
-    opts.disable_all_hlo_passes = true;
-  } else if (opts.use_spmd_partitioning) {
-    opts.disable_all_hlo_passes = false;
-  }
-}
 
 static absl::StatusOr<FunctionalHloRunner::ModuleArgumentMode>
 ArgumentModeFromString(absl::string_view text) {
@@ -140,7 +125,7 @@ static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
 PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::PreprocessingOptions out;
   out.spmd_partitioned_mode =
-      opts.is_spmd_partitioned_module
+      opts.num_partitions > 1
           ? FunctionalHloRunner::SpmdPartitionedMode::kIsSpmdPartitionedModule
           : FunctionalHloRunner::SpmdPartitionedMode::
                 kIsNotSpmdPartitionedModule;
@@ -170,15 +155,6 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RawCompileOptions>
 RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RawCompileOptions out;
-  out.hlo_passes_mode =
-      opts.run_xla_backend_only
-          ? FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly
-          : (opts.disable_all_hlo_passes
-                 ? FunctionalHloRunner::HloPassesMode::kDisableAllHloPasses
-                 : FunctionalHloRunner::HloPassesMode::kStandardCompile);
-  out.spmd_mode = opts.use_spmd_partitioning
-                      ? FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning
-                      : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
     TF_ASSIGN_OR_RETURN(
         out.execution_options,
@@ -190,15 +166,6 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   out.num_partitions = opts.num_partitions < 0
                            ? std::nullopt
                            : std::optional<int>(opts.num_partitions);
-  out.xla_dump_to = opts.xla_dump_to;
-  out.xla_text_dump_mode =
-      opts.xla_dump_as_text
-          ? FunctionalHloRunner::XlaTextDumpMode::kDumpAsText
-          : FunctionalHloRunner::XlaTextDumpMode::kNotDumpAsText;
-  out.xla_proto_dump_mode =
-      opts.xla_dump_as_proto
-          ? FunctionalHloRunner::XlaProtoDumpMode::kDumpAsProto
-          : FunctionalHloRunner::XlaProtoDumpMode::kNotDumpAsProto;
   return out;
 }
 
@@ -209,7 +176,6 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     return absl::InvalidArgumentError(error);
   }
   TF_RET_CHECK(opts.device_type_str == "gpu" || opts.device_type_str == "host");
-  PreprocessFlags(opts);
 
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
@@ -285,20 +251,6 @@ int main(int argc, char** argv) {
                 "Call only XLA's RunBackend during the compilation. "
                 "This is used to run a post-optimization HLO module "
                 "(dumped as 'xxx.after_optimizations.hlo.xxx'"),
-      tsl::Flag("disable_all_hlo_passes", &opts.disable_all_hlo_passes,
-                "Disable HLO passes or not."),
-      tsl::Flag("use_spmd_partitioning", &opts.use_spmd_partitioning,
-                "Partition the module using SPMD."),
-      tsl::Flag("is_spmd_partitioned_module", &opts.is_spmd_partitioned_module,
-                "The module is the partitioned result of SPMD. Setting this "
-                "flag also "
-                "disables all HLO passes and sets use_spmd_partitioning."),
-      tsl::Flag("xla_dump_to", &opts.xla_dump_to,
-                "A directory to dump xla debug data to."),
-      tsl::Flag("xla_dump_as_text", &opts.xla_dump_as_text,
-                "Whether to dump xla debug data as text."),
-      tsl::Flag("xla_dump_as_proto", &opts.xla_dump_as_proto,
-                "Whether to dump xla debug data as protobuf."),
       tsl::Flag("hlo_argument_mode", &opts.hlo_argument_mode,
                 "Specify how arguments to the HLO module are generated. "
                 "Accepted values: "
