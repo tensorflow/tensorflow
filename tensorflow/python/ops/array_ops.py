@@ -304,11 +304,11 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
       not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
-    # Make sure we get an input with handle data attached from resource
+    # Make sure we get an input with handle data attached from the resource
     # variables. Variables have correct handle data when graph building.
     input = ops.convert_to_tensor(input)
   ret = gen_array_ops.identity(input, name=name)
-  # Propagate handle data for happier shape inference for resource variables.
+  # Propagate handles data for happier shape inference for resource variables.
   if hasattr(input, "_handle_data"):
     ret._handle_data = input._handle_data  # pylint: disable=protected-access
   return ret
@@ -322,8 +322,9 @@ def expand_dims(input, axis=None, name=None, dim=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows Python
-  indexing rules: It's zero-based, a negative index it is counted backward
+  dimension index `axis` of the `input`'s shape. The dimension index follows
+  Python
+  indexing rules: It's zero-based, a negative index that is counted backward
   from the end.
 
   This operation is useful to:
@@ -349,7 +350,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   [10, 1, 10, 3]
 
   Following standard Python indexing rules, a negative `axis` counts from the
-  end so `axis=-1` adds an inner most dimension:
+  end so `axis=-1` adds an innermost dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
@@ -364,7 +365,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   This operation is related to:
 
   * `tf.squeeze`, which removes dimensions of size 1.
-  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.reshape`, which provides a more flexible reshaping capability.
   * `tf.sparse.expand_dims`, which provides this functionality for
     `tf.SparseTensor`
 
@@ -372,7 +373,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
     input: A `Tensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to expand the
       shape of `input`. Must be in the range `[-rank(input) - 1, rank(input)]`.
-    name: The name of the output `Tensor` (optional).
+    name: The name of the output is `Tensor` (optional).
     dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
 
   Returns:
@@ -461,7 +462,7 @@ def expand_dims_v2(input, axis, name=None):
 # pylint: enable=redefined-builtin,protected-access
 
 
-# Aliases for some automatically-generated names.
+# Aliases for some automatically generated names.
 # pylint: disable=protected-access
 @deprecation.deprecated("2016-11-30",
                         "This op will be removed after the deprecation date. "
@@ -1334,7 +1335,7 @@ def concat(values, axis, name="concat"):
   dimension.
 
   The number of dimensions of the input tensors must match, and all dimensions
-  except `axis` must be equal.
+  except the `axis` must be equal.
 
   For example:
 
