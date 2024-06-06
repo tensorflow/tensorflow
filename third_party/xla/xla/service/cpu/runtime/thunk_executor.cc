@@ -125,6 +125,11 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
     NodeId id = ready_queue[i];
     Node& node = state->nodes[id];
 
+    // TODO(ezhulenev): Benchmark other strategies of work distribution, i.e. we
+    // can offload only second half of the ready queue if it grows above some
+    // threshold. Also we might want to add a limit on the number of concurrent
+    // tasks processing the same execute session.
+
     // Push the tail of the ready queue to the task runner.
     if (state->runner && i < ready_queue.size() - 1) {
       ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
