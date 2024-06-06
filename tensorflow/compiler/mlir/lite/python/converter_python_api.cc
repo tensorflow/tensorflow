@@ -415,8 +415,7 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status =
-      mlir::lite::SparsifyModel(*tflite_model, &builder, error_reporter.get());
+  auto status = mlir::lite::SparsifyModel(*tflite_model, &builder);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -38,8 +40,7 @@ namespace mlir {
 namespace lite {
 
 TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
-                           flatbuffers::FlatBufferBuilder* builder,
-                           tflite::ErrorReporter* error_reporter) {
+                           flatbuffers::FlatBufferBuilder* builder) {
   MLIRContext context;
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
@@ -57,7 +58,7 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
       serialized_model, &context, UnknownLoc::get(&context));
   if (!module) {
-    error_reporter->Report("Couldn't import flatbuffer to MLIR.");
+    LOG(ERROR) << "Couldn't import flatbuffer to MLIR.";
     return kTfLiteError;
   }
 
@@ -65,8 +66,8 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   pm.addPass(TFL::CreateDenseToSparsePass());
 
   if (failed(pm.run(module.get()))) {
-    const std::string err(statusHandler.ConsumeStatus().message());
-    error_reporter->Report("Failed to sparsify: %s", err.c_str());
+    LOG(ERROR) << "Failed to sparsify: "
+               << statusHandler.ConsumeStatus().message();
     return kTfLiteError;
   }
 
@@ -90,7 +91,7 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
 
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &result)) {
-    error_reporter->Report("Failed to export MLIR to flatbuffer.");
+    LOG(ERROR) << "Failed to export MLIR to flatbuffer.";
     return kTfLiteError;
   }
   builder->PushFlatBuffer(reinterpret_cast<const uint8_t*>(result.data()),

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace mlir {
@@ -25,8 +24,7 @@ namespace lite {
 
 // Sparsify the `input_model` and write the result to a flatbuffer `builder`.
 TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
-                           flatbuffers::FlatBufferBuilder* builder,
-                           tflite::ErrorReporter* error_reporter);
+                           flatbuffers::FlatBufferBuilder* builder);
 }  // namespace lite
 }  // namespace mlir
 
