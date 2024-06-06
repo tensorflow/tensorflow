@@ -598,6 +598,18 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
+    case kTfLiteBuiltinDynamicUpdateSlice: {
+      if (op_sig.inputs.size() != 3) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice requires 3 inputs.");
+      }
+      OpSignatureTensorSpec array_to_update = op_sig.inputs[0];
+      if (array_to_update.dims.size() != 4) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only supports 4D array_to_update.");
+      }
+      return absl::OkStatus();
+    }
     case kTfLiteBuiltinFullyConnected: {
       const TfLiteFullyConnectedParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));
