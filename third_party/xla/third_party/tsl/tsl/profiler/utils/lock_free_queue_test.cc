@@ -376,6 +376,18 @@ TEST(LockFreeQueueTest, Iterator_Basics) {
   it2 = it++;
   EXPECT_EQ(it2, queue.end());
   EXPECT_EQ(it, queue.end());
+
+  BlockedQueue<std::string, 512> str_queue;
+  str_queue.Push("abcd");
+  auto str_it = str_queue.begin();
+  EXPECT_EQ(*str_it, std::string("abcd"));
+  EXPECT_EQ(str_it->size(), 4);
+  str_queue.Push("123456");
+  str_it++;
+  EXPECT_EQ(*str_it, std::string("123456"));
+  EXPECT_EQ(str_it->size(), 6);
+  str_it++;
+  EXPECT_EQ(str_it, str_queue.end());
 }
 
 }  // namespace

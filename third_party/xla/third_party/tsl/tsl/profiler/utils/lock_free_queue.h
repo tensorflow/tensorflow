@@ -224,7 +224,7 @@ class BlockedQueue final
       return block_->slots[index_ - block_->start].value;
     }
 
-    T* operator->() { return &(*this); }
+    T* operator->() { return &(this->operator*()); }
 
     Iterator& operator++() {
       DCHECK(queue_ != nullptr);
