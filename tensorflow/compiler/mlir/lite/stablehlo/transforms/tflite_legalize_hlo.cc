@@ -308,6 +308,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::PowOp,
       mhlo::RemOp,
       mhlo::ReshapeOp,
+      mhlo::SelectOp,
       mhlo::ShiftRightArithmeticOp,
       mhlo::ShiftRightLogicalOp,
       mhlo::SubtractOp,

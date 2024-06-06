@@ -588,6 +588,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   if (pass_config.outline_tf_while) {
     pass_manager->addPass(mlir::TFL::CreateWhileOutlinePass());
   }
+  pass_manager->addPass(mlir::TFL::CreateIfOutlinePass());
   if (pass_config.runtime_verification) {
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateRuntimeVerifyPass());

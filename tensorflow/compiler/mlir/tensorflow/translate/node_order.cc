@@ -54,7 +54,7 @@ void TopologicalOrdering(
         int group_key = entry.first->second;
         node_to_position[n] = i++;
         node_to_group[n] = group_key;
-        if (!entry.second) {
+        if (entry.second) {
           group_members_that_are_ready.push_back({});
         }
 
@@ -70,6 +70,9 @@ void TopologicalOrdering(
         }
       },
       [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+
+  assert(group_key_string_to_integer.size() ==
+         group_members_that_are_ready.size());
 
   int num_nodes = remaining_incoming_nodes.size();
 

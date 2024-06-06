@@ -3103,6 +3103,10 @@ func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // -----
 
+//===----------------------------------------------------------------------===//
+// mhlo ternary ops
+//===----------------------------------------------------------------------===//
+
 // CHECK-LABEL: clamp
 func.func @clamp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.clamp"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -3112,6 +3116,17 @@ func.func @clamp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> 
 // CHECK-NEXT: %0 = "tfl.minimum"(%arg1, %arg2)
 // CHECK-NEXT: %1 = "tfl.maximum"(%0, %arg0)
 // CHECK-NEXT: return %1 : tensor<f32>
+
+// -----
+
+// CHECK-LABEL: select
+func.func @select(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK:     "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK-NOT: mhlo
 
 // -----
 

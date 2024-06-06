@@ -1,7 +1,37 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -1283,6 +1283,7 @@
+@@ -254,6 +254,13 @@
+     ],
+ )
+ 
++filegroup(
++    name = "chlo_py_api_files",
++    srcs = [
++        "stablehlo/integrations/python/ChloModule.cpp",
++    ],
++)
++
+ cc_library(
+     name = "chlo_ops",
+     srcs = [
+@@ -1002,6 +1009,15 @@
+     deps = [
+         ":stablehlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
++    ],
++)
++
++filegroup(
++    name = "stablehlo_py_api_files",
++    srcs = [
++        "stablehlo/integrations/python/PortableApi.cpp",
++        "stablehlo/integrations/python/PortableApi.h",
++        "stablehlo/integrations/python/StablehloModule.cpp",
+     ],
+ )
+ 
+@@ -1283,6 +1299,7 @@
          "@llvm-project//mlir:AllExtensions",
          "@llvm-project//mlir:AllPassesAndDialects",
          "@llvm-project//mlir:MlirOptLib",
