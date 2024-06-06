@@ -1930,7 +1930,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*allocator=*/std::move(allocator_adapter),
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
-              /*gpu_run_options=*/std::move(gpu_run_options));
+              /*gpu_run_options=*/std::move(gpu_run_options),
+              /*kv_store=*/nullptr);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

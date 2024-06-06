@@ -1565,6 +1565,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "@com_google_absl//absl/container:flat_hash_map",

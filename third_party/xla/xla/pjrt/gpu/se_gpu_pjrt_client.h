@@ -208,7 +208,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+      std::shared_ptr<KeyValueStoreInterface> kv_store);
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -256,6 +257,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

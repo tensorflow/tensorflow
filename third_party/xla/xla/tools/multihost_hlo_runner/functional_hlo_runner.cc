@@ -116,8 +116,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
       TF_QCHECK_OK(distributed_client->Connect());
       kv_store = GetDistributedKeyValueStore(distributed_client,
                                              /*key_prefix=*/"gpu:");
-      return xla::FunctionalHloRunner::CreateGpuClient(distributed_client,
-                                                       node_id, num_nodes);
+      return xla::FunctionalHloRunner::CreateGpuClient(kv_store, node_id,
+                                                       num_nodes);
     }
   }
 }
@@ -344,20 +344,19 @@ FunctionalHloRunner::CreateMockGpuClient(int num_nodes) {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>>
 FunctionalHloRunner::CreateGpuClient(
-    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client,
-    int node_id, int num_nodes) {
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store, int node_id,
+    int num_nodes) {
   if (node_id < 0 || node_id >= num_nodes) {
     return absl::InvalidArgumentError(
         "Node id is expected to be in range [0, num_nodes)");
   }
 
-  TF_RET_CHECK(distributed_client != nullptr);
+  TF_RET_CHECK(kv_store != nullptr);
 
   GpuClientOptions options;
   options.node_id = node_id;
   options.num_nodes = num_nodes;
-  options.kv_store =
-      GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
+  options.kv_store = kv_store;
   return GetStreamExecutorGpuClient(options);
 }
 
@@ -371,7 +370,8 @@ absl::StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
 
 absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
     const PjRtClient& client,
-    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id) {
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   CompileOptions compile_options;
   if (raw_options.execution_options.has_value()) {
     compile_options.executable_build_options =
@@ -388,6 +388,9 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
           raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
+  build_options.set_process_index(task_id);
+  build_options.set_process_count(num_nodes);
+  build_options.set_key_value_store(kv_store);
   if (raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning) {
     build_options.set_use_spmd_partitioning(true);
   }
@@ -570,10 +573,12 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::string_view hlo_text, InputFormat input_format,
-    std::string dump_output_to, int task_id) {
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      FunctionalHloRunner::CreateCompileOptions(
-                          client, raw_compile_options, task_id));
+    std::string dump_output_to, int task_id, int num_nodes,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  TF_ASSIGN_OR_RETURN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
+                                                task_id, num_nodes, kv_store));
   TF_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
       FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
@@ -620,10 +625,12 @@ absl::Status FunctionalHloRunner::LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
-    InputFormat input_format, int task_id) {
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      FunctionalHloRunner::CreateCompileOptions(
-                          client, raw_compile_options, task_id));
+    InputFormat input_format, int task_id, int num_nodes,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  TF_ASSIGN_OR_RETURN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
+                                                task_id, num_nodes, kv_store));
 
   int num_replicas = compile_options.executable_build_options.num_replicas();
   int num_partitions =
