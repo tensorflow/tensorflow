@@ -766,7 +766,8 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         TF_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i,
                                             /*mandatory=*/true, /*dfs=*/true));
       }
-    } else if (instruction->IsCrossModuleAllReduce()) {
+    } else if (instruction->IsCrossModuleAllReduce() &&
+               !instruction->GetModule()->config().use_spmd_partitioning()) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
       int64_t channel_id = instruction->channel_id().value();
