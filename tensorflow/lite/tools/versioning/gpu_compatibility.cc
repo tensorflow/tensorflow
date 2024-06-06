@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
@@ -516,29 +517,41 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
-    case kTfLiteBuiltinCast:
+    case kTfLiteBuiltinCast: {
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
-      if (op_sig.inputs.at(0).type == kTfLiteBool &&
-          (op_sig.outputs.at(0).type == kTfLiteFloat16 ||
-           op_sig.outputs.at(0).type == kTfLiteFloat32)) {
+      bool input_type_is_supported = false;
+      bool output_type_is_supported = false;
+      if (op_sig.inputs.at(0).type == kTfLiteBool ||
+          op_sig.inputs.at(0).type == kTfLiteFloat32 ||
+          op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteInt32 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        input_type_is_supported = true;
+      }
+      if (op_sig.outputs.at(0).type == kTfLiteBool ||
+          op_sig.outputs.at(0).type == kTfLiteFloat32 ||
+          op_sig.outputs.at(0).type == kTfLiteInt8 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt8 ||
+          op_sig.outputs.at(0).type == kTfLiteInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteInt32 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt32) {
+        output_type_is_supported = true;
+      }
+
+      if (input_type_is_supported && output_type_is_supported) {
         return absl::OkStatus();
-      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat16 ||
-                  op_sig.inputs.at(0).type == kTfLiteFloat32) &&
-                 op_sig.outputs.at(0).type == kTfLiteBool) {
-        return absl::OkStatus();
-      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat32 ||
-                  op_sig.inputs.at(0).type == kTfLiteInt32) &&
-                 (op_sig.outputs.at(0).type == kTfLiteFloat32 ||
-                  op_sig.outputs.at(0).type == kTfLiteInt32)) {
-        return absl::OkStatus();
-      } else {
+      }
         return absl::UnimplementedError(absl::StrCat(
             "Not supported Cast case. Input type: ",
             TfLiteTypeGetName(op_sig.inputs.at(0).type), " and output type: ",
             TfLiteTypeGetName(op_sig.outputs.at(0).type)));
-      }
+    }
 
     case kTfLiteBuiltinConcatenation: {
       const TfLiteConcatenationParams* tf_options;

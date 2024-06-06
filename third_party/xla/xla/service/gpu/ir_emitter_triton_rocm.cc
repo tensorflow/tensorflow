@@ -74,13 +74,12 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul({ccAsInt}));
+  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(mt::gpu::createTritonGPUPipeline(
-      {config.num_stages, config.num_warps, config.num_ctas, ccAsInt}));
+  pm.addPass(mt::gpu::createTritonGPUPipeline({config.num_stages}));
   pm.addPass(mt::gpu::createTritonGPUPrefetch());
 
   // TODO ROCm Check if we want to compare MI100 and greater
