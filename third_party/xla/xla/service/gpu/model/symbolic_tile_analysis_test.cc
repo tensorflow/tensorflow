@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -65,7 +64,7 @@ Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
 
 class SymbolicTileAnalysisTest : public HloTestBase {
  public:
-  bool SetAnalysis(HloModule* module) {
+  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(
             *module->entry_computation()
@@ -74,14 +73,12 @@ class SymbolicTileAnalysisTest : public HloTestBase {
             &mlir_context_);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
-      analysis_ = std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
-      return true;
+      return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
     }
-    return false;
+    return std::nullopt;
   }
 
   mlir::MLIRContext mlir_context_;
-  std::optional<SymbolicTileAnalysis> analysis_;
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -105,12 +102,12 @@ ENTRY main {
   p0 = f32[2,97]{1,0} parameter(0)
   ROOT fusion = f32[2,97]{1,0} fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_TRUE(SetAnalysis(module.get()));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_hlo_computation,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
@@ -156,12 +153,12 @@ ENTRY main {
   p0 = f32[2,97] parameter(0)
   ROOT fusion = f32[2,97] fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_TRUE(SetAnalysis(module.get()));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_hlo_computation,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
@@ -244,12 +241,12 @@ ENTRY main {
   p0 = f32[8,16,4] parameter(0)
   ROOT fusion = f32[4,8,16] fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_TRUE(SetAnalysis(module.get()));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_hlo_computation,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 4, 2}));
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 4, 2}));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
@@ -285,12 +282,12 @@ ENTRY main {
   p0 = f32[8,16] parameter(0)
   ROOT fusion = f32[4,8] fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_TRUE(SetAnalysis(module.get()));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
       TiledHloComputation tiled_hlo_computation,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 2}));
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 2}));
 
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
   const TiledHloInstruction* p0_from_slice0 = root->operand(0)->operand(0);
@@ -339,8 +336,7 @@ ENTRY main {
   p1 = f32[2,3]{1,0} parameter(1)
   ROOT fusion = f32[1,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedReshape) {
@@ -355,8 +351,7 @@ ENTRY main {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedBitcast) {
@@ -371,8 +366,7 @@ ENTRY main {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
@@ -389,8 +383,7 @@ ENTRY main {
   p1 = f32[1,3]{1,0} parameter(1)
   ROOT fusion = f32[2,3] fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {
@@ -409,8 +402,7 @@ ENTRY main {
   p1 = f32[32] parameter(1)
   ROOT fusion = (f32[32], f32[32]) fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 }  // namespace
