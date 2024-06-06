@@ -33,7 +33,7 @@ if [[ "$ubuntu_version" == "18" ]]; then
 fi
 
 # Install dependencies from ubuntu deb repository.
-apt-key adv --keyserver keyserver.ubuntu.com --recv 084ECFC5828AB726
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 084ECFC5828AB726
 apt-get update
 
 if [[ "$ubuntu_version" == "14" ]]; then
