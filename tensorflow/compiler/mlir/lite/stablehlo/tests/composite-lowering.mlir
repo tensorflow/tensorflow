@@ -258,15 +258,6 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>
 // CHECK:         }
 
-func.func private @gelu_decomp(%arg0: tensor<2xf32>) -> tensor<2xf32>
-func.func @gelu(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = mhlo.composite "odml.internal.gelu" %arg0 {composite_attributes = {approx = false}, decomposition = @gelu_decomp} : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
-}
-
-// CHECK-LABEL: gelu
-// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<2xf32>) -> tensor<2xf32>
-
 func.func private @gelu_decomp_1(%arg0: tensor<5x10xf32>) -> tensor<5x10xf32>
 func.func @gelu_aten(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
   %0 = mhlo.composite "aten.gelu.default" %arg0 {composite_attributes = {approximate = "none"}, decomposition = @gelu_decomp_1} : (tensor<5x10xf32>) -> tensor<5x10xf32>
