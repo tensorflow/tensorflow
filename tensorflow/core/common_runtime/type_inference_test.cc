@@ -18,22 +18,24 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "tensorflow/cc/client/client_session.h"
-#include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include <gmock/gmock.h>
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

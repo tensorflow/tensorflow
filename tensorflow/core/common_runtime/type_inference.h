@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_TYPE_INFERENCE_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
