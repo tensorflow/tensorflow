@@ -24,3 +24,10 @@ cd $workspace/bazel
 wget $bazel_url
 bazel_bin=$(ls)
 chmod +x $bazel_bin
+
+export PATH="$PATH:$workspace/bazel"
+
+echo 'export PATH="$PATH:'"$workspace/bazel"'"' >> ~/.bashrc
+source ~/.bashrc
+
+bazel --version
