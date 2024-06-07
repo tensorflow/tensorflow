@@ -1137,8 +1137,8 @@ ENTRY main {
           .Run(module.get()),
       tsl::testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
 }
 
 TEST_F(SoftmaxRewriterTritonTest, RewriterBailsOutOnNonCudaGpu) {

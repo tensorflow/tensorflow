@@ -73,6 +73,7 @@ cuda_only_cc_library(
             ":cuda_platform_id",
             ":cuda_runtime",
             "//xla/stream_executor",
+            "//xla/stream_executor:executor_cache",
             "//xla/stream_executor:platform_manager",
             "//xla/stream_executor:stream_executor_h",
             "//xla/stream_executor/gpu:gpu_driver_header",
@@ -622,6 +623,10 @@ cuda_only_cc_library(
         ":cuda_platform_id",
         ":cuda_runtime",  # buildcleaner: keep
         "//xla/stream_executor",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:fft",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_collectives_header",

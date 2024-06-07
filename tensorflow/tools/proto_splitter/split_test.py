@@ -19,7 +19,6 @@ import os
 import random
 import string
 
-from absl.testing import parameterized
 import riegeli
 
 from tensorflow.python.platform import test
@@ -145,13 +144,12 @@ class NoOpSplitter(split.ComposableSplitter):
     pass
 
 
-class NoOpSplitterTest(test.TestCase, parameterized.TestCase):
+class NoOpSplitterTest(test.TestCase):
 
-  @parameterized.parameters([None, "uncompressed"])
-  def testWriteNoChunks(self, writer_options: str | None):
+  def testWriteNoChunks(self):
     path = os.path.join(self.create_tempdir(), "split-none")
     proto = test_message_pb2.RepeatedString(strings=["a", "bc", "de"])
-    returned_path = NoOpSplitter(proto).write(path, writer_options)
+    returned_path = NoOpSplitter(proto).write(path)
 
     expected_file_path = path + ".pb"
     self.assertTrue(os.path.isfile(expected_file_path))
