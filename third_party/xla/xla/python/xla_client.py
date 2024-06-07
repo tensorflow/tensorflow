@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 270
+_version = 271
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -958,7 +958,9 @@ atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
-copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_copy_array_to_devices_with_sharding = (
+    _xla.batched_copy_array_to_devices_with_sharding
+)
 batched_device_put = _xla.batched_device_put
 batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind

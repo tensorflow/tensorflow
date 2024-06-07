@@ -565,7 +565,7 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
     size_t index = inst_index.size();
     inst_index[inst] = index;
     inst_deps[index] =
-        inst->operand_count() + inst->control_predecessors().size();
+        inst->unique_operands().size() + inst->control_predecessors().size();
     if (inst_deps[index] == 0) {
       ready_queue.push(inst);
     }
