@@ -25,7 +25,7 @@ fi
 
 PACKAGE_NAME="cloud_tpu_client"
 PIP_PACKAGE="tensorflow/python/tpu/client/pip_package"
-RUNFILES="bazel-bin/tensorflow/python/tpu/client/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow/python/tpu/client"
+RUNFILES="bazel-bin/tensorflow/python/tpu/client/pip_package/build_pip_package_py.runfiles/org_tensorflow/tensorflow/python/tpu/client"
 
 function main() {
   if [ $# -lt 1 ] ; then

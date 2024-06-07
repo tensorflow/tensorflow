@@ -337,12 +337,12 @@ if [[ "x${PY_MAJOR_MINOR_VER}x" == "x3.8x" ]]; then
 fi
 
 # Bazel build the file.
-PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
+PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package_py"
 # Clean bazel cache.
 bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
-# Build. This outputs the file `build_pip_package`.
+# Build. This outputs the file `build_pip_package_py`.
 bazel build \
   --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
   ${TF_BUILD_FLAGS} \
@@ -675,7 +675,7 @@ if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
   fi
 fi
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package_py FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
 if [[ $PY_DOTLESS_MAJOR_MINOR_VER == "2" ]]; then
@@ -731,7 +731,7 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
   echo "The given ${PROJECT_SUFFIX} \$PROJECT_NAME is ${PROJECT_NAME}. The additional ${PROJECT_SUFFIX}"\
   "pip package will have project name ${NEW_PROJECT_NAME}."
 
-  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package_py FAILED"
 fi
 
 # On MacOS we not have to rename the wheel because it is generated with the

@@ -199,7 +199,7 @@ cc_library(
 )
 
 # The filegroups below are explicitly used by
-# tensorflow/tools/pip_package:build_pip_package to ensure we include the proper
+# tensorflow/tools/pip_package:build_pip_package_py to ensure we include the proper
 # sources for the XLA AOT CPU runtime; as these are necessary outside of bazel
 # when linking tfcompile objects using saved_model_cli (e.g. using the
 # tensorflow pip package). The associated .cc files are included in tensorflow

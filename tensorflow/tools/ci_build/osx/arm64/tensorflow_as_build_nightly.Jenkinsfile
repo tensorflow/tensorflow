@@ -53,9 +53,9 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                //tensorflow/tools/pip_package:build_pip_package
+                                //tensorflow/tools/pip_package:build_pip_package_py
                                     
-                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
                                 --nightly_flag \
                                 --project_name "tf-nightly-macos" \
                                 dist
@@ -101,9 +101,9 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                //tensorflow/tools/pip_package:build_pip_package
+                                //tensorflow/tools/pip_package:build_pip_package_py
                                 
-                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
                                 --nightly_flag \
                                 --project_name "tf-nightly-macos" \
                                 dist
@@ -149,9 +149,9 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                //tensorflow/tools/pip_package:build_pip_package
+                                //tensorflow/tools/pip_package:build_pip_package_py
                                 
-                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+                                ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
                                 --nightly_flag \
                                 --project_name "tf-nightly-macos" \
                                 dist

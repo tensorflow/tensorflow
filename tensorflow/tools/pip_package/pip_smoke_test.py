@@ -24,7 +24,7 @@ import subprocess
 os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 PIP_PACKAGE_QUERY_EXPRESSION = (
-    "deps(//tensorflow/tools/pip_package:build_pip_package)")
+    "deps(//tensorflow/tools/pip_package:build_pip_package_py)")
 
 # List of file paths containing BUILD files that should not be included for the
 # pip smoke test.

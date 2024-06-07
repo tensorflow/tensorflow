@@ -130,7 +130,7 @@ tf_staging/tensorflow/python/eager/benchmarks_test_base:.py
 tf_staging/tensorflow/python/framework/tfrt_utils:.py
 tf_staging/tensorflow/python/tpu/profiler/pip_package/BUILD:
 tf_staging/tensorflow/python/tpu/profiler/pip_package/README:
-tf_staging/tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
+tf_staging/tensorflow/python/tpu/profiler/pip_package/build_pip_package_py.sh:
 tf_staging/tensorflow/python/tpu/profiler/pip_package/setup:.py
 tf_staging/tensorflow/python/tpu/tpu.bzl:
 tf_staging/tensorflow/security/fuzzing/tf_fuzzing:.bzl

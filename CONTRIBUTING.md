@@ -347,7 +347,7 @@ optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
 example, you can build the pip package with debugging information by running:
 
 ```bash
-bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package_py
 ```
 
 TensorFlow kernels and TensorFlow's dependencies are still not built with
@@ -359,7 +359,7 @@ you want to debug a kernel, you can compile specific files with `-g` using the
 op, which are in files starting with `identity_op`, you can run
 
 ```bash
-bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package_py
 ```
 
 Note that the `--config=dbg` option is not officially supported.
