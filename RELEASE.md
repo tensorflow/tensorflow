@@ -1,6 +1,8 @@
 # Release 2.16.2
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+### Bug Fixes and Other Changes
+
+*   Remove references to Linux Arm64 installer wheels from setup.py
 
 # Release 2.16.1
 
