@@ -416,6 +416,19 @@ def convert_version_to_int(version):
   version_str = ''.join(['%03d' % int(seg) for seg in version_segments])
   return int(version_str)
 
+def install_bazelisk():
+    # Installing Bazelisk if Bazel is not found
+    print("Installing Bazelisk...")
+    subprocess.run([
+        "curl", "-LO", "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
+    ], check=True)
+    subprocess.run([
+        "sudo", "mv", "bazelisk-linux-amd64", "/usr/local/bin/bazel"
+    ], check=True)
+    subprocess.run([
+        "sudo", "chmod", "+x", "/usr/local/bin/bazel"
+    ], check=True)
+    print("Bazel installed successfully.")
 
 def retrieve_bazel_version():
   """Retrieve installed bazel version (or bazelisk).
@@ -427,6 +440,8 @@ def retrieve_bazel_version():
   if bazel_executable is None:
     bazel_executable = which('bazelisk')
     if bazel_executable is None:
+      install_bazelisk()
+      bazel_executable = which('bazel')
       print('Cannot find bazel. Please install bazel/bazelisk.')
       sys.exit(1)
 

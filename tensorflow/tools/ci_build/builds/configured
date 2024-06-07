@@ -48,6 +48,7 @@ echo "CI_BUILD_PYTHON: ${CI_BUILD_PYTHON}"
 # the value of PYTHON_BIN_PATH has the corresponding interpreter(python3 or any)
 # but the value is empty. since it is empty, the script cannot find and execute configure.py.
 echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}" 
+echo "ROCM_PATH: ${ROCM_PATH}"
 echo "Current Directory: $(pwd)"
 echo "Listing root directory:"
 ls -la /
