@@ -168,6 +168,28 @@ module {
 
 // -----
 
+// We could vectorize this as a float vector load of double the size, but we
+// don't currently.
+module {
+  func.func @simple_read_complex(%arg0: tensor<64x2xcomplex<f32>>, %i: index) -> (complex<f32>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c2 = arith.constant 2 : index
+    %cst = complex.constant [0.0 : f32, 0.0 : f32] : complex<f32>
+    %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %cst) -> complex<f32> {
+      %extracted = tensor.extract %arg0[%i, %j] : tensor<64x2xcomplex<f32>>
+      %added = complex.add %iter, %extracted : complex<f32>
+      scf.yield %added : complex<f32>
+    }
+    return %loop : complex<f32>
+  }
+}
+
+// CHECK-LABEL: @simple_read_complex
+// CHECK-NOT: vector.transfer_read
+
+// -----
+
 // This is vectorizable, but not currently supported.
 module {
   func.func @layout(%arg0: tensor<2x64xf32, dense<[0, 1]> : tensor<2xi64>>) -> (f32) {

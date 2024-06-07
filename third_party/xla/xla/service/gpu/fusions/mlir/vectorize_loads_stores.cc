@@ -125,6 +125,9 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
   if (tensor_type.getEncoding()) {
     return nullptr;
   }
+  if (!mlir::VectorType::isValidElementType(tensor_type.getElementType())) {
+    return nullptr;
+  }
   if (mlir::getConstantIntValue(loop.getStep()) != 1 ||
       mlir::getConstantIntValue(loop.getLowerBound()) != 0) {
     return nullptr;
