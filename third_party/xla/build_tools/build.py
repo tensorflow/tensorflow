@@ -150,6 +150,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
+    "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_CONTINUOUS_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
 }
