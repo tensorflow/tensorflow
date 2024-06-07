@@ -30,7 +30,8 @@ shift 1
 
 COMMAND=("$@")
 
-export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
+# we are explicitly setting the interpreter to python3 to see if it works
+export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python3}"
 export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
 # XLA currently does not build under Android, so disable it for now.
 if [[ "${CONTAINER_TYPE}" == 'android' ]]; then
@@ -44,13 +45,22 @@ fi
 # diagnostics
 echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
 echo "CI_BUILD_PYTHON: ${CI_BUILD_PYTHON}"
-echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
+# the value of PYTHON_BIN_PATH has the corresponding interpreter(python3 or any)
+# but the value is empty. since it is empty, the script cannot find and execute configure.py.
+echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}" 
 echo "Current Directory: $(pwd)"
 echo "Listing root directory:"
 ls -la /
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 echo "Current Directory after pushd: $(pwd)"
+
+# Check if PYTHON_BIN_PATH is set correctly
+if [[ -z "${PYTHON_BIN_PATH}" ]]; then
+  echo "Error: PYTHON_BIN_PATH is not set. Please ensure Python is installed and accessible."
+  exit 1
+fi
+
 yes "" | $PYTHON_BIN_PATH configure.py
 popd
 
