@@ -5544,8 +5544,8 @@ ENTRY entry {
                     &llvm_module, &EmitMatMul, mlir_context),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
 }
 
 // This test could be modified to allow TF32 once this bug is fixed.
