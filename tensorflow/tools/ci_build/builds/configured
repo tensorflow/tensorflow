@@ -41,7 +41,16 @@ if [[ "${CONTAINER_TYPE}" == 'rocm' ]]; then
   export TF_NEED_CLANG=0
 fi
 
+# diagnostics
+echo "CONTAINER_TYPE: ${CONTAINER_TYPE}"
+echo "CI_BUILD_PYTHON: ${CI_BUILD_PYTHON}"
+echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
+echo "Current Directory: $(pwd)"
+echo "Listing root directory:"
+ls -la /
+
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
+echo "Current Directory after pushd: $(pwd)"
 yes "" | $PYTHON_BIN_PATH configure.py
 popd
 
