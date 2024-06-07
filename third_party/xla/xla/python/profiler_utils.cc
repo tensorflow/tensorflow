@@ -19,8 +19,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -31,25 +29,20 @@ limitations under the License.
 
 namespace xla {
 
-static absl::StatusOr<const PLUGIN_Profiler_Api*> FindProfilerApi(
-    const PJRT_Api* pjrt_api) {
+static const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
   PJRT_Profiler_Extension* profiler_extension =
       pjrt::FindExtension<PJRT_Profiler_Extension>(
           pjrt_api, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
 
   if (profiler_extension == nullptr) {
-    return absl::NotFoundError("No profiler api found for the PJRT API.");
+    // TODO(b/342627527): return proper error when no profiler api is found.
+    return nullptr;
   }
   return profiler_extension->profiler_api;
 }
 
-absl::Status TryRegisterProfiler(const PJRT_Api* pjrt_api) {
-  absl::StatusOr<const PLUGIN_Profiler_Api*> profiler_api_status =
-      FindProfilerApi(pjrt_api);
-  if (!profiler_api_status.ok()) {
-    return profiler_api_status.status();
-  }
-  const PLUGIN_Profiler_Api* profiler_api = *profiler_api_status;
+void RegisterProfiler(const PJRT_Api* pjrt_api) {
+  const PLUGIN_Profiler_Api* profiler_api = FindProfilerApi(pjrt_api);
   std::function<std::unique_ptr<tsl::profiler::ProfilerInterface>(
       const tensorflow::ProfileOptions&)>
       create_func = [profiler_api = profiler_api](
@@ -58,7 +51,6 @@ absl::Status TryRegisterProfiler(const PJRT_Api* pjrt_api) {
                                                              options);
       };
   tsl::profiler::RegisterProfilerFactory(std::move(create_func));
-  return absl::OkStatus();
 }
 
 }  // namespace xla

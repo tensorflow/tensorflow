@@ -16,12 +16,11 @@ limitations under the License.
 #ifndef XLA_PYTHON_PROFILER_UTILS_H_
 #define XLA_PYTHON_PROFILER_UTILS_H_
 
-#include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 namespace xla {
 
-absl::Status TryRegisterProfiler(const PJRT_Api* pjrt_api);
+void RegisterProfiler(const PJRT_Api* pjrt_api);
 
 }  // namespace xla
 
