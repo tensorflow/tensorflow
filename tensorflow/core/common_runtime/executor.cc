@@ -1237,7 +1237,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     }
 
     if (abort_run) {
-      TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+      TRACEPRINTF("StartAbort: %s", s.ToString());
       if (cancellation_manager_) {
         // Use VLOG instead of LOG(warning) because error status is expected
         // when the executor is run under the grappler optimization phase or

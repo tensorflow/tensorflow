@@ -63,6 +63,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -209,6 +210,7 @@ cc_library(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -262,6 +264,7 @@ cc_library(
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

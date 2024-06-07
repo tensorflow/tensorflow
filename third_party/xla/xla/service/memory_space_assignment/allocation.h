@@ -127,6 +127,7 @@ class Allocation {
 
   // Allocation type methods
   // --------------------------------------------------------------------------
+  virtual bool is_pinned_allocation() const = 0;
   virtual bool is_copy_allocation() const = 0;
   virtual bool is_sliced_copy_allocation() const = 0;
   // True if the allocation is for a copy or a sliced-copy.
@@ -207,6 +208,7 @@ class PinnedAllocation final : public Allocation {
   // Returns the original defining position.
   HloPosition defining_position() const override;
   int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return true; }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
@@ -244,6 +246,7 @@ class CopyAllocation final : public Allocation {
   // CopyAllocation, this is when the copy ends, which is
   // copy_done_schedule_before.
   int64_t earliest_available_time() const override;
+  bool is_pinned_allocation() const override { return false; }
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
@@ -344,6 +347,7 @@ class SlicedCopyAllocation final : public Allocation {
   // Returns the time the buffer is first available to be used. For
   // SlicedCopyAllocation, this is when all copies have ended.
   int64_t earliest_available_time() const override;
+  bool is_pinned_allocation() const override { return false; }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return true; }
   // MemorySpaceAssignment::Process() calls Process() to create asynchronous
@@ -402,6 +406,7 @@ class MirroredAllocation final : public Allocation {
   // Returns the original defining position.
   HloPosition defining_position() const override;
   int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
@@ -434,6 +439,7 @@ class ParentAllocation final : public Allocation {
   // Returns the original defining position.
   HloPosition defining_position() const override;
   int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;

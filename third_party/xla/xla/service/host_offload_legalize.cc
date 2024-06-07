@@ -92,57 +92,6 @@ HloInstruction* FindDUSFromAnnotation(HloInstruction* instr) {
   return instr;
 }
 
-// Make sure that broadcasts are duplicated for each use.
-absl::StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
-  bool split_at_least_one = false;
-  for (HloComputation* computation : module->computations()) {
-    std::vector<HloInstruction*> broadcasts;
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kBroadcast ||
-          !instruction->HasConstantOperand()) {
-        continue;
-      }
-      broadcasts.push_back(instruction);
-    }
-    for (HloInstruction* instruction : broadcasts) {
-      if (instruction->opcode() != HloOpcode::kBroadcast ||
-          !instruction->HasConstantOperand()) {
-        continue;
-      }
-      absl::InlinedVector<HloUse, 8> uses;
-      for (HloInstruction* user : instruction->users()) {
-        for (int64_t i = 0; i < user->operand_count(); ++i) {
-          if (user->operand(i) != instruction) {
-            continue;
-          }
-          uses.push_back(HloUse{user, i, /*operand_index=*/{}});
-        }
-      }
-
-      if (uses.size() <= 1) {
-        VLOG(5) << "Skipping broadcast " << instruction->ToString()
-                << " which has " << uses.size() << " uses";
-        continue;
-      }
-
-      VLOG(5) << "Splitting broadcast " << instruction->ToString()
-              << " which has " << uses.size() << " uses";
-      split_at_least_one = true;
-      // Don't create a new broadcast for the first use; we can still use the
-      // original.
-      for (int i = 1; i < uses.size(); ++i) {
-        const HloUse& use = uses[i];
-        HloInstruction* new_broadcast =
-            instruction->parent()->AddInstruction(instruction->Clone());
-        VLOG(5) << "New broadcast " << new_broadcast->ToString();
-        TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
-            use.operand_number, new_broadcast));
-      }
-    }
-  }
-  return split_at_least_one;
-}
-
 // Walk up in the chain of memory offloaded instructions. absl::Status not-ok
 // when an instructions not supported or end of chain reached. Walks one
 // instruction at a time.
@@ -630,20 +579,6 @@ absl::StatusOr<bool> FixupInterveningCopies(
 absl::StatusOr<bool> HostOffloadLegalize::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
-
-  // Split broadcasts so that each HloUse of a broadcast instruction will get
-  // its own copy.
-  // TODO(b/319293925): Do not blindly duplicate all broadcasts, instead do it
-  // only when necessary.
-  TF_ASSIGN_OR_RETURN(bool duplicated_at_least_one_broadcast,
-                      DuplicateBroadcastForEachUse(module));
-  if (duplicated_at_least_one_broadcast) {
-    changed = true;
-  }
-  if (!after_layout_) {
-    return changed;
-  }
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   std::vector<HloInstruction*> copy_to_host_annotations;
 
@@ -673,6 +608,7 @@ absl::StatusOr<bool> HostOffloadLegalize::Run(
   }
   // Fixup layout changing copies that are in between memory offloaded sections.
   // Move them before the data is moved to the host.
+  bool changed = false;
   TF_ASSIGN_OR_RETURN(
       bool changed_intervening_copies,
       FixupInterveningCopies(copy_to_host_annotations, call_graph.get()));

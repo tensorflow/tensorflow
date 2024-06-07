@@ -454,10 +454,19 @@ absl::Status MemorySpaceAssignment::Process(
   // Post-process allocations. This is only used for parent allocations where we
   // update the body root with a reference to the buffer in default memory
   // space.
+  absl::flat_hash_set<HloPosition> seen_pinned_positions;
   for (auto& allocation : allocations_) {
     if (needed_allocations.contains(allocation.get())) {
       VLOG(3) << "Post-Processing: " << allocation->ToString();
       TF_RETURN_IF_ERROR(allocation->PostProcess());
+      if (allocation->is_pinned_allocation() &&
+          !allocation->is_scoped_allocation()) {
+        auto [it, inserted] =
+            seen_pinned_positions.insert(allocation->defining_position());
+        TF_RET_CHECK(inserted)
+            << "Multiple pinned allocations defined for position "
+            << allocation->defining_position().ToString();
+      }
     }
   }
   return absl::OkStatus();

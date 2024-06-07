@@ -496,12 +496,16 @@ absl::Status RunAndCompare(
     std::function<absl::Status(const RunHloModuleOptions& options,
                                HloModule& module)>
         compilation_env_modifier_hook) {
+  std::string input_format = options.input_format;
+  if (input_format.empty()) {
+    input_format = std::string(tsl::io::Extension(hlo_filename));
+  }
   BufferAssignmentProto buffer_assignment_proto;
   TF_ASSIGN_OR_RETURN(
       auto test_module,
       LoadModuleFromFile(
-          hlo_filename, options.input_format,
-          hlo_module_loader_details::Config(), config_modifier_hook,
+          hlo_filename, input_format, hlo_module_loader_details::Config(),
+          config_modifier_hook,
           options.use_buffer_assignment_from_proto ? &buffer_assignment_proto
                                                    : nullptr));
   HloVerifier verifier(
@@ -522,15 +526,13 @@ absl::Status RunAndCompare(
   if (iteration_literals_proto == nullptr) {
     // User did not explicitly give input
     if (!options.force_fake_data && !options.isolate_instructions &&
-        (options.input_format == "pb" || options.input_format == "pbtxt")) {
+        (input_format == "pb" || input_format == "pbtxt")) {
       // User is giving a snapshot (which contains inputs)
       LOG(INFO) << "Using input data from the user-provided snapshot.";
-      TF_ASSIGN_OR_RETURN(
-          iteration_literals_proto_local,
-          LoadInputFromFile(hlo_filename, options.input_format));
+      TF_ASSIGN_OR_RETURN(iteration_literals_proto_local,
+                          LoadInputFromFile(hlo_filename, input_format));
       iteration_literals_proto = iteration_literals_proto_local.get();
-    } else if (options.input_format == "pb" ||
-               options.input_format == "pbtxt") {
+    } else if (input_format == "pb" || input_format == "pbtxt") {
       LOG(INFO)
           << "Ignoring input data from snapshot and using fake data instead.";
     }

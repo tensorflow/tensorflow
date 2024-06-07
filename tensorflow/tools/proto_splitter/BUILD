@@ -104,7 +104,6 @@ py_strict_test(
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
-        "@absl_py//absl/testing:parameterized",
         "@riegeli_py//python/riegeli",
     ],
 )

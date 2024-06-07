@@ -76,6 +76,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:scratch_allocator",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
