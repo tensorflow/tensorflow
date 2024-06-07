@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/array.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"
