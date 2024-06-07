@@ -51,6 +51,8 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 
+// Test force submit comment only.
+
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;

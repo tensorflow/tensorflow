@@ -237,47 +237,33 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
   }
 }
 
+// Returns an interface for calling CubSortPairs on the given key and value
+// types. key_type can be only unsigned integer types. value_type can be any
+// type of 16/32/64 bit width.
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType key_type, PrimitiveType value_type) {
-  // Values can be of any type of 16/32/64 bit width.
-  int valueWidth = primitive_util::BitWidth(value_type);
-  if (valueWidth != 16 && valueWidth != 32 && valueWidth != 64) {
+  int value_width = primitive_util::BitWidth(value_type);
+  CubSortPairsImpl::SortPairsFn sort_fn = nullptr;
+  if (key_type == U8 && value_width == 16) sort_fn = CubSortPairs_u8_b16;
+  if (key_type == U8 && value_width == 32) sort_fn = CubSortPairs_u8_b32;
+  if (key_type == U8 && value_width == 64) sort_fn = CubSortPairs_u8_b64;
+  if (key_type == U16 && value_width == 16) sort_fn = CubSortPairs_u16_b16;
+  if (key_type == U16 && value_width == 32) sort_fn = CubSortPairs_u16_b32;
+  if (key_type == U16 && value_width == 64) sort_fn = CubSortPairs_u16_b64;
+  if (key_type == U32 && value_width == 16) sort_fn = CubSortPairs_u32_b16;
+  if (key_type == U32 && value_width == 32) sort_fn = CubSortPairs_u32_b32;
+  if (key_type == U32 && value_width == 64) sort_fn = CubSortPairs_u32_b64;
+  if (key_type == U64 && value_width == 16) sort_fn = CubSortPairs_u64_b16;
+  if (key_type == U64 && value_width == 32) sort_fn = CubSortPairs_u64_b32;
+  if (key_type == U64 && value_width == 64) sort_fn = CubSortPairs_u64_b64;
+
+  if (sort_fn == nullptr) {
     return InvalidArgument(
-        "Unsupported value type of the sort kernel: %s",
+        "Unsupported key/value type combination for CubSortPairs: %s/%s",
+        primitive_util::LowercasePrimitiveTypeName(key_type),
         primitive_util::LowercasePrimitiveTypeName(value_type));
   }
-
-  // Only unsigned integer types could be used for keys.
-  switch (key_type) {
-    case U16:
-      if (valueWidth == 16) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u16_b16, U16);
-      }
-      if (valueWidth == 32) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u16_b32, U16);
-      }
-      return std::make_unique<CubSortPairsImpl>(CubSortPairs_u16_b64, U16);
-    case U32:
-      if (valueWidth == 16) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u32_b16, U32);
-      }
-      if (valueWidth == 32) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u32_b32, U32);
-      }
-      return std::make_unique<CubSortPairsImpl>(CubSortPairs_u32_b64, U32);
-    case U64:
-      if (valueWidth == 16) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u64_b16, U64);
-      }
-      if (valueWidth == 32) {
-        return std::make_unique<CubSortPairsImpl>(CubSortPairs_u64_b32, U64);
-      }
-      return std::make_unique<CubSortPairsImpl>(CubSortPairs_u64_b64, U64);
-    default:
-      return InvalidArgument(
-          "Unsupported key type of the sort kernel: %s",
-          primitive_util::LowercasePrimitiveTypeName(key_type));
-  }
+  return std::make_unique<CubSortPairsImpl>(sort_fn, key_type);
 }
 
 }  // namespace
