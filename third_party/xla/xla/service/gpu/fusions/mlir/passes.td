@@ -136,7 +136,8 @@ def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
   }];
 
   let dependentDialects = [
-    "mlir::arith::ArithDialect", "mlir::mhlo::MhloDialect"
+    "mlir::arith::ArithDialect", "mlir::math::MathDialect",
+    "mlir::mhlo::MhloDialect"
   ];
 
   let options = [

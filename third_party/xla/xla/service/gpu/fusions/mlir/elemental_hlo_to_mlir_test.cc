@@ -1227,6 +1227,19 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT convert = u64[4] convert(p0)
+    })",
+                   R"(
+    // CHECK:      @main_convert(
+    // CHECK:        %[[UB:.*]] = arith.constant 1.84467441E+19 : f32
+    // CHECK:        arith.cmpf oge, {{.*}}, %[[UB]] : f32
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
   TF_EXPECT_OK(Run(R"(
      ENTRY main{

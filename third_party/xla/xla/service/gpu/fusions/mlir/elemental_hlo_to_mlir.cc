@@ -1049,11 +1049,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           auto cst_int = [&](int64_t x) {
             return builder.create<arith::ConstantIntOp>(x, int_ty);
           };
-          auto cst_float = [&](int64_t x) {
-            return builder.create<ConstantOp>(
-                builder.getFloatAttr(float_ty, x));
-          };
           if (element_mlir_type.isUnsignedInteger()) {
+            auto cst_float = [&](uint64_t x) {
+              return builder.create<ConstantOp>(
+                  builder.getFloatAttr(float_ty, x));
+            };
             int64_t min = 0;
             int64_t max = llvm::maxUIntN(int_ty.getWidth());
             // x <= 0 || isnan(x) ? 0 : ...
@@ -1067,6 +1067,10 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                     mlir::arith::CmpFPredicate::OGE, in, cst_float(max)),
                 cst_int(max), out);
           } else {
+            auto cst_float = [&](int64_t x) {
+              return builder.create<ConstantOp>(
+                  builder.getFloatAttr(float_ty, x));
+            };
             int64_t min = llvm::minIntN(int_ty.getWidth());
             int64_t max = llvm::maxIntN(int_ty.getWidth());
             // x <= static_cast<float>(INT_MIN) ? INT_MIN : ...

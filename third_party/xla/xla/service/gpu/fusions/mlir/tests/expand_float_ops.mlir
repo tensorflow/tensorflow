@@ -64,3 +64,31 @@ module {
 // CHECK-NOT: minimumf
 // CHECK: arith.cmpf
 // CHECK: arith.select
+
+// -----
+
+module {
+  func.func @cmpif8(%arg0: f8E5M2, %arg1: f8E5M2) -> i1 {
+    %ret = arith.cmpf une, %arg0, %arg1 : f8E5M2
+    return %ret : i1
+  }
+}
+
+// Just check that this lowers successfully. We have integration tests to verify
+// correctness.
+// CHECK-LABEL: @cmpif8
+// CHECK-NOT: arith.cmpf une{{.*}}f8E5M2
+
+// -----
+
+module {
+  func.func @fptoi8(%arg0: f8E5M2) -> i32 {
+    %ret = arith.fptosi %arg0 : f8E5M2 to i32
+    return %ret : i32
+  }
+}
+
+// Just check that this lowers successfully. We have integration tests to verify
+// correctness.
+// CHECK-LABEL: @fptoi8
+// CHECK-NOT: arith.fptosi {{.*}}f8E5M2
