@@ -806,7 +806,10 @@ absl::StatusOr<bool> GemmFusion::Run(
         "Triton support is only enabled for CUDA GPUs.");
   } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
     return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
   }
 
   bool changed = false;
