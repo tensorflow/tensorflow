@@ -70,7 +70,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul({ccAsInt}));
+  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
@@ -80,13 +80,9 @@ absl::Status CreateTritonPipeline(
   // check for consistency with the upstream pipeline
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
-    pm.addPass(mt::gpu::createTritonGPUPipeline(
-        {config.num_stages, config.num_warps, config.num_ctas, ccAsInt}));
+    pm.addPass(mt::gpu::createTritonGPUPipeline({config.num_stages}));
   }
-  if (!ccCuda.IsAtLeastHopper()) {
-    pm.addPass(mt::gpu::createTritonGPUPrefetch());
-  }
-
+  pm.addPass(mt::gpu::createTritonGPUPrefetch());
   pm.addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());

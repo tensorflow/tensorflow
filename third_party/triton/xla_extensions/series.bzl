@@ -5,4 +5,5 @@ applied in the previous copybara workflow.
 
 extensions_files_patch_list = [
     "//third_party/triton/xla_extensions:sparse_dot.patch",  # Sparsity internal patch
+    "//third_party/triton/xla_extensions:sparsity_640084124.patch",  # Sparsity additional patch
 ]

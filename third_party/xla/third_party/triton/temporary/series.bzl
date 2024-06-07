@@ -6,5 +6,4 @@ internal patch during the next triton integration process.
 """
 
 temporary_patch_list = [
-    "//third_party/triton/temporary:tc_disabled_kwidth_fix.patch",
 ]

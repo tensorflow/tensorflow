@@ -1,8 +1,8 @@
 diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-index 05f3378dc..0a463c44d 100644
+index bf8f2dc18..73a230342 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-@@ -1298,4 +1298,16 @@ elements along the K dim, or they use all elements of the tensor along the K dim
+@@ -1298,6 +1298,18 @@ elements along the K dim, or they use all elements of the tensor along the K dim
    }];
  }
  
@@ -18,9 +18,11 @@ index 05f3378dc..0a463c44d 100644
 +  }];
 +}
 +
- #endif
+ def TTG_SharedMemorySpace : AttrDef<TritonGPU_Dialect, "SharedMemorySpace"> {
+   let mnemonic = "shared_memory";
+   let description = [{
 diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-index 2530009cb..b9f5bd933 100644
+index a87e1c44a..456a4f224 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
 @@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
@@ -31,7 +33,7 @@ index 2530009cb..b9f5bd933 100644
  include "mlir/IR/OpBase.td"
  include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
  include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
-@@ -232,4 +233,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
+@@ -238,4 +239,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
    }];
  }
  
@@ -167,7 +169,7 @@ index 4aa2712ec..16a6253d7 100644
        return signalPassFailure();
  
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-index 74ae61c06..1bdbd84be 100644
+index bb65e5220..7f5bcf03d 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 @@ -497,6 +497,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
@@ -291,7 +293,7 @@ index 74ae61c06..1bdbd84be 100644
  } // namespace triton
  } // namespace mlir
 diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-index ee09a34de..d995f6c04 100644
+index 15e5d6385..33167978d 100644
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 @@ -39,7 +39,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
@@ -360,7 +362,7 @@ index ee09a34de..d995f6c04 100644
      switch (version) {
      case 2:
        return warpsPerTileV2(dotOp, shape, numWarps);
-@@ -339,6 +342,103 @@ public:
+@@ -344,6 +347,103 @@ public:
      return success();
    }
  };
@@ -464,7 +466,7 @@ index ee09a34de..d995f6c04 100644
  } // namespace
  
  static Value promoteOperand(OpBuilder &builder, Location loc, Value operand,
-@@ -398,6 +498,7 @@ public:
+@@ -405,6 +505,7 @@ public:
  
      mlir::RewritePatternSet patterns(context);
      patterns.add<BlockedToMMA>(context, computeCapability);
@@ -473,21 +475,21 @@ index ee09a34de..d995f6c04 100644
        signalPassFailure();
      }
 diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
-index 457d42f4e..5ab249066 100644
+index 5cb992714..d0fe41a6c 100644
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 @@ -188,6 +188,10 @@ public:
    }
  };
  
-+static bool isDotOp(Operation* op) {
-+  return isa<tt::DotOp, ttg::SparseDotOp>(op);
++static bool isDotLikeOp(Operation* op) {
++  return op.hasTrait<OpTrait::DotLike> || isa<ttg::SparseDotOp>(op);
 +}
 +
- static bool isMMAv3Dot(Operation *op) {
-   auto dot = dyn_cast<tt::DotOp>(op);
-   if (!dot)
-@@ -387,19 +391,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
+ // Replace the ForOp's yield with a new one with the given operands appended.
+ static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
+   // Fix up the yield op.
+@@ -382,19 +386,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -528,26 +530,25 @@ index 457d42f4e..5ab249066 100644
      }
      // Check that the shared encodings needed by the users are compatible.
      if (!tempAttr || (attr != nullptr && attr != tempAttr))
-@@ -506,7 +519,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+@@ -501,7 +514,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
--    if (!isa<tt::DotOp>(op))
-+    if (!isDotOp(&op))
+-    if (!op.hasTrait<OpTrait::DotLike>())
++    if (!isDotLikeOp(&op))
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -583,7 +596,8 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -578,7 +591,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
--    if (auto dot = dyn_cast<tt::DotOp>(use)) {
-+    if (isDotOp(use)) {
-+      auto dot = dyn_cast<tt::DotOp>(use);
+-    if (use->hasTrait<OpTrait::DotLike>()) {
++    if (isDotLikeOp(use)) {
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
-@@ -605,7 +619,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -600,7 +613,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          // The codegen bug is caught by an assertion, so if you think you've
          // fixed it, feel free to delete this code and see if the assert still
          // fails.  :)
@@ -557,7 +558,7 @@ index 457d42f4e..5ab249066 100644
                    dot.getResult().getType().getEncoding())) {
              auto loadTy = cast<RankedTensorType>(op->getResultTypes()[0]);
 diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-index c0b586d60..d592ac523 100644
+index 8c1f18e45..1bb7db243 100644
 --- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
 @@ -38,6 +38,10 @@ public:
@@ -571,7 +572,7 @@ index c0b586d60..d592ac523 100644
        auto dstDotOp =
            dyn_cast<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
        if (!dstDotOp)
-@@ -84,6 +88,27 @@ public:
+@@ -86,6 +90,27 @@ public:
        cvtOp.erase();
      });
    }
@@ -600,15 +601,15 @@ index c0b586d60..d592ac523 100644
  
  } // namespace gpu
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
-index c7dd8d595..df110e0a9 100644
+index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 @@ -44,7 +44,7 @@ public:
        return;
      ModuleOp mod = getOperation();
      mod.walk([&](Operation *op) {
--      if (!isa<tt::DotOp, ttng::DotAsyncOp>(op))
-+      if (!isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+-      if (!isa<ttng::WarpGroupDotOp>(op))
++      if (!isa<ttng::WarpGroupDotOp, ttg::SparseDotOp>(op))
          return WalkResult::advance();
        OpBuilder builder(op);
        auto a = op->getOperand(0);
@@ -616,8 +617,8 @@ index c7dd8d595..df110e0a9 100644
      static DenseSet<std::pair<Operation *, unsigned>> trace;
      auto op = operand.getDefiningOp();
      // avoid redundant insertion
--    if (op && isa<tt::DotOp, ttng::DotAsyncOp>(op))
-+    if (op && isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+-    if (op && op->hasTrait<OpTrait::DotLike>())
++    if (op && (op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op)))
        return false;
      // reach convertlayout
      if (op && isa<ttg::LocalAllocOp>(op) &&
@@ -883,13 +884,13 @@ index 000000000..58023633e
 +}
 +}  // namespace SharedToSparseDotOperand
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
-index 374b9ec9e..1601806b4 100644
+index 3e915a577..b2df2f59e 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
-@@ -32,6 +32,12 @@ LogicalResult convertAsyncWGMMA(triton::nvidia_gpu::DotAsyncOp op,
-                                 const LLVMTypeConverter *typeConverter,
-                                 ConversionPatternRewriter &rewriter,
-                                 Value thread);
+@@ -27,6 +27,12 @@ LogicalResult convertWGMMA(triton::nvidia_gpu::WarpGroupDotOp op,
+                            triton::nvidia_gpu::WarpGroupDotOp::Adaptor adaptor,
+                            const LLVMTypeConverter *typeConverter,
+                            ConversionPatternRewriter &rewriter, Value thread);
 +
 +LogicalResult rewriteSparseDotOp(triton::gpu::SparseDotOp op,
 +                                 triton::gpu::SparseDotOp::Adaptor adaptor,
@@ -899,7 +900,7 @@ index 374b9ec9e..1601806b4 100644
  namespace {
  struct DotOpConversion : public ConvertOpToLLVMPattern<triton::DotOp> {
    using ConvertOpToLLVMPattern<triton::DotOp>::ConvertOpToLLVMPattern;
-@@ -174,6 +180,18 @@ struct DotWaitOpConversion
+@@ -166,6 +172,18 @@ struct WarpGroupDotWaitOpConversion
      return success();
    }
  };
@@ -918,10 +919,10 @@ index 374b9ec9e..1601806b4 100644
  } // namespace
  
  void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
-@@ -182,4 +200,5 @@ void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
+@@ -174,4 +192,5 @@ void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
    patterns.add<DotOpConversion>(typeConverter, benefit);
-   patterns.add<DotAsyncOpConversion>(typeConverter, benefit);
-   patterns.add<DotWaitOpConversion>(typeConverter, benefit);
+   patterns.add<WarpGroupDotOpConversion>(typeConverter, benefit);
+   patterns.add<WarpGroupDotWaitOpConversion>(typeConverter, benefit);
 +  patterns.add<SparseDotOpConversion>(typeConverter, benefit);
  }
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
@@ -1270,7 +1271,7 @@ index 000000000..34d9212d2
 +      "Unsupported SparseDotOp found when converting TritonGPU to LLVM.");
 +}
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
-index 738f0fe04..867939f65 100644
+index baed96a29..e9d7f5859 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
 @@ -88,8 +88,8 @@ int64_t getSwizzlingFromLayout(const SharedEncodingAttr &layout,
