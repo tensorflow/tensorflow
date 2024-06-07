@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -93,6 +94,11 @@ class Lockable {
   }
 
   Lock Acquire() {
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("Lockable::Lock::Acquire",
+                                          {{"lockable", ToString()}});
+    });
+
     absl::MutexLock lock(&mutex_);
     mutex_.Await(absl::Condition(&is_unlocked_));
     VLOG(2) << "Acquired " << LockableName::ToString(value_);
