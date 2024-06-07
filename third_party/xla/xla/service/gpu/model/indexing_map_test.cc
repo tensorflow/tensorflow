@@ -347,10 +347,13 @@ TEST_F(IndexingMapTest, KnownEmpty_AddingConstraintOutOfRange) {
 TEST_F(IndexingMapTest, KnownEmpty_Composition) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &mlir_context_), {50}, {});
-  EXPECT_THAT(indexing_map * IndexingMap::GetKnownEmpty(&mlir_context_),
-              MatchIndexingMap("KNOWN EMPTY"));
-  EXPECT_THAT(IndexingMap::GetKnownEmpty(&mlir_context_) * indexing_map,
-              MatchIndexingMap("KNOWN EMPTY"));
+  IndexingMap known_empty = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (0)", &mlir_context_), {0}, {});
+  EXPECT_THAT(known_empty, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_THAT(indexing_map * known_empty, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_THAT(known_empty * indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_EQ((indexing_map * known_empty).GetAffineMap().getNumResults(), 1);
+  EXPECT_EQ((known_empty * indexing_map).GetAffineMap().getNumResults(), 1);
 }
 
 TEST_F(IndexingMapTest,

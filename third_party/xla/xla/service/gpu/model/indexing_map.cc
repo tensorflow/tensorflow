@@ -1538,6 +1538,13 @@ void IndexingMap::ResetToKnownEmpty() {
       affine_map_.getNumDims(), affine_map_.getNumSymbols(),
       llvm::SmallVector<AffineExpr>(affine_map_.getNumResults(), zero),
       GetMLIRContext());
+  for (auto& dim_var : dim_vars_) {
+    dim_var.bounds = Interval{0, -1};
+  }
+  for (auto& range_var : range_vars_) {
+    range_var.range = Interval{0, -1};
+  }
+  constraints_.clear();
   is_known_empty_ = true;
 }
 
@@ -1642,9 +1649,6 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     return IndexingMap::GetUndefined();
   }
   MLIRContext* mlir_context = first.GetMLIRContext();
-  if (first.IsKnownEmpty() || second.IsKnownEmpty()) {
-    return IndexingMap::GetKnownEmpty(mlir_context);
-  }
   AffineMap producer_affine_map = second.GetAffineMap();
   AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
 
