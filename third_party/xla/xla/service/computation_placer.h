@@ -64,7 +64,7 @@ class DeviceAssignment : public Array2D<int64_t> {
       const;
 
   // Protocol buffer serialization and deserialization.
-  absl::Status Serialize(DeviceAssignmentProto* proto) const;
+  void Serialize(DeviceAssignmentProto* proto) const;
 
   // Return a std::unique_ptr<DeviceAssignment> instead of a DeviceAssignment
   // directly because one of the supported TF platforms (mac) does not compile

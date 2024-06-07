@@ -1231,9 +1231,9 @@ IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
   // Currently, the xla::DeviceAssignment::Serialize does not fail. If test
   // coverage for this error is needed, consider using testing::test_value to
   // inject one.
-  TF_RETURN_IF_ERROR(assignment.Serialize(
+  assignment.Serialize(
       ifrt_resp->mutable_get_default_device_assignment_response()
-          ->mutable_device_assignment()));
+          ->mutable_device_assignment());
 
   return ifrt_resp;
 }

@@ -79,7 +79,7 @@ absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   stream_executor::tpu::SerializedProto dev_assign_serialized;
   if (dev_assign != nullptr) {
     xla::DeviceAssignmentProto dev_assign_proto;
-    TF_RETURN_IF_ERROR(dev_assign->Serialize(&dev_assign_proto));
+    dev_assign->Serialize(&dev_assign_proto);
     dev_assign_serialized =
         stream_executor::tpu::SerializeProto(dev_assign_proto);
     c_dev_assign.bytes = dev_assign_serialized.bytes;

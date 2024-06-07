@@ -493,8 +493,7 @@ HloModuleProto HloModule::ToProto() const {
   }
   if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
-    TF_CHECK_OK(
-        config_.get().static_device_assignment().Serialize(&device_assignment));
+    config_.get().static_device_assignment().Serialize(&device_assignment);
     (*proto.mutable_device_assignment()) = device_assignment;
   }
 
@@ -506,7 +505,7 @@ HloModuleProto HloModule::ToProto() const {
 
 absl::StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
+  *result.mutable_config() = config_.get().ToProto();
   *result.mutable_hlo_module() = ToProto();
   return result;
 }

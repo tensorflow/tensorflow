@@ -139,7 +139,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
             metadata.num_replicas(), metadata.num_cores_per_replica()));
 
     xla::DeviceAssignmentProto device_assignment_proto;
-    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    device_assignment.Serialize(&device_assignment_proto);
 
     *metadata.mutable_device_assignment() = device_assignment_proto;
   }
