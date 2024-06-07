@@ -198,6 +198,17 @@ XLA_CUB_DEFINE_SORT_KEYS(u32, uint32_t)
 XLA_CUB_DEFINE_SORT_KEYS(u64, uint64_t)
 #endif
 
+// Pairs with 8-bit key.
+#ifdef CUB_TYPE_U8_B16
+XLA_CUB_DEFINE_SORT_PAIRS(u8_b16, uint8_t, uint16_t)
+#endif
+#ifdef CUB_TYPE_U8_B32
+XLA_CUB_DEFINE_SORT_PAIRS(u8_b32, uint8_t, uint32_t)
+#endif
+#ifdef CUB_TYPE_U8_B64
+XLA_CUB_DEFINE_SORT_PAIRS(u8_b64, uint8_t, uint64_t)
+#endif
+
 // Pairs with 16-bit key.
 #ifdef CUB_TYPE_U16_B16
 XLA_CUB_DEFINE_SORT_PAIRS(u16_b16, uint16_t, uint16_t)
