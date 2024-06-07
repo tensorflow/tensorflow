@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
+#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
 namespace tensorflow {
 

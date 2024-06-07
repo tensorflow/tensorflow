@@ -18,12 +18,18 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

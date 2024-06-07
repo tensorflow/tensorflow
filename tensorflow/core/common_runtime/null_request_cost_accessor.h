@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NULL_REQUEST_COST_ACCESSOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NULL_REQUEST_COST_ACCESSOR_H_
 
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 
 namespace tensorflow {

@@ -20,11 +20,14 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

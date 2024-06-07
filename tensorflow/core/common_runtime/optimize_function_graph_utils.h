@@ -22,11 +22,16 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 // TODO(b/246646753): add more tests.
