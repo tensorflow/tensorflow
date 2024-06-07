@@ -126,7 +126,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
-  opts.set_xla_gpu_enable_all_reduce_splitter(false);
+  opts.set_xla_gpu_enable_all_reduce_splitter(true);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
