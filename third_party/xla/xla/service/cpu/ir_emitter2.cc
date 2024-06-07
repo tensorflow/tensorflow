@@ -387,6 +387,10 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
 
+  // Always keep a frame pointer for the host kernel so we can see them in all
+  // performance profiling tools.
+  function->addFnAttr("frame-pointer", "all");
+
   // Create an entry basic block and set insert point to the end of it.
   b.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
 
