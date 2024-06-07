@@ -41,18 +41,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/service/float_normalization.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -67,12 +63,6 @@ class TritonSupportTest : public GpuCodegenTest {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
-  }
-  absl::StatusOr<bool> ApplyFloatNormalization(HloModule* module) {
-    const GpuFloatSupport bf16_support(GetCudaComputeCapability(), BF16);
-    HloPassPipeline pipeline("hlo float normalization");
-    pipeline.AddPass<FloatNormalization>(&bf16_support);
-    return pipeline.Run(module);
   }
 
   float getTolerance(PrimitiveType data_type) {
@@ -170,7 +160,6 @@ ENTRY e {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     float tolerance = getTolerance(data_type);
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
   } else {
@@ -251,7 +240,6 @@ ENTRY e {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     float tolerance = getTolerance(data_type);
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
   } else {
@@ -334,7 +322,6 @@ ENTRY e {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     float tolerance = getTolerance(data_type);
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
   } else {
@@ -398,7 +385,6 @@ ENTRY e {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     float tolerance = getTolerance(data_type);
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
   } else {
@@ -455,7 +441,6 @@ ENTRY e {
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
   } else {
@@ -570,7 +555,6 @@ ENTRY e {
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
   if (is_supported_instruction) {
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
   } else {
@@ -751,7 +735,6 @@ ENTRY main {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     float tolerance = getTolerance(data_type);
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
   } else {
@@ -814,7 +797,6 @@ ENTRY main {
       *computation, HloOpcode::kReduce);
   EXPECT_TRUE(IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())
                   .CanFuse());
-  TF_EXPECT_OK(ApplyFloatNormalization(hlo_module.get()));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(hlo_module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
 }
