@@ -19,11 +19,18 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/task_function.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
+#include "third_party/tf_runtime_eigen/lib/work_queue_base.h"
 
 namespace tfrt {
 namespace tf {
