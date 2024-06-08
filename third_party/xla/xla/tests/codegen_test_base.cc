@@ -17,6 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/compiler.h"
+#include "xla/service/executable.h"
+#include "tsl/platform/statusor.h"
+
 namespace xla {
 
 absl::StatusOr<std::unique_ptr<Executable>>

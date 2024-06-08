@@ -18,13 +18,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 

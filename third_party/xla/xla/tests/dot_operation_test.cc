@@ -17,13 +17,39 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/array4d.h"
+#include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/global_data.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/platform_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/test_helpers.h"
+#include "xla/tests/manifest_checking_test.h"
+#include "xla/types.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"

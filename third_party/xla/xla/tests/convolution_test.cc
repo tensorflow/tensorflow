@@ -18,20 +18,24 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/client/padding.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 

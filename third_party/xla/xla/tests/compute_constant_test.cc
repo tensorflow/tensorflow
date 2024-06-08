@@ -17,22 +17,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "xla/client/client.h"
 #include "xla/client/client_library.h"
-#include "xla/client/global_data.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
