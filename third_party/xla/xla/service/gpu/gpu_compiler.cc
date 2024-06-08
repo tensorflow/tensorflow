@@ -1448,7 +1448,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
   pipeline.AddPass<HostOffloadLegalize>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+      static_cast<int64_t>(stream_executor::MemoryType::kHost),
+      /* after_layout= */ true);
   pipeline.AddPass<HostOffloader>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
 

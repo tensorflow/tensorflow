@@ -32,8 +32,10 @@ class HloCostAnalysis;
 // legalization that could block that is welcome into this pass.
 class HostOffloadLegalize : public HloModulePass {
  public:
-  explicit HostOffloadLegalize(int64_t host_memory_space_color)
-      : kHostMemorySpaceColor(host_memory_space_color) {}
+  explicit HostOffloadLegalize(int64_t host_memory_space_color,
+                               bool after_layout)
+      : kHostMemorySpaceColor(host_memory_space_color),
+        after_layout_(after_layout) {}
   ~HostOffloadLegalize() override = default;
 
   absl::string_view name() const override { return "host-offload-legalize"; }
@@ -45,6 +47,7 @@ class HostOffloadLegalize : public HloModulePass {
 
  private:
   const int64_t kHostMemorySpaceColor;
+  const bool after_layout_;
 };
 
 }  // namespace xla

@@ -887,11 +887,6 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
               predecessor_instruction->parent()->RemoveInstruction(
                   predecessor_instruction));
         }
-      } else if (predecessor_instruction->opcode() == HloOpcode::kCustomCall &&
-                 predecessor_instruction->custom_call_target() ==
-                     "AllocateBuffer") {
-        // This DynamicUpdateSlice already has an AllocateBuffer, nothing to do.
-        return absl::OkStatus();
       } else {
         queue.push(predecessor);
       }

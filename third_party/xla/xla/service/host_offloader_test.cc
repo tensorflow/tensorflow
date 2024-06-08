@@ -58,14 +58,10 @@ class HostOffloaderTest : public HloTestBase {
       return absl::InternalError("Expected a non-scheduled module");
     }
     bool changed = false;
-    if (after_layout) {
-      // Only run HostOffloadLegalize if the module has layouts, as it requires
-      // them.
-      HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor);
-      TF_ASSIGN_OR_RETURN(bool legal_changed,
-                          host_offload_legalize.Run(module));
-      changed |= legal_changed;
-    }
+    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
+                                              after_layout);
+    TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
+    changed |= legal_changed;
     HostOffloader host_offloader(kHostMemorySpaceColor);
     TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
