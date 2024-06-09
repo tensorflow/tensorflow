@@ -5778,7 +5778,6 @@ xla_cc_test(
 xla_test(
     name = "determinism_test",
     srcs = if_gpu_is_configured(["determinism_test.cc"]),
-    tags = ["no_rocm"],
     backends = [
         "gpu_a100",
         "gpu_amd_any",
