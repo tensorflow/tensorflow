@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 

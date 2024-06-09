@@ -50,10 +50,10 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
@@ -182,9 +182,10 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
-  return std::unique_ptr<Executable>(
-      new PjRtExecutable(std::move(pjrt_executable)));
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+    std::unique_ptr<XlaCompileOptions> compile_options) {
+  return std::unique_ptr<Executable>(new PjRtExecutable(
+      std::move(pjrt_executable), std::move(compile_options)));
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
@@ -585,7 +586,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (returned_future_supported) {
       result.status = *std::move(returned_pjrt_future);
     } else {
-      result.status = Future<>(OkStatus());
+      result.status = Future<>(absl::OkStatus());
     }
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
@@ -600,7 +601,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (returned_future_supported) {
       result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
-      result.status = Future<>(OkStatus());
+      result.status = Future<>(absl::OkStatus());
     }
   }
 
@@ -705,7 +706,7 @@ Future<> PjRtLoadedExecutable::Delete() {
   DCHECK(this);
   pjrt_loaded_executable_->Delete();
   // TODO(hyeontaek): Return a correct future.
-  return Future<>(OkStatus());
+  return Future<>(absl::OkStatus());
 }
 
 }  // namespace ifrt

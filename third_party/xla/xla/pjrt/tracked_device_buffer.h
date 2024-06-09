@@ -68,7 +68,7 @@ class BufferSequencingEvent {
  public:
   explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
       : thread_pool_(thread_pool),
-        defined_status_(tsl::MakeUnconstructedAsyncValueRef<Status>()) {}
+        defined_status_(tsl::MakeUnconstructedAsyncValueRef<absl::Status>()) {}
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
   // be called at most once. Unblocks any other host threads that are blocked in

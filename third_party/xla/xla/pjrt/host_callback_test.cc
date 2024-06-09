@@ -63,7 +63,7 @@ class TestStream : public CopyToDeviceStream {
     CHECK(!done_.HasBeenNotified());
     chunk_ = std::move(chunk);
     done_.Notify();
-    return PjRtFuture<>(OkStatus());
+    return PjRtFuture<>(absl::OkStatus());
   }
 
  private:

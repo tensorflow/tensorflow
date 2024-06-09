@@ -48,15 +48,31 @@ cc_library(
 )
 
 cc_library(
+    name = "shard_restore_util",
+    srcs = ["shard_restore_util.cc"],
+    hdrs = ["shard_restore_util.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "ifrt_ops_kernel",
     srcs = ["ifrt_ops_kernel.cc"],
     deps = [
         ":context",
         ":kernel",
         ":kernel_runner_utils",
+        ":shard_restore_util",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core/common_runtime:function",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:protobuf",
@@ -184,6 +200,7 @@ tf_cc_shared_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
@@ -224,5 +241,16 @@ tf_cc_shared_test(
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_cc_shared_test(
+    name = "shard_restore_util_test",
+    srcs = ["shard_restore_util_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":shard_restore_util",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

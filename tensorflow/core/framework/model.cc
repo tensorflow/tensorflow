@@ -418,7 +418,7 @@ class InterleaveMany : public Node {
     }
   }
 
-  virtual ~InterleaveMany() {}
+  ~InterleaveMany() override {}
 
   // The ratio of an InterleaveMany node is `1/cycle_length`. If cycle length is
   // not available, we approximate it by `1/input_size`. The input size does not
@@ -574,7 +574,7 @@ class AsyncInterleaveMany : public Node {
     }
   }
 
-  virtual ~AsyncInterleaveMany() {}
+  ~AsyncInterleaveMany() override {}
 
   bool IsAsync() const override { return true; }
 
@@ -786,7 +786,7 @@ class KnownRatio : public Node {
  public:
   KnownRatio(Node::Args args, double ratio) : Node(args), ratio_(ratio) {}
 
-  virtual ~KnownRatio() {}
+  ~KnownRatio() override {}
 
   double Ratio() const override { return ratio_; }
 
@@ -892,7 +892,7 @@ class AsyncRatio : public Node {
     }
   }
 
-  virtual ~AsyncRatio() {}
+  ~AsyncRatio() override {}
 
   bool IsAsync() const override { return true; }
 
@@ -1137,7 +1137,7 @@ class UnknownRatio : public Node {
  public:
   using Node::Node;
 
-  virtual ~UnknownRatio() {}
+  ~UnknownRatio() override {}
 
   double Ratio() const override {
     tf_shared_lock l(mu_);
@@ -1258,7 +1258,7 @@ class Unknown : public Node {
  public:
   using Node::Node;
 
-  virtual ~Unknown() {}
+  ~Unknown() override {}
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -1316,7 +1316,7 @@ class AsyncKnownRatio : public AsyncRatio {
       : AsyncRatio(args, ratio, memory_ratio, parameters,
                    is_legacy_prefetch_autotuned) {}
 
-  virtual ~AsyncKnownRatio() {}
+  ~AsyncKnownRatio() override {}
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -1357,7 +1357,7 @@ class AsyncUnknownRatio : public AsyncRatio {
                     std::vector<std::shared_ptr<Parameter>> parameters)
       : AsyncRatio(args, /*ratio=*/0.0, /*memory_ratio=*/0.0, parameters) {}
 
-  virtual ~AsyncUnknownRatio() {}
+  ~AsyncUnknownRatio() override {}
 
   double Ratio() const override {
     tf_shared_lock l(mu_);

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
@@ -63,9 +64,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -293,11 +292,6 @@ HloInstruction* BitcastingOperandOfReshapeOrCopyChain(
       instr, instr->mutable_operand(0), options);
 }
 
-bool IsUnstridedSlice(const HloInstruction* hlo) {
-  return absl::c_all_of(hlo->slice_strides(),
-                        [](int64_t stride) { return stride == 1; });
-}
-
 // Returns bool to determine whether a pair of converts can be eliminated.
 bool IsConvertPairNoOp(const HloInstruction* convert) {
   //    [operand_convert]         [convert]
@@ -417,8 +411,8 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
   // Extract a and b contraction dimensions from dnums
   auto a_batch_dims = dnums.lhs_batch_dimensions();
   auto b_batch_dims = dnums.rhs_batch_dimensions();
-  auto a_contracting_dims = dnums.lhs_contracting_dimensions();
-  auto b_contracting_dims = dnums.rhs_contracting_dimensions();
+  const auto& a_contracting_dims = dnums.lhs_contracting_dimensions();
+  const auto& b_contracting_dims = dnums.rhs_contracting_dimensions();
   // First add the batch dimensions
   for (int64_t i = 0; i < a_batch_dims.size(); i++) {
     map_a_ab[a_batch_dims[i]] = ab_index;
@@ -733,7 +727,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (old_instruction->control_predecessors().size() > 0) {
+  if (!old_instruction->control_predecessors().empty()) {
     VLOG(3) << old_instruction->ToString()
             << " has control predecessors, skipping.";
     return false;
@@ -754,7 +748,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (old_instruction->control_predecessors().size() > 0) {
+  if (!old_instruction->control_predecessors().empty()) {
     VLOG(3) << old_instruction->ToString()
             << " has control predecessors, skipping.";
     return false;
@@ -1187,7 +1181,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
   // it should remove the op when control deps are present. I.e.
   // control deps might be added to preserve a certain order.
   // It's better to not process in that case.
-  if (bitcast->control_predecessors().size() > 0) {
+  if (!bitcast->control_predecessors().empty()) {
     VLOG(3) << bitcast->ToString() << " has control predecessors, skipping.";
     return absl::OkStatus();
   }
@@ -1485,6 +1479,15 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
 
 absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     HloInstruction* bitcast) {
+  auto operand = bitcast->mutable_operand(0);
+
+  // In a chain of BitcastConverts, only keep the last one.
+  if (HloOpcode::kBitcastConvert == operand->opcode()) {
+    return ReplaceWithNewInstruction(
+        bitcast, HloInstruction::CreateBitcastConvert(
+                     bitcast->shape(), operand->mutable_operand(0)));
+  }
+
   TF_ASSIGN_OR_RETURN(bool replaced,
                       TrySimplifyTautologicalBitcastConvert(bitcast));
   if (replaced) {
@@ -1703,7 +1706,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleConcatenate(
   int64_t i = 0;
   while (i < operands.size()) {
     if (operands[i]->opcode() != HloOpcode::kSlice ||
-        !IsUnstridedSlice(operands[i])) {
+        !hlo_instruction_utils::IsUnstridedSlice(operands[i])) {
       new_operands.push_back(operands[i]);
       ++i;
       continue;
@@ -1713,7 +1716,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleConcatenate(
     int64_t j = i + 1;
     while (j < operands.size()) {
       if (operands[j]->opcode() != HloOpcode::kSlice ||
-          !IsUnstridedSlice(operands[j]) ||
+          !hlo_instruction_utils::IsUnstridedSlice(operands[j]) ||
           operands[j]->operand(0) != slice_operand ||
           operands[j]->slice_starts(concatenate_dimension) != slice_end) {
         break;
@@ -2185,7 +2188,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
-    return primitive_util::PrimitiveTypeSwitch<Status>(
+    return primitive_util::PrimitiveTypeSwitch<absl::Status>(
         [&](auto primitive_type_constant) -> absl::Status {
           if constexpr (primitive_util::IsFloatingPointType(
                             primitive_type_constant) ||
@@ -6052,7 +6055,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     HloInstruction* slice) {
   CHECK_EQ(slice->opcode(), HloOpcode::kSlice);
-  if (!IsUnstridedSlice(slice)) {
+  if (!hlo_instruction_utils::IsUnstridedSlice(slice)) {
     return false;
   }
   HloInstruction* reshape = slice->mutable_operand(0);
@@ -6213,7 +6216,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   }
 
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
-      IsUnstridedSlice(slice) && IsUnstridedSlice(slice->operand(0))) {
+      hlo_instruction_utils::IsUnstridedSlice(slice) &&
+      hlo_instruction_utils::IsUnstridedSlice(slice->operand(0))) {
     HloInstruction* operand_slice = slice->mutable_operand(0);
     std::vector<int64_t> new_slice_starts = slice->slice_starts();
     std::vector<int64_t> new_slice_limits = slice->slice_limits();
@@ -6425,7 +6429,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
 
   // Try to simplify concat -> slice to an operand of concat.
   if (slice->operand(0)->opcode() == HloOpcode::kConcatenate &&
-      IsUnstridedSlice(slice)) {
+      hlo_instruction_utils::IsUnstridedSlice(slice)) {
     HloInstruction* concat = slice->mutable_operand(0);
     int64_t concat_dim = concat->concatenate_dimension();
     int64_t piece_start = 0;
@@ -7228,8 +7232,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
 
       // Construct dot dimension numbers for new dot
-      auto a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
-      auto b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
+      const auto& a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
+      const auto& b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
       DotDimensionNumbers new_dot_dnums;
       for (int64_t reduce_a_index = 0;
            reduce_a_index < reduce_a->shape().rank(); ++reduce_a_index) {

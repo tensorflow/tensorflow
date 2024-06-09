@@ -298,7 +298,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK//:XNNPACK_test_mode",
+        "@XNNPACK",
         "@XNNPACK//:experiments_config",
         "@XNNPACK//:logging",
     ],

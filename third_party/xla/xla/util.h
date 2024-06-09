@@ -714,6 +714,10 @@ std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
 
 int64_t Product(absl::Span<const int64_t> xs);
 
+// Returns an array of results after performing elementwise product of a and b.
+std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
+                                     absl::Span<const int64_t> b);
+
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}

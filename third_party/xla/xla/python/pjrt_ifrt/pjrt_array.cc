@@ -572,7 +572,7 @@ Future<> PjRtArray::Delete() {
     buffer->Delete();
   }
   // TODO(hyeontaek): Return a correct future.
-  return Future<>(OkStatus());
+  return Future<>(absl::OkStatus());
 }
 
 bool PjRtArray::IsDeleted() const {

@@ -951,7 +951,7 @@ ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestBase<T, N>::NativeT,
 // relative errors in values at or below the subnormal boundary (e.g. for values
 // less than ~1e-38 for FP32).
 static constexpr float kDefaultAbsoluteToleranceSlackFactor = 2;
-static constexpr float kDefaultRelativeToleranceSlackFactor = 50;
+static constexpr float kDefaultRelativeToleranceSlackFactor = 20;
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<C128, 1>(complex128) {
@@ -966,8 +966,7 @@ template <>
 inline ErrorSpec DefaultSpecGenerator<C64, 1>(complex64) {
   double atol =
       kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
-  double rtol = kDefaultRelativeToleranceSlackFactor *
-                std::numeric_limits<float>::epsilon();
+  double rtol = 40 * std::numeric_limits<float>::epsilon();
   return ErrorSpec{atol, rtol};
 }
 

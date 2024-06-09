@@ -1006,7 +1006,8 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDS) {
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
   EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
-      instr, input, HloOpcode::kDynamicSlice, config.value()));
+                  instr, input, HloOpcode::kDynamicSlice, config.value())
+                  .has_value());
 }
 
 TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSNested) {
@@ -1062,8 +1063,9 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSNested) {
       module->GetComputationWithName("fused_computation.slice");
   HloInstruction* instr = inner_fusion_comp->GetInstructionWithName("slice");
   EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
-      instr, inner_fusion_comp->parameter_instruction(0),
-      HloOpcode::kDynamicSlice, config.value()));
+                  instr, inner_fusion_comp->parameter_instruction(0),
+                  HloOpcode::kDynamicSlice, config.value())
+                  .has_value());
 }
 
 }  // namespace

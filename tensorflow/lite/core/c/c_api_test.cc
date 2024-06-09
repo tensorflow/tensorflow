@@ -446,11 +446,13 @@ std::vector<int>* g_nodes_to_replace;
 TfLiteOpaqueDelegate* g_opaque_delegate_struct;
 
 TfLiteOperator* CreateDelegateKernelExternalRegistration() {
-  TfLiteOperator* delegate_kernel_registration_external = TfLiteOperatorCreate(
-      kTfLiteBuiltinDelegate, "TEST DELEGATE KERNEL", /*version=*/1);
-  TfLiteOperatorSetInit(
+  TfLiteOperator* delegate_kernel_registration_external =
+      TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
+                                   "TEST DELEGATE KERNEL", /*version=*/1,
+                                   /*user_data=*/nullptr);
+  TfLiteOperatorSetInitWithData(
       delegate_kernel_registration_external,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
@@ -470,10 +472,11 @@ TfLiteOperator* CreateDelegateKernelExternalRegistration() {
         }
         return new OpState{true};
       });
-  TfLiteOperatorSetFree(delegate_kernel_registration_external,
-                        [](TfLiteOpaqueContext* context, void* buffer) {
-                          delete (reinterpret_cast<OpState*>(buffer));
-                        });
+  TfLiteOperatorSetFreeWithData(
+      delegate_kernel_registration_external,
+      [](void* user_data, TfLiteOpaqueContext* context, void* buffer) {
+        delete (reinterpret_cast<OpState*>(buffer));
+      });
   return delegate_kernel_registration_external;
 }
 
@@ -753,11 +756,12 @@ struct DelegateKernelState {
 };
 
 TfLiteOperator* CreateReg() {
-  auto reg_ex = TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
-                                     "Test driver delegate", /*version=*/1);
-  TfLiteOperatorSetInit(
+  auto reg_ex = TfLiteOperatorCreateWithData(
+      kTfLiteBuiltinDelegate, "Test driver delegate", /*version=*/1,
+      /*user_data=*/nullptr);
+  TfLiteOperatorSetInitWithData(
       reg_ex,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
@@ -788,9 +792,9 @@ TfLiteOperator* CreateReg() {
         return new DelegateKernelState{input_tensor, output_tensor};
       });
 
-  TfLiteOperatorSetInvoke(
+  TfLiteOperatorSetInvokeWithData(
       reg_ex,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         DelegateKernelState* delegate_kernel =
             reinterpret_cast<DelegateKernelState*>(
@@ -806,10 +810,12 @@ TfLiteOperator* CreateReg() {
         return kTfLiteOk;
       });
 
-  TfLiteOperatorSetFree(reg_ex, [](TfLiteOpaqueContext* context, void* data) {
-    DelegateKernelState* state = reinterpret_cast<DelegateKernelState*>(data);
-    delete state;
-  });
+  TfLiteOperatorSetFreeWithData(
+      reg_ex, [](void* user_data, TfLiteOpaqueContext* context, void* data) {
+        DelegateKernelState* state =
+            reinterpret_cast<DelegateKernelState*>(data);
+        delete state;
+      });
   return reg_ex;
 }
 
@@ -1098,8 +1104,8 @@ struct SinhParams {
   bool use_cosh_instead = false;
 };
 
-void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
-                   size_t length) {
+void* FlexSinhInit(void* user_data, TfLiteOpaqueContext* context,
+                   const char* buffer, size_t length) {
   auto sinh_params = new SinhParams;
   // The buffer that is passed into here is the custom_options
   // field from the flatbuffer
@@ -1112,16 +1118,16 @@ void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
   return sinh_params;
 }
 
-void FlexSinhFree(TfLiteOpaqueContext* context, void* data) {
+void FlexSinhFree(void* user_data, TfLiteOpaqueContext* context, void* data) {
   delete static_cast<SinhParams*>(data);
 }
 
-TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
+TfLiteStatus FlexSinhPrepare(void* user_data, TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
+TfLiteStatus FlexSinhEval(void* user_data, TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
   auto sinh_params =
       static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
@@ -1145,11 +1151,13 @@ TEST(CApiSimple, CustomOpSupport) {
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteOperator* reg = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-  TfLiteOperatorSetPrepare(reg, &FlexSinhPrepare);
-  TfLiteOperatorSetInit(reg, &FlexSinhInit);
-  TfLiteOperatorSetFree(reg, &FlexSinhFree);
-  TfLiteOperatorSetInvoke(reg, &FlexSinhEval);
+  TfLiteOperator* reg =
+      TfLiteOperatorCreateWithData(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                                   /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepareWithData(reg, &FlexSinhPrepare);
+  TfLiteOperatorSetInitWithData(reg, &FlexSinhInit);
+  TfLiteOperatorSetFreeWithData(reg, &FlexSinhFree);
+  TfLiteOperatorSetInvokeWithData(reg, &FlexSinhEval);
 
   const char* kCustomName = TfLiteOperatorGetCustomName(reg);
   EXPECT_EQ("Sinh", kCustomName);
@@ -1514,13 +1522,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     // Define a delegate kernel that checks that the properties of the model
     // are accessible via the opaque API function.
     //
-    TfLiteOperator* reg =
-        TfLiteOperatorCreate(kTfLiteBuiltinDelegate, "my delegate", 123);
+    TfLiteOperator* reg = TfLiteOperatorCreateWithData(
+        kTfLiteBuiltinDelegate, "my delegate", /*version=*/123,
+        /*user_data=*/nullptr);
     EXPECT_EQ(123, TfLiteOperatorGetVersion(reg));
-    TfLiteOperatorSetInit(
+    TfLiteOperatorSetInitWithData(
         reg,
-        [](TfLiteOpaqueContext* opaque_context, const char* buffer,
-           size_t length) -> void* {
+        [](void* user_data, TfLiteOpaqueContext* opaque_context,
+           const char* buffer, size_t length) -> void* {
           const TfLiteOpaqueDelegateParams* params =
               reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
           EXPECT_EQ(2, params->input_tensors->size);
@@ -1836,12 +1845,13 @@ TEST(CApiSimple, OpaqueApiAccessorsStrings) {
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,
                                        TfLiteOpaqueDelegate* delegate,
                                        void* data) -> TfLiteStatus {
-    TfLiteOperator* registration =
-        TfLiteOperatorCreate(kTfLiteBuiltinDelegate, "my delegate", 123);
-    TfLiteOperatorSetInit(
+    TfLiteOperator* registration = TfLiteOperatorCreateWithData(
+        kTfLiteBuiltinDelegate, "my delegate", /*version=*/123,
+        /*user_data=*/nullptr);
+    TfLiteOperatorSetInitWithData(
         registration,
-        [](TfLiteOpaqueContext* opaque_context, const char* buffer,
-           size_t length) -> void* {
+        [](void* user_data, TfLiteOpaqueContext* opaque_context,
+           const char* buffer, size_t length) -> void* {
           const TfLiteOpaqueDelegateParams* params =
               reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
           EXPECT_EQ(2, params->input_tensors->size);
@@ -1859,14 +1869,14 @@ TEST(CApiSimple, OpaqueApiAccessorsStrings) {
           return nullptr;
         });
 
-    TfLiteOperatorSetPrepare(
+    TfLiteOperatorSetPrepareWithData(
         registration,
-        [](TfLiteOpaqueContext* context,
+        [](void* user_data, TfLiteOpaqueContext* context,
            TfLiteOpaqueNode* node) -> TfLiteStatus { return kTfLiteOk; });
 
-    TfLiteOperatorSetInvoke(
+    TfLiteOperatorSetInvokeWithData(
         registration,
-        [](TfLiteOpaqueContext* context,
+        [](void* user_data, TfLiteOpaqueContext* context,
            TfLiteOpaqueNode* node) -> TfLiteStatus {
           const TfLiteOpaqueTensor* input0 =
               TfLiteOpaqueNodeGetInput(context, node, 0);

@@ -637,9 +637,10 @@ class GpuDriver {
   // a device pointer and size of the symbol on success. symbol_name may not be
   // null. At least one of dptr or bytes should not be null. No ownership is
   // taken of symbol_name.
-  static bool GetModuleSymbol(GpuContext* context, GpuModuleHandle module,
-                              const char* symbol_name, GpuDevicePtr* dptr,
-                              size_t* bytes);
+  static absl::Status GetModuleSymbol(GpuContext* context,
+                                      GpuModuleHandle module,
+                                      const char* symbol_name,
+                                      GpuDevicePtr* dptr, size_t* bytes);
 
   // Unloads module from the current context via cuModuleUnload.
   // TODO(leary) the documentation doesn't say what kind of disasters happen

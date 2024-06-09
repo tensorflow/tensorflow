@@ -114,13 +114,13 @@ void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
 }
 
 Future<> Array::GetReadyFuture() const {
-  auto req = std::make_unique<CheckArrayReadyRequest>();
-  req->set_array_handle(handle_.handle);
+  auto req = std::make_unique<CheckValueReadyRequest>();
+  req->add_value_handles(handle_.handle);
 
   auto promise = Future<>::CreatePromise();
-  rpc_helper_->CheckArrayReady(std::move(req))
+  rpc_helper_->CheckValueReady(std::move(req))
       .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckArrayReadyResponse>>
+          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
                         resp) mutable { promise.Set(resp.status()); });
   return Future<>(std::move(promise));
 }

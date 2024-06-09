@@ -33,14 +33,19 @@ namespace {
 TfLiteAsyncKernel* GetAsyncKernel(TfLiteContext* context,
                                   const TfLiteRegistration& op_reg,
                                   TfLiteNode& node) {
-  if (op_reg.registration_external &&
-      op_reg.registration_external->async_kernel) {
-    return op_reg.registration_external->async_kernel(
-        // The casts here are only safe because this code is part of TFLite
-        // runtime. Applications should not rely on TfLiteContext / TfLiteNode
-        // being equivalent to TfLiteOpaqueContext / TfLiteOpaqueNode.
-        reinterpret_cast<TfLiteOpaqueContext*>(context),
-        reinterpret_cast<TfLiteOpaqueNode*>(&node));
+  if (op_reg.registration_external) {
+    // The casts here are only safe because this code is part of TFLite
+    // runtime. Applications should not rely on TfLiteContext / TfLiteNode being
+    // equivalent to TfLiteOpaqueContext / TfLiteOpaqueNode.
+    auto* context_ = reinterpret_cast<TfLiteOpaqueContext*>(context);
+    auto* node_ = reinterpret_cast<TfLiteOpaqueNode*>(&node);
+    if (op_reg.registration_external->async_kernel_with_data) {
+      auto user_data = op_reg.registration_external->user_data;
+      return op_reg.registration_external->async_kernel_with_data(
+          user_data, context_, node_);
+    } else if (op_reg.registration_external->async_kernel) {
+      return op_reg.registration_external->async_kernel(context_, node_);
+    }
   }
   if (op_reg.async_kernel) {
     return op_reg.async_kernel(context, &node);

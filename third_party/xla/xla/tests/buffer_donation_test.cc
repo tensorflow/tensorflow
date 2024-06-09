@@ -82,9 +82,7 @@ class BufferDonationTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
     auto& executors = backend_->stream_executors();
-    se::StreamExecutorMemoryAllocator memory_allocator(
-        platform_, std::vector<se::StreamExecutorInterface*>(executors.begin(),
-                                                             executors.end()));
+    se::StreamExecutorMemoryAllocator memory_allocator(platform_, executors);
     ExecutableRunOptions run_options;
     run_options.set_stream(stream.get());
     run_options.set_allocator(&memory_allocator);

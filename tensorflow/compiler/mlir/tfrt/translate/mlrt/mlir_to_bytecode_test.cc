@@ -125,7 +125,7 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
 
   auto attributes = executable.attributes();
 
-  ASSERT_EQ(attributes.size(), 14);
+  ASSERT_EQ(attributes.size(), 15);
 
   auto attr_iter = attributes.begin();
 
@@ -179,9 +179,13 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
 
   bc::Vector<int32_t> empty_dense_array((*attr_iter).data());
   EXPECT_TRUE(empty_dense_array.empty());
+  ++attr_iter;
+
+  bc::Vector<uint8_t> dense_array_of_bool((*attr_iter).data());
+  EXPECT_THAT(dense_array_of_bool, ElementsAreArray({true, false}));
 
   auto kernels = executable.functions()[0].kernels();
-  ASSERT_EQ(kernels.size(), 15);
+  ASSERT_EQ(kernels.size(), 16);
   auto kernel_iter = kernels.begin();
 
   auto attribute_span = [&](auto kernel_iter) {
@@ -236,6 +240,10 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int32_t>>(0),
               IsEmpty());
+  ++kernel_iter;
+
+  EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<bool>>(0),
+              ElementsAreArray({true, false}));
 }
 
 TEST(MlirToByteCodeTest, UnsupportedAttributes) {

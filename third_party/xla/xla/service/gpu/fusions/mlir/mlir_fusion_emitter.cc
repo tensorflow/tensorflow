@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -287,7 +288,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
     const BufferAssignment* buffer_assignment) const {
   bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
       device.gpu_compute_capability());
-  auto* hlo_module = fusion.GetModule();
+  HloModule* hlo_module = fusion.GetModule();
   std::unique_ptr<mlir::interpreter::MlirCompilationTrace> trace = nullptr;
   if (DumpingEnabledForHloModule(*hlo_module) &&
       DumpingEnabledForHloPass("mlir-fusion-emitter",
@@ -300,14 +301,20 @@ MlirFusionEmitterBase::CreateLLVMModule(
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(CreateEraseDeadFunctionsPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(CreateLowerXlaGpuToScfPass());
+  pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
+    // CSE after inlining because inlining can introduce duplicates.
+    pm.addPass(mlir::createCSEPass());
+  }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateUnswitchLoopsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
-  pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
                      : device.cuda_compute_capability().ToString()));
@@ -328,7 +335,6 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateLowerTensorsPass());
   pm.addPass(CreateExpandFloatOpsPass(
       !device.cuda_compute_capability().IsAtLeastAmpere()));
   pm.addPass(CreateLowerToLLVMPass());
@@ -572,14 +578,10 @@ absl::Status MlirFusionEmitterBase::RunPassPipeline(
         std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
             *trace));
   }
-  if (pm.run(module).failed()) {
-    std::string module_dump;
-    llvm::raw_string_ostream os(module_dump);
-    module->print(os);
-    return absl::InternalError(absl::StrFormat(
-        "Failed to run pass pipeline.\nMLIR module:\n%s", module_dump));
-  }
-  return absl::OkStatus();
+
+  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
+  (void)pm.run(module);
+  return diagnostic_handler.consumeStatus();
 }
 
 }  // namespace gpu

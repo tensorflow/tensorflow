@@ -82,8 +82,8 @@ TEST(FfiTest, WrongNumArgs) {
   builder.AddBufferArg(se::DeviceMemoryBase(nullptr), PrimitiveType::F32, {});
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().Arg<BufferBase>().To(
-      [](BufferBase, BufferBase) { return absl::OkStatus(); });
+  auto handler = Ffi::Bind().Arg<AnyBuffer>().Arg<AnyBuffer>().To(
+      [](AnyBuffer, AnyBuffer) { return absl::OkStatus(); });
 
   auto status = Call(*handler, call_frame);
 
@@ -433,7 +433,7 @@ TEST(FfiTest, DecodingErrors) {
       << status.message() << "\n";
 }
 
-TEST(FfiTest, BufferBaseArgument) {
+TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
@@ -441,7 +441,7 @@ TEST(FfiTest, BufferBaseArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](BufferBase buffer) {
+  auto fn = [&](AnyBuffer buffer) {
     EXPECT_EQ(buffer.dtype, PrimitiveType::F32);
     EXPECT_EQ(buffer.data.opaque(), storage.data());
     EXPECT_EQ(buffer.dimensions.size(), 2);
@@ -449,7 +449,7 @@ TEST(FfiTest, BufferBaseArgument) {
   };
 
   {  // Test explicit binding signature declaration.
-    auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
+    auto handler = Ffi::Bind().Arg<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
     TF_ASSERT_OK(status);
   }
@@ -571,8 +571,8 @@ TEST(FfiTest, RemainingArgs) {
 
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
-    EXPECT_TRUE(args.get<BufferBase>(0).has_value());
-    EXPECT_FALSE(args.get<BufferBase>(1).has_value());
+    EXPECT_TRUE(args.get<AnyBuffer>(0).has_value());
+    EXPECT_FALSE(args.get<AnyBuffer>(1).has_value());
     return absl::OkStatus();
   };
 
@@ -591,14 +591,14 @@ TEST(FfiTest, RemainingRets) {
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](Result<BufferBase> ret, RemainingResults rets) {
+  auto fn = [&](Result<AnyBuffer> ret, RemainingResults rets) {
     EXPECT_EQ(rets.size(), 1);
-    EXPECT_TRUE(rets.get<BufferBase>(0).has_value());
-    EXPECT_FALSE(rets.get<BufferBase>(1).has_value());
+    EXPECT_TRUE(rets.get<AnyBuffer>(0).has_value());
+    EXPECT_FALSE(rets.get<AnyBuffer>(1).has_value());
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Ret<BufferBase>().RemainingResults().To(fn);
+  auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingResults().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);

@@ -133,6 +133,12 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
     }
 
     const auto& dims = gatherOp.getDimensionNumbers();
+
+    // TODO: b/342172264 - Implement handling of batching dims.
+    if (!dims.getOperandBatchingDims().empty() ||
+        !dims.getStartIndicesBatchingDims().empty())
+      return failure();
+
     int64_t operandRank =
         dims.getCollapsedSliceDims().size() + dims.getOffsetDims().size();
 
@@ -154,7 +160,9 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
 
     auto newDims = GatherDimensionNumbersAttr::get(
         rewriter.getContext(), offsetDims,
-        /*collapsedSliceDims=*/{}, startIndexMap,
+        /*collapsedSliceDims=*/{},
+        /*operandBatchingDims=*/{},
+        /*startIndicesBatchingDims=*/{}, startIndexMap,
         /*indexVectorDim=*/1);
     TypedValue<RankedTensorType> result =
         b.create<GatherOp>(operand, startIndices, newDims,

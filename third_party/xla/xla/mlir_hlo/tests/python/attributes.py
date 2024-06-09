@@ -125,6 +125,8 @@ def test_gather_dimension_numbers():
   attr = mhlo.GatherDimensionNumbers.get(
       offset_dims=[1, 2],
       collapsed_slice_dims=[3, 4, 5],
+      operand_batching_dims=[],
+      start_indices_batching_dims=[],
       start_index_map=[6],
       index_vector_dim=7,
   )
@@ -185,6 +187,8 @@ def test_scatter_dimension_numbers():
   attr = mhlo.ScatterDimensionNumbers.get(
       update_window_dims=[1, 2, 3],
       inserted_window_dims=[4, 5],
+      input_batching_dims=[],
+      scatter_indices_batching_dims=[],
       scattered_dims_to_operand_dims=[6, 7],
       index_vector_dim=8,
   )

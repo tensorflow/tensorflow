@@ -1234,24 +1234,18 @@ struct BitPatternToValue {
   return absl::OkStatus();
 }
 
-/* static */ bool GpuDriver::GetModuleSymbol(GpuContext* context,
-                                             hipModule_t module,
-                                             const char* symbol_name,
-                                             hipDeviceptr_t* dptr,
-                                             size_t* bytes) {
+/* static */ absl::Status GpuDriver::GetModuleSymbol(GpuContext* context,
+                                                     hipModule_t module,
+                                                     const char* symbol_name,
+                                                     hipDeviceptr_t* dptr,
+                                                     size_t* bytes) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && symbol_name != nullptr &&
         (dptr != nullptr || bytes != nullptr));
-  hipError_t res = wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name);
-  if (res != hipSuccess) {
-    // symbol may not be found in the current module, but it may reside in
-    // another module.
-    VLOG(2) << "failed to get symbol \"" << symbol_name
-            << "\" from module: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
+      absl::StrCat("Failed to get symbol '", symbol_name, "'"));
+  return absl::OkStatus();
 }
 
 /* static */ void GpuDriver::UnloadModule(GpuContext* context,

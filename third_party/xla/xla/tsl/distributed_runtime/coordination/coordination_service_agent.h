@@ -198,6 +198,10 @@ class CoordinationServiceAgent {
   virtual absl::Status InsertKeyValue(std::string_view key,
                                       std::string_view value) = 0;
 
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value,
+                                      bool allow_overwrite) = 0;
+
   // Delete config keys in the coordination service.
   virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 

@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -36,31 +36,37 @@ class GpuExecutor;
 // StreamInterface.
 //
 // Thread-safe post-initialization.
-class GpuStream : public Stream {
+class GpuStream : public StreamCommon {
  public:
   explicit GpuStream(GpuExecutor* parent)
-      : Stream(parent),
+      : StreamCommon(parent),
         parent_(parent),
         gpu_stream_(nullptr),
         completed_event_(nullptr) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override { BlockHostUntilDone().IgnoreError(); }
+  ~GpuStream() override {
+    BlockHostUntilDone().IgnoreError();
+    parent()->DeallocateStream(this);
+  }
 
-  void* platform_specific_stream() const override { return gpu_stream_; }
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  void* platform_specific_stream() const { return gpu_stream_; }
 
   // Explicitly initialize the CUDA resources associated with this stream.
   bool Init();
 
-  void SetPriority(StreamPriority priority) override {
-    stream_priority_ = priority;
-  }
-
-  void SetPriority(int priority) override { stream_priority_ = priority; }
+  // Sets the priority of this stream.
+  void SetPriority(StreamPriority priority) { stream_priority_ = priority; }
+  void SetPriority(int priority) { stream_priority_ = priority; }
 
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
   }
+  PlatformSpecificHandle platform_specific_handle() const override;
 
   // Explicitly destroy the CUDA resources associated with this stream, used by
   // StreamExecutor::DeallocateStream().

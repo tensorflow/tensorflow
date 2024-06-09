@@ -23,6 +23,7 @@ load(
     "tf_additional_cudnn_plugin_copts",
     "tf_additional_gpu_compilation_copts",
 )
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 
 package(
@@ -116,10 +117,6 @@ cc_library(name = "ptxas_wrapper")
 
 cc_library(name = "nvlink_wrapper")
 
-# Buildozer can not remove dependencies inside select guards, so we have to use
-# an intermediate target.
-cc_library(name = "fatbinary_wrapper")
-
 cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
@@ -189,11 +186,15 @@ cuda_only_cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-xla_cc_test(
+xla_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    tags = ["no_rocm"],
-    use_gpu = True,
+    backends = ["gpu"],
+    tags = [
+        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
+        "gpu",
+        "no_rocm",
+    ],
     deps = [
         ":cuda_driver",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -540,7 +541,8 @@ cc_library(
 xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
-    use_gpu = True,
+    # TODO(b/343996893): Figure out whether msan reports a false positive or not.
+    tags = ["nomsan"],
     deps = [
         ":ptx_compiler",
         ":ptx_compiler_support",
@@ -560,6 +562,13 @@ cuda_only_cc_library(
     srcs = ["cuda_asm_compiler.cc"],
     hdrs = ["cuda_asm_compiler.h"],
     copts = tf_additional_gpu_compilation_copts(),
+    # copybara:uncomment_begin
+    # data = [
+    # "@local_config_cuda//cuda:runtime_fatbinary",
+    # "@local_config_cuda//cuda:runtime_nvlink",
+    # "@local_config_cuda//cuda:runtime_ptxas",
+    # ],
+    # copybara:uncomment_end
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
@@ -569,11 +578,8 @@ cuda_only_cc_library(
     ]),
     deps = [
         ":cuda_driver",
-        ":fatbinary_wrapper",
-        ":nvlink_wrapper",
         ":ptx_compiler",
         ":ptx_compiler_support",
-        ":ptxas_wrapper",
         "//xla:status_macros",
         "//xla:util",
         "//xla/stream_executor/gpu:gpu_asm_opts",

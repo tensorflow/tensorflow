@@ -182,45 +182,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     return *compilation_result;
   }
 
-  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using Combined "
-             "MLIR and XlaBuilder Bridge. Failed to lower to hlo."
-          << combined_bridge_status.status();
-  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
-                          combined_bridge_status.status().ToString())
-      .IgnoreError();
-
-  auto mlir_bridge_status = internal::LegalizeWithMlirBridge(
-      std::get<0>(computation), metadata, use_tuple_args, device_type,
-      shape_determination_fns, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes, custom_legalization_passes,
-      compilation_result.get());
-
-  if (mlir_bridge_status.ok()) {
-    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
-               "tf2xla Bridge";
-    IncrementTfMlirBridgeSecondPhaseCounter(
-        metrics::MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
-
-    DumpHloCompilationResult("legalize_tf_mlir_bridge.hlo",
-                             compilation_result.get())
-        .IgnoreError();
-    return *compilation_result;
-  } else if (mlir_bridge_status.status() ==
-             CompileToHloGraphAnalysisFailedError()) {
-    VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
-               "Bridge. Could not generate HLO.";
-  } else {
-    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using MLIR "
-               "tf2xla Bridge. Could not generate HLO. "
-            << mlir_bridge_status.status();
-    tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_PHASE2_MLIR_BRIDGE",
-                            mlir_bridge_status.status().ToString())
-        .IgnoreError();
-    IncrementTfMlirBridgeSecondPhaseCounter(
-        metrics::MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
-  }
-
-  return mlir_bridge_status.status();
+  return combined_bridge_status.status();
 }
 
 };  // namespace v2

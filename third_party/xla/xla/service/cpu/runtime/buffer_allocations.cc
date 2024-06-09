@@ -39,6 +39,13 @@ absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
 
 absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice) const {
+  // Handle empty slices explicitly and return a null pointer device memory to
+  // guarantee that we do not accidentally write through the empty slice which
+  // would hide a real bug in the code.
+  if (buffer_slice.size() == 0) {
+    return se::DeviceMemoryBase(nullptr, 0);
+  }
+
   int64_t index = buffer_slice.index();
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase base, GetDeviceAddress(index));
 
@@ -52,14 +59,14 @@ absl::StatusOr<se::DeviceMemoryBase> BufferAllocations::GetDeviceAddress(
 
   if (offset >= base.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Buffer slice offset ", offset, " must be smaller than buffer #", index,
-        " size ", base.size()));
+        "Buffer slice offset ", offset, " is out of range for buffer #", index,
+        " of size ", base.size()));
   }
 
   if (extent > base.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Buffer slice extent ", extent, " must be smaller than buffer #", index,
-        " size ", base.size()));
+        "Buffer slice extent ", extent, " is out of range for buffer #", index,
+        " of size ", base.size()));
   }
 
   return base.GetByteSlice(offset, buffer_slice.size());

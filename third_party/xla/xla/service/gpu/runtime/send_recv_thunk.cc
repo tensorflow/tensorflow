@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"

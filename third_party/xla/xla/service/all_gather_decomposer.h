@@ -52,7 +52,8 @@ class AllGatherDecomposer : public HloModulePass {
     return should_decompose_(ag);
   }
 
-  Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp);
+  absl::Status DecomposeAllGather(HloAllGatherInstruction* ag,
+                                  HloComputation* comp);
 
  private:
   std::function<bool(const HloAllGatherInstruction&)> should_decompose_;

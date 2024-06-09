@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/ffi/api/api.h"
 // IWYU pragma: end_exports
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -55,13 +55,20 @@ struct CalledComputation {};  // binds `HloComputation*`
 // Arguments
 //===----------------------------------------------------------------------===//
 
-struct BufferBase {
+// Dynamically-typed buffer.
+//
+// No checks are done at decoding time. Any dtype and rank combination is
+// accepted.
+struct AnyBuffer {
   using Shape = absl::Span<const int64_t>;
 
   PrimitiveType dtype;
   se::DeviceMemoryBase data;
   Shape dimensions;
 };
+
+// Deprecated. Use `AnyBuffer` instead.
+using BufferBase = AnyBuffer;
 
 namespace internal {
 
@@ -72,9 +79,13 @@ using NativeType = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
 
 }  // namespace internal
 
+// Buffer with a statically-known dtype and rank.
+//
+// The dtype and rank are checked at decoding time. If rank is not specified,
+// any rank is accepted.
 template <PrimitiveType dtype, size_t rank = internal::kDynamicRank>
 struct Buffer {
-  using Shape = BufferBase::Shape;
+  using Shape = AnyBuffer::Shape;
 
   se::DeviceMemory<internal::NativeType<dtype>> data;
   Shape dimensions;
@@ -92,14 +103,14 @@ using Token = BufferR0<PrimitiveType::TOKEN>;
 
 namespace internal {
 
-inline BufferBase DecodeBuffer(XLA_FFI_Buffer* buf) {
+inline AnyBuffer DecodeBuffer(XLA_FFI_Buffer* buf) {
   size_t size_bytes = 0;
   if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
     size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
     for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
   }
 
-  BufferBase buffer;
+  AnyBuffer buffer;
   buffer.dtype = PrimitiveType(buf->dtype);
   buffer.data = se::DeviceMemoryBase(buf->data, size_bytes);
   buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
@@ -143,8 +154,8 @@ std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ArgBinding<BufferBase> {
-  using Arg = BufferBase;
+struct ArgBinding<AnyBuffer> {
+  using Arg = AnyBuffer;
 };
 
 template <PrimitiveType dtype, size_t rank>
@@ -157,10 +168,10 @@ struct ArgBinding<Buffer<dtype, rank>> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ArgDecoding<BufferBase> {
+struct ArgDecoding<AnyBuffer> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
-                                          DiagnosticEngine& diagnostic) {
+  static std::optional<AnyBuffer> Decode(XLA_FFI_ArgType type, void* arg,
+                                         DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
@@ -190,10 +201,11 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct RetDecoding<BufferBase> {
+struct RetDecoding<AnyBuffer> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
-  static std::optional<Result<BufferBase>> Decode(
-      XLA_FFI_RetType type, void* arg, DiagnosticEngine& diagnostic) {
+  static std::optional<Result<AnyBuffer>> Decode(XLA_FFI_RetType type,
+                                                 void* arg,
+                                                 DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
       return diagnostic.Emit("Wrong result type: expected ")
              << XLA_FFI_RetType_BUFFER << " but got " << type;
@@ -359,7 +371,7 @@ struct CtxDecoding<UserData<T>> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ResultEncoding<Status> {
+struct ResultEncoding<absl::Status> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }

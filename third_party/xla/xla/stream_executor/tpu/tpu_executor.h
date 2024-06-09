@@ -1,6 +1,3 @@
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/memory_allocation.h"
-#include "xla/stream_executor/stream_interface.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +28,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
@@ -157,10 +156,10 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                         uint32_t pattern, uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
-  absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
     LOG(FATAL) << "not yet implemented";
   }
-  bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
+  bool CanEnablePeerAccessTo(StreamExecutor* other) override {
     LOG(FATAL) << "not yet implemented";
   }
 
@@ -187,7 +186,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     return *(tpu_platform().stream_map());
   }
 
-  SE_Stream* get_stream(StreamInterface* ptr) {
+  SE_Stream* get_stream(Stream* ptr) {
     absl::MutexLock m(&tpu_platform().mutex());
     return stream_map()[ptr];
   }

@@ -18,14 +18,11 @@ If we have enough GPUs, we can replay these HLOs like this:
 
 ```
 bazel run -c opt --config=cuda --dynamic_mode=off \
-  //xla/tools/multihost_hlo_runner:hlo_runner_main \
-  -- --device_type=gpu --use_spmd_partitioning=true \
-  --num_partitions=2 --num_replicas=1 \
-  --hlo_file=my-hlo.txt
+  //xla/tools/multihost_hlo_runner:hlo_runner_main -- my-hlo.txt
 ```
 
 Tip: If the input generation takes too long or uses too much host memory,
-consider using --hlo_argument_mode=uninitialized.
+consider using `--hlo_argument_mode=uninitialized`.
 
 It is also possible to compile the same HLO without running it by setting
 `--run=false`
@@ -33,9 +30,7 @@ It is also possible to compile the same HLO without running it by setting
 ```
 bazel run -c opt --config=cuda --dynamic_mode=off \
   //xla/tools/multihost_hlo_runner:hlo_runner_main \
-  -- --device_type=gpu --use_spmd_partitioning=true \
-  --num_partitions=2 --num_replicas=1 --run=false \
-  --hlo_file=my-hlo.txt
+  -- --run=false my-hlo.txt
 ```
 
 In that case, a single GPU is necessary.

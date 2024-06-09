@@ -46,9 +46,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
       : se::StreamExecutorMemoryAllocator(
-            platform, GetInterfaceVectorFromExecutors(
-                          PlatformUtil::GetStreamExecutors(platform).value())) {
-  }
+            platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
   absl::StatusOr<se::OwningDeviceMemory> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
@@ -65,13 +63,6 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   int64_t deallocation_count(int device_ordinal) const;
 
  private:
-  // Helper function to turn a vector<StreamExecutor*> into a
-  // vector<StreamExecutorInterface*>.
-  std::vector<se::StreamExecutorInterface*> GetInterfaceVectorFromExecutors(
-      const std::vector<se::StreamExecutor*>& executors) {
-    return std::vector<se::StreamExecutorInterface*>(executors.begin(),
-                                                     executors.end());
-  }
   mutable absl::Mutex count_mutex_;
 
   // Global counts of allocations and deallocations.

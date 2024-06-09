@@ -675,7 +675,7 @@ void BM_LargeTensorWrite(::testing::benchmark::State& state) {
       io::JoinPath(testing::TmpDir(), "benchmark_checkpoint");
   auto root = Scope::NewRootScope().ExitOnError();
   const tstring tensor_name = "my_tensor";
-  ops::Save(root, temp_filename, {tensor_name}, {{tensor}});
+  ops::Save give_me_a_name(root, temp_filename, {tensor_name}, {{tensor}});
 
   // Disables optimizations.
   SessionOptions session_options;

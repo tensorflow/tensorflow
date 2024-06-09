@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-DeviceMemoryHandle::DeviceMemoryHandle(StreamExecutorInterface *executor,
+DeviceMemoryHandle::DeviceMemoryHandle(StreamExecutor *executor,
                                        DeviceMemoryBase memory)
     : memory_(std::move(memory)), executor_(executor) {}
 

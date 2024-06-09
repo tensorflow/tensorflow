@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/maybe_owning_device_memory.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/lib/strings/proto_serialization.h"

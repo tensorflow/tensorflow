@@ -529,14 +529,6 @@ void HloBfsProducersFirstTraversal(
       /*visit_operands=*/false);
 }
 
-void FindFusionArguments(
-    const HloFusionAdaptor& fusion,
-    const std::function<void(HloInstructionAdaptor param)>& visit) {
-  HloBfsConsumersFirstTraversal(
-      fusion.GetRoots(), fusion,
-      [&](HloInstructionAdaptor) { return TraversalResult::kAdvance; }, visit);
-}
-
 bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const HloFusionAdaptor& fusion,
               const std::function<bool(HloInstructionAdaptor node)>& visit,

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <mutex>  // NOLINT
 #include <string>
 #include <unordered_map>
@@ -341,7 +342,7 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params), outputs_(num_outputs) {
   if (params_->track_allocations) {
-    tracking_state_ = absl::make_unique<TrackingState>();
+    tracking_state_ = std::make_unique<TrackingState>();
   }
 
   params_->ensure_eigen_gpu_device();
@@ -701,7 +702,7 @@ Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
 
 void OpKernelContext::maybe_initialize_scope_id_set() {
   if (allocated_scope_ids_ == nullptr) {
-    allocated_scope_ids_ = absl::make_unique<std::unordered_set<int32>>();
+    allocated_scope_ids_ = std::make_unique<std::unordered_set<int32>>();
   }
 }
 
@@ -1122,7 +1123,7 @@ void OpKernelContext::clear_recorded_memory() {
 void OpKernelContext::set_record_memory_consumption(bool v) {
   record_memory_consumption_ = v;
   if (v && !tracking_state_) {
-    tracking_state_ = absl::make_unique<TrackingState>();
+    tracking_state_ = std::make_unique<TrackingState>();
   }
 }
 

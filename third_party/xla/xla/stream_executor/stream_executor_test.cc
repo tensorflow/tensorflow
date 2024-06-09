@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/statusor.h"
@@ -24,15 +25,15 @@ limitations under the License.
 
 namespace stream_executor {
 
-static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-  Platform* platform = PlatformManager::PlatformWithName("Host").value();
+static absl::StatusOr<std::unique_ptr<StreamExecutor>> NewStreamExecutor() {
   StreamExecutorConfig config(/*ordinal=*/0);
-  return platform->GetUncachedExecutor(config).value();
+  TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
+  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetUncachedExecutor(config));
+  return stream_exec;
 }
 
 TEST(StreamExecutorTest, HostMemoryAllocate) {
-  auto executor = NewStreamExecutor();
-
+  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);

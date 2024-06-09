@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -51,8 +52,8 @@ const TfLiteRegistration* GetNoOpRegistration() {
 }
 
 const TfLiteOperator* GetNoOpOperator() {
-  static TfLiteOperator* registration =
-      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "NoOp", 1);
+  static TfLiteOperator* registration = TfLiteOperatorCreateWithData(
+      kTfLiteBuiltinCustom, "NoOp", 1, /* user_data */ nullptr);
   TfLiteOperatorSetInvoke(
       registration,
       /*invoke=*/[](TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
@@ -247,8 +248,8 @@ const TfLiteOperator* SinhFindCustomOpExternal(void*, const char* custom_op,
                                                int version) {
   if (absl::string_view(custom_op) == "Sinh" && version == 1) {
     static TfLiteOperator* registration = []() {
-      TfLiteOperator* reg =
-          TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+      TfLiteOperator* reg = TfLiteOperatorCreateWithData(
+          kTfLiteBuiltinCustom, "Sinh", 1, /* user_data */ nullptr);
       TfLiteOperatorSetPrepare(reg, &SinhPrepareOpaque);
       TfLiteOperatorSetInvoke(reg, &SinhEvalOpaque);
       return reg;
@@ -655,9 +656,9 @@ struct OpaqueTestDelegate {
     delegate_state->buffer_handle++;
 
     TfLiteRegistration registration{};
-    registration.registration_external = TfLiteOperatorCreate(
+    registration.registration_external = TfLiteOperatorCreateWithData(
         kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel",
-        /* version = */ 1);
+        /* version = */ 1, /* user_data = */ nullptr);
 
     TfLiteOperatorSetPrepare(
         registration.registration_external,

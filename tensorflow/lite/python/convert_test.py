@@ -35,7 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _mock_wrapped_toco_convert(
+def _mock_wrapped_convert(
     unused_model_flags_str="",
     conversion_flags_str="",
     unused_input_data_str="",
@@ -100,7 +100,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     mock_func.assert_called_once()
 
   @mock.patch.object(
-      convert.wrap_toco, "wrapped_toco_convert", new=_mock_wrapped_toco_convert
+      convert.wrap_converter, "wrapped_convert", new=_mock_wrapped_convert
   )
   @mock.patch.object(
       metrics_wrapper, "retrieve_collected_errors", new=_mock_retrieve_errors

@@ -13,7 +13,7 @@ The easiest way to obtain the HLO for a program being compiled with XLA is
 usually to use the `XLA_FLAGS` environment variable:
 
 ```
-XLA_FLAGS=--xla_dump_to=/tmp/myfolder ./myprogram-entry-point
+$ XLA_FLAGS=--xla_dump_to=/tmp/myfolder ./myprogram-entry-point
 ```
 
 which stores all before-optimization HLO files in the folder specified, along
@@ -27,7 +27,7 @@ implementation. For example, the usual invocation to run an input file
 `computation.hlo` on an NVIDIA GPU and to check it for correctness is:
 
 ```
-run_hlo_module --platform=CUDA --reference_platform=Interpreter computation.hlo
+$ run_hlo_module --platform=CUDA --reference_platform=Interpreter computation.hlo
 ```
 
 As with all the tools, `--help` can be used to obtain the full list of options.
@@ -38,7 +38,15 @@ Multihost HLO runner is a very similar tool, with the caveat that it supports
 SPMD, including cross host communication. A typical invocation looks like:
 
 ```
-hlo_runner_main  --device_type=gpu --use_spmd_partitioning=true --num_partitions=4 --num_replicas=1 --hlo_file=computation.hlo
+$ hlo_runner_main  /path/to/module.hlo
+```
+
+Invocation with multiple modules is supported for both `run_hlo_module` and
+`hlo_runner_main`, which is often convenient to replay all modules in a dump
+directory:
+
+```shell
+$ hlo_runner_main /dump/*before_optimizations*
 ```
 
 ## Running passes/stages of HLO compilation: `hlo-opt`
@@ -115,7 +123,7 @@ Deviceless compilation might run into issues if autotuning is required. Luckily,
 we can also provide those on the command line:
 
 ```
-hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
+$ hlo-opt  --platform=CUDA --stage=llvm  --xla_gpu_target_config_filename=gpu_specs/a100_80.txtpb --xla_gpu_load_autotune_results_from=results.textpb input.hlo
 ```
 
 The autotune file is text serialization of `autotune_results.proto`, with
@@ -151,5 +159,5 @@ The flags from `XLA_FLAGS` are also supported, so the tool can be used to test
 running a single pass:
 
 ```
-hlo-opt --platform=CUDA --stage=hlo --xla-hlo-enable-passes-only=algebraic_simplifer input.hlo
+$ hlo-opt --platform=CUDA --stage=hlo --xla-hlo-enable-passes-only=algebraic_simplifer input.hlo
 ```

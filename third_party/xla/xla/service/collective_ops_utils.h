@@ -172,9 +172,9 @@ inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
 
-// Returns true if instruction is a collective op (or a collective fusion) with
-// channel_id.
-bool IsCollectiveWithChannelId(const HloInstruction* instruction);
+// Returns the collective instruction if argument is a collective op (or a
+// collective fusion) with channel_id.
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsSyncCollective(const HloInstruction* instr);

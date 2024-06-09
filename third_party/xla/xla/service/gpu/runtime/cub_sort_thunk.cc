@@ -33,18 +33,38 @@ limitations under the License.
 #include "xla/service/gpu/cub_sort_kernel.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+// N pairs of [start_offset, end_offset) require (N+1) storage.
+// The size of each offset is selected to be 32-bits (int type).
+uint64_t GetOffsetsSize(int64_t batch_size) {
+  return (batch_size + 1) * sizeof(int);
+}
+
+// Copies segment offsets to the device memory.
+absl::Status CopyOffsets(se::Stream* stream, se::DeviceMemoryBase scratch,
+                         int64_t batch_size, int64_t segment_size) {
+  uint64_t offsets_size = GetOffsetsSize(batch_size);
+  char* offsets_buffer =
+      static_cast<char*>(scratch.opaque()) + scratch.size() - offsets_size;
+  se::DeviceMemoryBase d_offsets(offsets_buffer, offsets_size);
+  std::vector<int> h_offsets(batch_size + 1);
+  for (int i = 0; i <= batch_size; ++i) h_offsets[i] = i * segment_size;
+  return stream->Memcpy(&d_offsets, h_offsets.data(), offsets_size);
+}
+
 // Template class for sorting a single tensor.
 class CubSortKeysImpl : public CubSortRunnerInterface {
  public:
   using SortKeysFn = std::function<const char*(void*, size_t&, const void*,
-                                               void*, size_t, bool)>;
+                                               void*, size_t, bool, size_t)>;
 
   explicit CubSortKeysImpl(SortKeysFn sort_keys_fn, PrimitiveType type)
       : sort_keys_fn_(sort_keys_fn), type_(type) {}
@@ -53,10 +73,12 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
                    se::DeviceMemoryBase input_values,
                    se::DeviceMemoryBase output_keys,
                    se::DeviceMemoryBase output_values,
-                   se::DeviceMemoryBase scratch, bool descending) override;
+                   se::DeviceMemoryBase scratch, bool descending,
+                   int64_t batch_size, se::Stream* stream) override;
   absl::Status Run(const Thunk::ExecuteParams& params,
                    const CubSortThunk* thunk) override;
-  absl::StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
+  absl::StatusOr<int64_t> GetScratchSize(int64_t num_items,
+                                         int64_t batch_size) override;
 
  private:
   SortKeysFn sort_keys_fn_;
@@ -67,15 +89,20 @@ absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
                                   se::DeviceMemoryBase input_values,
                                   se::DeviceMemoryBase output_keys,
                                   se::DeviceMemoryBase output_values,
-                                  se::DeviceMemoryBase scratch,
-                                  bool descending) {
+                                  se::DeviceMemoryBase scratch, bool descending,
+                                  int64_t batch_size, se::Stream* stream) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   CHECK(input_values.is_null());
   CHECK(output_values.is_null());
+  if (batch_size > 1) {
+    TF_RETURN_IF_ERROR(
+        CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
+    temp_bytes -= GetOffsetsSize(batch_size);
+  }
   const char* error =
       sort_keys_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
-                    output_keys.opaque(), num_items, descending);
+                    output_keys.opaque(), num_items, descending, batch_size);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortKeys error: ", error));
@@ -88,13 +115,15 @@ absl::Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
   const BufferAllocations& allocs = *params.buffer_allocations;
   return Run(allocs.GetDeviceAddress(thunk->operand(0)), se::DeviceMemoryBase(),
              allocs.GetDeviceAddress(thunk->result(0)), se::DeviceMemoryBase(),
-             allocs.GetDeviceAddress(thunk->scratch()), thunk->descending());
+             allocs.GetDeviceAddress(thunk->scratch()), thunk->descending(),
+             thunk->batch_size(), params.stream);
 }
 
-absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items) {
+absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items,
+                                                        int64_t batch_size) {
   size_t temp_bytes = 0;
-  const char* error =
-      sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr, num_items, false);
+  const char* error = sort_keys_fn_(nullptr, temp_bytes, nullptr, nullptr,
+                                    num_items, false, batch_size);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortKeys error: ", error));
@@ -105,8 +134,9 @@ absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items) {
 // Template class for sorting a pair of tensors.
 class CubSortPairsImpl : public CubSortRunnerInterface {
  public:
-  using SortPairsFn = std::function<const char*(
-      void*, size_t&, const void*, void*, const void*, void*, size_t, bool)>;
+  using SortPairsFn =
+      std::function<const char*(void*, size_t&, const void*, void*, const void*,
+                                void*, size_t, bool, size_t)>;
 
   explicit CubSortPairsImpl(SortPairsFn sort_pairs_fn, PrimitiveType type)
       : sort_pairs_fn_(sort_pairs_fn), type_(type) {}
@@ -115,10 +145,12 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
                    se::DeviceMemoryBase input_values,
                    se::DeviceMemoryBase output_keys,
                    se::DeviceMemoryBase output_values,
-                   se::DeviceMemoryBase scratch, bool descending) override;
+                   se::DeviceMemoryBase scratch, bool descending,
+                   int64_t batch_size, se::Stream* stream) override;
   absl::Status Run(const Thunk::ExecuteParams& params,
                    const CubSortThunk* thunk) override;
-  absl::StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
+  absl::StatusOr<int64_t> GetScratchSize(int64_t num_items,
+                                         int64_t batch_size) override;
 
  private:
   SortPairsFn sort_pairs_fn_;
@@ -130,12 +162,19 @@ absl::Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
                                    se::DeviceMemoryBase output_keys,
                                    se::DeviceMemoryBase output_values,
                                    se::DeviceMemoryBase scratch,
-                                   bool descending) {
+                                   bool descending, int64_t batch_size,
+                                   se::Stream* stream) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
-  const char* error = sort_pairs_fn_(
-      scratch.opaque(), temp_bytes, input_keys.opaque(), output_keys.opaque(),
-      input_values.opaque(), output_values.opaque(), num_items, descending);
+  if (batch_size > 1) {
+    TF_RETURN_IF_ERROR(
+        CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
+    temp_bytes -= GetOffsetsSize(batch_size);
+  }
+  const char* error =
+      sort_pairs_fn_(scratch.opaque(), temp_bytes, input_keys.opaque(),
+                     output_keys.opaque(), input_values.opaque(),
+                     output_values.opaque(), num_items, descending, batch_size);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortPairs error: ", error));
@@ -150,13 +189,16 @@ absl::Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
              allocs.GetDeviceAddress(thunk->operand(1)),
              allocs.GetDeviceAddress(thunk->result(0)),
              allocs.GetDeviceAddress(thunk->result(1)),
-             allocs.GetDeviceAddress(thunk->scratch()), thunk->descending());
+             allocs.GetDeviceAddress(thunk->scratch()), thunk->descending(),
+             thunk->batch_size(), params.stream);
 }
 
-absl::StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items) {
+absl::StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items,
+                                                         int64_t batch_size) {
   size_t temp_bytes = 0;
-  const char* error = sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr,
-                                     nullptr, nullptr, num_items, false);
+  const char* error =
+      sort_pairs_fn_(nullptr, temp_bytes, nullptr, nullptr, nullptr, nullptr,
+                     num_items, false, batch_size);
   if (error != nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("CubSortPairs error: ", error));
@@ -252,25 +294,14 @@ CubSortThunk::CubSortThunk(
     std::optional<PrimitiveType> value_type,
     absl::InlinedVector<BufferAllocation::Slice, 2> operands,
     absl::InlinedVector<BufferAllocation::Slice, 2> results,
-    BufferAllocation::Slice scratch, bool descending)
+    BufferAllocation::Slice scratch, bool descending, int64_t batch_size)
     : Thunk(Thunk::kCubSort, thunk_info),
       runner_(CubSortRunnerInterface::Create(type, value_type).value()),
       operands_(std::move(operands)),
       results_(std::move(results)),
       scratch_(scratch),
-      descending_(descending) {}
-
-absl::Status RunCubSort(PrimitiveType type,
-                        std::optional<PrimitiveType> value_type,
-                        se::DeviceMemoryBase input_keys,
-                        se::DeviceMemoryBase input_values,
-                        se::DeviceMemoryBase output_keys,
-                        se::DeviceMemoryBase output_values,
-                        se::DeviceMemoryBase scratch, bool descending) {
-  auto runner = CubSortRunnerInterface::Create(type, value_type).value();
-  return runner->Run(input_keys, input_values, output_keys, output_values,
-                     scratch, descending);
-}
+      descending_(descending),
+      batch_size_(batch_size) {}
 
 }  // namespace gpu
 }  // namespace xla

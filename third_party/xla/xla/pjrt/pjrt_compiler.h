@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMPILER_H_
 #define XLA_PJRT_PJRT_COMPILER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/xla_computation.h"
 #include "xla/pjrt/pjrt_device_description.h"

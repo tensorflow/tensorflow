@@ -149,8 +149,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
       stream_executors_(stream_executors.begin(), stream_executors.end()) {
   // Create a memory allocator for the valid stream executors.
   memory_allocator_ = std::make_shared<se::StreamExecutorMemoryAllocator>(
-      platform, std::vector<se::StreamExecutorInterface*>{
-                    stream_executors_.begin(), stream_executors_.end()});
+      platform, stream_executors_);
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 

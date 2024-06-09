@@ -452,8 +452,7 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float,
  *    and ex functions expect the same type as the compute type (i.e. floats.)
  *
  **/
-using sei = StreamExecutorInterface;
-using GemmCallTrace = sei::GemmCallTrace;
+using GemmCallTrace = StreamExecutor::GemmCallTrace;
 
 // Log the GEMM operation if the logging mode is enabled.
 void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
@@ -1284,7 +1283,7 @@ void initialize_rocblas() {
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
-                [](StreamExecutorInterface *parent) -> blas::BlasSupport * {
+                [](StreamExecutor *parent) -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
                       dynamic_cast<gpu::GpuExecutor *>(parent);
                   if (rocm_executor == nullptr) {

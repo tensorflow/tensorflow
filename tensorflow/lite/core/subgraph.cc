@@ -1294,18 +1294,24 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
   // 2. Otherwise the 'TfLiteOperator' is either a stable custom OP,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
-  if (op_reg.registration_external &&
-      op_reg.registration_external->node_index != -1) {
-    TfLiteRegistration* referenced_registration =
-        &nodes_and_registration_[op_reg.registration_external->node_index]
-             .second;
-    if (referenced_registration->init == nullptr) return nullptr;
-    return referenced_registration->init(&context_, buffer, length);
-  }
-
-  if (op_reg.registration_external && op_reg.registration_external->init) {
-    return op_reg.registration_external->init(
-        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+  if (op_reg.registration_external) {
+    if (op_reg.registration_external->node_index != -1) {
+      TfLiteRegistration* referenced_registration =
+          &nodes_and_registration_[op_reg.registration_external->node_index]
+               .second;
+      if (referenced_registration->init == nullptr) return nullptr;
+      return referenced_registration->init(&context_, buffer, length);
+    }
+    if (op_reg.registration_external->init_with_data) {
+      void* user_data = op_reg.registration_external->user_data;
+      return op_reg.registration_external->init_with_data(
+          user_data, reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer,
+          length);
+    }
+    if (op_reg.registration_external->init) {
+      return op_reg.registration_external->init(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+    }
   }
   if (op_reg.init == nullptr) return nullptr;
   return op_reg.init(&context_, buffer, length);
@@ -1325,31 +1331,38 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
   // 2. Otherwise the 'TfLiteOperator' is either a stable custom OP,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
-  if (op_reg.registration_external &&
-      op_reg.registration_external->node_index != -1) {
-    TfLiteRegistration* referenced_registration =
-        &nodes_and_registration_[op_reg.registration_external->node_index]
-             .second;
-    if (referenced_registration->prepare == nullptr) {
-      if (IsUnresolvedCustomOp(op_reg)) {
-        ReportError(
-            "Encountered unresolved custom op: %s.\nSee instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_custom ",
-            op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
-        return kTfLiteUnresolvedOps;
-      } else {
-        // Resolved ops can have a null Prepare function.
-        return kTfLiteOk;
+  if (op_reg.registration_external) {
+    if (op_reg.registration_external->node_index != -1) {
+      TfLiteRegistration* referenced_registration =
+          &nodes_and_registration_[op_reg.registration_external->node_index]
+               .second;
+      if (referenced_registration->prepare == nullptr) {
+        if (IsUnresolvedCustomOp(op_reg)) {
+          ReportError(
+              "Encountered unresolved custom op: %s.\nSee instructions: "
+              "https://www.tensorflow.org/lite/guide/ops_custom ",
+              op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+          return kTfLiteUnresolvedOps;
+        } else {
+          // Resolved ops can have a null Prepare function.
+          return kTfLiteOk;
+        }
       }
+      return referenced_registration->prepare(&context_, node);
     }
-    return referenced_registration->prepare(&context_, node);
-  }
-  if (op_reg.registration_external && op_reg.registration_external->prepare) {
-    // The 'data' field required by the 'prepare' function pointer must be
-    // retrieved from the 'registration_external' object itself.
-    return op_reg.registration_external->prepare(
-        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
-        reinterpret_cast<TfLiteOpaqueNode*>(node));
+    if (op_reg.registration_external->prepare_with_data) {
+      // The 'data' field required by the 'prepare' function pointer must be
+      // retrieved from the 'registration_external' object itself.
+      void* user_data = op_reg.registration_external->user_data;
+      return op_reg.registration_external->prepare_with_data(
+          user_data, reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+          reinterpret_cast<TfLiteOpaqueNode*>(node));
+    }
+    if (op_reg.registration_external->prepare) {
+      return op_reg.registration_external->prepare(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+          reinterpret_cast<TfLiteOpaqueNode*>(node));
+    }
   }
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
@@ -1391,19 +1404,25 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
   // 2. Otherwise the 'TfLiteOperator' is either a stable custom OP,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
-  if (op_reg.registration_external &&
-      op_reg.registration_external->node_index != -1) {
-    TfLiteRegistration* referenced_registration =
-        &nodes_and_registration_[op_reg.registration_external->node_index]
-             .second;
-    if (referenced_registration->invoke == nullptr) return kTfLiteError;
-    return referenced_registration->invoke(&context_, node);
-  }
-
-  if (op_reg.registration_external && op_reg.registration_external->invoke) {
-    return op_reg.registration_external->invoke(
-        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
-        reinterpret_cast<TfLiteOpaqueNode*>(node));
+  if (op_reg.registration_external) {
+    if (op_reg.registration_external->node_index != -1) {
+      TfLiteRegistration* referenced_registration =
+          &nodes_and_registration_[op_reg.registration_external->node_index]
+               .second;
+      if (referenced_registration->invoke == nullptr) return kTfLiteError;
+      return referenced_registration->invoke(&context_, node);
+    }
+    if (op_reg.registration_external->invoke_with_data) {
+      void* user_data = op_reg.registration_external->user_data;
+      return op_reg.registration_external->invoke_with_data(
+          user_data, reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+          reinterpret_cast<TfLiteOpaqueNode*>(node));
+    }
+    if (op_reg.registration_external->invoke) {
+      return op_reg.registration_external->invoke(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+          reinterpret_cast<TfLiteOpaqueNode*>(node));
+    }
   }
   if (op_reg.invoke == nullptr) return kTfLiteError;
   return op_reg.invoke(&context_, node);
@@ -1424,18 +1443,23 @@ void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
   // 2. Otherwise the 'TfLiteOperator' is either a stable custom OP,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
-  if (op_reg.registration_external &&
-      op_reg.registration_external->node_index != -1 && buffer) {
-    TfLiteRegistration* referenced_registration =
-        &nodes_and_registration_[op_reg.registration_external->node_index]
-             .second;
-    if (referenced_registration->free == nullptr) return;
-    return referenced_registration->free(&context_, buffer);
-  }
-  if (op_reg.registration_external && op_reg.registration_external->free &&
-      buffer) {
-    return op_reg.registration_external->free(
-        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+  if (op_reg.registration_external && buffer) {
+    if (op_reg.registration_external->node_index != -1) {
+      TfLiteRegistration* referenced_registration =
+          &nodes_and_registration_[op_reg.registration_external->node_index]
+               .second;
+      if (referenced_registration->free == nullptr) return;
+      return referenced_registration->free(&context_, buffer);
+    }
+    if (op_reg.registration_external->free_with_data) {
+      void* user_data = op_reg.registration_external->user_data;
+      return op_reg.registration_external->free_with_data(
+          user_data, reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+    }
+    if (op_reg.registration_external->free) {
+      return op_reg.registration_external->free(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+    }
   }
   if (op_reg.free == nullptr) return;
   if (buffer) {

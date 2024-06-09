@@ -228,8 +228,8 @@ absl::Status GatherComputationsByAllocationType(
 }
 
 std::string BufferAllocation::Slice::ToString() const {
-  return absl::StrCat("{index:", index(), ", offset:", offset_,
-                      ", size:", size_, "}");
+  return absl::StrCat("{index:", allocation_ == nullptr ? -1 : index(),
+                      ", offset:", offset_, ", size:", size_, "}");
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(

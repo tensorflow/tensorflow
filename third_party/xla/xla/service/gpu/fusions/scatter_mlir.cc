@@ -124,7 +124,7 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
         RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
         /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
-    scatter_indices_map.Simplify(GetIndexingMapForInstruction);
+    scatter_indices_map.Simplify();
     return scatter_indices_map;
   }
   return scatter_update_map;
@@ -195,7 +195,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
           /*root_index=*/0, /*hero_operand_index=*/kScatterUpdateIndex,
           mlir_context)
           .value();
-  thread_id_to_update_map.Simplify(GetIndexingMapForInstruction);
+  thread_id_to_update_map.Simplify();
   thread_id_to_update_map.RemoveUnusedSymbols();
 
   const auto& root_computation = computations.FindPartitionedComputation(

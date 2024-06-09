@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
 
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <optional>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 
 namespace mlrt {
@@ -106,6 +108,24 @@ std::optional<std::string> EncodeDenseArray(llvm::ArrayRef<T> array) {
                array.size() * sizeof(T));
   }
 
+  return std::string(buffer.data(), buffer.size());
+}
+
+// bool values has special encoding in MLIR. It occupies one bit in MLIR
+// but in bytecode it is one byte.
+std::optional<std::string> EncodeDenseBoolArray(llvm::ArrayRef<bool> array) {
+  bc::Buffer buffer;
+  bc::Allocator allocator(&buffer);
+  auto ctor = bc::New<bc::Vector<uint8_t>>(&allocator, array.size());
+
+  if (!array.empty()) {
+    std::vector<uint8_t> data(array.size());
+    int i = 0;
+    for (auto v : array) {
+      data[i++] = static_cast<uint8_t>(v);
+    }
+    ctor.Place(reinterpret_cast<const char*>(data.data()), data.size());
+  }
   return std::string(buffer.data(), buffer.size());
 }
 
@@ -425,6 +445,10 @@ std::optional<std::string> EncodeSimpleAttribute(
       .Case<mlir::DenseI64ArrayAttr>(
           [](const auto& dense_array_i64) -> std::optional<std::string> {
             return EncodeDenseArray<int64_t>(dense_array_i64);
+          })
+      .Case<mlir::DenseBoolArrayAttr>(
+          [](const auto& dense_array_bool) -> std::optional<std::string> {
+            return EncodeDenseBoolArray(dense_array_bool.asArrayRef());
           })
       .Case<mlir::FlatSymbolRefAttr>([&](const auto& symbol_ref) {
         return EncodeIntegerOrFloat<uint32_t>(

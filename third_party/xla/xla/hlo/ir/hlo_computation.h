@@ -923,7 +923,7 @@ class HloComputation {
     kFusion,
     // This computation is a custom-call computation.
     kCustomCall,
-    // This computation is a while body computation.
+    // This computation is a collective computation.
     kCollective,
     // This computation is a while body computation.
     kWhile,

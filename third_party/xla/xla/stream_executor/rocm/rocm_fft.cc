@@ -509,7 +509,7 @@ void initialize_rocfft() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
             rocm::kROCmPlatformId, "rocFFT",
-            [](StreamExecutorInterface *parent) -> fft::FftSupport * {
+            [](StreamExecutor *parent) -> fft::FftSupport * {
               gpu::GpuExecutor *rocm_executor =
                   dynamic_cast<gpu::GpuExecutor *>(parent);
               if (rocm_executor == nullptr) {

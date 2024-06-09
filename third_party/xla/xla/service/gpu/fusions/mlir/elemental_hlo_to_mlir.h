@@ -83,6 +83,9 @@ absl::Status SubgraphToMlirFunction(
 
 mlir::Value UnrealizedConversionCast(mlir::Type type, mlir::Value value,
                                      mlir::ImplicitLocOpBuilder& b);
+mlir::SmallVector<mlir::Value> UnrealizedConversionCast(
+    mlir::TypeRange types, mlir::ValueRange values,
+    mlir::ImplicitLocOpBuilder& b);
 
 // Converts any integers that aren't yet signless to signless.
 mlir::SmallVector<mlir::Value> ConvertToSignless(mlir::ValueRange values,

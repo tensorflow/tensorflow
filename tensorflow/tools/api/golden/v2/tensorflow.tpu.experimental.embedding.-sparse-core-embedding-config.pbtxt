@@ -24,6 +24,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'disable_table_stacking\', \'max_ids_per_chip_per_sample\', \'max_ids_per_table\', \'max_unique_ids_per_table\', \'allow_id_dropping\'], varargs=None, keywords=None, defaults=[\'True\', \'64\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'self\', \'disable_table_stacking\', \'max_ids_per_chip_per_sample\', \'max_ids_per_table\', \'max_unique_ids_per_table\', \'allow_id_dropping\'], varargs=None, keywords=None, defaults=[\'False\', \'64\', \'None\', \'None\', \'False\'], "
   }
 }

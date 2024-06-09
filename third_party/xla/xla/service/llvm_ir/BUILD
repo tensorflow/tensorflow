@@ -71,7 +71,6 @@ cc_library(
         ":llvm_type_conversion_util",
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",

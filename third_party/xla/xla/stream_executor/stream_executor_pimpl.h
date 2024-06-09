@@ -62,11 +62,11 @@ class Stream;
 //
 // Thread-safe after initialization.
 // StreamExecutor interface should not be invoked from a signal handler.
-class StreamExecutor : public StreamExecutorInterface {
+class StreamExecutorCommon : public StreamExecutor {
  public:
-  explicit StreamExecutor(const Platform* platform);
+  explicit StreamExecutorCommon(const Platform* platform);
 
-  ~StreamExecutor() = default;
+  ~StreamExecutorCommon() = default;
 
   const Platform* GetPlatform() const override { return platform_; }
   const DeviceDescription& GetDeviceDescription() const override;
@@ -91,8 +91,8 @@ class StreamExecutor : public StreamExecutorInterface {
   // limit.
   int64_t memory_limit_bytes_;
 
-  StreamExecutor(const StreamExecutor&) = delete;
-  void operator=(const StreamExecutor&) = delete;
+  StreamExecutorCommon(const StreamExecutorCommon&) = delete;
+  void operator=(const StreamExecutorCommon&) = delete;
 };
 
 }  // namespace stream_executor

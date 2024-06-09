@@ -9,10 +9,7 @@ load(
     "if_cuda_is_configured",
 )
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
-)
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "internal_visibility",
@@ -96,16 +93,16 @@ tsl_gpu_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
+    backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
     tags = [
         "gpu_cupti",
         "nomac",
     ],
-    use_gpu = True,
     deps = [
         ":cupti_interface",
         "@local_tsl//tsl/platform:test",

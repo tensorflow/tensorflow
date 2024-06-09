@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
 absl::StatusOr<std::unique_ptr<GrpcServer>>
 GrpcServer::CreateFromIfrtClientFactory(
     absl::string_view address,
-    absl::AnyInvocable<absl::StatusOr<std::unique_ptr<xla::ifrt::Client>>()>
+    absl::AnyInvocable<absl::StatusOr<std::shared_ptr<xla::ifrt::Client>>()>
         backend_ifrt_client_factory) {
   if (backend_ifrt_client_factory == nullptr) {
     return absl::InvalidArgumentError(

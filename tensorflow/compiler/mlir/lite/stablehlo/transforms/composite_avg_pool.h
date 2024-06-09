@@ -30,19 +30,24 @@ namespace odml {
 // Given a Composite op that wraps a core.aten.avg_pool2d, returns the padding
 // configuration required for the `tfl.pad` if the padding part of the op is
 // to be done before average pooling.
-DenseIntElementsAttr GetPaddingArrayAttr(Builder& builder, Operation* old_op);
+DenseIntElementsAttr GetPadOpAttr(Builder& builder, mhlo::CompositeOp op);
 
 // Given a Composite op that wraps a core.aten.avg_pool2d, and assuming that
 // the padding part is extracted into a tfl.pad op prior to a
 // tfl.average_pool_2d, this function finds the return type of the needed
 // tfl.pad .
-ShapedType GetPaddedType(Operation* old_op);
+ShapedType GetPadOpType(mhlo::CompositeOp op);
 
 // Given a Composite op that wraps a core.aten.avg_pool2d, finds the padding
 // attribute to be passed to the a tfl.average_pool_2d that can fully replace
 // this composite (here, padding is done directly by the tfl.average_pool_2d as
 // opposed to being extracted into a separate tfl.pad).
-StringAttr GetPaddingStringAttr(Builder& builder, Operation* old_op);
+StringAttr GetAvgPoolOpPadAttr(Builder& builder, mhlo::CompositeOp op);
+
+// Get dense attr for a matrix that corrects the over counting of divisors when
+// casting an average pool with ceil mode on in terms of average pool with it
+// off.
+DenseFPElementsAttr GetCorrectionMatrix(Builder& builder, mhlo::CompositeOp op);
 
 }  // namespace odml
 }  // namespace mlir

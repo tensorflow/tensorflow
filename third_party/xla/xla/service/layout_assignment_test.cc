@@ -645,12 +645,13 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
                          /*device_allocator=*/nullptr)
           .value();
 
-  EXPECT_EQ(OkStatus(), backend()
-                            .compiler()
-                            ->RunBackend(std::move(compiled_module),
-                                         backend().default_stream_executor(),
-                                         /*device_allocator=*/nullptr)
-                            .status());
+  EXPECT_EQ(absl::OkStatus(),
+            backend()
+                .compiler()
+                ->RunBackend(std::move(compiled_module),
+                             backend().default_stream_executor(),
+                             /*device_allocator=*/nullptr)
+                .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which

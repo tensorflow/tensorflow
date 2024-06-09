@@ -16,30 +16,34 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_EXECUTABLE_H_
 #define XLA_SERVICE_CPU_CPU_EXECUTABLE_H_
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/buffer_desc.h"
+#include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/simple_orc_jit.h"
-#include "xla/service/cpu/xla_framework.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_execution_profile.h"
-#include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla {
 namespace cpu {
@@ -50,6 +54,18 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
+  // A storage (or an alias) for constant allocations data.
+  struct ConstantAllocation {
+    se::DeviceMemoryBase AsDeviceMemoryBase() const;
+
+    BufferAllocation::Index index = -1;
+    std::variant<std::monostate, std::vector<uint8_t>,
+                 absl::Span<const uint8_t>>
+        data;
+  };
+
+  // Creates a CpuExecutable from JIT compiled cpu function by resolving
+  // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<const BufferAssignment> assignment,
@@ -57,12 +73,15 @@ class CpuExecutable : public Executable {
       const std::string& entry_function_name,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-  // XLA Runtime factory method.
+
+  // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
+      std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-      std::unique_ptr<const BufferAssignment> assignment);
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   ~CpuExecutable() override;
 
@@ -77,6 +96,12 @@ class CpuExecutable : public Executable {
       const ExecutableRunOptions* run_options,
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Calls emitted thunk sequence with the given arguments using the supplied
+  // buffers.
+  absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
+                             absl::Span<MaybeOwningDeviceMemory const> buffers,
+                             HloExecutionProfile* hlo_execution_profile);
 
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 
@@ -101,17 +126,33 @@ class CpuExecutable : public Executable {
                const void** /*args*/, void** /*buffer_table*/,
                XlaCustomCallStatus* /*status*/, int64_t* /*profile_counters*/);
 
-  const ComputeFunctionType& compute_function() const {
-    return compute_function_;
-  }
+  bool has_compute_function() const { return compute_function_ != nullptr; }
+  ComputeFunctionType compute_function() const { return compute_function_; }
+
+  bool has_thunks() const { return thunks_.has_value(); }
+  ThunkSequence& thunks() { return *thunks_; }
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
+  absl::Span<const ConstantAllocation> constants() const { return constants_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   absl::Span<const BufferAllocation> GetAllocations() const override {
     return assignment_->Allocations();
   }
+
+  // A Thunk::HostKernels implementation that jit-compiles host kernels on
+  // demand using the SimpleOrcJIT instance owned by the CpuExecutable.
+  class HostKernels : public Thunk::HostKernels {
+   public:
+    explicit HostKernels(SimpleOrcJIT* jit);
+    absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) final;
+
+   private:
+    SimpleOrcJIT* jit_;
+  };
+
+  Thunk::HostKernels& host_kernels() { return *host_kernels_; }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -168,7 +209,25 @@ class CpuExecutable : public Executable {
   // Unique identifier.
   std::string module_name_;
 
-  ComputeFunctionType compute_function_;
+  // We have two execution modes:
+  //
+  //   (1) HLO module compiled to a single function using LLVM JIT and we get
+  //       a function pointer to it.
+  //   (2) HLO module compiled to a thunk sequence that gets interpreted at run
+  //       time.
+  //
+  // We are currently transitioning from (1) to (2) with a long term plan to
+  // unify thunk-based runtime with all XLA backends.
+
+  // A function pointer to the jit-compiled entry function.
+  ComputeFunctionType compute_function_ = nullptr;
+
+  // A thunk sequence implementing CpuExecutable.
+  std::optional<ThunkSequence> thunks_;
+  // Vector indexed by BufferAllocation::Index for efficient access.
+  std::vector<ConstantAllocation> constants_;
+  // On-demand JIT host kernels compiler.
+  std::optional<HostKernels> host_kernels_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

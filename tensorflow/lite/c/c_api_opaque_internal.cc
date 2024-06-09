@@ -35,9 +35,10 @@ TfLiteOperator* MakeOperator(const TfLiteRegistration* registration,
   // We need to allocate a new TfLiteOperator object and then
   // populate its state correctly, based on the contents in 'registration'.
 
-  auto* registration_external = TfLiteOperatorCreate(
+  auto* registration_external = TfLiteOperatorCreateWithData(
       static_cast<TfLiteBuiltinOperator>(registration->builtin_code),
-      registration->custom_name, registration->version);
+      registration->custom_name, registration->version,
+      /*user_data=*/nullptr);
 
   registration_external->node_index = node_index;
 

@@ -14,6 +14,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/experimental/mlir/...",
+        "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/lite/...",
     ],
 )

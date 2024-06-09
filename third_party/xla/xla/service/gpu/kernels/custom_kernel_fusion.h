@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/logging.h"
 

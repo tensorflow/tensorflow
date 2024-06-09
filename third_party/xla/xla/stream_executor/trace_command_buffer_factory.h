@@ -39,14 +39,14 @@ class TraceCommandBufferFactory {
   // primary use case for traced command buffers is to be inserted into primary
   // command buffers constructed with explicit APIs.
   static absl::StatusOr<std::unique_ptr<CommandBuffer>> Create(
-      StreamExecutorInterface* executor,
+      StreamExecutor* executor,
       absl::AnyInvocable<absl::Status(Stream*)> function,
       CommandBuffer::Mode mode = CommandBuffer::Mode::kNested);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation using a user provided stream that will be passed to `function`.
   static absl::StatusOr<std::unique_ptr<CommandBuffer>> Create(
-      StreamExecutorInterface* executor, Stream* stream,
+      StreamExecutor* executor, Stream* stream,
       absl::AnyInvocable<absl::Status(Stream*)> function,
       CommandBuffer::Mode mode = CommandBuffer::Mode::kNested);
 };

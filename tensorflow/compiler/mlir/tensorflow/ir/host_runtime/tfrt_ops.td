@@ -87,7 +87,9 @@ Empty strings indicate that they are non-partitioned tensors.}]>:$shape_and_slic
     // VarHandles for restored tensors.
     Variadic<TF_Tensor>:$var_handles,
     // Data types for restored tensor.
-    TypeArrayAttr: $restored_dtypes
+    TypeArrayAttr: $restored_dtypes,
+    // whether trucate is used when casting from the restored_dytpe to the type specified in VarHandle
+    DenseBoolArrayAttr: $truncate_in_cast
   );
 
 }

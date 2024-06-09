@@ -78,24 +78,22 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   if (devices.empty()) {
     compile_options->compile_options.compile_portable_executable = true;
   } else {
-    for (Device* device : devices) {
-      build_options.set_device_ordinal(device->Id().value());
-      if (replicated) {
-        DeviceAssignment device_assignment(/*replica_count=*/devices.size(),
-                                           /*computation_count=*/1);
-        for (int i = 0; i < devices.size(); ++i) {
-          device_assignment(i, 0) = i;
-        }
-        build_options.set_device_assignment(device_assignment);
-      } else {
-        DeviceAssignment device_assignment(
-            /*replica_count=*/1,
-            /*computation_count=*/devices.size());
-        for (int i = 0; i < devices.size(); ++i) {
-          device_assignment(i, 0) = i;
-        }
-        build_options.set_device_assignment(device_assignment);
+    build_options.set_device_ordinal(devices.front()->Id().value());
+    if (replicated) {
+      DeviceAssignment device_assignment(/*replica_count=*/devices.size(),
+                                         /*computation_count=*/1);
+      for (int i = 0; i < devices.size(); ++i) {
+        device_assignment(i, 0) = i;
       }
+      build_options.set_device_assignment(device_assignment);
+    } else {
+      DeviceAssignment device_assignment(
+          /*replica_count=*/1,
+          /*computation_count=*/devices.size());
+      for (int i = 0; i < devices.size(); ++i) {
+        device_assignment(i, 0) = i;
+      }
+      build_options.set_device_assignment(device_assignment);
     }
   }
   return compiler->Compile(std::make_unique<HloProgram>(*module),

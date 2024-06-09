@@ -68,8 +68,8 @@ class LayoutAssignmentTest : public HloTestBase {
   se::dnn::VersionInfo GetDnnVersion() {
     // GpuLayoutAssignment has a special case heuristic for cudnn <= 7.3, but
     // none of the tests trigger this heuristic.
-    return GetDnnVersionInfo(backend().default_stream_executor(),
-                             se::dnn::VersionInfo{8, 3, 0});
+    return GetDnnVersionInfoOrDefault(backend().default_stream_executor(),
+                                      se::dnn::VersionInfo{8, 3, 0});
   }
 };
 

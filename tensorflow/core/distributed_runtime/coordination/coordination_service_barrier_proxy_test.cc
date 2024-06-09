@@ -99,6 +99,10 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
   MOCK_METHOD(Status, InsertKeyValue,
               (std::string_view key, std::string_view value), (override));
+  MOCK_METHOD(Status, InsertKeyValue,
+              (std::string_view key, std::string_view value,
+               bool allow_overwrite),
+              (override));
   MOCK_METHOD(Status, DeleteKeyValue, (std::string_view key), (override));
   MOCK_METHOD(Status, UpdateKeyValue,
               (std::string_view key, std::string_view value), (override));

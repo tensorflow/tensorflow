@@ -24,12 +24,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -52,6 +55,28 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
       client_, xla_program->mlir_module,
       std::move(xla_compile_options->compile_options),
       std::move(xla_compile_options->loaded_host_callbacks));
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
+  DCHECK(this);
+  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
+  if (xla_program == nullptr) {
+    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
+  }
+  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
+                      GetXlaCompileOptions(std::move(options)));
+  const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
+  if (pjrt_topology == nullptr) {
+    return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      PjRtCompile(xla_compile_options->compile_options,
+                  xla_program->mlir_module, *pjrt_topology->description()));
+  return PjRtExecutable::Create(std::move(executable),
+                                std::move(xla_compile_options));
 }
 
 absl::StatusOr<std::unique_ptr<LoadedExecutable>>

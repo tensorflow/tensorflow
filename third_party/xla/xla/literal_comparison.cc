@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -741,7 +741,7 @@ absl::Status NearHelper(const LiteralSlice& expected,
       ShapeUtil::ElementIsComplex(expected.shape())) {
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
-    return primitive_util::PrimitiveTypeSwitch<Status>(
+    return primitive_util::PrimitiveTypeSwitch<absl::Status>(
         [&](auto primitive_type) -> absl::Status {
           if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
                         primitive_util::IsComplexType(primitive_type)) {

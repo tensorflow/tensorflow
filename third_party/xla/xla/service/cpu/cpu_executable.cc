@@ -18,42 +18,90 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
-#include <functional>
+#include <cstring>
+#include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/cleanup/cleanup.h"
+#include "absl/base/dynamic_annotations.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/Support/Error.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_layout.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/simple_orc_jit.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/host/host_stream.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
+
+using ConstantAllocation = CpuExecutable::ConstantAllocation;
+using HostKernels = CpuExecutable::HostKernels;
+
+HostKernels::HostKernels(SimpleOrcJIT* jit) : jit_(jit) {}
+
+absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
+  VLOG(2) << "Find host kernel with a name " << name;
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(std::string(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve host kernel with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<SE_HOST_Kernel*>(sym->getAddress().getValue());
+}
+
+se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
+  if (auto* empty = std::get_if<std::monostate>(&data)) {
+    return se::DeviceMemoryBase();
+  }
+
+  if (auto* owned = std::get_if<std::vector<uint8_t>>(&data)) {
+    return se::DeviceMemoryBase(
+        const_cast<void*>(reinterpret_cast<const void*>(owned->data())),
+        owned->size());
+  }
+
+  auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
+  return se::DeviceMemoryBase(
+      const_cast<void*>(reinterpret_cast<const void*>(view->data())),
+      view->size());
+}
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<SimpleOrcJIT> jit,
@@ -62,6 +110,9 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
+          << entry_function_name << ", module=" << hlo_module->name();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
@@ -89,14 +140,31 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<SimpleOrcJIT> jit,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
+    std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<const BufferAssignment> assignment) {
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
+          << hlo_module->name() << ", constants=" << constants.size();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->module_name_ = "main";
+
+  executable->jit_ = std::move(jit);
+  executable->thunks_ = std::move(thunks);
+  executable->host_kernels_ = HostKernels(executable->jit_.get());
+
+  // Re-index constants by their allocation index to allow efficient lookup.
+  for (auto& constant : constants) {
+    if (executable->constants_.size() <= constant.index) {
+      executable->constants_.resize(constant.index + 1);
+    }
+    executable->constants_[constant.index] = std::move(constant);
+  }
+
   return executable;
 }
 
@@ -122,7 +190,8 @@ CpuExecutable::~CpuExecutable() {
 
 static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     const BufferAllocation& allocation,
-    absl::Span<ExecutionInput const> arguments,
+    absl::Span<const ExecutionInput> arguments,
+    absl::Span<const ConstantAllocation> constants,
     se::DeviceMemoryAllocator* memory_allocator, int device_ordinal) {
   VLOG(3) << allocation.ToString();
   if (allocation.is_entry_computation_parameter()) {
@@ -136,6 +205,10 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     return MaybeOwningDeviceMemory{out};
   } else if (allocation.is_constant()) {
     VLOG(3) << "allocation is a constant";
+    if (allocation.index() < constants.size()) {
+      return MaybeOwningDeviceMemory(
+          constants[allocation.index()].AsDeviceMemoryBase());
+    }
     return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
   } else if (allocation.is_thread_local()) {
     VLOG(3) << "buffer is thread-local";
@@ -149,9 +222,9 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
           << "]";
 
   // Since the output buffer and all the temporary buffers were written into
-  // by the JITed code, msan has no way of knowing their memory was
-  // initialized. Mark them initialized so that msan doesn't flag loads from
-  // these buffers.
+  // by the JITed code, memory sanitizer has no way of knowing their memory was
+  // initialized. Mark them initialized so that memory sanitizer doesn't flag
+  // loads from these buffers.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
   return MaybeOwningDeviceMemory{std::move(out)};
 }
@@ -167,9 +240,9 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(
-        buffers[i], MemoryForAllocation(allocation, arguments, memory_allocator,
-                                        device_ordinal));
+    TF_ASSIGN_OR_RETURN(buffers[i],
+                        MemoryForAllocation(allocation, arguments, constants_,
+                                            memory_allocator, device_ordinal));
   }
 
   if (VLOG_IS_ON(3)) {
@@ -244,6 +317,53 @@ absl::Status CpuExecutable::ExecuteComputeFunction(
   }
 
   return absl::OkStatus();
+}
+
+absl::Status CpuExecutable::ExecuteThunks(
+    const ExecutableRunOptions* run_options,
+    absl::Span<MaybeOwningDeviceMemory const> buffers,
+    HloExecutionProfile* hlo_execution_profile) {
+  uint64_t start_ns = tsl::Env::Default()->NowNanos();
+
+  size_t profile_counters_size =
+      hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
+                            : 0;
+  int64_t* profile_counters =
+      hlo_execution_profile
+          ? hlo_execution_profile->mutable_profile_counters()->data()
+          : nullptr;
+
+  BufferAllocations allocations(buffers);
+
+  VLOG(3) << "Executing XLA:CPU thunks:";
+  VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
+                             buffers.size());
+  auto mem_printer = [](std::string* out, const MaybeOwningDeviceMemory& mem) {
+    absl::StrAppend(out,
+                    absl::StrFormat("%p", mem.AsDeviceMemoryBase().opaque()));
+  };
+  VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
+                             absl::StrJoin(buffers, ", ", mem_printer));
+  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                             profile_counters_size);
+  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+
+  Thunk::ExecuteParams execute_params = {&*host_kernels_, &allocations};
+  absl::Status executed = thunks_->Execute(execute_params);
+
+  if (run_options->execution_profile()) {
+    uint64_t end_ns = tsl::Env::Default()->NowNanos();
+    run_options->execution_profile()->set_compute_time_ns(
+        std::max<int64_t>(end_ns - start_ns, 1));
+    // If hlo profiling was disabled then the cycle count is left empty.
+    if (hlo_execution_profile) {
+      run_options->execution_profile()->set_compute_cycle_count(
+          hlo_execution_profile->total_cycles_executed(
+              *module().entry_computation()));
+    }
+  }
+
+  return executed;
 }
 
 absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
@@ -370,8 +490,8 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream = dynamic_cast<se::host::HostStream*>(
-      run_options->stream()->implementation());
+  auto* host_stream =
+      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
@@ -400,8 +520,15 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     HloExecutionProfile* hlo_execution_profile;
 
     absl::Status operator()() {
-      return executable->ExecuteComputeFunction(
-          &run_options.run_options(), *task_buffers, hlo_execution_profile);
+      if (executable->has_compute_function()) {
+        return executable->ExecuteComputeFunction(
+            &run_options.run_options(), *task_buffers, hlo_execution_profile);
+      } else if (executable->has_thunks()) {
+        return executable->ExecuteThunks(&run_options.run_options(),
+                                         *task_buffers, hlo_execution_profile);
+      } else {
+        return Internal("No compute function or thunks found.");
+      }
     }
   };
   host_stream->EnqueueTaskWithStatus(
@@ -433,7 +560,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 }
 
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
-  return jit_->SizeOfGeneratedCodeInBytes();
+  return jit_ ? jit_->SizeOfGeneratedCodeInBytes() : 0;
 }
 
 }  // namespace cpu

@@ -26,14 +26,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
 
-class HostStream : public Stream {
+class HostStream : public StreamCommon {
  public:
   explicit HostStream(StreamExecutor* executor);
   ~HostStream() override;

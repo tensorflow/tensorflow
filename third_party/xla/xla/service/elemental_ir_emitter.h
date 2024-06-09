@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 #define XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 
+#include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

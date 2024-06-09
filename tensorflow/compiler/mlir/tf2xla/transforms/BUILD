@@ -402,6 +402,7 @@ cc_library(
         "legalize_tf_with_tf2xla.cc",
     ],
     hdrs = [
+        "legalize_tf_with_tf2xla_passes.h",
         "passes.h",
     ],
     deps = [

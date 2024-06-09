@@ -18,14 +18,14 @@ module {
 // CHECK-DAG: %[[C32:.*]] = arith.constant 32
 // CHECK: %[[A4H:.*]], {{.*}} = gpu.shuffle down %[[A]], %[[C4]], %[[C32]]
 // CHECK: %[[B4H:.*]], {{.*}} = gpu.shuffle down %[[B]], %[[C4]], %[[C32]]
-// CHECK: %[[AB4:.*]]:2 = call @reducer(%[[A]], %[[B]], %[[A4H]], %[[B4H]])
-// CHECK: %[[A2H:.*]], {{.*}} = gpu.shuffle down %[[AB4]]#0, %[[C2]], %[[C32]]
-// CHECK: %[[B2H:.*]], {{.*}} = gpu.shuffle down %[[AB4]]#1, %[[C2]], %[[C32]]
-// CHECK: %[[AB2:.*]]:2 = call @reducer(%[[AB4]]#0, %[[AB4]]#1, %[[A2H]], %[[B2H]])
-// CHECK: %[[A1H:.*]], {{.*}} = gpu.shuffle down %[[AB2]]#0, %[[C1]], %[[C32]]
-// CHECK: %[[B1H:.*]], {{.*}} = gpu.shuffle down %[[AB2]]#1, %[[C1]], %[[C32]]
-// CHECK: %[[AB1:.*]]:2 = call @reducer(%[[AB2]]#0, %[[AB2]]#1, %[[A1H]], %[[B1H]])
-// CHECK: return %[[AB1]]#0, %[[AB1]]#1
+// CHECK: %[[AB4_0:.*]], %[[AB4_1:.*]] = xla_gpu.pure_call @reducer(%[[A]], %[[B]], %[[A4H]], %[[B4H]])
+// CHECK: %[[A2H:.*]], {{.*}} = gpu.shuffle down %[[AB4_0]], %[[C2]], %[[C32]]
+// CHECK: %[[B2H:.*]], {{.*}} = gpu.shuffle down %[[AB4_1]], %[[C2]], %[[C32]]
+// CHECK: %[[AB2_0:.*]], %[[AB2_1:.*]] = xla_gpu.pure_call @reducer(%[[AB4_0]], %[[AB4_1]], %[[A2H]], %[[B2H]])
+// CHECK: %[[A1H:.*]], {{.*}} = gpu.shuffle down %[[AB2_0]], %[[C1]], %[[C32]]
+// CHECK: %[[B1H:.*]], {{.*}} = gpu.shuffle down %[[AB2_1]], %[[C1]], %[[C32]]
+// CHECK: %[[AB1_0:.*]], %[[AB1_1:.*]] = xla_gpu.pure_call @reducer(%[[AB2_0]], %[[AB2_1]], %[[A1H]], %[[B1H]])
+// CHECK: return %[[AB1_0]], %[[AB1_1]]
 
 // -----
 
@@ -59,6 +59,23 @@ module {
 
 // CHECK: @shuffler
 // CHECK-COUNT-4: gpu.shuffle down {{.*}}, %[[C1]]
+
+// -----
+
+module {
+  func.func @reducer(%a: ui64, %b: ui64) -> ui64 {
+    return %a : ui64
+  }
+
+  func.func @shuffler(%a: ui64) -> ui64 {
+    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : ui64
+    return %ret : ui64
+  }
+}
+
+// CHECK: @shuffler
+// CHECK: unrealized_conversion_cast
+// CHECK-COUNT-2: gpu.shuffle down {{.*}}, %[[C1]]
 
 // -----
 

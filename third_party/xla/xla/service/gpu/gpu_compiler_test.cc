@@ -92,6 +92,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ResetCompiledProgramsCountForTesting();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -342,8 +343,18 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+<<<<<<< HEAD
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
+=======
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
+                 << "and Hopper GPUs";
+>>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -375,6 +386,8 @@ ENTRY main {
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
   triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
       false);
+  triton_enabled_debug_options
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
   config.set_replica_count(1);
   config.set_num_partitions(1);

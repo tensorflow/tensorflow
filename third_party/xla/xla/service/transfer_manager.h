@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
@@ -100,13 +100,13 @@ class TransferManager {
   // tells the actual implementation to do something special.
   virtual void TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
       const TransferMetadata* transfer_metadata) = 0;
 
   void TransferLiteralFromDevice(se::Stream* stream,
                                  const ShapedBuffer& device_buffer,
                                  MutableBorrowingLiteral literal,
-                                 std::function<void(Status)> done) {
+                                 std::function<void(absl::Status)> done) {
     return TransferLiteralFromDevice(stream, device_buffer, literal, done,
                                      nullptr);
   }

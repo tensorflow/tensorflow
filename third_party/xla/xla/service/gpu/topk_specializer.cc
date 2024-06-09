@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

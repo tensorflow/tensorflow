@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_interface.h"
-#include "xla/stream_executor/stream_interface.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"  // IWYU pragma: keep
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
@@ -42,8 +42,7 @@ namespace tpu {
 
 class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
  public:
-  using StreamMap =
-      absl::flat_hash_map<stream_executor::StreamInterface*, SE_Stream*>;
+  using StreamMap = absl::flat_hash_map<stream_executor::Stream*, SE_Stream*>;
   using EventMap = absl::flat_hash_map<stream_executor::Event*, SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
@@ -101,7 +100,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   void InsertEvent(stream_executor::Event* key, SE_Event* val);
   SE_Event* LookupEvent(stream_executor::Event* key);
-  SE_Stream* LookupStream(stream_executor::StreamInterface* key) {
+  SE_Stream* LookupStream(stream_executor::Stream* key) {
     mutex().Lock();
     auto stream = stream_map_.at(key);
     mutex().Unlock();

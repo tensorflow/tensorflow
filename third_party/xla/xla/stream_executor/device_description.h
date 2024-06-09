@@ -51,7 +51,8 @@ struct CudaComputeCapability {
     PASCAL_ = 6,
     VOLTA = 7,
     AMPERE = 8,
-    HOPPER = 9
+    HOPPER = 9,
+    BLACKWELL = 10
   };
 
   constexpr CudaComputeCapability() = default;

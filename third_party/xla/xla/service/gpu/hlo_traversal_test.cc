@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -225,9 +226,11 @@ TEST_F(HloTraversalTest, FindArguments) {
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
   std::vector<std::string> producers;
-  FindFusionArguments(*fusion, [&](HloInstructionAdaptor producer) {
-    producers.emplace_back(producer.name());
-  });
+  absl::c_for_each(fusion->GetParameters(),
+                   [&](const HloInstruction* producer) {
+                     producers.emplace_back(producer->name());
+                   });
+
   EXPECT_THAT(producers, ElementsAre("p0", "negate"));
 }
 
@@ -238,9 +241,10 @@ TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
       module->entry_computation()->GetInstructionWithName("negate"),
       module->entry_computation()->GetInstructionWithName("fusion"));
   std::vector<std::string> producers;
-  FindFusionArguments(*fusion, [&](HloInstructionAdaptor producer) {
-    producers.emplace_back(producer.name());
-  });
+  absl::c_for_each(fusion->GetParameters(),
+                   [&](const HloInstruction* producer) {
+                     producers.emplace_back(producer->name());
+                   });
   EXPECT_THAT(producers, ElementsAre("p0", "log"));
 }
 
@@ -374,8 +378,8 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
                                   return TraversalResult::kAdvance;
                                 });
   std::vector<std::string> params;
-  FindFusionArguments(*fusion, [&](const HloInstructionAdaptor& param) {
-    params.emplace_back(param.name());
+  absl::c_for_each(fusion->GetParameters(), [&](const HloInstruction* param) {
+    params.emplace_back(param->name());
   });
 
   EXPECT_THAT(nodes, ElementsAre("reduce.2", "reduce.1", "mul"));

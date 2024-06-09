@@ -59,7 +59,7 @@ class KernelSupportLibrary {
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
-    CHECK_EQ(OkStatus(),
+    CHECK_EQ(absl::OkStatus(),
              ForWithStatus(name, start, end, step,
                            [&](llvm::Value* ind_var,
                                bool is_first_iteration) -> absl::Status {
@@ -100,7 +100,7 @@ class KernelSupportLibrary {
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
-    CHECK_EQ(OkStatus(),
+    CHECK_EQ(absl::OkStatus(),
              ForWithStatus(name, start, end, step,
                            [&](llvm::Value* ind_var) -> absl::Status {
                              for_body_generator(ind_var);

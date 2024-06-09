@@ -91,7 +91,6 @@ ifrt_proxy_cc_test(
     size = "small",
     srcs = ["mock_array_test.cc"],
     deps = [
-        "//xla:status",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",

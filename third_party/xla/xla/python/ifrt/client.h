@@ -36,9 +36,11 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
@@ -103,7 +105,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `Future<Status>` for consistency with other IFRT APIs.
+  // returned `Future<absl::Status>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
@@ -133,6 +135,23 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   RemapArrays(const RemapPlan& plan,
               absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
               ArrayCopySemantics semantics) = 0;
+
+  // Returns a future that becomes ready once all of the values become ready.
+  //
+  // Timing and error semantics:
+  //
+  // * The returned future is fulfilled only after all values in `values` become
+  //   ready, regardless of their error statuses.
+  // * If none of the values have errors, the returned future is fulfilled with
+  //   `absl::OkStatus()` once all values are ready.
+  // * If there is one or more values with errors, the implementation will pick
+  //   one of them arbitrarily to fulfill the returned future.
+  //
+  // Note: this API currently accepts a span of `tsl::RCReference<Array>` for
+  // consistency with other APIs. We may change this to take a span of `Array*`
+  // instead to reflect its read-only semantics.
+  virtual Future<> GetReadyFuture(
+      absl::Span<const tsl::RCReference<Value>> values) = 0;
 
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
@@ -180,9 +199,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
 
-  // Returns a topology description for that covers the provided devices.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(const DeviceList& devices) const = 0;
+  // Returns a topology that covers the provided devices.
+  virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
+      const DeviceList& devices) const = 0;
 
   // Returns the default layout on `device` for a buffer with `dtype` and
   // single-shard dimensions `dims`.

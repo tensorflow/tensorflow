@@ -39,7 +39,7 @@ class TypedKernelFactory {
  public:
   // Creates a typed kernel on a given executor from a kernel specification.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutorInterface *executor, const MultiKernelLoaderSpec &spec) {
+      StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
                         KernelFactory::Create(executor, spec));
     return TypedKernel<Params...>(std::move(kernel));
@@ -51,7 +51,7 @@ class TypedKernelFactory {
   // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutorInterface *executor, absl::string_view kernel_name,
+      StreamExecutor *executor, absl::string_view kernel_name,
       absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
     MultiKernelLoaderSpec loader_spec(
         TypedKernel<Params...>::kNumberOfParameters);
@@ -67,8 +67,7 @@ class TypedKernelFactory {
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
   // an in-process symbol pointer.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutorInterface *executor, absl::string_view kernel_name,
-      void *symbol) {
+      StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {
     MultiKernelLoaderSpec loader_spec(
         TypedKernel<Params...>::kNumberOfParameters);
     loader_spec.AddInProcessSymbol(symbol, kernel_name);
@@ -79,7 +78,7 @@ class TypedKernelFactory {
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
   // an LLVM IR.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutorInterface *executor, absl::string_view ir,
+      StreamExecutor *executor, absl::string_view ir,
       absl::string_view entrypoint, absl::string_view kernel_name,
       absl::Span<std::string> options) {
     MultiKernelLoaderSpec loader_spec(

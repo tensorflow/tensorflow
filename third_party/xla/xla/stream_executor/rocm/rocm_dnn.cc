@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_interface.h"
 #include "xla/tsl/util/determinism.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/env.h"
@@ -5199,7 +5198,7 @@ void initialize_miopen() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
-            [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            [](StreamExecutor* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
               if (rocm_executor == nullptr) {

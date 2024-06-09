@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_DEVICE_DESCRIPTION_H_
 #define XLA_PJRT_PJRT_DEVICE_DESCRIPTION_H_
 
-#include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 

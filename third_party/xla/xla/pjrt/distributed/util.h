@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_UTIL_H_
 #define XLA_PJRT_DISTRIBUTED_UTIL_H_
 
+#include "absl/status/status.h"
 #include "grpcpp/support/status.h"
-#include "xla/status.h"
 
 namespace xla {
 

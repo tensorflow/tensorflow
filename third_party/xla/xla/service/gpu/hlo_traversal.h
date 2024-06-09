@@ -189,11 +189,6 @@ std::optional<const HloInstruction*> HloFindIf(
     const std::function<bool(const HloInstruction* node)>& visit,
     bool visit_operands = true);
 
-// Visit the producers of all parameters that are needed by the fusion.
-void FindFusionArguments(
-    const HloFusionAdaptor& fusion,
-    const std::function<void(HloInstructionAdaptor producer)>& visit);
-
 // Find a use chain from `parent` to `root`. Empty if no chain exists.
 // `[parent]` if `parent` is `root`.
 std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,

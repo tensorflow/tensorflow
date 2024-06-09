@@ -37,26 +37,43 @@ cc_library(
         "//xla/tests:client_library_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],
 )
 
-xla_test(
-    name = "exhaustive_unary_test_f32_or_smaller",
+cc_library(
+    name = "exhaustive_unary_test_f32_or_smaller_lib",
+    testonly = True,
     srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 50,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-    ],
+    tags = ["no_pip"],
     deps = [
         ":exhaustive_op_test_utils",
         "//xla:util",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test_f32_or_smaller",
+    srcs = ["exhaustive_test_main.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 50,
+    tags = [
+        "optonly",
+        "test_xla_cpu_thunks",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_unary_test_f32_or_smaller_lib",
+        "@local_tsl//tsl/platform",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -67,9 +84,10 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 48,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
         # TODO(b/151340488): Timed out on 2020-03-18.
@@ -80,6 +98,7 @@ xla_test(
         "//xla:util",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
+        "//xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -90,9 +109,10 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 48,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
@@ -103,6 +123,7 @@ xla_test(
         "//xla/tests:client_library_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -114,14 +135,16 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 48,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
     deps = [
         ":exhaustive_op_test_utils",
+        "//xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -132,13 +155,15 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 48,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
     deps = [
         ":exhaustive_op_test_utils",
+        "//xla/tests:xla_internal_test_main",
     ],
 )

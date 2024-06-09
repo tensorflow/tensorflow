@@ -22,14 +22,13 @@ limitations under the License.
 
 namespace stream_executor {
 
-class StreamExecutorInterface;
+class StreamExecutor;
 
 // RAII container for pinned host memory allocation allocated on an underlying
 // device owned by `*this`.
 class HostMemoryAllocation final : public MemoryAllocation {
  public:
-  HostMemoryAllocation(void* ptr, uint64_t size,
-                       StreamExecutorInterface* executor);
+  HostMemoryAllocation(void* ptr, uint64_t size, StreamExecutor* executor);
   ~HostMemoryAllocation() final;
 
   void* opaque() const final { return ptr_; }
@@ -38,7 +37,7 @@ class HostMemoryAllocation final : public MemoryAllocation {
  private:
   void* ptr_ = nullptr;
   uint64_t size_ = 0;
-  StreamExecutorInterface* executor_ = nullptr;
+  StreamExecutor* executor_ = nullptr;
 };
 
 }  // namespace stream_executor

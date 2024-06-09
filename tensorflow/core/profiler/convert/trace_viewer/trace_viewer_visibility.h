@@ -54,6 +54,8 @@ class TraceViewerVisibility {
   void SetVisibleAtResolution(const TraceEvent& event);
 
   tsl::profiler::Timespan VisibleSpan() const { return visible_span_; }
+  // TODO(tf-profiler) Rename ResolutionPs and resolution_ps to be more
+  // self-explanatory (eg. MinDurationPs)
   uint64_t ResolutionPs() const { return resolution_ps_; }
 
  private:
@@ -140,6 +142,14 @@ class TraceVisibilityFilter : public TraceEventsFilterInterface {
       visibility_ = TraceViewerVisibility(
           visible_span, ResolutionPs(visible_span.duration_ps()));
     }
+  }
+
+  // Updates the visibility based on `resolution`.
+  void UpdateVisibility(double resolution) {
+    resolution_ = resolution;
+    visibility_ = TraceViewerVisibility(
+        visibility_.VisibleSpan(),
+        ResolutionPs(visibility_.VisibleSpan().duration_ps()));
   }
 
   bool Filter(const TraceEvent& event) override {

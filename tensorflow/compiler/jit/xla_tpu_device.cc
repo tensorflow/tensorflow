@@ -157,12 +157,12 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
         << DataTypeString(output->dtype());
     TF_RET_CHECK(input->shape() == output->shape());
     TF_RET_CHECK(DMAHelper::CanUseDMA(input));
-    auto* const src_compute_stream_impl = static_cast<tpu::TpuStreamInterface*>(
-        src_compute_stream->implementation());
+    auto* const src_compute_stream_impl =
+        static_cast<tpu::TpuStreamInterface*>(src_compute_stream);
 
     se::Stream* dst_compute_stream = dst_xla_context->stream();
-    auto* const dst_compute_stream_impl = static_cast<tpu::TpuStreamInterface*>(
-        dst_compute_stream->implementation());
+    auto* const dst_compute_stream_impl =
+        static_cast<tpu::TpuStreamInterface*>(dst_compute_stream);
 
     if (src_compute_stream_impl->IsSameSharedMemoryLocation(
             dst_compute_stream_impl)) {
@@ -191,8 +191,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
         });
 
     auto* const dst_device_to_device_stream_impl =
-        static_cast<tpu::TpuStreamInterface*>(
-            dst_device_to_device_stream->implementation());
+        static_cast<tpu::TpuStreamInterface*>(dst_device_to_device_stream);
 
     const int dst_device_ordinal =
         dst_xla_context->stream()->parent()->device_ordinal();

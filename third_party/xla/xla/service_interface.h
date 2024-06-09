@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_INTERFACE_H_
 #define XLA_SERVICE_INTERFACE_H_
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
