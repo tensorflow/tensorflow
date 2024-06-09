@@ -1,0 +1,300 @@
+This is getting upstreamed here: https://github.com/triton-lang/triton/pull/3970
+diff --git a/include/triton/Conversion/TritonGPUToLLVM/Utility.h b/include/triton/Conversion/TritonGPUToLLVM/Utility.h
+--- a/include/triton/Conversion/TritonGPUToLLVM/Utility.h
++++ b/include/triton/Conversion/TritonGPUToLLVM/Utility.h
+@@ -692,7 +692,7 @@ emitBaseIndexWithinCTAForMmaLayoutV2V3(L
+   auto _warpsPerCTA = mmaLayout.getWarpsPerCTA();
+   auto rank = shape.size();
+   assert(rank == 2 || rank == 3);
+-  auto order = triton::gpu::getOrder(mmaLayout);
++  auto warpOrder = triton::gpu::getWarpOrder(mmaLayout);
+   ArrayRef<unsigned int> instrShape = mmaLayout.getInstrShape();
+   SmallVector<Value> warpsPerCTA;
+   for (unsigned i = 0; i < rank; ++i)
+@@ -722,19 +722,7 @@ emitBaseIndexWithinCTAForMmaLayoutV2V3(L
+     warpsN = shape[rank - 1] / instrShape[rank - 1];
+ 
+   SmallVector<Value> multiDimWarpId(rank);
+-  if (mmaLayout.isHopper()) {
+-    // TODO[goostavz]: the tiling order from CTA->warp level is different for
+-    // MMAv2/3. This is a workaround since we don't explicitly have warpGrp
+-    // level in the layout definition, and the tiling order of warpGrp->warp
+-    // must be fixed to meet the HW's needs. We may need to consider to
+-    // explicitly define warpGrpPerCTA for MMAv3 layout.
+-    assert(rank == 2 && "MMAv3 layout does not support 3D tensor yet");
+-    multiDimWarpId[rank - 2] = urem(warpId, warpsPerCTA[rank - 2]);
+-    multiDimWarpId[rank - 1] =
+-        urem(udiv(warpId, warpsPerCTA[rank - 2]), warpsPerCTA[rank - 1]);
+-  } else {
+-    multiDimWarpId = delinearize(rewriter, loc, warpId, _warpsPerCTA, order);
+-  }
++  multiDimWarpId = delinearize(rewriter, loc, warpId, _warpsPerCTA, warpOrder);
+   Value warpIdM = urem(multiDimWarpId[rank - 2], i32_val(warpsM));
+   Value warpIdN = urem(multiDimWarpId[rank - 1], i32_val(warpsN));
+ 
+@@ -808,7 +796,7 @@ emitBaseIndexForMfmaLayout(Location loc,
+   Value laneId = urem(threadId, effectiveWarpSize);
+   Value warpId = udiv(threadId, warpSize);
+   SmallVector<Value> multiDimWarpId = delinearize(
+-      rewriter, loc, warpId, _warpsPerCTA, triton::gpu::getOrder(mfmaLayout));
++      rewriter, loc, warpId, _warpsPerCTA, triton::gpu::getWarpOrder(mfmaLayout));
+   if (shape[rank - 2] >= mDim) {
+     assert(shape[rank - 2] % mDim == 0);
+     multiDimWarpId[rank - 2] =
+@@ -949,7 +937,7 @@ emitBaseIndexForWmmaLayout(Location loc,
+ 
+   Value warpId = udiv(threadId, warpSize);
+   SmallVector<Value> multiDimWarpId = delinearize(
+-      rewriter, loc, warpId, _warpsPerCTA, triton::gpu::getOrder(wmmaLayout));
++      rewriter, loc, warpId, _warpsPerCTA, triton::gpu::getWarpOrder(wmmaLayout));
+   if (shape[0] >= mnkDim[0]) {
+     assert(shape[0] % mnkDim[0] == 0);
+     multiDimWarpId[0] =
+diff --git a/include/triton/Dialect/TritonGPU/IR/Dialect.h b/include/triton/Dialect/TritonGPU/IR/Dialect.h
+--- a/include/triton/Dialect/TritonGPU/IR/Dialect.h
++++ b/include/triton/Dialect/TritonGPU/IR/Dialect.h
+@@ -75,6 +75,8 @@ getThreadsPerWarpWithUniqueData(Attribut
+ SmallVector<unsigned>
+ getWarpsPerCTAWithUniqueData(Attribute layout, ArrayRef<int64_t> tensorShape);
+ 
++SmallVector<unsigned> getWarpOrder(Attribute layout);
++
+ SmallVector<unsigned> getOrder(Attribute layout);
+ 
+ CTALayoutAttr getCTALayout(Attribute layout);
+diff --git a/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ReduceOpToLLVM.cpp
+@@ -240,7 +240,7 @@ private:
+                     ConversionPatternRewriter &rewriter) const {
+     auto srcLayout = helper.getSrcLayout();
+     auto srcShape = helper.getSrcShape();
+-    auto order = getOrder(srcLayout);
++    auto order = triton::gpu::getWarpOrder(srcLayout);
+     SmallVector<Value> multiDimWarpId;
+ 
+     // 2x2 warps with slice dim = 0, warpId = 2 ends up writing at the same
+@@ -249,7 +249,7 @@ private:
+     if (auto sliceLayout = mlir::dyn_cast<SliceEncodingAttr>(srcLayout)) {
+       auto parentLayout = sliceLayout.getParent();
+       auto parentWarpsPerCTA = triton::gpu::getWarpsPerCTA(parentLayout);
+-      auto parentOrder = triton::gpu::getOrder(parentLayout);
++      auto parentOrder = triton::gpu::getWarpOrder(parentLayout);
+       multiDimWarpId =
+           delinearize(rewriter, loc, warpId, parentWarpsPerCTA, parentOrder);
+       multiDimWarpId.erase(multiDimWarpId.begin() + sliceLayout.getDim());
+diff --git a/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ScanOpToLLVM.cpp
+@@ -399,8 +399,8 @@ ScanOpConversion::getMultiDimWarpId(Conv
+ 
+   auto threadsPerWarp = triton::gpu::getThreadsPerWarp(srcEncoding);
+   auto warpsPerCTA = triton::gpu::getWarpsPerCTA(srcEncoding);
+-  auto order = triton::gpu::getOrder(srcEncoding);
+-  return delinearize(rewriter, loc, warpId, warpsPerCTA, order);
++  auto warpOrder = triton::gpu::getWarpOrder(srcEncoding);
++  return delinearize(rewriter, loc, warpId, warpsPerCTA, warpOrder);
+ }
+ 
+ // Break up the threadId into lane and warp id along the scan dimension and
+@@ -416,10 +416,11 @@ ScanOpConversion::getDelinearizedIds(Con
+   auto threadsPerWarp = triton::gpu::getThreadsPerWarp(srcEncoding);
+   auto warpsPerCTA = triton::gpu::getWarpsPerCTA(srcEncoding);
+   auto order = triton::gpu::getOrder(srcEncoding);
++  auto warpOrder = triton::gpu::getWarpOrder(srcEncoding);
+   SmallVector<Value> multiDimLaneId =
+       delinearize(rewriter, loc, laneId, threadsPerWarp, order);
+   SmallVector<Value> multiDimWarpId =
+-      delinearize(rewriter, loc, warpId, warpsPerCTA, order);
++      delinearize(rewriter, loc, warpId, warpsPerCTA, warpOrder);
+ 
+   Value laneIdAxis = multiDimLaneId[axis];
+   Value warpIdAxis = multiDimWarpId[axis];
+@@ -431,7 +432,7 @@ ScanOpConversion::getDelinearizedIds(Con
+   multiDimWarpId[axis] = i32_val(0);
+   warpsPerCTA[axis] = 1;
+   Value warpIdParallel =
+-      linearize(rewriter, loc, multiDimWarpId, warpsPerCTA, order);
++      linearize(rewriter, loc, multiDimWarpId, warpsPerCTA, warpOrder);
+   Value flatIdParallel =
+       add(laneIdParallel,
+           mul(warpIdParallel, i32_val(helper.getNonAxisNumThreadsPerWarp())));
+diff --git a/lib/Conversion/TritonGPUToLLVM/Utility.cpp b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp
+@@ -510,13 +510,8 @@ SmallVector<Value> getMultiDimOffset(Att
+     // TODO: fix the bug in MMAEncodingAttr document
+     SmallVector<Value> multiDimWarpId(2);
+     auto warpsPerCTA = mmaLayout.getWarpsPerCTA();
+-    if (mmaLayout.isHopper()) {
+-      multiDimWarpId[0] = urem(warpId, i32_val(warpsPerCTA[0]));
+-      multiDimWarpId[1] = udiv(warpId, i32_val(warpsPerCTA[0]));
+-    } else {
+-      auto order = triton::gpu::getOrder(mmaLayout);
+-      multiDimWarpId = delinearize(rewriter, loc, warpId, warpsPerCTA, order);
+-    }
++    auto warpOrder = triton::gpu::getWarpOrder(mmaLayout);
++    multiDimWarpId = delinearize(rewriter, loc, warpId, warpsPerCTA, warpOrder);
+     Value _1 = i32_val(1);
+     Value _2 = i32_val(2);
+     Value _4 = i32_val(4);
+@@ -544,7 +539,7 @@ SmallVector<Value> getMultiDimOffset(Att
+       mmaColIdx[0] = add(mmaThreadIdInGrpM2, colWarpOffset);
+       mmaColIdx[1] = add(mmaThreadIdInGrpM2P1, colWarpOffset);
+     } else if (mmaLayout.isVolta()) {
+-      // Volta doesn't follow the pattern here."
++      // Volta doesn't follow the pattern here.
+     } else {
+       llvm_unreachable("Unexpected MMALayout version");
+     }
+diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+--- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+@@ -228,6 +228,19 @@ static SmallVector<unsigned> eraseOrder(
+   return resOrder;
+ }
+ 
++SmallVector<unsigned> getWarpOrder(Attribute layout) {
++  auto order = getOrder(layout);
++  if (auto mmaLayout = dyn_cast<NvidiaMmaEncodingAttr>(layout)) {
++    if (mmaLayout.isHopper()) {
++      // Hopper MMA instructions force a warp order of [0, 1].
++      auto it = std::find(order.begin(), order.end(), 0);
++      order.erase(it);
++      order.insert(order.begin(), 0);
++    }
++  }
++  return order;
++}
++
+ SmallVector<unsigned> getOrder(Attribute layout) {
+   if (auto blockedLayout = dyn_cast<BlockedEncodingAttr>(layout)) {
+     return SmallVector<unsigned>(blockedLayout.getOrder().begin(),
+@@ -831,7 +844,7 @@ SmallVector<unsigned> SliceEncodingAttr:
+   return warpsPerCTA;
+ }
+ SmallVector<unsigned> SliceEncodingAttr::getWarpOrder() const {
+-  return ::getOrder(*this);
++  return ::getWarpOrder(*this);
+ }
+ SmallVector<unsigned> SliceEncodingAttr::getThreadsPerWarp() const {
+   auto parent = getParent();
+@@ -1092,7 +1105,7 @@ SmallVector<unsigned> DotOperandEncoding
+   }
+ }
+ SmallVector<unsigned> DotOperandEncodingAttr::getWarpOrder() const {
+-  return ::getOrder(*this);
++  return ::getWarpOrder(*this);
+ }
+ SmallVector<unsigned> DotOperandEncodingAttr::getThreadOrder() const {
+   return ::getOrder(*this);
+@@ -1608,7 +1621,7 @@ SmallVector<unsigned> AMDMfmaEncodingAtt
+   return SmallVector<unsigned>(getWarpsPerCTA__());
+ }
+ SmallVector<unsigned> AMDMfmaEncodingAttr::getWarpOrder() const {
+-  return ::getOrder(*this);
++  return ::getWarpOrder(*this);
+ }
+ SmallVector<unsigned> AMDMfmaEncodingAttr::getThreadOrder() const {
+   return ::getOrder(*this);
+@@ -1761,7 +1774,7 @@ SmallVector<unsigned> AMDWmmaEncodingAtt
+   return SmallVector<unsigned>(getWarpsPerCTA__());
+ }
+ SmallVector<unsigned> AMDWmmaEncodingAttr::getWarpOrder() const {
+-  return ::getOrder(*this);
++  return ::getWarpOrder(*this);
+ }
+ SmallVector<unsigned> AMDWmmaEncodingAttr::getThreadOrder() const {
+   return ::getOrder(*this);
+@@ -1859,7 +1872,7 @@ SmallVector<unsigned> NvidiaMmaEncodingA
+   return SmallVector<unsigned>(getWarpsPerCTA__());
+ }
+ SmallVector<unsigned> NvidiaMmaEncodingAttr::getWarpOrder() const {
+-  return ::getOrder(*this);
++  return ::getWarpOrder(*this);
+ }
+ SmallVector<unsigned> NvidiaMmaEncodingAttr::getThreadsPerWarp() const {
+   auto rank = getWarpsPerCTA().size();
+@@ -1900,7 +1913,10 @@ SmallVector<unsigned> NvidiaMmaEncodingA
+   }
+   if (isHopper()) {
+     auto instrShape = getInstrShape();
+-    // TODO(thomas): what are those magic numbers?
++    // WGMMA instructions have an order of [0, 1] with 4 warps, each with 8
++    // unique thread ids (32 in a warp group) per column. It is 1 warp wide with
++    // 4 unique thread ids in the row. So the size per thread is the instruction
++    // size divided by the number of unique thread ids.
+     return SmallVector<unsigned>{instrShape[0] * 4 / 32, instrShape[1] / 4};
+   }
+   llvm_unreachable("Unexpected mma version");
+diff --git a/python/test/unit/language/test_core.py b/python/test/unit/language/test_core.py
+--- a/python/test/unit/language/test_core.py
++++ b/python/test/unit/language/test_core.py
+@@ -2508,6 +2508,8 @@ layouts = [
+               instr_shape=[16, 8]),
+     MmaLayout(version=(3, 0), warps_per_cta=[4, 1], ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0],
+               instr_shape=[16, 16, 16]),
++    MmaLayout(version=(3, 0), warps_per_cta=[4, 2], ctas_per_cga=[1, 1], cta_split_num=[1, 1], cta_order=[1, 0],
++              instr_shape=[16, 32, 16]),
+     MfmaLayout(version=(2, 0), warps_per_cta=[2, 2], instr_shape=[32, 32], is_transposed=False),
+     MfmaLayout(version=(2, 0), warps_per_cta=[4, 1], instr_shape=[32, 32], is_transposed=False),
+     MfmaLayout(version=(2, 0), warps_per_cta=[1, 4], instr_shape=[32, 32], is_transposed=False),
+@@ -2524,9 +2526,9 @@ layouts = [
+ @pytest.mark.parametrize("dtype_str", ["int32", "float32", "float16"])
+ @pytest.mark.parametrize("reduce_op", ["sum", "max"])
+ def test_reduce_layouts(M, N, src_layout, axis, epilogue_kind, dtype_str, reduce_op, device):
+-    if is_hip() and isinstance(src_layout, MfmaLayout) and (M < src_layout.instr_shape[0]
++    if isinstance(src_layout, (MfmaLayout, MmaLayout)) and (M < src_layout.instr_shape[0]
+                                                             or N < src_layout.instr_shape[1]):
+-        pytest.skip("Skipping because tensor shape is smaller than MfmaLayout isntr_shape")
++        pytest.skip("Skipping because tensor shape is smaller than M(f)maLayout instr_shape")
+     if is_hip() and isinstance(src_layout, MfmaLayout) and ((M, N) == (128, 128)):
+         pytest.skip("Skipping test because it runs out of shared memory")
+     if reduce_op == "sum" and dtype_str == "float16" and M * N > 1024:
+@@ -2535,6 +2537,9 @@ def test_reduce_layouts(M, N, src_layout
+         pytest.skip(
+             "Currently MmaLayout combined with slice encoding and reduce op trigger device illegal memory access")
+ 
++    if isinstance(src_layout, MmaLayout) and src_layout.version == 3:
++        src_layout[2] = 16 if dtype_str == "float16" else 8
++
+     ty = {"int32": "i32", "float32": "f32", "float16": "f16"}[dtype_str]
+     arith_op = {
+         "max": {"int32": "arith.maxsi", "float32": "arith.maximumf", "float16": "arith.maximumf"},  #
+@@ -2545,6 +2550,9 @@ def test_reduce_layouts(M, N, src_layout
+     rdims_2d = f"1x{N}" if axis == 0 else f"{M}x1"
+     store_range = "%7" if axis == 0 else "%1"
+     blocked = BlockedLayout([1, 1], [32, THREADS_PER_WARP // 32], [4, 1], [0, 1], [1, 1], [1, 1], [0, 1])
++    num_warps = src_layout.warps_per_cta[0] * src_layout.warps_per_cta[1]
++    if num_warps == 8:
++        blocked = BlockedLayout([1, 1], [32, THREADS_PER_WARP // 32], [4, 2], [0, 1], [1, 1], [1, 1], [0, 1])
+     one_d_layout = BlockedLayout([1], [THREADS_PER_WARP], [4], [0], [1], [1], [0])
+ 
+     expanded_shape = f"1x{N}" if axis == 0 else f"{M}x1"
+@@ -2592,7 +2600,7 @@ def test_reduce_layouts(M, N, src_layout
+     #blocked = {blocked}
+     #src = {src_layout}
+     #one_d_layout = {one_d_layout}
+-    module attributes {{"triton_gpu.num-warps" = 4 : i32, "triton_gpu.num-ctas" = 1 : i32, "triton_gpu.threads-per-warp" = {THREADS_PER_WARP} : i32}} {{
++    module attributes {{"triton_gpu.num-warps" = {num_warps} : i32, "triton_gpu.num-ctas" = 1 : i32, "triton_gpu.threads-per-warp" = {THREADS_PER_WARP} : i32}} {{
+     tt.func public @kernel_0d1d2c3d4c(%arg0: !tt.ptr<{ty}> {{tt.divisibility = 16 : i32}}, %arg1: i32 {{tt.divisibility = 16 : i32}}, %arg2: !tt.ptr<{ty}> {{tt.divisibility = 16 : i32}}) {{
+         %0 = tt.make_range {{end = {M} : i32, start = 0 : i32}} : tensor<{M}xi32, #{GPU_DIALECT}.slice<{{dim = 1, parent = #blocked}}>>
+         %1 = tt.expand_dims %0 {{axis = 1 : i32}} : tensor<{M}xi32, #{GPU_DIALECT}.slice<{{dim = 1, parent = #blocked}}>> -> tensor<{M}x1xi32, #blocked>
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -37,12 +37,13 @@ Value redundantDataMask(Type valueTy, Co
+     auto threadsPerWarp = triton::gpu::getThreadsPerWarp(layout);
+     auto warpsPerCTA = triton::gpu::getWarpsPerCTA(layout);
+     auto order = triton::gpu::getOrder(layout);
++    auto warpOrder = triton::gpu::getWarpOrder(layout);
+     auto shapePerCTATile = triton::gpu::getShapePerCTATile(layout, shape);
+     Value warpSize = i32_val(32);
+     Value laneId = urem(tid, warpSize);
+     Value warpId = udiv(tid, warpSize);
+     SmallVector<Value> multiDimWarpId =
+-        delinearize(rewriter, loc, warpId, warpsPerCTA, order);
++        delinearize(rewriter, loc, warpId, warpsPerCTA, warpOrder);
+     SmallVector<Value> multiDimThreadId =
+         delinearize(rewriter, loc, laneId, threadsPerWarp, order);
+     for (unsigned dim = 0; dim < rank; ++dim) {

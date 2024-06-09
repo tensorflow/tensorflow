@@ -328,7 +328,7 @@ absl::Status HloModuleGroupUtil::VisitTopologicalOrder(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloModuleGroupUtil::VerifyComputations(
@@ -336,7 +336,7 @@ absl::Status HloModuleGroupUtil::VerifyComputations(
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
-        return OkStatus();
+        return absl::OkStatus();
       };
   int64_t instructions_count = 0;
   VisitStates visit_states;
@@ -358,7 +358,7 @@ absl::Status HloModuleGroupUtil::VerifyComputations(
     TF_RET_CHECK(state.second == VisitState::kVisited);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<HloReachabilityMap>>
@@ -370,7 +370,7 @@ HloModuleGroupUtil::ComputeReachability(
           const std::vector<HloInstruction*>& instruction_group) {
         post_order.insert(post_order.end(), instruction_group.begin(),
                           instruction_group.end());
-        return OkStatus();
+        return absl::OkStatus();
       };
   HloModuleGroupUtil::VisitStates visit_states;
   for (HloInstruction* root : RootInstructions(computations)) {

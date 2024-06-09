@@ -38,7 +38,7 @@ namespace {
 void InitializeVariable(TF::VarHandleOp var_handle_op,
                         tensorflow::Tensor* tensor,
                         func::FuncOp session_init_func, OpBuilder builder) {
-  tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
+  absl::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
   ElementsAttr tensor_attr = tensor_attr_or.value();

@@ -618,7 +618,7 @@ class HloModule {
         cross_program_prefetches_[prefetch_index];
     TF_RET_CHECK(!optional_offset.has_value());
     optional_offset = offset;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of program arguments to be prefetch across programs.

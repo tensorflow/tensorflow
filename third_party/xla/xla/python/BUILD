@@ -804,6 +804,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/service:platform_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:test_main",
     ],

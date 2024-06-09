@@ -77,7 +77,7 @@ absl::Status CheckOperandCount(const HloInstruction* hlo, int expected) {
     return Internal("Expected %d operands for %s instruction: %s", expected,
                     HloOpcodeString(hlo->opcode()), hlo->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
@@ -123,7 +123,7 @@ absl::Status CheckNestedComputationThreadNameEqual(
           called_cmp, skip_nested_async_op_check));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -136,7 +136,7 @@ absl::Status CheckNestedComputationThreadNameEqual(
         computation->name(), calling_instruction->name(), expected,
         computation->num_parameters());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -153,7 +153,7 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleElementwiseUnary(HloInstruction* hlo) {
@@ -424,7 +424,7 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
         << "Replica groups must be specified in flattened-id mode";
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::Status CheckCommonAllGatherInvariants(
@@ -468,7 +468,7 @@ static absl::Status CheckCommonAllGatherInvariants(
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
   *computed_shard_count = shard_count;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
@@ -649,12 +649,12 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
           "elements as the buffer's rank.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
   if (collective_permute->operand_count() == 1) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (collective_permute->operand_count() != 4) {
     return Internal("Unexpected number of operands: %d.",
@@ -711,7 +711,7 @@ absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
   } else {
     return Internal("Unmatching input buffers and output buffers.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
@@ -790,7 +790,7 @@ absl::Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
       seen_target_to_sources[p.second].push_back(p.first);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -861,7 +861,7 @@ absl::Status ShapeVerifier::CheckIsTokenOperand(
         "%s:\n%s",
         operand_no, StringifyShape(token->shape()), instruction->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::CheckOperandAndParameter(
@@ -875,7 +875,7 @@ absl::Status ShapeVerifier::CheckOperandAndParameter(
                     operand->ToString(), parameter->ToString(),
                     instruction->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
@@ -961,12 +961,12 @@ absl::Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
           RandomDistribution_Name(instruction->random_distribution()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
   if (!hlo->shape().IsTuple()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return Internal(
@@ -981,7 +981,7 @@ absl::Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
         hlo->operand(0)->shape().ToString(true),
         hlo->shape().tuple_shapes(0).ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleRngGetAndUpdateState(
@@ -995,7 +995,7 @@ absl::Status ShapeVerifier::HandleRngGetAndUpdateState(
         StringifyShape(expected_shape), StringifyShape(result_shape));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
@@ -1109,7 +1109,7 @@ absl::Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
         PrimitiveType_Name(primitive_type));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleGetTupleElement(
@@ -1134,7 +1134,7 @@ absl::Status SameElementTypesForOperandsAndToApplyParameters(
           i, instruction.ToString().c_str());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1155,7 +1155,7 @@ absl::Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
                              reduce->to_apply()->ComputeProgramShape())));
 
   return opts_.allow_mixed_precision
-             ? OkStatus()
+             ? absl::OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce, reduce->operand_count());
 }
@@ -1180,7 +1180,7 @@ absl::Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
           operand_shape.ToString(true));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
@@ -1201,7 +1201,7 @@ absl::Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleDynamicReshape(
@@ -1216,7 +1216,7 @@ absl::Status ShapeVerifier::HandleDynamicReshape(
   for (int64_t i = 1; i < dynamic_reshape->operand_count(); ++i) {
     TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
@@ -1225,7 +1225,7 @@ absl::Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   TF_RET_CHECK(SameElementType(reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
@@ -1235,7 +1235,7 @@ absl::Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
 }
 
 absl::Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
@@ -1292,7 +1292,7 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
           << " vs " << output_subshape.ToString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleCall(HloInstruction* call) {
@@ -1348,7 +1348,7 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
           << " vs " << output_subshape.ToString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
@@ -1400,7 +1400,7 @@ absl::Status ShapeVerifier::HandleMap(HloInstruction* map) {
           operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
 
   return opts_.allow_mixed_precision
-             ? OkStatus()
+             ? absl::OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *map, map->operand_count());
 }
@@ -1415,7 +1415,7 @@ absl::Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
                          reduce_window->to_apply()->ComputeProgramShape())));
 
   return opts_.allow_mixed_precision
-             ? OkStatus()
+             ? absl::OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce_window, reduce_window->operand_count());
 }
@@ -1484,7 +1484,7 @@ absl::Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
         conditional,
         conditional->branch_computation(j)->root_instruction()->shape()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandlePad(HloInstruction* pad) {
@@ -1516,7 +1516,7 @@ absl::Status CheckAsyncOpOperand(const HloInstruction* async_op) {
         async_op->async_wrapped_computation()->execution_thread(),
         operand->async_wrapped_computation()->execution_thread());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
@@ -1550,7 +1550,7 @@ absl::Status CheckCallableInstructionThreadName(
     TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
         computation, skip_nested_async_op_check));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1566,7 +1566,7 @@ absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
   // The semantics of an async custom call are defined by the custom call
   // implementation, so we stop checking here.
   if (async_op->async_wrapped_opcode() == HloOpcode::kCustomCall) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   ProgramShape computation_shape =
@@ -1588,7 +1588,7 @@ absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
         async_shape.tuple_shapes(1).ToString(/*print_layout=*/true),
         computation_shape.result().ToString(/*print_layout=*/true));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
@@ -1607,7 +1607,7 @@ absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
           param_shape.tuple_shapes(i).ToString(/*print_layout=*/true));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
@@ -1776,7 +1776,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
             [&](const Shape& subshape,
                 const ShapeIndex& index) -> absl::Status {
               if (!ShapeUtil::ElementIsFloating(subshape)) {
-                return OkStatus();
+                return absl::OkStatus();
               }
               if (fp_type == PRIMITIVE_TYPE_INVALID) {
                 fp_type = subshape.element_type();
@@ -1786,12 +1786,12 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
                     "%s, but mixed precision is disallowed.",
                     instruction->ToString());
               }
-              return OkStatus();
+              return absl::OkStatus();
             }));
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1921,7 +1921,7 @@ absl::Status ShapeVerifier::CheckShape(
         StringifyShape(inferred_shape), StringifyShape(instruction->shape()),
         instruction->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeVerifier::CheckShape(
@@ -2047,7 +2047,7 @@ absl::Status ShapeVerifier::VerifyEntryComputationLayout(
         return absl::OkStatus();
       }));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string ComputationsToString(
@@ -2131,7 +2131,7 @@ absl::Status VerifyHloStructure(HloModule* module) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -2158,7 +2158,7 @@ absl::Status CheckSameChannel(const HloInstruction* instr1,
         instr1->ToString(), *instr1->channel_id(), instr2->ToString(),
         *instr2->channel_id());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks if the given two instructions have the same is_host_transfer
@@ -2179,7 +2179,7 @@ absl::Status CheckSameIsHostTransfer(const HloInstruction* instr1,
         "%s ",
         instr1->ToString(), instr2->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status VerifySingleUser(
@@ -2199,7 +2199,7 @@ absl::Status VerifySingleUser(
                          absl::StrAppend(out, HloOpcodeString(opcode));
                        })
       << "), found " << user->opcode();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status VerifySingleOperand(
@@ -2220,7 +2220,7 @@ absl::Status VerifySingleOperand(
                          absl::StrAppend(out, HloOpcodeString(opcode));
                        })
       << ", found " << operand->opcode();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks asynchronous instruction pairs.
@@ -2281,7 +2281,7 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks that the asynchronous computation only has a root and parameter
@@ -2293,7 +2293,7 @@ absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
         "parameter instructions.",
         async_computation->name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks that AllReduce instructions in the module are either all layout
@@ -2317,7 +2317,7 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks various invariants of channel instructions (send/recv and
@@ -2486,7 +2486,7 @@ absl::Status VerifyChannels(const HloModule& module) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CHECKs various invariants of a fusion instruction.
@@ -2611,7 +2611,7 @@ absl::Status CheckFusionInstruction(HloInstruction* fusion) {
   // TODO(b/65423525): We'd like to check that all operands are distinct.
   // This is currently disabled due to the invariant being violated by
   // multi-output fusion.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks that the operand shapes are compatible to the output shape, i.e.,
@@ -2655,7 +2655,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
           ShapeUtil::HumanString(operand_shape));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Visitor which verifies various fields on the HLO instruction. This class does
@@ -2673,7 +2673,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     }
   }
 
-  absl::Status DefaultAction(HloInstruction*) override { return OkStatus(); }
+  absl::Status DefaultAction(HloInstruction*) override {
+    return absl::OkStatus();
+  }
 
   absl::Status HandleFusion(HloInstruction* fusion) override {
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
@@ -2697,12 +2699,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << "Broadcast dimensions should be ordered, got: "
           << broadcast->ToString();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleBitcastConvert(HloInstruction* c) override {
     // Shape verifier will check all we need.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleWhile(HloInstruction* xla_while) override {
@@ -2734,7 +2736,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
                     xla_while->while_body()->parameter_instruction(0),
                     xla_while->while_condition()->parameter_instruction(0)}));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleCall(HloInstruction* call) override {
@@ -2769,7 +2771,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(
         VerifyConsistentSharding(conditional, sharding_check_instructions));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleElementwiseUnary(HloInstruction* instruction) override {
@@ -2782,7 +2784,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   absl::Status HandleGetTupleElement(HloInstruction* gte) override {
     TF_RET_CHECK(gte->operand(0)->shape().IsTuple());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleTranspose(HloInstruction* transpose) override {
@@ -2798,7 +2800,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << "shape: " << shape << ", operand->shape(): " << shape
         << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
         << "}";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleAllReduce(HloInstruction* crs) override {
@@ -2807,7 +2809,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << "All reduce channel id must be greater than 0 for "
           << crs->ToShortString();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleReshape(HloInstruction* hlo) override {
@@ -2816,7 +2818,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()))
           << "Reshape should be a physical bitcast, got: " << hlo->ToString();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleCustomCall(HloInstruction* hlo) override {
@@ -2825,7 +2827,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       return CheckCallableInstructionThreadName(
           hlo, /*skip_nested_async_op_check=*/true);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleScatter(HloInstruction* scatter) override {
@@ -2838,7 +2840,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             " (operand_dim: ", operand_dim, ", rank: ", rank, ")"));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status Preprocess(HloInstruction* instruction) override {
@@ -2862,7 +2864,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status Postprocess(HloInstruction* instruction) override {
@@ -2897,7 +2899,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -2919,12 +2921,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Verifies whether a given `instruction` is permitted to change the layout
   // memory space from `operand_memory_space` to `result_memory_space`.
-  // Returns OkStatus() if the instruction's layout changes are valid;
+  // Returns absl::OkStatus() if the instruction's layout changes are valid;
   // otherwise, returns an appropriate error status.
   static absl::Status HostOffloadInstructionCanChangeMemorySpace(
       const HloInstruction* instruction, const int64_t operand_memory_space,
@@ -2952,7 +2954,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           absl::StrCat("Instruction shouldn't change layout memory space: ",
                        instruction->ToString()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
@@ -3086,7 +3088,7 @@ void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
 
 absl::Status MetadataTracker::DefaultAction(HloInstruction* instruction) {
   HandleMetadata(instruction->metadata());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

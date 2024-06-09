@@ -14,23 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusions.h"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
@@ -56,10 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -86,9 +77,8 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
-std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-HloFusionInfo::GetCopyFusion() const {
-  std::vector<BufferAllocation::Slice> src_buffers;
+std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
+    const {
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
     const HloInstruction* root = &root_adaptor.instruction();
     if (root->opcode() != HloOpcode::kCopy ||
@@ -97,33 +87,9 @@ HloFusionInfo::GetCopyFusion() const {
                            root->shape().layout())) {
       return std::nullopt;
     }
-
-    const HloInstruction* src_instr =
-        instr_->operands()[root->operand(0)->parameter_number()];
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        buffer_assignment_->GetUniqueSlice(src_instr, {}));
-    src_buffers.push_back(slice);
   }
 
-  std::vector<BufferAllocation::Slice> dst_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      instr_->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
-          return absl::OkStatus();
-        }
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            buffer_assignment_->GetUniqueSlice(instr_, index));
-        dst_buffers.push_back(slice);
-        return absl::OkStatus();
-      }));
-
-  DCHECK(src_buffers.size() == dst_buffers.size());
-  std::vector<mlir::Value> srcs;
-  std::vector<mlir::Value> dsts;
-  return std::make_unique<MemcpyFusion>(std::move(src_buffers),
-                                        std::move(dst_buffers),
-                                        /*srcs=*/std::vector<mlir::Value>(),
-                                        /*dsts=*/std::vector<mlir::Value>());
+  return std::make_unique<MemcpyFusion>(analysis(), buffer_assignment_);
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
@@ -132,8 +98,8 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    const FusionInfo& fusion_info, bool is_emission_phase) {
+std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
+                                                  bool is_emission_phase) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 

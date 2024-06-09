@@ -106,7 +106,7 @@ absl::Status InitializeMissingFieldsFromXLAFlags(
   if (!missing_fields.empty()) {
     reflection->SwapFields(&env, &default_env, missing_fields);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

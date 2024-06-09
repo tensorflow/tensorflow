@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -215,6 +216,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
+    case S2:
+    case U2:
+      return llvm::Type::getIntNTy(module->getContext(), 2);
     case S4:
     case U4:
       return llvm::Type::getIntNTy(module->getContext(), 4);
@@ -717,7 +721,7 @@ static absl::Status CreateAndWriteStringToFile(
   TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

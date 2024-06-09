@@ -722,7 +722,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                m::Broadcast(m::Op(&d_scale)).WithOneUser()))) {
       return F8ScaleD(instr, existing_gemm, d_scale);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleAdd(HloInstruction *instr) override {

@@ -261,7 +261,7 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
                                               /*accept_different_shape=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloControlFlowFlattening::RemoveInfeed(
@@ -282,7 +282,7 @@ absl::Status HloControlFlowFlattening::RemoveInfeed(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
   custom_call->SetAndSanitizeName(infeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
@@ -344,7 +344,7 @@ absl::Status HloControlFlowFlattening::RemoveOutfeed(
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
@@ -415,7 +415,7 @@ absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
   zero->SetAndSanitizeName(original_op_name);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloControlFlowFlattening::Run(

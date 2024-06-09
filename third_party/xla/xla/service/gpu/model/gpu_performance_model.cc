@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
@@ -62,9 +61,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   const auto& fusion_analysis = config.fusion_analysis_cache
                                     ? config.fusion_analysis_cache->Get(*instr)
                                     : local_analysis.value();
-  LaunchDimensions launch_dimensions = EstimateFusionLaunchDimensions(
-      ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis,
-      *device_info);
+  LaunchDimensions launch_dimensions =
+      EstimateFusionLaunchDimensions(fusion_analysis);
   int64_t num_threads = launch_dimensions.launch_bound();
   int64_t num_blocks = launch_dimensions.num_blocks();
 
@@ -95,13 +93,11 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + write_time, config);
 
-  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
-             read_time, write_time, exec_time);
-
-  EstimateRunTimeData runtime_data = {flops,     bytes_written, num_threads,
-                                      read_time, write_time,    compute_time,
+  EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
+                                      read_time, write_time, compute_time,
                                       exec_time};
   VLOG(3) << "Runtime data for HLO: " << instr->name() << "\n"
+          << launch_dimensions.ToString() << "\n"
           << runtime_data.ToString();
   return runtime_data;
 }
@@ -154,9 +150,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
             ? config.fusion_analysis_cache->Get(*fused_consumer)
             : local_analysis.value();
 
-    LaunchDimensions launch_dimensions_unfused = EstimateFusionLaunchDimensions(
-        ShapeUtil::ElementsInRecursive(fused_consumer->shape()),
-        analysis_unfused, *device_info);
+    LaunchDimensions launch_dimensions_unfused =
+        EstimateFusionLaunchDimensions(analysis_unfused);
 
     int64_t n_bytes_total = std::llround(producer_runtime.bytes_written *
                                          utilization_by_this_consumer);
@@ -204,9 +199,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
           ? config.fusion_analysis_cache->Get(*producer, *consumer)
           : local_analysis_fused.value();
 
-  LaunchDimensions launch_dimensions = EstimateFusionLaunchDimensions(
-      producer_runtime.num_threads * utilization_by_this_consumer,
-      fusion_analysis, *device_info);
+  LaunchDimensions launch_dimensions =
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;
@@ -240,8 +234,18 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   auto exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + consumer_runtime.write_time, config);
 
-  VLogResult(flops, bytes_read, consumer_runtime.bytes_written, num_threads,
-             compute_time, read_time, consumer_runtime.write_time, exec_time);
+  VLOG(3) << "Runtime data for producer-consumer fusion:\n"
+          << " producer: " << producer->name() << "\n"
+          << " consumer: " << consumer->name() << "\n"
+          << launch_dimensions.ToString() << "\n"
+          << EstimateRunTimeData{flops,
+                                 bytes_read,
+                                 consumer_runtime.bytes_written,
+                                 compute_time,
+                                 read_time,
+                                 consumer_runtime.write_time,
+                                 exec_time}
+                 .ToString();
 
   return exec_time;
 }
@@ -298,9 +302,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
             ? config.fusion_analysis_cache->Get(*producer, *fused_consumer)
             : local_analysis_fused.value();
 
-    LaunchDimensions launch_dimensions_fused = EstimateFusionLaunchDimensions(
-        producer_runtime.num_threads * utilization_by_this_consumer,
-        analysis_fused, *device_info);
+    LaunchDimensions launch_dimensions_fused =
+        EstimateFusionLaunchDimensions(analysis_fused);
 
     absl::Duration compute_time_by_this_consumer = ComputeTime(
         *device_info, producer_runtime.flops * utilization_by_this_consumer,

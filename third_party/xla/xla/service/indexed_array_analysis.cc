@@ -134,7 +134,7 @@ absl::Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(

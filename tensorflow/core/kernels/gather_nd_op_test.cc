@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -78,6 +80,18 @@ TEST_F(GatherNdOpTest, Simple) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2}));
   test::FillValues<float>(&expected, {8, 4});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherNdOpTest, Error_OutOfRange) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 5});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.message(), "indices[1] = [5] does not index into param shape [5]"))
+      << s.message();
 }
 
 TEST_F(GatherNdOpTest, Quantized_UINT8) {

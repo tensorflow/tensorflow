@@ -356,6 +356,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -389,6 +390,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/graphcycles",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
     ],
@@ -886,7 +888,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
-    tags = ["no_aarch64"],
+    tags = ["not_run:arm"],
     deps = [
         ":pattern_matcher",
         ":pattern_matcher_gmock",
@@ -1106,6 +1108,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -1455,6 +1458,7 @@ xla_cc_test(
         "//xla:test",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:test_benchmark",
     ],
@@ -1703,6 +1707,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -2463,6 +2468,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -2833,6 +2839,7 @@ cc_library(
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -3274,6 +3281,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -4090,6 +4098,7 @@ xla_cc_test(
         "//xla:types",
         "//xla/stream_executor",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/host:host_platform_id",
         "//xla/tests:literal_test_util",
@@ -5748,6 +5757,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
@@ -6117,6 +6127,10 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -7648,8 +7662,11 @@ xla_cc_test(
     srcs = ["gather_simplifier_test.cc"],
     deps = [
         ":gather_simplifier",
+        ":hlo_parser",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -7786,7 +7803,7 @@ xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
     srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
     data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
-    tags = ["no_aarch64"],  # b/341355246
+    tags = ["not_run:arm"],  # b/341355246
     deps = [
         ":cpu_plugin",
         ":platform_util",

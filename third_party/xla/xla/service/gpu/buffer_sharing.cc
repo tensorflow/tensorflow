@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -182,15 +183,35 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       }
     }
   }
-  // Special case: multi-output fusions with Scatter or DynamicUpdateSlice. For
-  // Scatter, we currently do not support multi-output fusions anyway, but still
-  // handle it here. To be on the safe side, check for !IsElementwise() instead
-  // of checking whether it is Scatter or DynamicUpdateSlice.
-  if (user->IsMultiOutputFusion() && !non_bitcast_root->IsElementwise()) {
-    // Check if any other fusion output was reached. If yes, we cannot share,
-    // because the order in which the output is written might be different.
-    for (HloInstruction* operand : user->fused_expression_root()->operands()) {
-      if (operand != output && visited.find(operand) != visited.end()) {
+  if (user->IsMultiOutputFusion()) {
+    // Check if any other fusion output was reached. If yes, we need to check
+    // whether that fusion output has the same iteration order. If not, we
+    // cannot share.
+    bool other_root_was_reached = false;
+    bool reached_root_has_transpose_hero = false;
+    for (auto [root, hero] :
+         llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
+      if (visited.find(&root.instruction()) != visited.end()) {
+        if (&root.instruction() != output) {
+          other_root_was_reached = true;
+        }
+        if (hero.opcode() == HloOpcode::kTranspose ||
+            hero.opcode() == HloOpcode::kCopy) {
+          reached_root_has_transpose_hero = true;
+        }
+      }
+    }
+    if (other_root_was_reached) {
+      // If a root was reached that has a transpose hero, that root will use the
+      // iteration order of the transpose operand. The other root will have a
+      // different iteration order, so we cannot share the buffer.
+      // Special case: multi-output fusions with Scatter or DynamicUpdateSlice.
+      // For Scatter, we currently do not support multi-output fusions anyway,
+      // but still handle it here. To be on the safe side, check for
+      // !IsElementwise() instead of checking whether it is Scatter or
+      // DynamicUpdateSlice.
+      if (!non_bitcast_root->IsElementwise() ||
+          reached_root_has_transpose_hero) {
         return false;
       }
     }

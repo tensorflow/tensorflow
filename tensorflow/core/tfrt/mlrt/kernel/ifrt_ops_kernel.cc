@@ -241,14 +241,9 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
     return ret;
   }
 
-  absl::string_view sharding_config_proto_text() const {
-    DCHECK_EQ(attributes().size(), 3);
-    return attributes().GetAs<mlrt::bc::String>(0).Get();
-  }
-
   bool used_by_host() const {
-    DCHECK_EQ(attributes().size(), 3);
-    return attributes().GetAs<bool>(2);
+    DCHECK_EQ(attributes().size(), 1);
+    return attributes().GetAs<bool>(0);
   }
 
   Context& context() { return execution_context().GetUserContext<Context>(); }

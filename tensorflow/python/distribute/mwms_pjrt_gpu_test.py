@@ -16,6 +16,7 @@
 import copy
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
@@ -113,4 +114,5 @@ class MultiWorkerMirroredStrategyPjRtRemoteGpuTest(
 
 
 if __name__ == "__main__":
+  v2_compat.enable_v2_behavior()
   multi_process_runner.test_main()

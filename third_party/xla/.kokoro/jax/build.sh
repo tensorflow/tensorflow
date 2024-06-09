@@ -36,7 +36,7 @@ prelude() {
 
   if is_linux_gpu_job ; then
     export JAX_CUDA_VERSION=12
-    export JAX_CUDNN_VERSION=8.9
+    export JAX_CUDNN_VERSION=9.1
     nvidia-smi
     setup_env_vars_py39
   else

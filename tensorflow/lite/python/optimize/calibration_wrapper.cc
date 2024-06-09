@@ -25,7 +25,7 @@ limitations under the License.
 // (non-virtual) accessor methods and API functions to be declared.
 // The code here uses those methods, so we need to make sure that we get
 // the mutable variant of this header.
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
 // clang-format on

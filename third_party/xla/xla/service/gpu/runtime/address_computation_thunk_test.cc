@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
@@ -624,7 +625,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
@@ -782,7 +783,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
@@ -1421,7 +1422,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 

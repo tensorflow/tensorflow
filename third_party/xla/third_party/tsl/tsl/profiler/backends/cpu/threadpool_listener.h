@@ -49,7 +49,6 @@ class ThreadpoolProfilerInterface : public ProfilerInterface {
 
  private:
   absl::Status status_;
-  std::unique_ptr<ThreadpoolEventCollector> event_collector_;
 };
 
 }  // namespace profiler

@@ -310,10 +310,16 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  const auto& root = analysis_.fusion_root(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
-    // Non-transpose roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    // The shape of non-transpose roots are bitcast compatible with the input
+    // shape of transpose heroes.
+    auto map = ComposeIndexingMaps(
+        GetIndexingMapForTiling(tiling_, ctx),
+        GetBitcastMap(
+            tiling_.GetXlaShape(),
+            analysis_.fusion_roots()[root_index].instruction().shape(), ctx));
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
   }
 
   // The block offsets are permuted, but the thread offsets remain the same.
@@ -338,6 +344,16 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    auto map = ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, ctx),
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+             .indexing_maps[hero_operand_index]
+             .begin());
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
+  }
 
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),

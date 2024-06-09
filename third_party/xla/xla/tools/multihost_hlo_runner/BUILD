@@ -5,7 +5,7 @@ load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm")
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -57,17 +57,52 @@ xla_cc_binary(
     ]),
 )
 
+xla_cc_binary(
+    name = "cuda_hlo_runner_main",
+    testonly = True,
+    srcs = ["hlo_runner_main.cc"],
+    tags = [
+        "gpu",
+        "nomac",
+    ],
+    deps = [
+        ":functional_hlo_runner",
+        ":hlo_runner_flags",
+        "//xla:debug_options_flags",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/distributed",
+        "//xla/service:cpu_plugin",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:cuda_platform",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_google([
+        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+    ]),
+)
+
 cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
+        "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/client:executable_build_options",
+        "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
@@ -77,19 +112,26 @@ cc_library(
         "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/service:computation_layout",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

@@ -72,9 +72,8 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto fusion = dynamic_cast<ConcatenateFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 

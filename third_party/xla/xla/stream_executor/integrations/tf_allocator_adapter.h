@@ -147,11 +147,6 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
         // this case we are falling back to the first allocator to deallocate
         // the memory.
         // See b/325527293 for more details.
-        LOG(WARNING)
-            << "Memory: " << mem.opaque()
-            << " was not allocated by the current allocator on device: "
-            << device_ordinal << "."
-            << "Fallback on the first allocator to deallocate the memory.";
         return memory_space_to_per_device_allocators_[0][device_ordinal]
             ->Deallocate(device_ordinal, mem);
       }

@@ -257,13 +257,13 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
       EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     absl::Status FinishVisit(HloInstruction* root) override {
       EXPECT_EQ(computation_->root_instruction(), root);
       ++finish_visit_calls_;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloComputation* computation_;
@@ -454,7 +454,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   EXPECT_EQ(3, instructions.size());
 
   FunctionVisitor visitor(
-      [](HloInstruction* instruction) { return OkStatus(); });
+      [](HloInstruction* instruction) { return absl::OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.message(),

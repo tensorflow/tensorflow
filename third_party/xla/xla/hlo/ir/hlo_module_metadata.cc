@@ -42,7 +42,7 @@ absl::Status HloModuleMetadata::MutateCurrentHloPassMetadata(
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   mutator(pass_metadata);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::RecordPassStart() {
@@ -57,7 +57,7 @@ absl::Status HloModuleMetadata::RecordPassEnd() {
                       GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
   running_passes_.pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::set_prepartitioning_metadata(
@@ -97,7 +97,7 @@ absl::Status HloModuleMetadata::set_custom_metadata(
                  << pass_metadata->pass_id();
     return Internal("failed to pack custom metadata");
   };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

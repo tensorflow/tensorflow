@@ -137,6 +137,18 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    // The shape of non-transpose roots are bitcast compatible with the input
+    // shape of transpose heroes.
+    auto map = ComposeIndexingMaps(
+        GetIndexing(/*input=*/true, hero.shape(), mlir_context),
+        GetBitcastMap(
+            hero.shape(),
+            analysis_.fusion_roots()[root_index].instruction().shape(),
+            mlir_context));
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
+  }
   return GetIndexing(/*input=*/false, hero.shape(), mlir_context);
 }
 
@@ -144,6 +156,16 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    auto map = ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
+             .indexing_maps[hero_operand_index]
+             .begin());
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
+  }
   return GetIndexing(/*input=*/true, hero.operand(hero_operand_index)->shape(),
                      mlir_context);
 }
@@ -258,7 +280,8 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
     const mlir_converter::PartitionedComputations& computations,
     const WriteResult& written) const {
   auto* mlir_context = builder.getContext();
-  auto output_indexing = *ComputeThreadIdToOutputIndexing(0, mlir_context);
+  auto output_indexing = *ComputeThreadIdToOutputIndexing(
+      shmem_transpose_root_indices_[0], mlir_context);
   auto shmem_read_indexing =
       GetSharedMemoryIndexing(/*read=*/true, mlir_context);
   auto result_tensors = EmitThreadLoopNest(

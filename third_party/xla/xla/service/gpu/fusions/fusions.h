@@ -40,11 +40,10 @@ class FusionInfo {
   virtual bool CanEmitDynamicUpdateSliceInPlace() const = 0;
 
   // Attempts to create a memcpy fusion, if possible. Returns nullopt if the
-  // fusion failed to pattern match. Returns an error if the fusion successfully
-  // pattern matched, but buffer assignment failed.
+  // fusion failed to pattern match.
   // TODO(b/204548848): Find a proper abstraction for this once LMHLO is gone.
-  virtual std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const = 0;
+  virtual std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const = 0;
 
  private:
   const HloFusionAnalysis& analysis_;
@@ -60,8 +59,8 @@ class HloFusionInfo : public FusionInfo {
         buffer_assignment_(buffer_assignment) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override;
+  std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const override;
 
  private:
   const HloFusionInstruction* instr_;
@@ -78,8 +77,8 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
     return true;
   }
 
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override {
+  std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const override {
     // Copy fusions can't be created without buffer assignment. Note:
     // technically, this is only needed to generate the chunk, the validation
     // itself could be done without a buffer assignment. However, we currently
@@ -88,9 +87,8 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
   }
 };
 
-// Returns the emitter for the given fusion. Returns nullopt if the fusion
-// type is not yet supported.
-absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+// Returns the emitter for the given fusion.
+std::unique_ptr<FusionInterface> GetFusionEmitter(
     const FusionInfo& fusion_info, bool is_emission_phase = false);
 
 }  // namespace gpu

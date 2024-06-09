@@ -136,7 +136,7 @@ The output to input maps:
 ```
 (d0, d1) -> (d0, d1)
 domain:
-d0 in [0, 19]
+d0 in [0, 9]
 d1 in [0, 19]
 ```
 
@@ -147,7 +147,7 @@ The input to output maps
 ```
 (d0, d1) -> (d0, d1)
 domain:
-d0 in [0, 19]
+d0 in [0, 9]
 d1 in [0, 19]
 ```
 
@@ -266,7 +266,7 @@ p0_init = f32[] constant(-inf)
 p1 = s32[256,10] parameter(1)
 p1_init = s32[] constant(0)
 reduce = (f32[10], s32[10]) reduce(p0, p1, p0_init, p1_init),
-  dimensions={0}, to_apply=min
+  dimensions={0}, to_apply=max
 ```
 
 The output to input maps:
@@ -333,7 +333,15 @@ d2 in [0, 24]
 
 The input to output map:
 
-**TBD**: input-to-output indexing
+```
+(d0, d1, d2) -> (d0 - 5, (d1 - 3) floordiv 7, d2 floordiv 2)
+domain:
+d0 in [5, 9]
+d1 in [3, 17]
+d2 in [0, 48]
+(d1 - 3) mod 7 in [0, 0]
+d2 mod 2 in [0, 0]
+```
 
 ### [Reshape](https://openxla.org/xla/operation_semantics#reshape)
 
@@ -359,11 +367,11 @@ d0 in [0, 31]
 The input to output map:
 
 ```
-(d0) -> (d0 floordiv 8, d0 mod 8)
+(d0, d1) -> (d0 * 8 + d1)
 domain:
-d0 in [0, 31]
+d0 in [0, 3]
+d1 in [0, 7]
 ```
-
 
 #### Expand shape
 
@@ -377,23 +385,19 @@ reshape = f32[4, 8] reshape(p0)
 The output to input map:
 
 ```
-(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
+(d0, d1) -> (d0 * 8 + d1)
 domain:
-d0 in [0, 31]
-d1 in [0, 2]
-d2 in [0, 3]
+d0 in [0, 3]
+d1 in [0, 7]
 ```
 
 The input to output map:
 
 ```
-(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
+(d0) -> (d0 floordiv 8, d0 mod 8)
 domain:
-d0 in [0, 3]
-d1 in [0, 7]
-d2 in [0, 11]
+d0 in [0, 31]
 ```
-
 
 #### Generic reshape
 
@@ -588,7 +592,7 @@ The inputs to output maps:
 -   input_1 -> output:
 
 ```
-(d0, d1, d2) -> (d0, d1, s0)
+(d0, d1, d2)[s0] -> (d0, d1, s0)
 domain:
 d0 in [0, 3]
 d1 in [0, 127]
@@ -599,7 +603,7 @@ s0 in [0, 63]
 -   input_2 -> output:
 
 ```
-(d0, d1, d2) -> (d0, s_0, d1)
+(d0, d1, d2)[s0] -> (d0, s0, d1)
 domain:
 d0 in [0, 3]
 d1 in [0, 255]
@@ -746,7 +750,7 @@ d1 in [0, 64]
 d2 in [0, 124]
 ```
 
-where `s_0` refers to the inner-most dimension of the input.
+where `s0` refers to the inner-most dimension of the input.
 
 ## Indexing Map Simplifier
 

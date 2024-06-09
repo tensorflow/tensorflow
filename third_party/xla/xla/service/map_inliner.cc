@@ -40,7 +40,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
 
   // Default visitor action is to do nothing and return OK.
   absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleMap(HloInstruction* map) override;
@@ -71,7 +71,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   if (hlo_query::AllOperandsAreParameters(root)) {
     if (root.opcode() == HloOpcode::kFusion) {
       // Cloning not supported for these instructions.
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "
              << root.ToShortString();
@@ -104,10 +104,10 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> MapInliner::Run(

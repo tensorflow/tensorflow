@@ -95,7 +95,8 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
       &GetThreadPool(), &ifrt_loaded_variable_registry,
       &ifrt_restore_tensor_registry, work_queue.get(), device_mgr.get(),
       tensorflow::IdentityShapeRepresentationFn(),
-      /*ifrt_serving_core_selector=*/nullptr);
+      /*ifrt_serving_core_selector=*/nullptr,
+      /*compilation_environment_proto=*/nullptr);
 }
 
 TEST(IfrtExecutableRegistry, Basic) {

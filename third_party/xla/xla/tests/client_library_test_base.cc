@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -205,7 +206,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
@@ -233,7 +234,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::vector<int64_t> minor_to_major(literal.shape().rank());
@@ -251,7 +252,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         layout_strings.pop_back();
       } while (
           std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Every argument has an assigned layout.
@@ -265,7 +266,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       absl::StrAppend(&error_message, str, " ");
     }
     verify_output(actual, error_message);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   return choose(0);
@@ -353,7 +354,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
@@ -412,7 +413,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(

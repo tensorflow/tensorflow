@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_API_H_
 #define XLA_FFI_FFI_API_H_
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -26,8 +27,9 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla::ffi {
 
@@ -44,19 +46,27 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 struct CallOptions {
-  const ServiceExecutableRunOptions* run_options = nullptr;
+  int32_t device_ordinal = -1;
+
+  se::Stream* stream = nullptr;
+  se::DeviceMemoryAllocator* allocator = nullptr;
+
   const HloComputation* called_computation = nullptr;
+  const ExecutionContext* execution_context = nullptr;
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options = {});
+absl::Status Call(
+    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
-absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-                  const CallOptions& options = {});
+absl::Status Call(
+    XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
 namespace internal {
 // This is an internal workaround to override FFI execution context for FFI
@@ -88,8 +98,8 @@ class ScopedExecutionContext {
 //===----------------------------------------------------------------------===//
 
 struct HandlerRegistration {
-  XLA_FFI_Handler* handler = nullptr;
-  XLA_FFI_Handler_Traits traits = 0;
+  XLA_FFI_Handler_Bundle bundle = {};
+  XLA_FFI_Handler_Traits traits = {};
 };
 
 bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);

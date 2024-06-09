@@ -79,7 +79,7 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 
 // Creates and initializes a new tf.data service worker client to read
 // from the data transfer server specified in `info`.
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(
     const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,

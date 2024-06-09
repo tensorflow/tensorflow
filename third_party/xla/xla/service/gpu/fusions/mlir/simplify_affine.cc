@@ -227,7 +227,13 @@ std::optional<Interval> GetRange(mlir::Value value) {
     return {{values[0].getSExtValue(), values[1].getSExtValue()}};
   };
 
-  if (value.getDefiningOp()) {
+  if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
+    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
+        apply.getIndexingMap().GetAffineMap().getResult(
+            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+  } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
+    return {{cst.value(), cst.value()}};
+  } else if (value.getDefiningOp()) {
     return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
   }
 

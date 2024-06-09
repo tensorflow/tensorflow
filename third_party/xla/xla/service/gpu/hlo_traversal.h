@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"

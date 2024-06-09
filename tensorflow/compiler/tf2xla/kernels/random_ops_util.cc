@@ -17,16 +17,29 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/prng.h"
 #include "xla/client/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

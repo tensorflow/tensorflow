@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

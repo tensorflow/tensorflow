@@ -137,6 +137,17 @@ int main(int argc, char** argv) {
       LOG(QFATAL) << kUsageString;
     }
   }
+  // tsl::Flags::Parse() leaves unknown flags in argv.
+  // argv[0] is always the program name.
+  if (argc > 1) {
+    if (hlo_file.empty()) {
+      LOG(INFO) << "--hlo_file was not specified; assuming " << argv[1]
+                << " is the HLO file name.";
+      hlo_file = argv[1];
+      --argc;
+    }
+    CHECK_LT(argc, 2) << ": Encountered unknown flags.";
+  }
 
   std::unique_ptr<xla::DistributedRuntimeService> service;
 

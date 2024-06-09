@@ -71,12 +71,6 @@ std::string ConstantNameToGlobalName(absl::string_view name) {
   return absl::StrCat("buffer_for_", name);
 }
 
-std::string ConstantBufferAllocationToGlobalName(
-    const BufferAllocation& allocation) {
-  return ConstantNameToGlobalName(
-      SanitizeConstantName(InstrForConstantBufferAllocation(allocation)));
-}
-
 const Literal& LiteralForConstantAllocation(
     const BufferAllocation& allocation) {
   return InstrForConstantBufferAllocation(allocation).literal();

@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "tsl/platform/threadpool.h"
 
 namespace stream_executor::host {
 
@@ -61,7 +63,8 @@ class HostKernel : public Kernel {
   explicit HostKernel() = default;
 
   // TODO(tsilytskyi): make this implementation detail private
-  explicit HostKernel(unsigned arity, SE_HOST_Kernel* kernel);
+  explicit HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
+                      std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
 
   // TODO(b/331430625): Connect this API to Launch API defined at
   // StreamExecutor level, which requires refactoring how arguments passed to
@@ -89,6 +92,12 @@ class HostKernel : public Kernel {
   std::unique_ptr<KernelFunction> function_;
 
   unsigned arity_;
+  std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
+
+  SE_HOST_KernelError* worker(SE_HOST_Kernel* kernel,
+                              uint64_t block_size_balanced, uint64_t starting_i,
+                              SE_HOST_KernelThreadDim& max_dims,
+                              std::vector<SE_HOST_KernelArg>& args) const;
 };
 
 inline const HostKernel* AsHostKernel(const Kernel* kernel) {

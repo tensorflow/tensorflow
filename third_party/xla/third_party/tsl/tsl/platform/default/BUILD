@@ -468,6 +468,7 @@ cc_library(
         "//tsl/platform:strcat",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
+        "//tsl/profiler/backends/cpu:threadpool_listener_state",
     ],
     alwayslink = True,
 )

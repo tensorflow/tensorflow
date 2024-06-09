@@ -153,7 +153,7 @@ bool BatchNormExpanderVisitor::Run(HloComputation* computation,
 absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     HloInstruction* batch_norm) {
   if (!rewrite_training_op_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<HloInstruction*> added_instructions;
@@ -295,13 +295,13 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     tuple->set_sharding(sharding);
   }
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     HloInstruction* batch_norm) {
   if (!rewrite_inference_op_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // Expand batch norm inference into smaller HLO ops.
   HloInstruction* operand = batch_norm->mutable_operand(0);
@@ -387,7 +387,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     shifted_normalized->set_sharding(sharding);
   }
   TF_CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
@@ -405,7 +405,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   //   sum(output_grad * (activation - mean(activation))) / (variance +
   //   epsilon))
   if (!rewrite_grad_op_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
@@ -577,7 +577,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> BatchNormExpander::Run(

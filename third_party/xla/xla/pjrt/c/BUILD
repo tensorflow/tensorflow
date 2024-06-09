@@ -35,6 +35,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_ffi_extension_hdrs",
+    hdrs = ["pjrt_c_api_ffi_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_ffi_internal",
+    srcs = ["pjrt_c_api_ffi_internal.cc"],
+    hdrs = ["pjrt_c_api_ffi_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_ffi_extension_hdrs",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/ffi:execution_context",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_gpu_extension_hdrs",
     hdrs = ["pjrt_c_api_gpu_extension.h"],
     visibility = ["//visibility:public"],
@@ -176,6 +200,7 @@ cc_library(
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -217,6 +242,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
+        ":pjrt_c_api_ffi_extension_hdrs",
+        ":pjrt_c_api_ffi_internal",
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -236,6 +263,7 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # To register GPU AOT compiler
@@ -319,6 +347,7 @@ xla_cc_test(
     srcs = ["pjrt_c_api_gpu_test.cc"],
     use_gpu = True,
     deps = [
+        ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
@@ -331,6 +360,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
+        "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:pjrt_client",

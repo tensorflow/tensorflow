@@ -2653,6 +2653,9 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, BroadcastOfScalarParameterIsFused) {
+  if (GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "TODO(b/338371693): reenable test once bug is resolved.";
+  }
   const std::string kHloText = R"(
 ENTRY e {
   p0 = f16[64,256] parameter(0)

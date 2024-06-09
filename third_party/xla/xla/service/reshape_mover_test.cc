@@ -48,7 +48,7 @@ class ReshapeMoverTest : public HloTestBase {
                                 AlgebraicSimplifierOptions()),
                             module)
                      .status());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

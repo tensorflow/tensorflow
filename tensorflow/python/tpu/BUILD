@@ -222,6 +222,7 @@ py_strict_library(
         "__init__.py",
     ],
     srcs_version = "PY3",
+    deps = ["//tensorflow/python/framework:versions"],
 )
 
 py_strict_library(
@@ -241,6 +242,7 @@ py_strict_library(
         ":tpu_hardware_feature",
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/python/framework:versions",
     ],
 )
 
@@ -337,6 +339,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:versions",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",

@@ -25,7 +25,6 @@ namespace profiler {
 
 namespace {
 
-using absl::OkStatus;
 using absl::StatusCode;
 
 // CUPTI from CUDA 11.6 adds information about the hardware channel that ops
@@ -434,7 +433,7 @@ static absl::Status ConvertActivityBuffer(
   }
   VLOG(3) << "CUPTI tracer post-process one ACTIVITY buffer of size: " << size
           << ", total events count:" << total_activity_event_count;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

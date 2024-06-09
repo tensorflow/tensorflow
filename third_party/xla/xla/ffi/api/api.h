@@ -120,11 +120,21 @@ class Ffi {
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
 
-  // Registers handler with an XLA runtime under the given name on a given
-  // platform.
+  // Registers FFI handler bundle with an XLA runtime under the given name on a
+  // given platform.
   static inline XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
-      XLA_FFI_Handler* handler, XLA_FFI_Handler_Traits traits = 0);
+      XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits = 0);
+
+  // Registers FFI execute handler with an XLA runtime under the given name on a
+  // given platform.
+  static inline XLA_FFI_Error* RegisterStaticHandler(
+      const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+      XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
+    return RegisterStaticHandler(
+        api, name, platform, XLA_FFI_Handler_Bundle{nullptr, nullptr, execute},
+        traits);
+  }
 
  protected:
   template <typename... Args>
@@ -145,14 +155,14 @@ class Ffi {
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           std::string_view name,
                                           std::string_view platform,
-                                          XLA_FFI_Handler* handler,
+                                          XLA_FFI_Handler_Bundle bundle,
                                           XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.platform = XLA_FFI_ByteSpan{platform.data(), platform.size()};
-  args.handler = handler;
+  args.bundle = bundle;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
 }
@@ -264,6 +274,41 @@ using HasRemainingArgsTag =
 template <typename... Ts>
 using HasRemainingRetsTag =
     std::disjunction<std::is_same<RemainingRetsTag, Ts>...>;
+
+//----------------------------------------------------------------------------//
+
+template <typename T>
+XLA_FFI_DataType NativeTypeToCApiDataType() {
+  if constexpr (std::is_same_v<T, bool>) {
+    return XLA_FFI_DataType_PRED;
+  } else if constexpr (std::is_same_v<T, int8_t>) {
+    return XLA_FFI_DataType_S8;
+  } else if constexpr (std::is_same_v<T, int16_t>) {
+    return XLA_FFI_DataType_S16;
+  } else if constexpr (std::is_same_v<T, int32_t>) {
+    return XLA_FFI_DataType_S32;
+  } else if constexpr (std::is_same_v<T, int64_t>) {
+    return XLA_FFI_DataType_S64;
+  } else if constexpr (std::is_same_v<T, uint8_t>) {
+    return XLA_FFI_DataType_U8;
+  } else if constexpr (std::is_same_v<T, uint16_t>) {
+    return XLA_FFI_DataType_U16;
+  } else if constexpr (std::is_same_v<T, uint32_t>) {
+    return XLA_FFI_DataType_U32;
+  } else if constexpr (std::is_same_v<T, uint64_t>) {
+    return XLA_FFI_DataType_U64;
+  } else if constexpr (std::is_same_v<T, float>) {
+    return XLA_FFI_DataType_F32;
+  } else if constexpr (std::is_same_v<T, double>) {
+    return XLA_FFI_DataType_F64;
+  } else if constexpr (std::is_same_v<T, std::complex<float>>) {
+    return XLA_FFI_DataType_C64;
+  } else {
+    static_assert(std::is_same_v<T, std::complex<double>>,
+                  "unsupported FFI data type");
+    return XLA_FFI_DataType_C128;
+  }
+}
 
 }  // namespace internal
 
@@ -1233,20 +1278,31 @@ class Handler : public Ffi {
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
                                    std::array<bool, kSize> decoded,
                                    const DiagnosticEngine& diagnostic) const {
-    std::string message =
-        "Failed to decode all FFI handler operands (bad operands at: ";
+    auto stage = [&] {
+      switch (call_frame->stage) {
+        case XLA_FFI_ExecutionStage_PREPARE:
+          return "prepare";
+        case XLA_FFI_ExecutionStage_INITIALIZE:
+          return "initialize";
+        case XLA_FFI_ExecutionStage_EXECUTE:
+          return "execute";
+      }
+    };
+
+    std::stringstream message;
+    message << "[" << stage() << "] "
+            << "Failed to decode all FFI handler operands (bad operands at: ";
     for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
       if (!decoded[idx]) {
-        if (cnt++) message.append(", ");
-        message.append(std::to_string(idx));
+        if (cnt++) message << ", ";
+        message << std::to_string(idx);
       }
     }
-    message.append(")");
+    message << ")";
     if (auto s = std::move(diagnostic).Result(); !s.empty()) {
-      message.append("\nDiagnostics:\n");
-      message.append(s);
+      message << "\nDiagnostics:\n" << s;
     }
-    return InvalidArgument(call_frame->api, message);
+    return InvalidArgument(call_frame->api, message.str());
   }
 
   template <typename...>
@@ -1296,6 +1352,46 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
       return os << "scalar";
     case XLA_FFI_AttrType_STRING:
       return os << "string";
+  }
+}
+
+inline std::ostream& operator<<(std::ostream& os,
+                                const XLA_FFI_DataType dtype) {
+  switch (dtype) {
+    case XLA_FFI_DataType_INVALID:
+      return os << "INVALID";
+    case XLA_FFI_DataType_PRED:
+      return os << "PRED";
+    case XLA_FFI_DataType_S8:
+      return os << "S8";
+    case XLA_FFI_DataType_S16:
+      return os << "S16";
+    case XLA_FFI_DataType_S32:
+      return os << "S32";
+    case XLA_FFI_DataType_S64:
+      return os << "S64";
+    case XLA_FFI_DataType_U8:
+      return os << "U8";
+    case XLA_FFI_DataType_U16:
+      return os << "U16";
+    case XLA_FFI_DataType_U32:
+      return os << "U32";
+    case XLA_FFI_DataType_U64:
+      return os << "U64";
+    case XLA_FFI_DataType_F16:
+      return os << "F16";
+    case XLA_FFI_DataType_F32:
+      return os << "F32";
+    case XLA_FFI_DataType_F64:
+      return os << "F64";
+    case XLA_FFI_DataType_BF16:
+      return os << "BF16";
+    case XLA_FFI_DataType_C64:
+      return os << "C64";
+    case XLA_FFI_DataType_C128:
+      return os << "C128";
+    case XLA_FFI_DataType_TOKEN:
+      return os << "TOKEN";
   }
 }
 
@@ -1523,6 +1619,33 @@ auto DictionaryDecoder(Members... m) {
         return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM,  \
                                                       FUNC, ##__VA_ARGS__); \
       }()
+
+#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
+  template <>                                                                 \
+  struct ::xla::ffi::AttrDecoding<T> {                                        \
+    using Type = T;                                                           \
+    using U = std::underlying_type_t<Type>;                                   \
+    static_assert(std::is_enum<Type>::value, "Expected enum class");          \
+                                                                              \
+    static std::optional<Type> Decode(XLA_FFI_AttrType attr_type, void* attr, \
+                                      DiagnosticEngine& diagnostic) {         \
+      if (attr_type != XLA_FFI_AttrType_SCALAR) [[unlikely]] {                \
+        return diagnostic.Emit("Wrong attribute type: expected ")             \
+               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
+      }                                                                       \
+                                                                              \
+      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
+      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
+      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype))             \
+          [[unlikely]] {                                                      \
+        return diagnostic.Emit("Wrong scalar data type: expected ")           \
+               << expected_dtype << " but got " << scalar->dtype;             \
+      }                                                                       \
+                                                                              \
+      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
+      return static_cast<Type>(underlying);                                   \
+    }                                                                         \
+  };
 
 }  // namespace xla::ffi
 

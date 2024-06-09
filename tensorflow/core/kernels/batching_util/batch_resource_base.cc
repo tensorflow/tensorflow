@@ -663,9 +663,9 @@ Status BatchResourceBase::ConcatInputTensors(
   const int padding_amount =
       just_for_warmup ? padded_batch_size
                       : padded_batch_size - batch.size() - unbatched_tasks_size;
-  profiler::TraceMe trace_me([padded_batch_size, padding_amount,
-                              disable_padding =
-                                  batcher_queue_options_.disable_padding]() {
+  tsl::profiler::TraceMe trace_me([padded_batch_size, padding_amount,
+                                   disable_padding = batcher_queue_options_
+                                                         .disable_padding]() {
     return profiler::TraceMeEncode(
         "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
                                {"padding_amount", padding_amount},

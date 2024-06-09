@@ -141,7 +141,7 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     }
   }
   module->schedule().set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(

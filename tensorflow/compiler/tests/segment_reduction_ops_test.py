@@ -113,7 +113,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2, 3], dtype=dtype),
           self._segmentMinV2(
@@ -124,7 +124,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2], dtype=dtype),
           self._segmentMinV2(
@@ -135,7 +135,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       maxval = dtypes.as_dtype(dtype).max
       if dtype == np.float64 and self._findDevice("TPU"):
-        maxval = np.Inf
+        maxval = np.inf
       self.assertAllClose(
           np.array([0, maxval, 2, 3, maxval], dtype=dtype),
           self._segmentMinV2(
@@ -146,7 +146,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2, 5], dtype=dtype),
           self._segmentMaxV2(
@@ -157,7 +157,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2], dtype=dtype),
           self._segmentMaxV2(
@@ -168,7 +168,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     for dtype in self.int_types | self.float_types:
       minval = dtypes.as_dtype(dtype).min
       if dtype == np.float64 and self._findDevice("TPU"):
-        minval = -np.Inf
+        minval = -np.inf
       self.assertAllClose(
           np.array([1, minval, 2, 5, minval], dtype=dtype),
           self._segmentMaxV2(

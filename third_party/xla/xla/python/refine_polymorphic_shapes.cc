@@ -90,7 +90,7 @@ struct CheckShapeAssertionsPass
   void runOnOperation() final {
     mlir::func::FuncOp func_op = getOperation();
     func_op.walk([this](mlir::stablehlo::CustomCallOp op) {
-      if (!op.getCallTargetName().equals(shapeAssertionName)) return;
+      if (op.getCallTargetName() != shapeAssertionName) return;
       if (!enable_shape_assertions) {
         op.erase();
         return;
@@ -147,7 +147,7 @@ struct CheckShapeAssertionsPass
     }
     if (!op.getBackendConfig().empty())
       return op.emitError() << "expects an empty backend_config";
-    if (!op.getCallTargetName().equals(shapeAssertionName))
+    if (op.getCallTargetName() != shapeAssertionName)
       return op.emitError() << "expects @shape_assertion";
     if (!op.getHasSideEffect())
       return op.emitError() << "expects has_side_effect=true";
@@ -334,8 +334,7 @@ absl::Status ValidateStaticShapes(mlir::ModuleOp module) {
     }
 
     auto customCall = mlir::dyn_cast<mlir::stablehlo::CustomCallOp>(op);
-    if (customCall &&
-        customCall.getCallTargetName().equals(shapeAssertionName)) {
+    if (customCall && customCall.getCallTargetName() == shapeAssertionName) {
       moduleHasShapeAssertions = true;
       op->emitOpError() << "has residual shape assertions";
     }

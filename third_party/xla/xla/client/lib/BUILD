@@ -197,6 +197,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/client:xla_builder",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -243,6 +244,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -646,6 +648,7 @@ cc_library(
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -662,10 +665,12 @@ xla_test(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
+        "//xla:test",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

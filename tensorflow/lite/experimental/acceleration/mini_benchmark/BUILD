@@ -858,9 +858,9 @@ cc_test(
     deps = [
         ":runner",
         ":status_codes",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ] + select({
@@ -988,6 +988,7 @@ cc_test(
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
@@ -996,7 +997,6 @@ cc_test(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

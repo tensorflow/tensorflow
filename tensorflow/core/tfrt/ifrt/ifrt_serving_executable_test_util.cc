@@ -85,7 +85,8 @@ IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
       program_id, "test", "main", std::move(mlir_module), client_,
       thread_pool_.get(), &ifrt_loaded_variable_registry_,
       &ifrt_restore_tensor_registry_, work_queue_.get(), device_mgr_.get(),
-      tensorflow::IdentityShapeRepresentationFn(), core_selector_.get());
+      tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
+      /*compilation_environment_proto=*/nullptr);
   TF_CHECK_OK(executable_or.status());
   return std::move(executable_or.value());
 }

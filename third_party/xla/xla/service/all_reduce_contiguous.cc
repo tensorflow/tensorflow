@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -80,7 +81,7 @@ absl::Status ReplaceWithContiguousAllReduce(
   // Replace original all-reduce with tuple of slices from new all-reduce.
   TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

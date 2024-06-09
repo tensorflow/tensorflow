@@ -133,6 +133,7 @@ inline const char kMlirPh1BridgeCounterV1[] = "v1";
 inline const char kMlirPh1BridgeCounterV2[] = "v2";
 inline const char kMlirPh1BridgeCounterTpu[] = "tpu";
 inline const char kMlirPh1BridgeCounterNonTpu[] = "cpu/gpu";
+inline const char kXlaOutsideCompilation[] = "_xla_outside_compilation";
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
@@ -145,6 +146,14 @@ void CopyAttributes(Operation *from, Operation *to, Predicate P) {
 inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   CopyAttributes(from, to, [](const NamedAttribute &attr) {
     return attr.getName().strref().front() == '_';
+  });
+}
+
+// Copies outside compilation attribute from `from` to `to`.
+inline void CopyXlaOutsideCompilationAttributes(Operation *from,
+                                                Operation *to) {
+  CopyAttributes(from, to, [](const NamedAttribute &attr) {
+    return attr.getName().strref() == kXlaOutsideCompilationAttr;
   });
 }
 

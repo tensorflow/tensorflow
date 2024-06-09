@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -74,39 +76,53 @@ struct Interval {
 
   // All comparison operators here return true or false if the result is known,
   // or nullopt if it may be either true or false.
-  ComparisonResult operator>(int64_t value) const {
-    if (lower > value) {
-      return {true};
+  ComparisonResult operator>(const Interval& b) const;
+  ComparisonResult operator<(const Interval& b) const { return b > *this; }
+  ComparisonResult operator>=(const Interval& b) const { return !(b > *this); }
+  ComparisonResult operator<=(const Interval& b) const { return !(*this > b); }
+  ComparisonResult operator==(const Interval& b) const;
+  ComparisonResult operator!=(const Interval& b) const { return !(*this == b); }
+
+  Interval Intersect(const Interval& rhs) const {
+    Interval result{std::max(lower, rhs.lower), std::min(upper, rhs.upper)};
+    if (result.upper < result.lower) {
+      // Normalize empty results such that NumElements returns 0.
+      result.upper = result.lower - 1;
     }
-    if (upper <= value) {
-      return {false};
-    }
-    return {std::nullopt};
+    return result;
   }
-  ComparisonResult operator<(int64_t value) const {
-    if (upper < value) {
-      return {true};
-    }
-    if (lower >= value) {
-      return {false};
-    }
-    return {std::nullopt};
+
+  Interval Union(const Interval& rhs) const {
+    return {std::min(lower, rhs.lower), std::max(upper, rhs.upper)};
   }
-  ComparisonResult operator>=(int64_t value) const { return !(*this < value); }
-  ComparisonResult operator<=(int64_t value) const { return !(*this > value); }
-  ComparisonResult operator==(int64_t value) const {
-    if (IsPoint()) return {lower == value};
-    if (!Contains(value)) return {false};
-    return {std::nullopt};
+
+  // Computes the range of the sum of the two intervals. Implements saturating
+  // semantics (i.e. overflow and underflow get clamped to the maximum and
+  // minimum int64). Additionally, bounds of the minimum/maximum value are
+  // considered to be possibly saturated, i.e. `{-2 ** 63, 0} + {42, 42}`
+  // returns `{-2 ** 63, 42}`, not `{-2 ** 63 + 42, 42}`.
+  Interval operator+(const Interval& rhs) const;
+  // Computes the range of the product of the two intervals. Implements
+  // saturating semantics.
+  Interval operator*(const Interval& rhs) const;
+
+  Interval min(const Interval& rhs) const {
+    return {std::min(lower, rhs.lower), std::min(upper, rhs.upper)};
   }
-  ComparisonResult operator!=(int64_t value) const { return !(*this == value); }
+
+  Interval max(const Interval& rhs) const {
+    return {std::max(lower, rhs.lower), std::max(upper, rhs.upper)};
+  }
+
+  bool Equals(const Interval& rhs) const {
+    return lower == rhs.lower && upper == rhs.upper;
+  }
 
   int64_t lower = 0;
   int64_t upper = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Interval& range);
-bool operator==(const Interval& lhs, const Interval& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const Interval& range) {

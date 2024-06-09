@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -98,13 +97,18 @@ class CPlatform : public Platform {
   stream_executor::ExecutorCache executor_cache_;
 };
 
-class CStream : public StreamInterface {
+class CStream : public Stream {
  public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
+  CStream(SP_Device* device, SP_StreamExecutor* stream_executor,
+          StreamExecutor* executor)
+      : Stream(executor),
+        device_(device),
         stream_executor_(stream_executor),
         stream_handle_(nullptr) {}
-  ~CStream() override { Destroy(); }
+  ~CStream() override {
+    parent()->BlockHostUntilDone(this).IgnoreError();
+    Destroy();
+  }
 
   absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
@@ -128,13 +132,29 @@ class CStream : public StreamInterface {
   SP_Stream stream_handle_;
 };
 
-class CEvent : public EventInterface {
+class CEvent : public Event {
  public:
   CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
       : device_(device),
         stream_executor_(stream_executor),
         event_handle_(nullptr) {}
   ~CEvent() override { Destroy(); }
+
+  Event::Status PollForStatus() override {
+    SE_EventStatus event_status =
+        stream_executor_->get_event_status(device_, event_handle_);
+
+    switch (event_status) {
+      case SE_EVENT_ERROR:
+        return Event::Status::kError;
+      case SE_EVENT_PENDING:
+        return Event::Status::kPending;
+      case SE_EVENT_COMPLETE:
+        return Event::Status::kComplete;
+      default:
+        return Event::Status::kUnknown;
+    }
+  }
 
   absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());

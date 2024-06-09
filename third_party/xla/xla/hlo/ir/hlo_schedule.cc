@@ -209,7 +209,7 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   }
 
   set_sequence(computation, std::move(new_sequence));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloSchedule::Update(
@@ -268,7 +268,7 @@ absl::Status HloSchedule::Update(
   }
 
   TF_RETURN_IF_ERROR(Verify());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_map<std::string, int64_t>
@@ -346,7 +346,7 @@ absl::Status HloSchedule::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

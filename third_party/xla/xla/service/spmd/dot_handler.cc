@@ -4286,7 +4286,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
                    num_partitions_, create_sharded_dot, conv_window, module_,
                    hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -4370,7 +4370,7 @@ absl::Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   auto to_sink = std::move(input_nodes.first);
   auto new_operands = std::move(input_nodes.second);
   if (to_sink.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto computation = loop->parent();
   // Replace the old operand with a tuple of the found small operands.
@@ -4452,7 +4452,7 @@ absl::Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
       TF_RETURN_IF_ERROR(body->RemoveInstruction(ou));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks a condition holds true for all recursive operands of an hlo.
@@ -4591,7 +4591,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // If nothing is found, to_move could contain only original_output, or
   // cleared by the above code.
   if (to_move.size() <= 1) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If there is a reduce that's dependent of another reduce, then we can't do
@@ -4604,7 +4604,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       for (const HloInstruction* other_reduce : reduce_outputs) {
         if (reduce != other_reduce &&
             reachability->IsReachable(reduce, other_reduce)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -4615,7 +4615,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         return !absl::c_linear_search(reduce_outputs, inst);
       };
       if (!CheckOperandsRecursive(reduce, reduce_outputs_do_not_contain)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -4949,7 +4949,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(reduce_outputs[i]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -4978,7 +4978,7 @@ absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, options));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

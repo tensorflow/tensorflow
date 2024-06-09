@@ -43,11 +43,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -193,21 +195,6 @@ absl::StatusOr<Value> GetSingleOperandValue(
   return operand.front();
 }
 
-SmallVector<Value> ConvertToSignless(const SmallVector<Value>& values,
-                                     ImplicitLocOpBuilder& b) {
-  mlir::mhlo::RemoveSignTypeConverter sign_converter;
-  SmallVector<Value> results;
-  results.reserve(values.size());
-  for (auto& value : values) {
-    CHECK(value != nullptr);
-    auto signless_type = sign_converter.convertType(value.getType());
-    results.push_back(
-        b.create<mlir::UnrealizedConversionCastOp>(signless_type, value)
-            .getResult(0));
-  }
-  return results;
-}
-
 absl::StatusOr<SmallVector<Value>> EmitReduce(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
@@ -225,9 +212,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
     TF_ASSIGN_OR_RETURN(auto element_mlir_type,
                         ConvertPrimitiveTypeToMlirType(
                             instr->operand(i)->shape().element_type(), b));
-    init_values.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                              element_mlir_type, init_values.back())
-                             .getResult(0);
+    init_values.back() =
+        UnrealizedConversionCast(element_mlir_type, init_values.back(), b);
   }
 
   auto body =
@@ -243,9 +229,7 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
       TF_ASSIGN_OR_RETURN(auto element_mlir_type,
                           ConvertPrimitiveTypeToMlirType(
                               instr->operand(i)->shape().element_type(), b));
-      args.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                         element_mlir_type, args.back())
-                        .getResult(0);
+      args.back() = UnrealizedConversionCast(element_mlir_type, args.back(), b);
     }
     auto reducer = call_target_provider(
         instr->called_computations().front()->root_instruction());
@@ -283,9 +267,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
     TF_ASSIGN_OR_RETURN(
         auto element_mlir_type,
         ConvertPrimitiveTypeToMlirType(init_value->shape().element_type(), b));
-    init_values.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                              element_mlir_type, init_values.back())
-                             .getResult(0);
+    init_values.back() =
+        UnrealizedConversionCast(element_mlir_type, init_values.back(), b);
   }
 
   auto body =
@@ -302,9 +285,7 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
       TF_ASSIGN_OR_RETURN(
           auto element_mlir_type,
           ConvertPrimitiveTypeToMlirType(input->shape().element_type(), b));
-      args.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                         element_mlir_type, args.back())
-                        .getResult(0);
+      args.back() = UnrealizedConversionCast(element_mlir_type, args.back(), b);
     }
 
     auto reducer = call_target_provider(
@@ -662,6 +643,26 @@ SmallVector<Value> MapElementwiseOp(llvm::ArrayRef<mlir::Type> arg_types,
 }
 
 }  // namespace
+
+Value UnrealizedConversionCast(mlir::Type type, Value value,
+                               ImplicitLocOpBuilder& b) {
+  SmallVector<Value> converted;
+  b.createOrFold<mlir::UnrealizedConversionCastOp>(converted, type, value);
+  return converted.front();
+}
+
+SmallVector<Value> ConvertToSignless(mlir::ValueRange values,
+                                     ImplicitLocOpBuilder& b) {
+  mlir::mhlo::RemoveSignTypeConverter sign_converter;
+  SmallVector<Value> results;
+  results.reserve(values.size());
+  for (Value value : values) {
+    CHECK(value != nullptr);
+    auto signless_type = sign_converter.convertType(value.getType());
+    results.push_back(UnrealizedConversionCast(signless_type, value, b));
+  }
+  return results;
+}
 
 Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
                       ValueRange symbols, ImplicitLocOpBuilder& b) {
@@ -1117,7 +1118,9 @@ llvm::SmallVector<Value> ProvideParameter(
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
   auto callee_subgraph = computation.FindSubgraph(operand);
   if (callee_subgraph.roots.size() == 1) {
-    CHECK_EQ(callee_subgraph.roots.front(), operand);
+    CHECK_EQ(callee_subgraph.roots.front(), operand)
+        << "Expected " << operand->ToString() << " to be the root of "
+        << callee_subgraph.ToString();
     return results;
   }
 
@@ -1281,10 +1284,7 @@ absl::Status SubgraphToMlirFunction(
   // function signature, we have to convert back to signed types.
   for (auto [index, function_result] : llvm::enumerate(func.getResultTypes())) {
     results[index] =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                results[index].getLoc(), function_result, results[index])
-            .getResult(0);
+        UnrealizedConversionCast(function_result, results[index], builder);
   }
 
   builder.create<mlir::func::ReturnOp>(results);
@@ -1297,9 +1297,24 @@ SmallVector<Value> EmitLoopNest(
     mlir::function_ref<SmallVector<Value>(ValueRange /*iter_args*/,
                                           ValueRange /*dim_values*/,
                                           ValueRange /*symbol_values*/)>
-        create_body) {
+        create_body,
+    bool vectorize) {
   SmallVector<Value, 4> lbs, ubs, steps;
   GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs, &steps);
+
+  SmallVector<Value, 4> vector_inits;
+  if (vectorize) {
+    CHECK_EQ(indexing_map.GetSymbolBounds().back().lower, 0);
+    int vector_size = indexing_map.GetSymbolBounds().back().upper + 1;
+    vector_inits = iter_args_inits;
+    for (auto& init : vector_inits) {
+      if (!mlir::isa<mlir::ShapedType>(init.getType())) {
+        auto vector_ty = mlir::VectorType::get({vector_size}, init.getType());
+        init = b.create<mlir::vector::SplatOp>(vector_ty, init);
+      }
+    }
+    iter_args_inits = vector_inits;
+  }
 
   scf::LoopNest loop_nest = scf::buildLoopNest(
       b, b.getLoc(), lbs, ubs, steps, iter_args_inits,
@@ -1313,7 +1328,28 @@ SmallVector<Value> EmitLoopNest(
             [&](OpBuilder& then_builder, Location then_loc) -> void {
               OpBuilder::InsertionGuard g(b);
               b.setInsertionPointToStart(then_builder.getInsertionBlock());
-              auto results = create_body(iter_args, dim_values, symbol_values);
+              SmallVector<Value, 4> results;
+              if (vectorize) {
+                SmallVector<Value, 4> vector_args;
+                vector_args = iter_args;
+                // Extract the vector elements.
+                for (auto& init : vector_args) {
+                  if (mlir::isa<mlir::VectorType>(init.getType())) {
+                    init = b.create<mlir::vector::ExtractOp>(
+                        init, symbol_values.back());
+                  }
+                }
+                results = create_body(vector_args, dim_values, symbol_values);
+                // Insert the results.
+                for (auto [index, init] : llvm::enumerate(iter_args)) {
+                  if (mlir::isa<mlir::VectorType>(init.getType())) {
+                    results[index] = b.create<mlir::vector::InsertOp>(
+                        results[index], iter_args[index], symbol_values.back());
+                  }
+                }
+              } else {
+                results = create_body(iter_args, dim_values, symbol_values);
+              }
               b.create<scf::YieldOp>(results);
             },
             [&](OpBuilder& else_b, Location else_loc) {

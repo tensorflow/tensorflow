@@ -151,7 +151,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       clone_context_.MapComputation(hlo->parent(), new_computation);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status FinishVisit(const HloInstruction* /*root*/) override {
@@ -179,7 +179,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       module_->SetAndUniquifyInstrName(instruction, instruction->name());
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   HloModule* module() { return module_.get(); }
@@ -198,7 +198,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(it != old_computations_to_builders_.end());
     auto builder = it->second.get();
     builder->AddInstruction(std::move(new_const));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace the `hlo` with Parameter of the same shape.
@@ -210,7 +210,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(old_computations_to_builders_.contains(hlo->parent()));
     auto builder = old_computations_to_builders_[hlo->parent()].get();
     builder->AddInstruction(std::move(new_parameter));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Helper to create constant instruction (that return a constant tensor) of
@@ -277,7 +277,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     HloInstruction* zero_broadcast =
         ReplaceWithConstantBroadcastHelper(hlo->shape(), builder, replace_type);
     clone_context_.MapInstruction(hlo, zero_broadcast);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const HloInstruction* root_instruction_;

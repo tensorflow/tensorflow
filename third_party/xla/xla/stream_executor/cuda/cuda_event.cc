@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/cuda_event.h"
+
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -24,9 +26,9 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-Event::Status GpuEvent::PollForStatus() {
+Event::Status CudaEvent::PollForStatus() {
   absl::StatusOr<CUresult> status =
-      QueryEvent(parent_->gpu_context(), gpu_event_);
+      QueryEvent(parent()->gpu_context(), gpu_event());
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
                << status.status().message();

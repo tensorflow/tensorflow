@@ -73,7 +73,7 @@ absl::Status SanityCheckParameterLayouts(
         "parameters (found 1 tuple out of %d arguments)",
         layouts.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> MustFlattenInputTuple(

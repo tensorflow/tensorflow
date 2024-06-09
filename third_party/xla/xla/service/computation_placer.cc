@@ -94,7 +94,7 @@ absl::Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>

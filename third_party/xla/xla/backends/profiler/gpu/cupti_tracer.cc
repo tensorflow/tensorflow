@@ -34,7 +34,6 @@ namespace profiler {
 
 namespace {
 
-using absl::OkStatus;
 using tsl::Env;
 using tsl::profiler::AnnotationStack;
 
@@ -50,7 +49,7 @@ class CuptiApiTracingDisabler {
 
 absl::Status ToStatus(CUptiResult result) {
   if (result == CUPTI_SUCCESS) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const char *str = nullptr;
   cuptiGetResultString(result, &str);
@@ -59,7 +58,7 @@ absl::Status ToStatus(CUptiResult result) {
 
 absl::Status ToStatus(CUresult result) {
   if (result == CUDA_SUCCESS) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const char *str = nullptr;
   cuGetErrorName(result, &str);
@@ -663,14 +662,14 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
     // Stash away the current Cupti timestamp into cbdata.
     *cbdata->correlationData =
         option_.required_callback_api_events ? CuptiTracer::GetTimestamp() : 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
   absl::Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                CUpti_CallbackId cbid,
                                const CUpti_CallbackData *cbdata) override {
     // If we are not collecting CPU events from Callback API, we can return now.
     if (!option_.required_callback_api_events) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
@@ -691,7 +690,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
         cuCtxPopCurrent(&current);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -827,7 +826,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
                                  end_tsc);
       break;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
@@ -937,7 +936,7 @@ void CuptiTracer::Disable() {
 }
 
 absl::Status CuptiTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return OkStatus();
+  if (api_tracing_enabled_) return absl::OkStatus();
 
   VLOG(1) << "Enable subscriber";
   // Subscribe can return CUPTI_ERROR_MAX_LIMIT_REACHED.
@@ -961,11 +960,11 @@ absl::Status CuptiTracer::EnableApiTracing() {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CuptiTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return OkStatus();
+  if (!api_tracing_enabled_) return absl::OkStatus();
 
   api_tracing_enabled_ = false;
 
@@ -986,11 +985,11 @@ absl::Status CuptiTracer::DisableApiTracing() {
 
   VLOG(1) << "Disable subscriber";
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Unsubscribe(subscriber_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CuptiTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return OkStatus();
+  if (activity_tracing_enabled_) return absl::OkStatus();
   PrepareActivityStart();
   if (!option_->activities_selected.empty()) {
     // Initialize callback functions for Cupti Activity API.
@@ -1015,7 +1014,7 @@ absl::Status CuptiTracer::EnableActivityTracing() {
     }
   }
   activity_tracing_enabled_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CuptiTracer::DisableActivityTracing() {
@@ -1037,7 +1036,7 @@ absl::Status CuptiTracer::DisableActivityTracing() {
     LOG(INFO) << "CUPTI activity buffer flushed";
   }
   activity_tracing_enabled_ = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CuptiTracer::Finalize() {
@@ -1045,7 +1044,7 @@ absl::Status CuptiTracer::Finalize() {
     VLOG(1) << "CuptiFinalize";
     RETURN_IF_CUPTI_ERROR(cupti_interface_->Finalize());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ uint64_t CuptiTracer::GetTimestamp() {
@@ -1075,17 +1074,18 @@ absl::Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
   } else if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePop) {
     NVTXRangeTracker::ExitRange();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                          CUpti_CallbackId cbid,
                                          const CUpti_CallbackData *cbdata) {
-  if (!api_tracing_enabled_) return OkStatus();    // already unsubscribed.
-  if (!cupti_driver_api_hook_) return OkStatus();  // already unsubscribed.
+  if (!api_tracing_enabled_) return absl::OkStatus();  // already unsubscribed.
+  if (!cupti_driver_api_hook_)
+    return absl::OkStatus();  // already unsubscribed.
   if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
-  if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return OkStatus();
-  if (internalCuCall) return OkStatus();
+  if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return absl::OkStatus();
+  if (internalCuCall) return absl::OkStatus();
 
   if (cbdata->context == nullptr) {
     // API callback is called before any CUDA context is created.
@@ -1127,7 +1127,7 @@ absl::Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
     TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(
         device_id, domain, cbid, cbdata));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
@@ -1197,11 +1197,11 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
     if (buffer) activity_buffers_->ReclaimBuffer(buffer);
   };
   if (size == 0 || buffer == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!activity_tracing_enabled_) {
     LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (cupti_interface_->Disabled()) return tsl::errors::Internal("Disabled.");
 
@@ -1221,7 +1221,7 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
                  << size << "bytes of event to reuse.";
     num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
     // buffer will be return to the pool
-    return OkStatus();
+    return absl::OkStatus();
   }
   num_activity_events_in_cached_buffer_ += event_count_in_buffer;
 
@@ -1232,7 +1232,7 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
   activity_buffers_->CacheCuptiFilledActivityBuffer(buffer, size);
   buffer = nullptr;  // So cleanup will not free it as it was saved already
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ std::string CuptiTracer::ErrorIfAny() {

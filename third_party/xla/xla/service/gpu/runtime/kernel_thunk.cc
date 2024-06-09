@@ -20,10 +20,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -105,7 +104,7 @@ static void PrintBufferContents(
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
-    CHECK(stream->Memcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
     CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;

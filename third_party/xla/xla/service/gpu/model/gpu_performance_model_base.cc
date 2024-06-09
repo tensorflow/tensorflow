@@ -149,19 +149,28 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    int64_t estimated_num_threads, const HloFusionAnalysis& fusion_analysis,
-    const se::DeviceDescription& device_info) {
+    const HloFusionAnalysis& fusion_analysis) {
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
-  if (emitter.ok()) {
-    if (const auto* kernel_emitter =
-            dynamic_cast<const KernelFusionInterface*>(emitter->get())) {
-      return kernel_emitter->launch_dimensions();
-    }
+  if (const auto* kernel_emitter =
+          dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
+    return kernel_emitter->launch_dimensions();
   }
-  int64_t block_size = 128;  // Result for default LaunchDimensionsConfig.
-  int64_t num_blocks = CeilOfRatio(estimated_num_threads, block_size);
-  return LaunchDimensions(num_blocks, block_size);
+
+  // This estimate should never be reached in fusion code. Fusions that don't
+  // implement KernelFusionInterface, don't generate GPU kernels, so there is
+  // nothing to fuse. Keep this estimate as a simple fallback.
+  //
+  // We assume that the kernel launches 1 thread per output element and 128
+  // threads per block. In multi-output fusions, only look at one root.
+  VLOG(5) << "Using fallback launch dimensions estimate for "
+          << fusion_analysis.fusion().ToString();
+  int64_t num_threads_per_block = 128;
+  int64_t estimated_num_threads =
+      ShapeUtil::ElementsInRecursive(fusion_analysis.fusion_root(0).shape());
+  int64_t num_blocks =
+      CeilOfRatio(estimated_num_threads, num_threads_per_block);
+  return LaunchDimensions(num_blocks, num_threads_per_block);
 }
 
 /*static*/
@@ -411,23 +420,6 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
   VLOG(8) << "operand " << operand->name()
           << ", n_bytes_total: " << n_bytes_total
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
-}
-
-/*static*/
-void GpuPerformanceModelBase::VLogResult(
-    int64_t flops, int64_t bytes_read, int64_t bytes_written,
-    int64_t num_threads, absl::Duration compute_time, absl::Duration read_time,
-    absl::Duration write_time, absl::Duration exec_time) {
-  if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "FLOPs: " << flops;
-    LOG(INFO) << "Bytes read: " << bytes_read;
-    LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads: " << num_threads;
-    LOG(INFO) << "Compute time: " << compute_time;
-    LOG(INFO) << "Input read time: " << read_time;
-    LOG(INFO) << "Output write time: " << write_time;
-    LOG(INFO) << "Exec time: " << exec_time;
-  }
 }
 
 }  // namespace gpu

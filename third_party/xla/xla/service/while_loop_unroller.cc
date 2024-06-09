@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -166,51 +167,40 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
   return while_body_clone;
 }
 
-absl::Status InitialFeasibilityCheck(HloInstruction* while_op,
-                                     WhileLoopConfig config,
-                                     int64_t unroll_factor) {
+bool InitialFeasibilityCheck(HloInstruction* while_op, WhileLoopConfig config) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
   // While loop must have a single tuple operand.
   CHECK_EQ(while_op->operands().size(), 1);
   if (while_op->operands().size() != 1) {
-    return FailedPrecondition(
-        "%s",
-        absl::StrCat("Cannot unroll while loop. While loop must have a single "
-                     "tuple operand, instead has more than one operand: ",
-                     while_op->operands().size()));
+    VLOG(5) << absl::StrCat(
+        "Cannot unroll while loop. While loop must have a single "
+        "tuple operand, instead has more than one operand: ",
+        while_op->operands().size());
+    return false;
   }
 
   VLOG(5) << "Trying to unroll " << while_op->ToShortString();
-
-  // TODO(b/288130138): For now, we only support full unrolling. Will add
-  // partial unrolling if needed.
-  if (unroll_factor != -1) {
-    return UnimplementedStrCat(
-        "Currently, only full unrolling is supported, unroll factor: ",
-        unroll_factor);
-  }
 
   // TODO(b/291628533): Extract this parameter to the unroller config. We don't
   // attempt to unroll loops where the body has more than
   // kUnrollInstructionCountThreshold instructions.
   if (while_op->while_body()->instruction_count() >
       kUnrollInstructionCountThreshold) {
-    return FailedPrecondition(
-        "%s",
-        absl::StrCat(
-            "Cannot unroll while loop. Too many instructions in the body: ",
-            while_op->while_body()->instruction_count()));
+    VLOG(5) << absl::StrCat(
+        "Cannot unroll while loop. Too many instructions in the body: ",
+        while_op->while_body()->instruction_count());
+    return false;
   }
 
   // TODO(b/291628533): Extract this parameter to the an unroller config. We
   // only unroll loops up to a threshold.
   if (config.trip_count > kUnrollTripCountThreshold) {
-    return FailedPrecondition(
-        "%s",
-        absl::StrCat("Cannot unroll while loop. The tip count is greater "
-                     "than the threshold: ",
-                     config.trip_count, " vs ", kUnrollTripCountThreshold));
+    VLOG(5) << absl::StrCat(
+        "Cannot unroll while loop. The tip count is greater "
+        "than the threshold: ",
+        config.trip_count, " vs ", kUnrollTripCountThreshold);
+    return false;
   }
 
   // TODO(b/291628533): Extract this parameter to the unroller config. We don't
@@ -218,20 +208,21 @@ absl::Status InitialFeasibilityCheck(HloInstruction* while_op,
   // kUnrollExpandFactorThreshold.
   if (config.trip_count * while_op->while_body()->instruction_count() >
       kUnrollExpandFactorThreshold) {
-    return FailedPrecondition(
-        "%s", absl::StrCat("Not attempting to unroll due to instruction count "
-                           "increase explosion. New instruction count: ",
-                           config.trip_count *
-                               while_op->while_body()->instruction_count(),
-                           " vs ", kUnrollExpandFactorThreshold));
+    VLOG(5) << absl::StrCat(
+        "Not attempting to unroll due to instruction count "
+        "increase explosion. New instruction count: ",
+        config.trip_count * while_op->while_body()->instruction_count(), " vs ",
+        kUnrollExpandFactorThreshold);
+    return false;
   }
-  return absl::OkStatus();
+  return true;
 }
 
 absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
-                                    WhileLoopConfig config,
-                                    int64_t unroll_factor) {
-  TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
+                                    WhileLoopConfig config) {
+  if (!InitialFeasibilityCheck(while_op, config)) {
+    return false;
+  }
 
   VLOG(3) << "Unrolling while instruction " << while_op->ToShortString()
           << " with body instruction count "
@@ -262,9 +253,10 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
 }
 
 absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
-                                           WhileLoopConfig config,
-                                           int64_t unroll_factor) {
-  TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
+                                           WhileLoopConfig config) {
+  if (!InitialFeasibilityCheck(while_op, config)) {
+    return false;
+  }
 
   VLOG(3) << "Unrolling (wrapped) while instruction "
           << while_op->ToShortString() << " with body instruction count "
@@ -317,6 +309,79 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
 }
 
 };  // namespace
+
+// Recursively checks if the given instruction points to the induction var of
+// the given loop config.
+bool IsLoopInductionVar(const HloInstruction* instr,
+                        const WhileLoopConfig& config) {
+  if (!instr->parent()->IsFusionComputation()) {
+    return Match(instr, match::GetTupleElement(match::Parameter(),
+                                               config.induction_var_idx));
+  } else {
+    if (!Match(instr, match::Parameter())) {
+      return false;
+    }
+    HloInstruction* caller_fusion = instr->parent()->FusionInstruction();
+    return IsLoopInductionVar(caller_fusion->operand(instr->parameter_number()),
+                              config);
+  }
+}
+
+bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
+                                               HloInstruction* input,
+                                               HloOpcode opcode,
+                                               const WhileLoopConfig& config) {
+  // Based on the instruction type, start indices start from index 1 or 2 of the
+  // operands.
+  int64_t start_indices_offset;
+  if (instr->opcode() == HloOpcode::kDynamicSlice) {
+    start_indices_offset = 1;
+  } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    start_indices_offset = 2;
+  } else {
+    return false;
+  }
+  HloInstruction* operand = instr->mutable_operand(0);
+  if (operand != input) {
+    return false;
+  }
+
+  int64_t dynamic_index = -1;
+  for (int64_t start_index = start_indices_offset;
+       start_index < instr->operand_count(); ++start_index) {
+    HloInstruction* index = instr->mutable_operand(start_index);
+    // All constants must be zero in order to slice the entire shape.
+    if (Match(index, match::ConstantScalar())) {
+      std::optional<int64_t> offset =
+          LiteralUtil::LiteralAsScalarInt64(index->literal());
+      if (offset.has_value() && offset.value() != 0) {
+        return false;
+      }
+    }
+
+    // Check that the instruction's dynamic index points to the loop induction
+    // variable.
+    if (IsLoopInductionVar(index, config)) {
+      // In order to cover the whole shape only a single non-constant index is
+      // allowed.
+      if (dynamic_index != -1) {
+        return false;
+      }
+      dynamic_index = start_index - start_indices_offset;
+    }
+  }
+
+  if (dynamic_index == -1) {
+    return false;
+  }
+
+  // The shape's broadcast_dim must be exactly equal to the loop trip count.
+  if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
+    return false;
+  }
+
+  return true;
+}
 
 /*static*/ std::optional<WhileLoopConfig> WhileLoopUnroller::IsLoopUnrollable(
     HloInstruction* while_op) {
@@ -407,6 +472,10 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
   config.trip_count = trip_count.value();
   config.induction_var_idx = *indvar_tuple_idx;
 
+  if (!InitialFeasibilityCheck(while_op, config)) {
+    return std::nullopt;
+  }
+
   return config;
 }
 
@@ -470,6 +539,14 @@ WhileLoopUnroller::GetUnrollableLoops(
     bool wrap_in_trivial_loop) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
+  // TODO(b/288130138): For now, we only support full unrolling. Will add
+  // partial unrolling if needed.
+  if (unroll_factor != -1) {
+    VLOG(5) << absl::StrCat(
+        "Currently, only full unrolling is supported, unroll factor: ",
+        unroll_factor);
+    return false;
+  }
 
   // Make sure all the necessary passes are executed before unrolling in order
   // to unroll every possible loop.
@@ -484,11 +561,10 @@ WhileLoopUnroller::GetUnrollableLoops(
 
   bool unrolled = false;
   if (wrap_in_trivial_loop) {
-    TF_ASSIGN_OR_RETURN(unrolled, UnrollInternalWrapped(
-                                      while_op, config.value(), unroll_factor));
+    TF_ASSIGN_OR_RETURN(unrolled,
+                        UnrollInternalWrapped(while_op, config.value()));
   } else {
-    TF_ASSIGN_OR_RETURN(
-        unrolled, UnrollInternal(while_op, config.value(), unroll_factor));
+    TF_ASSIGN_OR_RETURN(unrolled, UnrollInternal(while_op, config.value()));
   }
 
   // We need to inline the calls created for unrolling since later passes rely
@@ -535,11 +611,9 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
   bool unrolled = false;
   for (auto& [while_op, config] : unrollable_while_ops) {
     if (wrap_in_trivial_loop_) {
-      TF_ASSIGN_OR_RETURN(
-          unrolled, UnrollInternalWrapped(while_op, config, unroll_factor_));
+      TF_ASSIGN_OR_RETURN(unrolled, UnrollInternalWrapped(while_op, config));
     } else {
-      TF_ASSIGN_OR_RETURN(unrolled,
-                          UnrollInternal(while_op, config, unroll_factor_));
+      TF_ASSIGN_OR_RETURN(unrolled, UnrollInternal(while_op, config));
     }
     changed |= unrolled;
   }

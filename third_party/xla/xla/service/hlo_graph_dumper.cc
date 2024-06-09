@@ -1845,12 +1845,12 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
 
     absl::Status Append(absl::string_view data) override {
       absl::StrAppend(data_, data);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    absl::Status Close() override { return OkStatus(); }
-    absl::Status Flush() override { return OkStatus(); }
-    absl::Status Sync() override { return OkStatus(); }
+    absl::Status Close() override { return absl::OkStatus(); }
+    absl::Status Flush() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
 
    private:
     std::string* data_;
