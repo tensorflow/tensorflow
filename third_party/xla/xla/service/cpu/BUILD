@@ -617,8 +617,11 @@ cc_library(
     srcs = ["ir_emitter2.cc"],
     hdrs = ["ir_emitter2.h"],
     deps = [
+        ":backend_config_proto_cc",
         ":elemental_math_emitter",
         ":ir_emitter",
+        ":parallel_loop_emitter",
+        ":shape_partition",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -1486,6 +1489,7 @@ cc_library(
     hdrs = ["shape_partition.h"],
     deps = [
         "//xla:shape_util",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

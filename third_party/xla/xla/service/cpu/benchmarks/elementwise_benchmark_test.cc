@@ -35,16 +35,10 @@ static void BM_AddF32(benchmark::State& state) {
   std::string_view hlo = R"(
     HloModule add_f32_$d0
 
-    add {
-      p0 = f32[1,2,1,$d0,256] parameter(0)
-      p1 = f32[1,2,1,$d0,256] parameter(1)
-      ROOT add = f32[1,2,1,$d0,256] add(p0, p1)
-    }
-
     ENTRY e {
       p0 = f32[1,2,1,$d0,256] parameter(0)
       p1 = f32[1,2,1,$d0,256] parameter(1)
-      ROOT fusion = f32[1,2,1,$d0,256] fusion(p0, p1), kind=kLoop, calls=add
+      ROOT add = f32[1,2,1,$d0,256] add(p0, p1)
     }
   )";
 

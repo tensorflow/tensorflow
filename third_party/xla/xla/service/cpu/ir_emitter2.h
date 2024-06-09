@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMITTER2_H_
 #define XLA_SERVICE_CPU_IR_EMITTER2_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -123,6 +126,18 @@ class IrEmitter2 {
  private:
   class ElementalIrEmitter;
 
+  // Parallel partition bounds for parallelized outer dimensions:
+  //   vector<[i64 lower_bound, i64 upper_bound]>
+  using ParallelPartitionBounds =
+      std::vector<std::pair<llvm::Value*, llvm::Value*>>;
+
+  // A config for running kernel in parallel. We rely on partitioning iteration
+  // space along the outer dimension(s) and run each partition as a separate
+  // task inside a runtime-managed thread pool.
+  struct ParallelConfig {
+    std::vector<int64_t> outer_dimension_partitions;
+  };
+
   KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
                                         llvm::Value* call_frame);
 
@@ -131,6 +146,25 @@ class IrEmitter2 {
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilder<>& b,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
+
+  // Returns parallel config for the given instruction or std::nullopt if
+  // the instruction has to be compiled to a single threaded loop.
+  std::optional<ParallelConfig> GetParallelConfig(const HloInstruction* instr);
+
+  // Emits LLVM IR that computes parallel partition bounds from the call frame's
+  // block and thread dimensions and parallel execution config.
+  ParallelPartitionBounds EmitParallelPartitionBounds(
+      llvm::IRBuilder<>& b, const KernelPrototype& kernel_prototype,
+      const ParallelConfig& parallel_config, const Shape& shape,
+      std::string_view name);
+
+  // Emits LLVM IR using elemental loop emitter and the given element generator.
+  // If the instruction is parallelized, it will emit a parallel loop partition
+  // and return the requested number of execution threads.
+  absl::StatusOr<se::ThreadDim> EmitElementalLoops(
+      llvm::IRBuilder<>& b, const HloInstruction* instr,
+      const KernelPrototype& kernel_prototype,
+      const llvm_ir::ElementGenerator& element_generator);
 
   bool fast_min_max() const;
 

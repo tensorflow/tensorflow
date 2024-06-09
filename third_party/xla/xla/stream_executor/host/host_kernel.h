@@ -90,11 +90,6 @@ class HostKernel : public Kernel {
 
   unsigned arity_;
   std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
-
-  SE_HOST_KernelError* worker(SE_HOST_Kernel* kernel,
-                              uint64_t block_size_balanced, uint64_t starting_i,
-                              SE_HOST_KernelThreadDim& max_dims,
-                              std::vector<SE_HOST_KernelArg>& args) const;
 };
 
 inline const HostKernel* AsHostKernel(const Kernel* kernel) {
