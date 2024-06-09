@@ -79,12 +79,8 @@ cc_library(
 xla_test(
     name = "in_place_dynamic_update_slice_mlir_test",
     srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":in_place_dynamic_update_slice_mlir",
         ":mlir_emitter_test_base",
@@ -382,12 +378,8 @@ cc_library(
 xla_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"],
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":loop_mlir",
         ":mlir_emitter_test_base",
@@ -436,12 +428,8 @@ cc_library(
 xla_test(
     name = "scatter_mlir_test",
     srcs = ["scatter_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"],
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":mlir_emitter_test_base",
         ":scatter_mlir",
@@ -492,12 +480,8 @@ cc_library(
 xla_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
@@ -887,12 +871,8 @@ cc_library(
 xla_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":mlir_emitter_test_base",
         ":reduction_mlir",
@@ -977,12 +957,8 @@ cc_library(
 xla_test(
     name = "concatenate_mlir_test",
     srcs = ["concatenate_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
@@ -1114,12 +1090,8 @@ cc_library(
 xla_test(
     name = "input_slices_mlir_test",
     srcs = ["input_slices_mlir_test.cc"],
-<<<<<<< HEAD
     tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
-=======
     backends = ["gpu"],
->>>>>>> 23ad53a685b831750825a25a2a94ce9755f930ec
     deps = [
         ":input_slices_mlir",
         ":mlir_emitter_test_base",
