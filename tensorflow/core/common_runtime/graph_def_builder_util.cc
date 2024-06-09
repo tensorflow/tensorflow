@@ -15,6 +15,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

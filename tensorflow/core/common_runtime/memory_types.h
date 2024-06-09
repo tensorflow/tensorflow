@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
 
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

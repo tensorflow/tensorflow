@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
