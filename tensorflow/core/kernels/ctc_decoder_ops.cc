@@ -15,19 +15,24 @@ limitations under the License.
 
 // See docs in ../ops/ctc_ops.cc.
 
+#include "absl/status/status.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
 #include <limits>
 
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/ctc/ctc_beam_search.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {

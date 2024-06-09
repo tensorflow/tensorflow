@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int8, int16,
