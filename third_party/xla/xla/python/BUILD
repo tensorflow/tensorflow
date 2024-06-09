@@ -887,6 +887,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":nb_class_ptr",
+        ":nb_helpers",
         ":pytree_proto_cc",
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
