@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -32,6 +35,11 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunk::Create(
+    Info info, absl::Span<const OutfeedBuffer> outfeed_buffers) {
+  return absl::WrapUnique(new OutfeedThunk(std::move(info), outfeed_buffers));
+}
 
 OutfeedThunk::OutfeedThunk(Info info,
                            absl::Span<const OutfeedBuffer> outfeed_buffers)

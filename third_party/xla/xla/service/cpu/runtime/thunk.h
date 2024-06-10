@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/statusor.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -151,14 +152,17 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   ThunkSequence() = default;
   explicit ThunkSequence(std::unique_ptr<Thunk> thunk);
 
-  // Return a ThunkSequence that contains a single thunk of type `T`.
+  // Returns a thunk sequence that contains a single thunk of type `T`. Uses
+  // factory constructor `T::Create()` to create the thunk.
   template <typename T, typename... Args>
-  static ThunkSequence Of(Args&&... args) {
+  static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    return ThunkSequence(std::make_unique<T>(std::forward<Args>(args)...));
+    TF_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    return ThunkSequence(std::move(thunk));
   }
 
+  // Returns an empty thunk sequence.
   static ThunkSequence Empty() { return ThunkSequence(); }
 
   absl::Status Execute(const Thunk::ExecuteParams& params);

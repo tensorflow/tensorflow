@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -50,10 +51,13 @@ TEST(CopyThunkTest, CopySameShape) {
   BufferAllocation::Slice dst_slice(&dst_alloc, 0, size_in_bytes);
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  CopyThunk thunk({"copy"}, src_slice, shape, dst_slice, shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CopyThunk::Create({"copy"}, src_slice, shape, dst_slice, shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
-  TF_ASSERT_OK(thunk.Execute(params));
+  TF_ASSERT_OK(thunk->Execute(params));
 
   EXPECT_EQ(src, dst);
 }
@@ -78,10 +82,13 @@ TEST(CopyThunkTest, CopyTransposed) {
   Shape src_shape = ShapeUtil::MakeShape(F32, {2, 2});
   *src_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   Shape dst_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  CopyThunk thunk({"copy"}, src_slice, src_shape, dst_slice, dst_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CopyThunk::Create({"copy"}, src_slice, src_shape, dst_slice, dst_shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
-  TF_ASSERT_OK(thunk.Execute(params));
+  TF_ASSERT_OK(thunk->Execute(params));
 
   std::vector<float> expected = {1.0, 3.0, 2.0, 4.0};
   EXPECT_EQ(expected, dst);

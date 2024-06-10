@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -31,10 +32,10 @@ namespace xla::cpu {
 // destination buffers have different layouts it will transpose the data.
 class CopyThunk final : public Thunk {
  public:
-  CopyThunk(Info info, BufferAllocation::Slice source_buffer,
-            const Shape& source_shape,
-            BufferAllocation::Slice destination_buffer,
-            const Shape& destination_shape);
+  static absl::StatusOr<std::unique_ptr<CopyThunk>> Create(
+      Info info, BufferAllocation::Slice source_buffer,
+      const Shape& source_shape, BufferAllocation::Slice destination_buffer,
+      const Shape& destination_shape);
 
   absl::Status Execute(const ExecuteParams& params) final;
 
@@ -44,6 +45,11 @@ class CopyThunk final : public Thunk {
   }
 
  private:
+  CopyThunk(Info info, BufferAllocation::Slice source_buffer,
+            const Shape& source_shape,
+            BufferAllocation::Slice destination_buffer,
+            const Shape& destination_shape);
+
   BufferAllocation::Slice source_buffer_;
   Shape source_shape_;
 

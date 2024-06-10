@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <utility>
 
 #include "absl/base/config.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -37,6 +40,14 @@ namespace xla::cpu {
 // random number generation not passing the chi-square test. The value used here
 // is arbitrarily chosen, any non-zero values should be fine.
 static constexpr absl::int128 kRngStateInitialValue = 0x7012395ull;
+
+absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>>
+RngGetAndUpdateStateThunk::Create(Info info,
+                                  BufferAllocation::Slice state_buffer,
+                                  int64_t delta) {
+  return absl::WrapUnique(
+      new RngGetAndUpdateStateThunk(std::move(info), state_buffer, delta));
+}
 
 RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
     Info info, BufferAllocation::Slice state_buffer, int64_t delta)

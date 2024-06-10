@@ -15,13 +15,22 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/call_thunk.h"
 
+#include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<CallThunk>> CallThunk::Create(
+    Info info, ThunkSequence called_sequence) {
+  return absl::WrapUnique(
+      new CallThunk(std::move(info), std::move(called_sequence)));
+}
 
 CallThunk::CallThunk(Info info, ThunkSequence called_sequence)
     : Thunk(Kind::kCall, std::move(info)),

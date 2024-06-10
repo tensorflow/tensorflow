@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/while_thunk.h"
 
+#include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -27,6 +30,14 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::Create(
+    Info info, BufferAllocation::Slice cond_buffer, ThunkSequence cond_sequence,
+    ThunkSequence body_sequence) {
+  return absl::WrapUnique(new WhileThunk(std::move(info), cond_buffer,
+                                         std::move(cond_sequence),
+                                         std::move(body_sequence)));
+}
 
 WhileThunk::WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
                        ThunkSequence cond_sequence, ThunkSequence body_sequence)

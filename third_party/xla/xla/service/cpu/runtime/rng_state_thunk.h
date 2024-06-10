@@ -17,10 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_RNG_STATE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -33,8 +35,8 @@ namespace xla::cpu {
 // call to execute.
 class RngGetAndUpdateStateThunk final : public Thunk {
  public:
-  RngGetAndUpdateStateThunk(Info info, BufferAllocation::Slice state_buffer,
-                            int64_t delta);
+  static absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>> Create(
+      Info info, BufferAllocation::Slice state_buffer, int64_t delta);
 
   absl::Status Execute(const ExecuteParams& params) final;
 
@@ -43,6 +45,9 @@ class RngGetAndUpdateStateThunk final : public Thunk {
   }
 
  private:
+  RngGetAndUpdateStateThunk(Info info, BufferAllocation::Slice state_buffer,
+                            int64_t delta);
+
   BufferAllocation::Slice state_buffer_;
   int64_t delta_;
 

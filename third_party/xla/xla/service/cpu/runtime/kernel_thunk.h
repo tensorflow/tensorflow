@@ -17,10 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_KERNEL_THUNK_H_
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -32,16 +34,21 @@ namespace xla::cpu {
 // Launches compiled host kernel on the caller thread.
 class KernelThunk final : public Thunk {
  public:
-  KernelThunk(Info info,
-              absl::Span<const BufferAllocation::Slice> arguments_buffers,
-              absl::Span<const BufferAllocation::Slice> results_buffers,
-              std::string kernel_name, se::ThreadDim thread_dim);
+  static absl::StatusOr<std::unique_ptr<KernelThunk>> Create(
+      Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
+      absl::Span<const BufferAllocation::Slice> results_buffers,
+      std::string kernel_name, se::ThreadDim thread_dim);
 
   absl::Status Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 
  private:
+  KernelThunk(Info info,
+              absl::Span<const BufferAllocation::Slice> arguments_buffers,
+              absl::Span<const BufferAllocation::Slice> results_buffers,
+              std::string kernel_name, se::ThreadDim thread_dim);
+
   std::vector<BufferAllocation::Slice> arguments_buffers_;
   std::vector<BufferAllocation::Slice> results_buffers_;
   std::string kernel_name_;

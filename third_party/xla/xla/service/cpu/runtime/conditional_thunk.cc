@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/buffer_assignment.h"
@@ -29,6 +31,14 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::Create(
+    Info info, BufferAllocation::Slice branch_index_buffer,
+    std::vector<ThunkSequence> branch_sequences) {
+  return absl::WrapUnique(new ConditionalThunk(std::move(info),
+                                               std::move(branch_index_buffer),
+                                               std::move(branch_sequences)));
+}
 
 ConditionalThunk::ConditionalThunk(Info info,
                                    BufferAllocation::Slice branch_index_buffer,

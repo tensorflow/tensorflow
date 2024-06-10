@@ -18,11 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
@@ -30,11 +33,27 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::Create(
+    Info info, BufferAllocation::Slice source_buffer, const Shape& source_shape,
+    BufferAllocation::Slice destination_buffer,
+    const Shape& destination_shape) {
+  if (!ShapeUtil::Compatible(source_shape, destination_shape)) {
+    return InvalidArgument(
+        "Source shape %s must be compatible with destination shape %s",
+        source_shape.ToString(true), destination_shape.ToString(true));
+  }
+
+  return absl::WrapUnique(new CopyThunk(std::move(info), source_buffer,
+                                        source_shape, destination_buffer,
+                                        destination_shape));
+}
 
 CopyThunk::CopyThunk(Info info, BufferAllocation::Slice source_buffer,
                      const Shape& source_shape,
@@ -45,12 +64,6 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice source_buffer,
       source_shape_(source_shape),
       destination_buffer_(destination_buffer),
       destination_shape_(destination_shape) {
-  // TODO(ezhulenev): Use factory constructor instead of CHECK.
-  CHECK(ShapeUtil::Compatible(source_shape_, destination_shape_))
-      << "Source shape " << source_shape_.ToString(true)
-      << " must be compatble with destination shape "
-      << destination_shape_.ToString(true);
-
   if (source_shape_ != destination_shape_) {
     TransposePlan::Options options;
     options.elem_size_in_bytes =

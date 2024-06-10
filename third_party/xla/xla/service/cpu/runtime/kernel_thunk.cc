@@ -18,10 +18,12 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -41,6 +43,15 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+
+absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::Create(
+    Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
+    absl::Span<const BufferAllocation::Slice> results_buffers,
+    std::string kernel_name, se::ThreadDim thread_dim) {
+  return absl::WrapUnique(new KernelThunk(std::move(info), arguments_buffers,
+                                          results_buffers,
+                                          std::move(kernel_name), thread_dim));
+}
 
 KernelThunk::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
