@@ -99,6 +99,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel_spec",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
