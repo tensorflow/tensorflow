@@ -74,6 +74,8 @@ const char* GetActivityDomainName(uint32_t domain) {
       return "EXT API";
     case ACTIVITY_DOMAIN_ROCTX:
       return "ROCTX";
+    case ACTIVITY_DOMAIN_HSA_EVT:
+      return "HSA envents";
     default:
       DCHECK(false);
       return "";
@@ -123,6 +125,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipExtModuleLaunchKernel:
       case HIP_API_ID_hipHccModuleLaunchKernel:
       case HIP_API_ID_hipLaunchKernel:
+      case HIP_API_ID_hipExtLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -175,10 +178,8 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipSetDevice:
         break;
       default:
-        VLOG(3) << "Warning: HIP_API_ID_x is not handled in "
-                   "DumpApiCallbackData, HIP_API_ID="
-                << cbid;
-        DCHECK(false);
+        VLOG(3) << "Warning: HIP API is not handled: HIP_API_ID_"
+                << hip_api_name(cbid);
         break;
     }
   } else {
@@ -215,6 +216,8 @@ void DumpActivityRecord(const roctracer_record_t* record,
 
 const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
   switch (type) {
+    case RocmTracerEventType::Kernel:
+      return "Kernel";
     case RocmTracerEventType::MemcpyH2D:
       return "MemcpyH2D";
     case RocmTracerEventType::MemcpyD2H:
@@ -225,16 +228,16 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
       return "MemcpyP2P";
     case RocmTracerEventType::MemcpyOther:
       return "MemcpyOther";
-    case RocmTracerEventType::Kernel:
-      return "Kernel";
     case RocmTracerEventType::MemoryAlloc:
       return "MemoryAlloc";
-    case RocmTracerEventType::Generic:
-      return "Generic";
-    case RocmTracerEventType::Synchronization:
-      return "Synchronization";
+    case RocmTracerEventType::MemoryFree:
+      return "MemoryFree";
     case RocmTracerEventType::Memset:
       return "Memset";
+    case RocmTracerEventType::Synchronization:
+      return "Synchronization";
+    case RocmTracerEventType::Generic:
+      return "Generic";
     default:
       DCHECK(false);
       return "";
@@ -267,10 +270,11 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
     case RocmTracerEventDomain::HIP_API:
       return "HIP_API";
       break;
-    case RocmTracerEventDomain::HCC_OPS:
-      return "HCC_OPS";
+    case RocmTracerEventDomain::HIP_OPS:
+      return "HIP_OPS";
       break;
     default:
+      VLOG(3) << "RocmTracerEventDomain::InvalidDomain";
       DCHECK(false);
       return "";
   }
@@ -341,6 +345,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipExtModuleLaunchKernel:  // *
       case HIP_API_ID_hipHccModuleLaunchKernel:  // *
       case HIP_API_ID_hipLaunchKernel:           // *
+      case HIP_API_ID_hipExtLaunchKernel:
 
         this->AddKernelEventUponApiExit(cbid, data, enter_time, exit_time);
 
@@ -506,6 +511,23 @@ void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
       event.kernel_info.grid_y = data->args.hipLaunchKernel.numBlocks.y;
       event.kernel_info.grid_z = data->args.hipLaunchKernel.numBlocks.z;
       event.kernel_info.func_ptr = (void*)func_addr;
+      event.device_id = hipGetStreamDeviceId(stream);
+    } break;
+    case HIP_API_ID_hipExtLaunchKernel: {
+      const void* func_addr = data->args.hipExtLaunchKernel.function_address;
+      hipStream_t stream = data->args.hipExtLaunchKernel.stream;
+      if (func_addr != nullptr)
+        event.name = hipKernelNameRefByPtr(func_addr, stream);
+
+      event.kernel_info.dynamic_shared_memory_usage =
+          data->args.hipExtLaunchKernel.sharedMemBytes;
+      event.kernel_info.block_x = data->args.hipExtLaunchKernel.dimBlocks.x;
+      event.kernel_info.block_y = data->args.hipExtLaunchKernel.dimBlocks.y;
+      event.kernel_info.block_z = data->args.hipExtLaunchKernel.dimBlocks.z;
+      event.kernel_info.grid_x = data->args.hipExtLaunchKernel.numBlocks.x;
+      event.kernel_info.grid_y = data->args.hipExtLaunchKernel.numBlocks.y;
+      event.kernel_info.grid_z = data->args.hipExtLaunchKernel.numBlocks.z;
+      event.kernel_info.func_ptr = const_cast<void*>(func_addr);
       event.device_id = hipGetStreamDeviceId(stream);
     } break;
   }
@@ -872,6 +894,7 @@ absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
           case HIP_API_ID_hipExtModuleLaunchKernel:
           case HIP_API_ID_hipHccModuleLaunchKernel:
           case HIP_API_ID_hipLaunchKernel:
+          case HIP_API_ID_hipExtLaunchKernel:
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddHipKernelActivityEvent(record);
             break;
@@ -1219,7 +1242,7 @@ void RocmActivityCallbackImpl::AddHccKernelActivityEvent(
    activity record contains device/stream ID
  */
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.type = RocmTracerEventType::Kernel;
   event.source = RocmTracerEventSource::Activity;
   event.correlation_id = record->correlation_id;
@@ -1246,7 +1269,7 @@ void RocmActivityCallbackImpl::AddNormalHipOpsMemcpyActivityEvent(
   */
 
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
       se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
@@ -1280,7 +1303,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
   */
 
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
       se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
@@ -1463,7 +1486,8 @@ absl::Status RocmTracer::EnableActivityTracing() {
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
-      VLOG(3) << "Creating roctracer activity buffer";
+      VLOG(3) << "Creating roctracer activity buffer: buff-size="
+              << properties.buffer_size;
       RETURN_IF_ROCTRACER_ERROR(
           se::wrap::roctracer_open_pool_expl(&properties, nullptr));
     }
