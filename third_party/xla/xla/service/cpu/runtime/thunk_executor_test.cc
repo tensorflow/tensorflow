@@ -15,100 +15,357 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk_executor.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla::cpu {
 namespace {
 
 using ::testing::ElementsAre;
 
-// A test-only thunk for testing thunk executor implementation.
-class BufferUseThunk : public Thunk {
+// A test-only thunk for verifying thunk executor implementation:
+//
+//   dst += src (for all srcs and dsts slices)
+//
+// We generate random thunk sequences reading and writing different slices of
+// the same buffer, and check that at run time it does not lead to any data
+// races and produces expected result.
+class AddI32Thunk final : public Thunk {
  public:
-  using BufferUses = Thunk::BufferUses;
-
-  BufferUseThunk(std::string name, BufferUses buffer_uses,
-                 std::vector<std::string>* trace = nullptr)
-      : Thunk(Kind::kKernel, Info{name}),
-        buffer_uses_(std::move(buffer_uses)),
-        trace_(trace) {}
+  AddI32Thunk(std::string name, std::vector<BufferAllocation::Slice> srcs,
+              std::vector<BufferAllocation::Slice> dsts,
+              std::vector<std::string>* trace = nullptr);
 
   static std::unique_ptr<Thunk> Create(
-      std::string name, BufferUses buffer_uses,
-      std::vector<std::string>* trace = nullptr) {
-    return std::make_unique<BufferUseThunk>(std::move(name),
-                                            std::move(buffer_uses), trace);
-  }
+      std::string name, std::vector<BufferAllocation::Slice> srcs,
+      std::vector<BufferAllocation::Slice> dsts,
+      std::vector<std::string>* trace = nullptr);
 
-  BufferUses buffer_uses() const override { return buffer_uses_; }
+  static std::vector<MaybeOwningDeviceMemory> AsDeviceMemory(
+      absl::Span<std::vector<int32_t>* const> data);
 
-  absl::Status Execute(const ExecuteParams&) final {
-    if (trace_) trace_->push_back(info().op_name);
-    return absl::OkStatus();
-  }
+  // Executes `dst += src` for a single src/dst pair.
+  static absl::Status Execute(const BufferAllocations* allocations,
+                              BufferAllocation::Slice src_slice,
+                              BufferAllocation::Slice dst_slice);
+
+  absl::Status Execute(const ExecuteParams&) final;
+
+  BufferUses buffer_uses() const final;
 
  private:
-  BufferUses buffer_uses_;
+  std::vector<BufferAllocation::Slice> srcs_;
+  std::vector<BufferAllocation::Slice> dsts_;
   std::vector<std::string>* trace_;
 };
 
-TEST(ThunkExecutorTest, Ordering) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+std::unique_ptr<Thunk> AddI32Thunk::Create(
+    std::string name, std::vector<BufferAllocation::Slice> srcs,
+    std::vector<BufferAllocation::Slice> dsts,
+    std::vector<std::string>* trace) {
+  return std::make_unique<AddI32Thunk>(std::move(name), std::move(srcs),
+                                       std::move(dsts), trace);
+}
 
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/10);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/5, /*size=*/10);
-  BufferAllocation::Slice slice2(&alloc, /*offset=*/10, /*size=*/10);
+std::vector<MaybeOwningDeviceMemory> AddI32Thunk::AsDeviceMemory(
+    absl::Span<std::vector<int32_t>* const> data) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  for (auto& vec : data) {
+    buffers.emplace_back(
+        se::DeviceMemoryBase(vec->data(), vec->size() * sizeof(int32_t)));
+  }
+  return buffers;
+}
+
+AddI32Thunk::AddI32Thunk(std::string name,
+                         std::vector<BufferAllocation::Slice> srcs,
+                         std::vector<BufferAllocation::Slice> dsts,
+                         std::vector<std::string>* trace)
+    : Thunk(Kind::kKernel, Info{name}),
+      srcs_(std::move(srcs)),
+      dsts_(std::move(dsts)),
+      trace_(trace) {}
+
+absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
+                                  BufferAllocation::Slice src_slice,
+                                  BufferAllocation::Slice dst_slice) {
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase src,
+                      allocations->GetDeviceAddress(src_slice));
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase dst,
+                      allocations->GetDeviceAddress(dst_slice));
+
+  CHECK_EQ(src.size() % sizeof(int32_t), 0);
+  CHECK_EQ(dst.size() % sizeof(int32_t), 0);
+
+  int32_t* src_ptr = static_cast<int32_t*>(src.opaque());
+  int32_t* dst_ptr = static_cast<int32_t*>(dst.opaque());
+  size_t len = std::min(src.size(), dst.size()) / sizeof(int32_t);
+
+  for (int j = 0; j < len; ++j) dst_ptr[j] += src_ptr[j];
+
+  return absl::OkStatus();
+}
+
+absl::Status AddI32Thunk::Execute(const ExecuteParams& params) {
+  if (trace_) trace_->push_back(info().op_name);
+
+  CHECK_EQ(srcs_.size(), dsts_.size());
+  for (int i = 0; i < srcs_.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
+  }
+
+  return absl::OkStatus();
+}
+
+AddI32Thunk::BufferUses AddI32Thunk::buffer_uses() const {
+  BufferUses buffer_uses;
+  for (const auto& src : srcs_) buffer_uses.push_back(BufferUse::Read(src));
+  for (const auto& dst : dsts_) buffer_uses.push_back(BufferUse::Write(dst));
+  return buffer_uses;
+}
+
+TEST(ThunkExecutorTest, Ordering) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
+
+  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/40);
+  BufferAllocation::Slice slice1(&alloc, /*offset=*/40, /*size=*/40);
+  BufferAllocation::Slice slice2(&alloc, /*offset=*/20, /*size=*/40);
 
   ThunkSequence sequence;
-  sequence.push_back(BufferUseThunk::Create("a", {BufferUse::Read(slice0)}));
-  sequence.push_back(BufferUseThunk::Create("b", {BufferUse::Read(slice1)}));
-  sequence.push_back(BufferUseThunk::Create("c", {BufferUse::Write(slice2)}));
+  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0}));
+  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1}));
+  sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executor,
+  TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
                           ThunkExecutor::Create(std::move(sequence)));
 
   EXPECT_THAT(executor.source(), ElementsAre(0, 1));
-  EXPECT_THAT(executor.sink(), ElementsAre(0, 2));
+  EXPECT_THAT(executor.sink(), ElementsAre(2));
 }
 
 TEST(ThunkExecutorTest, Execute) {
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
 
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/10);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/5, /*size=*/10);
-  BufferAllocation::Slice slice2(&alloc, /*offset=*/10, /*size=*/10);
+  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/40);
+  BufferAllocation::Slice slice1(&alloc, /*offset=*/40, /*size=*/40);
+  BufferAllocation::Slice slice2(&alloc, /*offset=*/20, /*size=*/40);
 
   std::vector<std::string> trace;
 
   ThunkSequence sequence;
-  sequence.push_back(
-      BufferUseThunk::Create("a", {BufferUse::Read(slice0)}, &trace));
-  sequence.push_back(
-      BufferUseThunk::Create("b", {BufferUse::Read(slice1)}, &trace));
-  sequence.push_back(
-      BufferUseThunk::Create("c", {BufferUse::Write(slice2)}, &trace));
+  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0}, &trace));
+  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1}, &trace));
+  sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2}, &trace));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executor,
+  TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
                           ThunkExecutor::Create(std::move(sequence)));
-  Thunk::ExecuteParams params;
+
+  std::vector<int32_t> data(20, 1);  // shared src and dst allocation
+
+  auto buffers = AddI32Thunk::AsDeviceMemory({&data});
+  BufferAllocations allocations(buffers);
+
+  Thunk::ExecuteParams params = {nullptr, &allocations};
   TF_ASSERT_OK(executor.Execute(params, [&](ThunkExecutor::Task task) {
     trace.push_back("<TaskRunner>");
     task();
   }));
 
-  EXPECT_THAT(trace, ElementsAre("<TaskRunner>", "b", "c", "a"));
+  EXPECT_THAT(trace, ElementsAre("<TaskRunner>", "b", "a", "c"));
+  EXPECT_THAT(data, ElementsAre(2, 2, 2, 2, 2,                 // slice0
+                                4, 4, 4, 4, 4, 4, 4, 4, 4, 4,  // slice2
+                                2, 2, 2, 2, 2));               // slice1
 }
+
+//===----------------------------------------------------------------------===//
+// ThunkExecutor stress testing
+//===----------------------------------------------------------------------===//
+
+struct GeneratedThunkSequence {
+  BufferAllocation src_alloc;
+  BufferAllocation dst_alloc;
+
+  std::vector<int32_t> src;
+  std::vector<int32_t> dst;
+  std::vector<int32_t> expected;
+
+  std::vector<MaybeOwningDeviceMemory> expected_buffers;
+  std::vector<MaybeOwningDeviceMemory> buffers;
+
+  ThunkSequence sequence;
+};
+
+static absl::StatusOr<std::unique_ptr<GeneratedThunkSequence>>
+GenerateThunkSequence(size_t num_elements, size_t num_thunks) {
+  auto g = std::make_unique<GeneratedThunkSequence>(GeneratedThunkSequence{
+      BufferAllocation(/*index=*/0, num_elements * sizeof(int32_t), 0),
+      BufferAllocation(/*index=*/1, num_elements * sizeof(int32_t), 0),
+      /*src=*/std::vector<int32_t>(num_elements, 1),
+      /*dst=*/std::vector<int32_t>(num_elements, 0),
+      /*expected=*/std::vector<int32_t>(num_elements, 0),
+  });
+
+  g->expected_buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->expected});
+  g->buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->dst});
+
+  std::minstd_rand0 engine;
+
+  std::uniform_int_distribution<size_t> offset_dist(0, num_elements - 1);
+  std::uniform_int_distribution<size_t> size_dist(32, 64);
+
+  // Returns a random slice of the allocation.
+  auto random_slice = [&](BufferAllocation* alloc) {
+    size_t start = offset_dist(engine);
+    size_t size = std::min(num_elements - start, size_dist(engine));
+    return BufferAllocation::Slice(alloc, start * sizeof(int32_t),
+                                   size * sizeof(int32_t));
+  };
+
+  for (int i = 0; i < num_thunks; ++i) {
+    BufferAllocation::Slice src = random_slice(&g->src_alloc);
+    BufferAllocation::Slice dst = random_slice(&g->dst_alloc);
+
+    // Pre-compute expected result while building the thunk sequence.
+    BufferAllocations allocations(g->expected_buffers);
+    TF_RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
+
+    g->sequence.push_back(AddI32Thunk::Create(absl::StrCat(i), {src}, {dst}));
+  }
+
+  return g;
+}
+
+// Parameterized thunk executor stress tests that builds a random thunk sequence
+// and optionally uses a thread pool to execute thunk executor tasks.
+class ThunkExecutorStressTest
+    : public testing::TestWithParam<std::pair<size_t, bool>> {
+ public:
+  void SetUp() override {
+    if (auto& [_, use_thread_pool] = GetParam(); use_thread_pool) {
+      thread_pool_.emplace(tsl::Env::Default(), "thunk-executor", 8);
+    }
+  }
+
+  ThunkExecutor::TaskRunner task_runner() {
+    if (!thread_pool_.has_value()) return nullptr;
+
+    return [&](ThunkExecutor::Task task) {
+      thread_pool_->Schedule(ToCopyableTask(std::move(task)));
+    };
+  }
+
+ private:
+  std::optional<tsl::thread::ThreadPool> thread_pool_;
+};
+
+TEST_P(ThunkExecutorStressTest, Execute) {
+  auto [num_thunks, _] = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GeneratedThunkSequence> g,
+      GenerateThunkSequence(/*num_elements=*/1024, num_thunks));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
+                          ThunkExecutor::Create(std::move(g->sequence)));
+
+  BufferAllocations allocations(g->buffers);
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+  TF_ASSERT_OK(executor.Execute(params, task_runner()));
+
+  EXPECT_EQ(g->dst, g->expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ThunkExecutor, ThunkExecutorStressTest,
+    testing::Values(
+        std::make_pair(/*num_thunks=*/10, /*use_thread_pool=*/false),
+        std::make_pair(/*num_thunks=*/10, /*use_thread_pool=*/true),
+        std::make_pair(/*num_thunks=*/100, /*use_thread_pool=*/false),
+        std::make_pair(/*num_thunks=*/100, /*use_thread_pool=*/true),
+        std::make_pair(/*num_thunks=*/1000, /*use_thread_pool=*/false),
+        std::make_pair(/*num_thunks=*/1000, /*use_thread_pool=*/true)));
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_SyncThunkExecutor(benchmark::State& state) {
+  const size_t num_thunks = state.range(0);
+
+  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks).value();
+  auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
+
+  BufferAllocations allocations(g->buffers);
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+
+  for (auto _ : state) {
+    CHECK_OK(e.Execute(params, nullptr));
+  }
+}
+
+static void BM_AsyncThunkExecutor(benchmark::State& state) {
+  const size_t num_thunks = state.range(0);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "thunk-executor", 8);
+
+  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks).value();
+  auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
+
+  BufferAllocations allocations(g->buffers);
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+
+  for (auto _ : state) {
+    CHECK_OK(e.Execute(params, [&](ThunkExecutor::Task task) {
+      thread_pool.Schedule(ToCopyableTask(std::move(task)));
+    }));
+  }
+}
+
+BENCHMARK(BM_SyncThunkExecutor)
+    ->MeasureProcessCPUTime()
+    ->Arg(1)
+    ->Arg(16)
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(258)
+    ->Arg(512);
+
+BENCHMARK(BM_AsyncThunkExecutor)
+    ->MeasureProcessCPUTime()
+    ->Arg(1)
+    ->Arg(16)
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(258)
+    ->Arg(512);
 
 }  // namespace
 }  // namespace xla::cpu
