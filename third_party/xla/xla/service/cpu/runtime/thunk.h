@@ -33,6 +33,10 @@ limitations under the License.
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
 namespace xla::cpu {
 
 // WARNING: This is under construction. Long term plan for XLA is to unify
@@ -109,6 +113,7 @@ class Thunk {
     HostKernels* host_kernels = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
     runtime::XfeedManager* xfeed = nullptr;
+    const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
   };
 
   virtual absl::Status Execute(const ExecuteParams& params) = 0;

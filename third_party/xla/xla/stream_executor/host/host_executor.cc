@@ -89,7 +89,7 @@ absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     if (!loaded.has_value()) continue;
 
     TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
-    host_kernel->SetExecutionEngine(std::move(kernel_function));
+    host_kernel->SetKernelFunction(std::move(kernel_function));
     return absl::OkStatus();
   }
 

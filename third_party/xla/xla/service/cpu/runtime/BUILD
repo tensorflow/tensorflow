@@ -31,6 +31,12 @@ cc_library(
 )
 
 cc_library(
+    name = "task",
+    hdrs = ["task.h"],
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
@@ -206,16 +212,20 @@ cc_library(
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
     deps = [
+        ":task",
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_kernel",
         "//xla/stream_executor/host:host_kernel_c_api",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",

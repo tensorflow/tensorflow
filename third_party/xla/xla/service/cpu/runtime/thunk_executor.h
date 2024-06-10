@@ -18,11 +18,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <limits>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/fixed_array.h"
@@ -46,15 +43,6 @@ class ThunkExecutor {
   // tasks on the same thread, or a runner backed by a thread pool.
   using Task = absl::AnyInvocable<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
-
-  // Converts a Task (absl::AnyInvocable) to a std::function. Task is not
-  // copyable, so we need to wrap it into a std::shared_ptr to be able to pass
-  // to thread pools (Eigen) that expect copyable std::function task type.
-  static std::function<void()> ToStdFunction(Task task) {
-    return [shared_task = std::make_shared<Task>(std::move(task))] {
-      (*shared_task)();
-    };
-  }
 
   // Nodes identified by their index in the captured ThunkSequence.
   using NodeId = int64_t;

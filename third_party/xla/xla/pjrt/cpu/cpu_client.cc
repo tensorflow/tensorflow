@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -1607,12 +1608,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       cpu::BufferAllocations allocations(buffer_device_mem);
       cpu::Thunk::ExecuteParams execute_params = {
           &cpu_executable->host_kernels(), &allocations,
-          cpu::runtime::GetXfeedManager(run_options.device_ordinal())};
+          cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+          run_options.intra_op_thread_pool()};
 
       TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(
           execute_params, [&](cpu::ThunkExecutor::Task task) {
             client_->eigen_intraop_device()->getPool()->Schedule(
-                cpu::ThunkExecutor::ToStdFunction(std::move(task)));
+                cpu::ToCopyableTask(std::move(task)));
           }));
 
     } else {
@@ -1721,11 +1723,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
             cpu::BufferAllocations allocations(buffer_device_mem);
             cpu::Thunk::ExecuteParams execute_params = {
-                &cpu_executable->host_kernels(), &allocations};
+                &cpu_executable->host_kernels(), &allocations,
+                cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+                run_options.intra_op_thread_pool()};
             status = cpu_executable->thunks().Execute(
                 execute_params, [&](cpu::ThunkExecutor::Task task) {
                   eigen_device->getPool()->Schedule(
-                      cpu::ThunkExecutor::ToStdFunction(std::move(task)));
+                      cpu::ToCopyableTask(std::move(task)));
                 });
 
           } else {

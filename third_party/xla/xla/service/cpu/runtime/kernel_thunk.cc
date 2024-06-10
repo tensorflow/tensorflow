@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 
+#define EIGEN_USE_THREADS
+
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -23,13 +25,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -92,7 +97,25 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
   // TODO(ezhulenev): Instead of using HostKernel directly we should be going
   // through the stream executor APIs.
   se::host::HostKernel kernel(buffers_data.size(), kernel_ptr, nullptr);
-  TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
+
+  if (params.intra_op_threadpool == nullptr) {
+    TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
+
+  } else {
+    tsl::AsyncValueRef<se::host::HostKernel::CompletionEvent> event =
+        kernel.Launch(thread_dim_, buffers_data, [&](auto task) {
+          params.intra_op_threadpool->getPool()->Schedule(
+              ToCopyableTask(std::move(task)));
+        });
+
+    // TODO(ezhulenev): We have to be async all the way throughout all the
+    // levels of XLA:CPU runtime as we don't want to repeat inter/intra op
+    // threadpool mistakes of TensorFlow. Figure out how to propagate async
+    // events to ThunkExecutor.
+    tsl::BlockUntilReady(event);
+
+    if (event.IsError()) return event.GetError();
+  }
 
   return absl::OkStatus();
 }
