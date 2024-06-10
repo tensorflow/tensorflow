@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/service/hlo_cse.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,8 +35,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -45,11 +54,13 @@ struct ConstantKey {
         std::move(h), key.hlo->literal());
   }
   friend bool operator==(const ConstantKey& lhs, const ConstantKey& rhs) {
-    return lhs.domain == rhs.domain &&
-           (kIsLayoutSensitive ? Shape::Equal()
-                               : Shape::Equal().IgnoreLayout())(
-               lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal() == rhs.hlo->literal();
+    return
+        // TODO(b/345771111): Remove the hash check once Hash and Eq are
+        // compatible.
+        absl::HashOf(lhs) == absl::HashOf(rhs) && lhs.domain == rhs.domain &&
+        (kIsLayoutSensitive ? Shape::Equal() : Shape::Equal().IgnoreLayout())(
+            lhs.hlo->shape(), rhs.hlo->shape()) &&
+        lhs.hlo->literal() == rhs.hlo->literal();
   }
   HloConstantInstruction* hlo;
   int64_t domain;
@@ -245,9 +256,13 @@ absl::StatusOr<bool> HloCSE::Run(
   };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
-    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
-        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
-        /*sharding_sensitive=*/true);
+    return
+        // TODO(b/345771111): Remove the hash check once Hash and Eq are
+        // compatible.
+        absl::HashOf(lhs) == absl::HashOf(rhs) &&
+        lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+            *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
+            /*sharding_sensitive=*/true);
   };
 
   for (auto* computation : module->computations(execution_threads)) {
