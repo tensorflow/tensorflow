@@ -1,3 +1,9 @@
+# Release 2.16.2
+
+### Bug Fixes and Other Changes
+
+*  Fixed: Incorrect dependency metadata in TensorFlow Python packages causing installation failures with certain package managers such as Poetry.
+
 # Release 2.16.1
 
 ## TensorFlow
