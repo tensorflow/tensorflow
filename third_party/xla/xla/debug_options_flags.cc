@@ -135,6 +135,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging(true);
   opts.set_xla_enable_dumping(true);
+  opts.set_xla_disable_dumping(false);
 
   opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_enable_address_computation_fusion(false);
@@ -833,6 +834,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "and \"test_undeclared_outputs_dir\" have a special meaning: They cause "
       "us to dump into the directory specified by the environment variable "
       "TEST_UNDECLARED_OUTPUTS_DIR."));
+  flag_list->push_back(
+      tsl::Flag("xla_disable_dumping",
+                bool_setter_for(&DebugOptions::set_xla_disable_dumping),
+                debug_options->xla_disable_dumping(),
+                "If set, disables all dumping, taking precedence over other "
+                "dumping-related flags."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_hlo_as_text",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_text),

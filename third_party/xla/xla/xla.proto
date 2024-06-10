@@ -359,6 +359,12 @@ message DebugOptions {
   // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
   bool xla_enable_dumping = 253;
 
+  // Disable HLO dumping. It has to be a separate field from xla_enable_dumping
+  // (which it takes precedence over) so that proto can tell the difference
+  // between unset and set to false explicitly. The difference is relevant when
+  // hooked up to a command-line flag.
+  bool xla_disable_dumping = 304;
+
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;

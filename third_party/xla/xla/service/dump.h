@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_DUMP_H_
 #define XLA_SERVICE_DUMP_H_
 
+#include <string>
+
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"

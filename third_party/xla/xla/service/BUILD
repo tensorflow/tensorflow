@@ -595,9 +595,16 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -606,10 +613,24 @@ cc_library(
         "@local_tsl//tsl/lib/io:zlib_outputbuffer",
         "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
+    ],
+)
+
+cc_test(
+    name = "dump_test",
+    srcs = ["dump_test.cc"],
+    deps = [
+        ":dump",
+        "//xla:xla_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
