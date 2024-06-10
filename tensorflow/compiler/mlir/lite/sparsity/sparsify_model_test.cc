@@ -25,9 +25,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
@@ -58,7 +58,7 @@ TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
 
   // Sparsify and create output model
   flatbuffers::FlatBufferBuilder output_builder;
-  ASSERT_EQ(SparsifyModel(input_model, &output_builder), kTfLiteOk);
+  ASSERT_TRUE(SparsifyModel(input_model, &output_builder).ok());
   auto output_fbm = tflite::FlatBufferModel::BuildFromBuffer(
       reinterpret_cast<const char*>(output_builder.GetCurrentBufferPointer()),
       output_builder.GetSize());
