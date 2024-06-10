@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 
+#include <functional>
+#include <memory>
+
 #include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
@@ -46,6 +49,8 @@ struct CuptiTracerOptions {
   bool enable_nvtx_tracking = false;
 };
 
+class CuptiTracer;
+
 class CuptiDriverApiHook {
  public:
   virtual ~CuptiDriverApiHook() {}
@@ -57,13 +62,6 @@ class CuptiDriverApiHook {
       int device_id, CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
       const CUpti_CallbackData* callback_info) = 0;
   virtual absl::Status SyncAndFlush() = 0;
-
- protected:
-  static absl::Status AddDriverApiCallbackEvent(
-      CuptiTraceCollector* collector, CuptiInterface* cupti_interface,
-      int device_id, uint64_t start_tsc, uint64_t end_tsc,
-      CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
-      const CUpti_CallbackData* callback_info);
 };
 
 // The class use to enable cupti callback/activity API and forward the collected
@@ -104,6 +102,18 @@ class CuptiTracer {
   // Returns the error (if any) when using libcupti.
   static std::string ErrorIfAny();
 
+  // Returns true if the number of annotation strings is too large. The input
+  // count is the per-thread count.
+  bool TooManyAnnotationStrings(size_t count) const;
+
+  // Returns true if the total number of callback events across all threads
+  // is too large.
+  bool TooManyCallbackEvents() const;
+
+  void IncCallbackEventCount() {
+    num_callback_events_.fetch_add(1, std::memory_order_relaxed);
+  }
+
  protected:
   // protected constructor for injecting mock cupti interface for testing.
   explicit CuptiTracer(CuptiInterface* cupti_interface);
@@ -119,9 +129,17 @@ class CuptiTracer {
   std::atomic<size_t> cupti_dropped_activity_event_count_ = 0;
   std::atomic<size_t> num_activity_events_in_dropped_buffer_ = 0;
   std::atomic<size_t> num_activity_events_in_cached_buffer_ = 0;
+  std::atomic<size_t> num_callback_events_ = 0;
 
   // Clear activity_buffers, reset activity event counters.
   void PrepareActivityStart();
+
+  // Empty all per-thread callback annotations, reset callback event counter.
+  void PrepareCallbackStart();
+
+  // Gather all per-thread callback events and annotations.
+  std::vector<CallbackAnnotationsAndEvents>
+  GatherCallbackAnnotationsAndEvents();
 
   absl::Status EnableApiTracing();
   absl::Status EnableActivityTracing();
@@ -131,6 +149,8 @@ class CuptiTracer {
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
   absl::Status HandleNVTXCallback(CUpti_CallbackId cbid,
                                   const CUpti_CallbackData* cbdata);
+  absl::Status HandleDriverApiCallback(CUpti_CallbackId cbid,
+                                       const CUpti_CallbackData* cbdata);
 
   int num_gpus_;
   std::optional<CuptiTracerOptions> option_;

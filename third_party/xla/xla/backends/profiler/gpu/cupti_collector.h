@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -50,6 +52,15 @@ class CuptiTraceCollector {
   virtual void OnEventsDropped(const std::string& reason,
                                uint32_t num_events) = 0;
   virtual void Flush() = 0;
+
+  // After CuptiTracer stop, collected per-thread callback data from threads
+  // will be send here. Default behavior are: a) create merged annotation map
+  // (for later activity event usage), and b) direct add all event by calling
+  // AddEvent(). Yet collector could just save those callback events without
+  // processing now, but merge annotation and AddEvent() later when needed, such
+  // as during export().
+  virtual void OnTracerCollectedCallbackData(
+      std::vector<CallbackAnnotationsAndEvents> callback_events);
 
   // CuptiTracer tracer now cache all activity buffers during tracing.
   // After tracing stop, the cached activity buffers will be send here.
