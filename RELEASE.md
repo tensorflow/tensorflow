@@ -2,7 +2,7 @@
 
 ### Bug Fixes and Other Changes
 
-*   Remove references to Linux Arm64 installer wheels from setup.py
+*  Fixed: Incorrect dependency metadata in TensorFlow Python packages causing installation failures with certain package managers such as Poetry.
 
 # Release 2.16.1
 
