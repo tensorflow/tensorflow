@@ -23,6 +23,7 @@ lit_test_suite(
             "layouts_and_names.hlo",
             "location.hlo",
             "module_attributes.hlo",
+            "module_config.hlo",
             "send_recv.hlo",
             "simple.hlo",
             "spmd_module_sharding.hlo",

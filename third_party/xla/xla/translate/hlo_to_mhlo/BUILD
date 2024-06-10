@@ -71,6 +71,7 @@ cc_library(
         ":custom_call_importer",
         ":hlo_utils",
         ":location_importer",
+        ":module_config_importer",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:protobuf_util",
@@ -82,6 +83,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -160,6 +162,16 @@ cc_library(
     deps = [
         "stack_location_utils",
         "//xla/hlo/ir:hlo",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "module_config_importer",
+    srcs = ["module_config_importer.cc"],
+    hdrs = ["module_config_importer.h"],
+    deps = [
+        "//xla/service:hlo_module_config",
         "@llvm-project//mlir:IR",
     ],
 )

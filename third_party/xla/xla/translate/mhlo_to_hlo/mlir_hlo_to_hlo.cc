@@ -83,12 +83,14 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
+#include "xla/translate/mhlo_to_hlo/module_config_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/types.h"
@@ -711,12 +713,9 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(mlir::ModuleOp module,
                               xla::XlaBuilder& module_builder,
-                              bool use_tuple_args, bool return_tuple,
                               MlirToHloConversionOptions options)
       : module_(module),
         module_builder_(module_builder),
-        use_tuple_args_(use_tuple_args),
-        return_tuple_(return_tuple),
         options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
@@ -820,15 +819,10 @@ class ConvertToHloModule {
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
 
-  // Whether the entry function should take a single tuple as input.
-  bool use_tuple_args_;
-
-  // Whether to always return a tuple.
-  bool return_tuple_;
-
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
 
+  // Conversion options
   MlirToHloConversionOptions options_;
 };
 
@@ -3178,7 +3172,8 @@ LogicalResult ConvertToHloModule::Lower(
     unsigned num_return_values = inst->getNumOperands();
     std::optional<xla::OpSharding> ret_tuple_sharding =
         CreateTupleSharding(ret_shardings);
-    if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
+    if ((options_.return_tuple && is_entry_function) ||
+        num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
         unsigned index = ret.getOperandNumber();
@@ -3293,7 +3288,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       auto buffer_donor =
           f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
       if (buffer_donor) {
-        if (use_tuple_args_) {
+        if (options_.use_tuple_args) {
           builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
         } else {
           builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
@@ -3303,7 +3298,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
       xla::ShapeIndex output_index;
-      if ((return_tuple_ && entry_function) || f.getNumResults() != 1) {
+      if ((options_.return_tuple && entry_function) || f.getNumResults() != 1) {
         output_index = {aliasing_output.getInt()};
       } else {
         if (aliasing_output.getInt() != 0) {
@@ -3312,7 +3307,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
         }
         output_index = {};
       }
-      if (use_tuple_args_) {
+      if (options_.use_tuple_args) {
         builder.SetUpAlias(output_index, /*param_number=*/0,
                            /*param_index=*/{i});
       } else {
@@ -3453,7 +3448,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
-  if (is_entry_function && use_tuple_args_) {
+  if (is_entry_function && options_.use_tuple_args) {
     llvm::SmallVector<xla::Shape, 4> arg_shapes;
     std::vector<bool> leaf_replication;
     if (failed(SetEntryTupleShapesAndLeafReplication(
@@ -3640,8 +3635,7 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
 }  // namespace
 
 absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
-                                 xla::HloProto* hlo_proto, bool use_tuple_args,
-                                 bool return_tuple,
+                                 xla::HloProto* hlo_proto,
                                  MlirToHloConversionOptions options) {
   // To support the ongoing migration of XLA's compiler interface from MHLO
   // to StableHLO, we've inserted this fallback to provide support for backends
@@ -3650,26 +3644,16 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // supports not just MHLO, but also CHLO and StableHLO, but we will
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
-  // TODO(b/263811577): Remove this functionality once we have reasonable
-  // confidence that everyone has migrated from calling ConvertMlirHloToHlo
-  // directly.
-  bool hasStablehloOps = false;
-  module.walk([&](Operation* op) {
-    hasStablehloOps |= isa<stablehlo::StablehloDialect>(op->getDialect());
-    return hasStablehloOps ? WalkResult::interrupt() : WalkResult::advance();
-  });
-  if (hasStablehloOps) {
-    mlir::PassManager pm(module->getContext());
-    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    if (failed(pm.run(module)))
-      return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
+  mlir::PassManager pm(module->getContext());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  if (failed(pm.run(module))) {
+    return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
   }
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
-  ConvertToHloModule converter(module, module_builder, use_tuple_args,
-                               return_tuple, options);
+  ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
@@ -3715,15 +3699,33 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
+    mlir::ModuleOp module, MlirToHloConversionOptions options) {
+  xla::HloProto hlo_proto;
+  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+
+  // Create default config.
+  const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
+  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          module_proto, xla::GetDebugOptionsFromFlags()));
+
+  // Modify config with values stored in MLIR module attributes
+  mhlo::ExportHloModuleConfig(config, module);
+
+  return xla::HloModule::CreateFromProto(module_proto, config);
+}
+
 absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
   TF_RETURN_IF_ERROR(PrepareForExport(module));
-  ConvertToHloModule converter(module, builder,
-                               /*use_tuple_args=*/false, /*return_tuple=*/false,
-                               options);
+  // No tuple support in Builder converter API.
+  options.return_tuple = false;
+  options.use_tuple_args = false;
+  ConvertToHloModule converter(module, builder, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
   // xla_params should only include non-constant parameters the block arguments
@@ -3758,6 +3760,15 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   }
 
   return absl::OkStatus();
+}
+
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 ::xla::HloProto* hlo_proto,
+                                 bool use_tuple_args, bool return_tuple,
+                                 MlirToHloConversionOptions options) {
+  options.use_tuple_args = use_tuple_args;
+  options.return_tuple = return_tuple;
+  return ConvertMlirHloToHlo(module, hlo_proto, options);
 }
 
 }  // namespace mlir

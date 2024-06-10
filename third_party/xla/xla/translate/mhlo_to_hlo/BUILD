@@ -62,6 +62,16 @@ cc_library(
 )
 
 cc_library(
+    name = "module_config_exporter",
+    srcs = ["module_config_exporter.cc"],
+    hdrs = ["module_config_exporter.h"],
+    deps = [
+        "//xla/service:hlo_module_config",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "stack_frame_index_builder",
     srcs = ["stack_frame_index_builder.cc"],
     hdrs = ["stack_frame_index_builder.h"],
@@ -82,6 +92,7 @@ cc_library(
         ":attribute_exporter",
         ":layout_util",
         ":location_exporter",
+        ":module_config_exporter",
         ":operator_writer_inc",
         ":stack_frame_index_builder",
         ":type_to_shape",
@@ -104,10 +115,12 @@ cc_library(
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -163,7 +176,12 @@ cc_library(
     deps = [
         ":mlir_hlo_to_hlo",
         ":type_to_shape",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_proto_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
