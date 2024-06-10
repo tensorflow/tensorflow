@@ -56,7 +56,7 @@ namespace gpu {
 namespace {
 
 Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc) {
-  auto valid_shape = [conv, &cc](const Shape& shape) -> Status {
+  auto valid_shape = [conv, &cc](const Shape& shape) -> absl::Status {
     PrimitiveType type = shape.element_type();
     if (!primitive_util::IsFloatingPointType(type) &&
         !primitive_util::IsIntegralType(type)) {

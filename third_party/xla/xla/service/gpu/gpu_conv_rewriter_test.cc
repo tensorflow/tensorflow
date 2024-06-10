@@ -766,7 +766,8 @@ TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
     TF_ASSERT_OK_AND_ASSIGN(auto m,
                             ParseAndReturnVerifiedModule(module_with_type));
 
-    Status s = GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
+    absl::Status s =
+        GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
     EXPECT_THAT(
         s, tsl::testing::StatusIs(
                absl::StatusCode::kUnimplemented,
@@ -779,9 +780,9 @@ TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
       absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fn"}});
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(module_with_type));
-  Status s = GpuConvRewriter(se::CudaComputeCapability::Ampere())
-                 .Run(m.get())
-                 .status();
+  absl::Status s = GpuConvRewriter(se::CudaComputeCapability::Ampere())
+                       .Run(m.get())
+                       .status();
   EXPECT_THAT(s, tsl::testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
