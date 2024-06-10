@@ -3336,5 +3336,109 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedLoopWithAliasingInDUSFusion) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithCollective) {
+  const char* kModule = R"(
+    HloModule LoopFusionAllReduce
+
+    fused_computation.1 {
+      p0 = bf16[2,8192,6144]{2,1,0:T(8,128)(2,1)} parameter(0)
+      ROOT slice = bf16[2,2048,6144]{2,1,0:T(8,128)(2,1)} slice(p0), slice={[0:2], [6144:8192], [0:6144]}
+    }
+
+    fused_computation.2 {
+      p0 = bf16[2,8192]{1,0:T(2,128)(2,1)} parameter(0)
+      ROOT slice = bf16[2,2048]{1,0:T(2,128)(2,1)} slice(p0), slice={[0:2], [6144:8192]}
+    }
+
+    sum {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)} parameter(0)
+      p1 = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)} parameter(1)
+      p2 = bf16[2,8192,6144]{2,1,0:T(8,128)(2,1)} parameter(2)
+      p3 = bf16[2,8192]{1,0:T(2,128)(2,1)} parameter(3)
+      fusion.1 = bf16[2,2048,6144]{2,1,0:T(8,128)(2,1)} fusion(p2), kind=kLoop, calls=fused_computation.1
+      bitcast = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)} bitcast(fusion.1)
+      fusion.2 = bf16[2,2048]{1,0:T(2,128)(2,1)} fusion(p3), kind=kLoop, calls=fused_computation.2
+      broadcast = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)} broadcast(fusion.2), dimensions={1,2}
+      multiply = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)S(1)} multiply(bitcast, broadcast)
+      all-reduce = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)} all-reduce(p1), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum
+      c0 = u32[] constant(0)
+      c1 = u32[] constant(4096)
+      dynamic-update-slice = bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)} dynamic-update-slice(p0, all-reduce, c0, c0, c1, c0)
+      ROOT tuple = (bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)S(1)}, bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)}) tuple(multiply, dynamic-update-slice)
+    }
+
+    ENTRY entry {
+      p0 = bf16[2,8192,6144]{2,1,0:T(8,128)(2,1)} parameter(0)
+      p1 = bf16[2,8192]{1,0:T(2,128)(2,1)} parameter(1)
+      p2 = bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)} parameter(2)
+      p3 = bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)} parameter(3)
+      ROOT fusion = (bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)S(1)}, bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)}) fusion(p3, p2, p0, p1), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, DUSOutputFusionWithCollective) {
+  const char* kModule = R"(
+    HloModule OutputFusionAllReduce
+
+    fused_computation.0 {
+      p0 = bf16[4096,9216]{1,0:T(8,128)(2,1)} parameter(0)
+      ROOT slice = bf16[1024,9216]{1,0:T(8,128)(2,1)} slice(p0), slice={[3072:4096], [0:9216]}
+    }
+
+    fused_computation.1 {
+      p0 = s8[9216,6144]{1,0:T(8,128)(4,1)S(1)} parameter(0)
+      ROOT bitcast = s8[9216,6144]{1,0:T(8,128)(4,1)} bitcast(p0)
+    }
+
+    add {
+      x = bf16[] parameter(0)
+      y = bf16[] parameter(1)
+      ROOT add = bf16[] add(x, y)
+    }
+
+    fused_computation {
+      p0 = bf16[4096,6144]{1,0:T(8,128)(2,1)} parameter(0)
+      p1 = bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)} parameter(1)
+      p2 = bf16[4096,9216]{1,0:T(8,128)(2,1)} parameter(2)
+      p3 = s8[9216,6144]{1,0:T(8,128)(4,1)S(1)} parameter(3)
+      fusion1 = bf16[1024,9216]{1,0:T(8,128)(2,1)} fusion(p2), kind=kLoop, calls=fused_computation.0
+      fusion2 = s8[9216,6144]{1,0:T(8,128)(4,1)} fusion(p3), kind=kLoop, calls=fused_computation.1
+      convolution = bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)} convolution(fusion1, fusion2), dim_labels=bf_io->bf
+      all-reduce = bf16[1024,6144]{1,0:T(8,128)(2,1)} all-reduce(p1), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=add
+      c1 = u32[] constant(2048)
+      c0 = u32[] constant(0)
+      dynamic-update-slice = bf16[4096,6144]{1,0:T(8,128)(2,1)} dynamic-update-slice(p0, all-reduce, c1, c0)
+      ROOT tuple = (bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)}, bf16[4096,6144]{1,0:T(8,128)(2,1)}) tuple(convolution, dynamic-update-slice)
+    }
+
+    ENTRY entry {
+      p0 = bf16[4096,9216]{1,0:T(8,128)(2,1)} parameter(0)
+      p1 = s8[9216,6144]{1,0:T(8,128)(4,1)S(1)} parameter(1)
+      p2 = bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)} parameter(2)
+      p3 = bf16[4096,6144]{1,0:T(8,128)(2,1)} parameter(3)
+      ROOT fusion = (bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)}, bf16[4096,6144]{1,0:T(8,128)(2,1)}) fusion(p3, p2, p0, p1), kind=kOutput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
