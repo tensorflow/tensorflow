@@ -122,11 +122,17 @@ bool IsRemovableWhile(HloInstruction* instruction,
         }
       } else {
         HloInstruction* gte = fusion_instruction->users()[0];
-        TF_RETURN_IF_ERROR(gte->ReplaceAllUsesWith(fusion_instruction));
-        TF_RETURN_IF_ERROR(
-            gte->parent()->RemoveInstructionAndUnusedOperands(gte));
+        // Replace and change control successors to be dependent on the fusion
+        // instruction itself.
+        TF_ASSIGN_OR_RETURN(bool replaced,
+                            gte->parent()->ReplaceInstruction(
+                                gte, fusion_instruction,
+                                /*preserve_sharding=*/true,
+                                /*relay_control_dependency=*/true));
+        if (replaced) {
+          changed |= replaced;
+        }
       }
-
       // Update the root of the fusion computation.
       if (tuple_shapes.size() > 1) {
         std::vector<HloInstruction*> new_operands;
