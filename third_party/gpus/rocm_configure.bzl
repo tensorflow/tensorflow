@@ -192,27 +192,27 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
     # Add HIP headers (needs to match $HIP_PATH)
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
+    inc_dirs.append(rocm_config.rocm_paths["HIP"] + "/hip/include")
     if int(rocm_config.rocm_version_number) >= 50200:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocblas")
+        inc_dirs.append(rocm_config.rocm_paths["HIP"] + "/include/hip")
+        inc_dirs.append(rocm_config.rocm_paths["ROCPRIM"] + "/include/rocprim")
+        inc_dirs.append(rocm_config.rocm_paths["ROCSOLVER"] + "/include/rocsolver")
+        inc_dirs.append(rocm_config.rocm_paths["ROCBLAS"] + "/include/rocblas")
 
     # Add HIP-Clang headers (realpath relative to compiler binary)
-    rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/12.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/13.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/14.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/15.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/16.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17.0.0/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
-    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/19/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/12.0.0/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/13.0.0/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/14.0.0/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/15.0.0/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/16.0.0/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/17.0.0/include/")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/17/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/18/include")
+    inc_dirs.append(rocm_config.llvm_path + "/lib/clang/19/include")
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
+    rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
     inc_dirs.append(rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
 
@@ -230,11 +230,11 @@ def _enable_rocm(repository_ctx):
         return True
     return False
 
-def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
+def _amdgpu_targets(repository_ctx, rocminfo_path, bash_bin):
     """Returns a list of strings representing AMDGPU targets."""
     amdgpu_targets_str = get_host_environ(repository_ctx, _TF_ROCM_AMDGPU_TARGETS)
     if not amdgpu_targets_str:
-        cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
+        cmd = "%s/bin/rocm_agent_enumerator" % rocminfo_path
         result = execute(repository_ctx, [bash_bin, "-c", cmd])
         targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
         targets = {x: None for x in targets}
@@ -344,7 +344,7 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     return libs
 
-def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_path, bash_bin):
+def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     """Returns the ROCm libraries on the system.
 
     Args:
@@ -358,24 +358,24 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("amdhip64", rocm_config.rocm_toolkit_path),
-            ("rocblas", rocm_config.rocm_toolkit_path),
-            (hipfft_or_rocfft, rocm_config.rocm_toolkit_path),
-            ("hiprand", rocm_config.rocm_toolkit_path),
-            ("MIOpen", miopen_path),
-            ("rccl", rccl_path),
-            ("hipsparse", rocm_config.rocm_toolkit_path),
-            ("roctracer64", rocm_config.rocm_toolkit_path),
-            ("rocsolver", rocm_config.rocm_toolkit_path),
+            ("amdhip64", rocm_config.rocm_paths["HIP"] + "/lib"),
+            ("rocblas", rocm_config.rocm_paths["ROCBLAS"]),
+            (hipfft_or_rocfft, rocm_config.rocm_paths[hipfft_or_rocfft.upper()]),
+            ("hiprand", rocm_config.rocm_paths["HIPRAND"]),
+            ("MIOpen", rocm_config.rocm_paths["MIOPEN"]),
+            ("rccl", rocm_config.rocm_paths["RCCL"]),
+            ("hipsparse", rocm_config.rocm_paths["HIPSPARSE"]),
+            ("roctracer64", rocm_config.rocm_paths["ROCTRACER"] + "/lib"),
+            ("rocsolver", rocm_config.rocm_paths["ROCSOLVER"]),
         ]
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
-        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
-        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
+        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_paths["HIPSOLVER"])))
+        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_paths["HIPBLAS"])))
 
     # hipblaslt may be absent even in versions of ROCm where it exists
     # (it is not installed by default in some containers). Autodetect.
-    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_toolkit_path), True))
+    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_paths["HIPBLASLT"]), True))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def find_rocm_config(repository_ctx):
@@ -408,12 +408,55 @@ def _get_rocm_config(repository_ctx, bash_bin):
     rocm_version_number = config["rocm_version_number"]
     miopen_version_number = config["miopen_version_number"]
     hipruntime_version_number = config["hipruntime_version_number"]
+    rocm_components_list = [
+        "HIP",
+        "ROCRAND",
+        "ROCBLAS",
+        "ROCFFT",
+        "HIPFFT",
+        "HIPSPARSE",
+        "ROCPRIM",
+        "HSA",
+        "ROCMINFO",
+        "HIPSOLVER",
+        "HIPRAND",
+        "ROCSOLVER",
+        "HIPSOLVER",
+        "HIPBLAS",
+        "HIPCUB",
+        "ROCM_CORE",
+        "ROCTRACER",
+        "HIPBLASLT",
+    ]
+    rocm_paths = {}
+    for component in rocm_components_list:
+        # Check if the environment variable which specifies the path to the rocm component is set and that
+        # the rocm component is not already installed in the rocm_toolkit_path
+        component_path = get_host_environ(repository_ctx, component + "_PATH")
+        if component_path==None:
+            rocm_paths[component] = rocm_toolkit_path
+        else:
+            rocm_paths[component] = component_path
+
+    rocm_paths["MIOPEN"] = get_host_environ(repository_ctx, "MIOPEN_PATH")
+    if rocm_paths["MIOPEN"]==None:
+        # For ROCm 5.2 and above, find MIOpen and RCCL in the main rocm lib path
+        rocm_paths["MIOPEN"] = rocm_toolkit_path + "/miopen" if int(rocm_version_number) < 50200 else rocm_toolkit_path
+    rocm_paths["RCCL"] = get_host_environ(repository_ctx, "RCCL_PATH")
+    if rocm_paths["RCCL"]==None:
+        rocm_paths["RCCL"] = rocm_toolkit_path + "/rccl" if int(rocm_version_number) < 50200 else rocm_toolkit_path
+
+    llvm_path = get_host_environ(repository_ctx, "LLVM_PATH")
+    if llvm_path==None:
+        llvm_path = rocm_toolkit_path + "/llvm"
     return struct(
-        amdgpu_targets = _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin),
+        amdgpu_targets = _amdgpu_targets(repository_ctx, rocm_paths["ROCMINFO"], bash_bin),
         rocm_toolkit_path = rocm_toolkit_path,
         rocm_version_number = rocm_version_number,
         miopen_version_number = miopen_version_number,
         hipruntime_version_number = hipruntime_version_number,
+        rocm_paths = rocm_paths,
+        llvm_path = llvm_path,
     )
 
 def _tpl_path(repository_ctx, labelname):
@@ -564,10 +607,6 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_version_number = int(rocm_config.rocm_version_number)
     hipfft_or_rocfft = "rocfft" if rocm_version_number < 40100 else "hipfft"
 
-    # For ROCm 5.2 and above, find MIOpen and RCCL in the main rocm lib path
-    miopen_path = rocm_config.rocm_toolkit_path + "/miopen" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
-    rccl_path = rocm_config.rocm_toolkit_path + "/rccl" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
-
     # Copy header and library files to execroot.
     # rocm_toolkit_path
     rocm_toolkit_path = rocm_config.rocm_toolkit_path
@@ -580,38 +619,27 @@ def _create_local_rocm_repository(repository_ctx):
         ),
     ]
 
-    # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
-    # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
-    # dir has been removed. This removal will happen in a near-future ROCm release.
-    hiprand_include = ""
-    hiprand_include_softlink = rocm_config.rocm_toolkit_path + "/include/hiprand"
-    softlink_exists = files_exist(repository_ctx, [hiprand_include_softlink], bash_bin)
-    if not softlink_exists[0]:
-        hiprand_include = '":hiprand-include",\n'
-        copy_rules.append(
-            make_copy_dir_rule(
-                repository_ctx,
-                name = "hiprand-include",
-                src_dir = rocm_toolkit_path + "/hiprand/include",
-                out_dir = "rocm/include/hiprand",
-            ),
-        )
+    rocm_components_include = ""
 
-    rocrand_include = ""
-    rocrand_include_softlink = rocm_config.rocm_toolkit_path + "/include/rocrand"
-    softlink_exists = files_exist(repository_ctx, [rocrand_include_softlink], bash_bin)
-    if not softlink_exists[0]:
-        rocrand_include = '":rocrand-include",\n'
-        copy_rules.append(
-            make_copy_dir_rule(
-                repository_ctx,
-                name = "rocrand-include",
-                src_dir = rocm_toolkit_path + "/rocrand/include",
-                out_dir = "rocm/include/rocrand",
-            ),
-        )
+    # install all the rocm component include directories that aren't in the rocm_toolkit_path and haven't
+    # already been installed to the local rocm repo
+    for component_label in rocm_config.rocm_paths:
+        component_name = component_label.lower().replace("_","-")
+        component_toolkit_include_path = rocm_config.rocm_toolkit_path + "/include/" + component_name
+        toolkit_include_exists = files_exist(repository_ctx, [component_toolkit_include_path], bash_bin)
+        component_include_path = rocm_config.rocm_paths[component_label] + "/include/" + component_name
+        if not toolkit_include_exists[0] and repository_ctx.path(component_include_path).exists:
+            rocm_components_include = rocm_components_include + '":' + component_name + '-include",\n'
+            copy_rules.append(
+                make_copy_dir_rule(
+                    repository_ctx,
+                    name = component_name  + "-include",
+                    src_dir = component_include_path,
+                    out_dir = "rocm/include/" + component_name,
+                ),
+            )
 
-    rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_path, bash_bin)
+    rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():
@@ -625,7 +653,7 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
-    clang_offload_bundler_path = rocm_toolkit_path + "/llvm/bin/clang-offload-bundler"
+    clang_offload_bundler_path = rocm_config.llvm_path + "/bin/clang-offload-bundler"
 
     # copy files mentioned in third_party/gpus/rocm/BUILD
     copy_rules.append(make_copy_files_rule(
@@ -671,9 +699,7 @@ def _create_local_rocm_repository(repository_ctx):
         "%{roctracer_lib}": rocm_libs["roctracer64"].file_name,
         "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
         "%{copy_rules}": "\n".join(copy_rules),
-        "%{rocm_headers}": ('":rocm-include",\n' +
-                            hiprand_include +
-                            rocrand_include),
+        "%{rocm_headers}": ('":rocm-include",\n' + rocm_components_include),
     }
     if rocm_libs["hipblaslt"] != None:
         repository_dict["%{hipblaslt_lib}"] = rocm_libs["hipblaslt"].file_name
@@ -746,11 +772,11 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_paths["HIP"] + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
-            "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
+            "%{rocr_runtime_path}": rocm_config.rocm_paths["HSA"] + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
-            "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
+            "%{hip_runtime_path}": rocm_config.rocm_paths["HIP"] + "/lib",
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
