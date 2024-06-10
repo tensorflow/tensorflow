@@ -139,18 +139,6 @@ class Service : public ServiceInterface {
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) override;
 
-  // Resets devices, clearing all existing state on all the devices associated
-  // with this service (including memory allocated on the devices).
-  //
-  // ResetDevice may only be called where no previous Execution state on the
-  // device is used by the next Execution.
-  //
-  // ResetDevice should be called before an Execution that expect the device to
-  // be in the reset state. For example, if the prior Execution modifies device
-  // state (e.g., architectural state) that the next Execution depends on.
-  absl::Status ResetDevice(const ResetDeviceRequest* arg,
-                           ResetDeviceResponse* result) override;
-
   absl::Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                                     ComputeConstantResponse* result) override;
 

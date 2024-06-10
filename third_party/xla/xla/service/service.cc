@@ -1053,11 +1053,6 @@ absl::Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
   return absl::OkStatus();
 }
 
-absl::Status Service::ResetDevice(const ResetDeviceRequest* arg,
-                                  ResetDeviceResponse* result) {
-  return execute_backend_->ResetDevices();
-}
-
 absl::Status Service::ComputeConstantGraph(
     const ComputeConstantGraphRequest* arg, ComputeConstantResponse* result) {
   if (!arg->has_computation()) {

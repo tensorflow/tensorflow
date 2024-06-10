@@ -45,9 +45,6 @@ class ServiceInterface {
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) = 0;
 
-  virtual absl::Status ResetDevice(const ResetDeviceRequest* arg,
-                                   ResetDeviceResponse* result) = 0;
-
   virtual absl::Status Compile(const CompileRequest* arg,
                                CompileResponse* result) = 0;
 

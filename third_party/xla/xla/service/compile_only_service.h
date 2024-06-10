@@ -73,10 +73,6 @@ class CompileOnlyService : public Service {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  absl::Status ResetDevice(const ResetDeviceRequest* arg,
-                           ResetDeviceResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support devices.");
-  }
 
  private:
   explicit CompileOnlyService(const ServiceOptions& options,

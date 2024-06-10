@@ -149,22 +149,6 @@ absl::StatusOr<Literal> Client::TransferFromOutfeed(
   return Literal::CreateFromProto(response.literal());
 }
 
-absl::Status Client::ResetDevice() {
-  ResetDeviceRequest request;
-  ResetDeviceResponse response;
-
-  VLOG(1) << "making reset device request";
-  VLOG(3) << "ResetDeviceRequest: {" << request.DebugString() << "}";
-  absl::Status s = stub_->ResetDevice(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return absl::OkStatus();
-}
-
 absl::StatusOr<Literal> Client::ExecuteAndTransfer(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,

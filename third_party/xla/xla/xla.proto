@@ -1068,12 +1068,6 @@ message TransferFromOutfeedResponse {
   LiteralProto literal = 1;
 }
 
-message ResetDeviceRequest {
-  DeviceHandle device_handle = 1;
-}
-
-message ResetDeviceResponse {}
-
 message CreateChannelHandleRequest {
   ChannelHandle.ChannelType channel_type = 1;
 }
