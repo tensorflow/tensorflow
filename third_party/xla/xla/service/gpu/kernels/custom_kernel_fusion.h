@@ -21,7 +21,6 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -143,14 +142,14 @@ class CustomKernelFusionRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_(NAME, FUSION, N) \
   XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                    \
-  ABSL_ATTRIBUTE_UNUSED static const bool                                \
-      xla_custom_fusion_##N##_registered_ = [] {                         \
-        absl::Status status =                                            \
-            ::xla::gpu::CustomKernelFusionRegistry::Default()->Register( \
-                NAME, std::make_unique<FUSION>());                       \
-        if (!status.ok()) LOG(ERROR) << status;                          \
-        return status.ok();                                              \
+#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                      \
+  [[maybe_unused]] static const bool xla_custom_fusion_##N##_registered_ = \
+      [] {                                                                 \
+        absl::Status status =                                              \
+            ::xla::gpu::CustomKernelFusionRegistry::Default()->Register(   \
+                NAME, std::make_unique<FUSION>());                         \
+        if (!status.ok()) LOG(ERROR) << status;                            \
+        return status.ok();                                                \
       }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_
