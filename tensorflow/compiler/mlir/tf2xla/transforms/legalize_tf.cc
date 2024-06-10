@@ -6765,7 +6765,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
               UpdateElementTypeTo(original_ty, element_types[block_idx]);
           signature.addInputs(block_idx, {updated_ty});
         }
-        rewriter.applySignatureConversion(&region, signature);
+        rewriter.applySignatureConversion(&region.front(), signature);
       }
     }
 
