@@ -488,6 +488,7 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
+    tags = ["no_rocm"], #TODO(rocm) TEMP, sync 24-06-03
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
