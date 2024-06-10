@@ -22,8 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
@@ -86,6 +86,16 @@ namespace {
 using CompletionEvent = HostKernel::CompletionEvent;
 using TaskRunner = HostKernel::TaskRunner;
 
+// Non-reference-counted async value ref for host kernels executed inline.
+static tsl::AsyncValueRef<CompletionEvent> ReadyCompletionEvent() {
+  static tsl::AsyncValueOwningRef<CompletionEvent>* event = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<CompletionEvent>();
+    return new tsl::AsyncValueOwningRef<CompletionEvent>(
+        tsl::MakeAvailableAsyncValueRef<CompletionEvent>(*storage, 1ull));
+  }();
+  return event->AsRef();
+}
+
 // Keep a state of an in-flight kernel execution on a heap to keep it alive
 // until the last task is done.
 struct HostKernelExecuteState {
@@ -105,11 +115,24 @@ struct HostKernelExecuteState {
   std::atomic<int64_t> counter;
   tsl::AsyncValueRef<CompletionEvent> event;
 };
+
 }  // namespace
 
 tsl::AsyncValueRef<CompletionEvent> HostKernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
     TaskRunner task_runner) const {
+  size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
+  DCHECK_GT(num_tasks, 0) << "Number of tasks must be positive";
+
+  // Short-circuit launch with a single task and run it in the caller thread.
+  if (num_tasks == 1) {
+    absl::Status launched = Launch(thread_dims, buffers);
+    return ABSL_PREDICT_TRUE(launched.ok())
+               ? ReadyCompletionEvent()
+               : tsl::MakeErrorAsyncValueRef(std::move(launched));
+  }
+
+  // Allocate a state for async launch on the heap.
   auto state = std::make_shared<HostKernelExecuteState>();
   state->task_runner = std::move(task_runner);
   state->kernel = function_->kernel();
@@ -123,7 +146,6 @@ tsl::AsyncValueRef<CompletionEvent> HostKernel::Launch(
   }
 
   // Each logical thread will be executed as a separate task.
-  size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
   state->counter.store(num_tasks, std::memory_order_relaxed);
   state->event = tsl::MakeConstructedAsyncValueRef<CompletionEvent>(num_tasks);
 

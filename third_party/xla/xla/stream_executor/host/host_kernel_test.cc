@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -195,73 +198,58 @@ TEST(HostKernelTest, JitAddition) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-static void BM_ThreadpoolKernel(benchmark::State& state) {
-  auto tp = std::make_shared<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), "XLAEigen", tsl::port::MaxParallelism());
+// We benchmark HostKernel launch overheads so we use a noop kernel as we are
+// only interested on how fast we can launch kernel tasks.
+static SE_HOST_KernelError* NoOp(const SE_HOST_KernelCallFrame*) {
+  return nullptr;
+}
 
-  HostKernel kernel(/*arity=*/3, AddI32, tp);
+static auto ToCopyableTask(absl::AnyInvocable<void()> task) {
+  return [shared_task = std::make_shared<decltype(task)>(std::move(task))] {
+    (*shared_task)();
+  };
+}
 
-  const int input_size = state.range(0);
-  std::vector<int32_t> lhs(input_size);
-  std::vector<int32_t> rhs(input_size);
-  std::vector<int32_t> out(input_size);
+static void BM_HostKernelSyncLaunch(benchmark::State& state) {
+  int32_t tdim_x = state.range(0);
 
-  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
-  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
-  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
-  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
-
+  HostKernel kernel(/*arity=*/0, NoOp);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(input_size), args));
+    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(tdim_x), /*buffers=*/{}));
   }
 }
 
-static void BM_JitKernel(benchmark::State& state) {
-  const int input_size = state.range(0);
-  std::vector<int32_t> lhs(input_size);
-  std::vector<int32_t> rhs(input_size);
-  std::vector<int32_t> out(input_size);
+static void BM_HostKernelAsyncLaunch(benchmark::State& state) {
+  int32_t tdim_x = state.range(0);
 
-  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
-  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
-  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
-  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddLlvmHostKernel(llvm_kernel_add, "LlvmAddI32", "LlvmAddI32",
-                         absl::Span<std::string>());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          KernelFactory::Create(executor.get(), spec));
-
-  const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-
+  HostKernel kernel(/*arity=*/0, NoOp);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(executor->Launch(
-        stream.get(), ThreadDim(input_size), BlockDim(1), *add, kargs));
+    auto event = kernel.Launch(ThreadDim(tdim_x), {}, [&](auto task) {
+      thread_pool->Schedule(ToCopyableTask(std::move(task)));
+    });
+    tsl::BlockUntilReady(event);
   }
 }
 
-BENCHMARK(BM_ThreadpoolKernel)
+BENCHMARK(BM_HostKernelSyncLaunch)
     ->MeasureProcessCPUTime()
-    ->Arg(10)
-    ->Arg(1023)
-    ->Arg(1024)
-    ->Arg(2048)
-    ->Arg(4096)
-    ->Arg(8192)
-    ->Arg(10000);
+    ->Arg(1)
+    ->Arg(4)
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64);
 
-BENCHMARK(BM_JitKernel)
+BENCHMARK(BM_HostKernelAsyncLaunch)
     ->MeasureProcessCPUTime()
-    ->Arg(10)
-    ->Arg(1023)
-    ->Arg(1024)
-    ->Arg(2048)
-    ->Arg(4096)
-    ->Arg(8192)
-    ->Arg(10000);
+    ->Arg(1)
+    ->Arg(4)
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64);
 
 }  // namespace stream_executor::host

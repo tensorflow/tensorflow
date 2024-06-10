@@ -75,7 +75,7 @@ class HostKernel : public Kernel {
 
   // TODO(tsilytskyi): make this implementation detail private
   HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
-             std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
+             std::shared_ptr<tsl::thread::ThreadPool> thread_pool = nullptr);
 
   // Launches the kernel on the current thread by iterating over all threads in
   // `thread_dims` and calling the kernel function.
