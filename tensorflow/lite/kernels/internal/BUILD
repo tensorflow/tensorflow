@@ -1442,6 +1442,7 @@ cc_test(
     srcs = ["per_channel_dequantize_test.cc"],
     deps = [
         ":reference_base",
+        ":tensor_utils_no_eigen",
         ":types",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

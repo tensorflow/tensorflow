@@ -26,6 +26,10 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.lite`
+    * `Dequantize` op supports `TensorType_INT4`.
+        * This change includes per-channel dequantization.
+
 ## Keras
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
