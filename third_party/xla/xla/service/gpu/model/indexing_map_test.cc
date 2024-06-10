@@ -650,6 +650,18 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
   )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_ModWithNegativeMultipler) {
+  auto serialized_map = "(d0) -> ((-d0) mod 2)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {128}, {});
+  indexing_map.Simplify();
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0) -> ((-d0) mod 2)
+      domain:
+      d0 in [0, 127]
+  )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyBitcastAndBack) {
   // `d0 floordiv 1536` is the result of simplifying this:
   // `((d0 * 2 + d1 floordiv 64) floordiv 3) floordiv 1024`.

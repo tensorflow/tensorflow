@@ -169,7 +169,7 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   // = (c - c // b * b) * a
   // = (c % b) * a
   if (auto mul = GetConstantRhs(lhs_simplified, AffineExprKind::Mul);
-      mul && (m % *mul == 0)) {
+      mul && *mul > 0 && (m % *mul == 0)) {
     return (GetLhs(lhs_simplified) % (m / *mul)) * *mul;
   }
 
