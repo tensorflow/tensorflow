@@ -46,8 +46,13 @@ struct Interval {
   void Print(std::ostream& out) const;
 
   bool IsPoint() const { return lower == upper; }
-  int64_t NumElements() const { return upper - lower + 1; }
   bool IsFeasible() const { return lower <= upper; }
+
+  // Returns the number of elements in the interval. Asserts that the number of
+  // elements fits in an int64_t. For this reason, this should only be used for
+  // intervals corresponding to symbols, not for general intervals. Use
+  // `IsFeasible` to check if the interval is non-empty.
+  int64_t GetLoopTripCount() const;
 
   bool Contains(int64_t value) const {
     return value >= lower && value <= upper;

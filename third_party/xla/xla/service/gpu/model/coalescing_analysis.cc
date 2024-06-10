@@ -472,7 +472,7 @@ std::vector<Interval> FindContiguousIntervals(
       // Case 1.3: |multiplier| != 1 and g(s) = s.
       if (partitioned_expr.func_of_s0 == range) {
         Interval range_interval = indexing_map.GetSymbolBound(0);
-        int64_t num_elems = range_interval.NumElements();
+        int64_t num_elems = range_interval.GetLoopTripCount();
         // In this case we get a single interval, because the ranges that every
         // thread is reading overlap.
         if (num_elems >= std::abs(multiplier.getValue())) {
@@ -505,7 +505,7 @@ std::vector<Interval> FindContiguousIntervals(
   }
   // Case 2.2: g(s) = s.
   Interval range_interval = indexing_map.GetSymbolBound(0);
-  return ExtendIntervals(intervals, range_interval.NumElements() - 1);
+  return ExtendIntervals(intervals, range_interval.GetLoopTripCount() - 1);
 }
 
 bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,

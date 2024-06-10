@@ -1465,7 +1465,7 @@ SmallVector<Value> EmitLoopNest(
   for (int sym_index = indexing_map.GetSymbolCount() - 1;
        sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
     auto& bound = indexing_map.GetSymbolBound(sym_index);
-    cumulative_loop_size *= bound.NumElements();
+    cumulative_loop_size *= bound.GetLoopTripCount();
     if (!IsSymbolConstrained(indexing_map, sym_index)) continue;
 
     IndexingMap peeled_map = indexing_map;
