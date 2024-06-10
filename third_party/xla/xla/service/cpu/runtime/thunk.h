@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -116,7 +118,21 @@ class Thunk {
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
   };
 
+  // A completion event that becomes ready when all tasks are completed.
+  struct CompletionEvent {
+    size_t num_tasks;
+  };
+
+  // Thunk execution must be asynchronous and never block the caller thread,
+  // especially waiting for work submitted into the `intra_op_threadpool`,
+  // because thunks themselves are executed on the same thread pool.
+  //
+  // Thunk execution completion must be reported via the `CompletionEvent`.
   virtual absl::Status Execute(const ExecuteParams& params) = 0;
+
+  // Returns available completion event with `num_tasks` set to 1. This is an
+  // optimization for the case when a thunk executed in the caller thread.
+  static tsl::AsyncValueRef<CompletionEvent> ReadyCompletionEvent();
 
  protected:
   // Encodes thunk info into the TraceMe compatible format.
