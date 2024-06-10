@@ -61,17 +61,6 @@ StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
   return handle;
 }
 
-absl::Status StreamCommon::RefreshStatus() {
-  absl::Status status = parent_->GetStatus(this);
-  // We should not put the stream in an error state, just because the GetStatus
-  // method is unimplemented.
-  if (status != absl::UnimplementedError(
-                    "GetStatus is not supported on this executor.")) {
-    CheckStatus(status);
-  }
-  return status;
-}
-
 absl::Status StreamCommon::RecordEvent(Event *event) {
   return parent_->RecordEvent(this, event);
 }

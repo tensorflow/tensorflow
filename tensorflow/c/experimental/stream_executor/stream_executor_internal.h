@@ -123,6 +123,14 @@ class CStream : public StreamCommon {
       stream_handle_ = nullptr;
     }
   }
+  absl::Status RefreshStatus() override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    stream_executor_->get_stream_status(device_, stream_handle_,
+                                        c_status.get());
+    absl::Status status = tensorflow::StatusFromTF_Status(c_status.get());
+    CheckStatus(status);
+    return status;
+  }
 
   SP_Stream Handle() { return stream_handle_; }
 

@@ -286,11 +286,6 @@ class StreamExecutor {
   // operations enqueued on the stream before this program point.
   virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
 
-  // Without blocking the device, retrieve the current stream status.
-  virtual absl::Status GetStatus(Stream* stream) {
-    return absl::UnimplementedError(
-        "GetStatus is not supported on this executor.");
-  }
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
   // access it directly.

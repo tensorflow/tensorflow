@@ -450,14 +450,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     return StatusFromTF_Status(c_status.get());
   }
 
-  absl::Status GetStatus(Stream* stream) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    stream_executor_->get_stream_status(&device_, stream_handle,
-                                        c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
     return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");

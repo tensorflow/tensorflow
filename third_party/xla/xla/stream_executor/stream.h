@@ -77,12 +77,15 @@ class Stream {
   // implementation without blocking the stream.
   //
   // Normally, Stream::BlockHostUntilDone is used to get execution status.
-  // However, some devices use out-of-band mechnanisms to ensure their streams
+  // However, some devices use out-of-band mechanisms to ensure their streams
   // have finished on-device work, without needing to block the streams. (These
   // devices should also override AllowsSyncOnCompletion to return false.) For
   // these devices, this method can be used after work is finished to retrieve
   // execution status.
-  virtual absl::Status RefreshStatus() = 0;
+  virtual absl::Status RefreshStatus() {
+    return absl::UnimplementedError(
+        "RefreshStatus is not supported on this stream.");
+  }
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise

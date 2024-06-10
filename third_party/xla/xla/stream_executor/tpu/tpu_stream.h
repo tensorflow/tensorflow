@@ -34,8 +34,11 @@ namespace tpu {
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
   explicit TpuStream(SE_Stream* stream,
-                     stream_executor::StreamExecutor* executor)
-      : TpuStreamInterface(executor), stream_(stream) {}
+                     stream_executor::StreamExecutor* executor,
+                     SE_StreamExecutor* se_executor)
+      : TpuStreamInterface(executor),
+        stream_(stream),
+        se_executor_(se_executor) {}
   ~TpuStream() override {
     BlockHostUntilDone().IgnoreError();
     parent()->DeallocateStream(this);
@@ -81,11 +84,19 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
+  absl::Status RefreshStatus() override {
+    StatusHelper status;
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_GetStatusFn(
+        se_executor_, stream_, status.c_status);
+    CheckStatus(status.status());
+    return status.status();
+  }
 
   SE_Stream* se_stream() const { return stream_; }
 
  private:
   mutable SE_Stream* stream_;
+  SE_StreamExecutor* se_executor_;
 };
 
 }  // namespace tpu

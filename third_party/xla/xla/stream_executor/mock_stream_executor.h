@@ -139,7 +139,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(bool, CreateStreamDependency, (Stream * dependent, Stream* other),
               (override));
   MOCK_METHOD(absl::Status, BlockHostUntilDone, (Stream * stream), (override));
-  MOCK_METHOD(absl::Status, GetStatus, (Stream * stream));
   MOCK_METHOD(absl::Status, EnablePeerAccessTo, (StreamExecutor * other),
               (override));
   MOCK_METHOD(bool, CanEnablePeerAccessTo, (StreamExecutor * other),
