@@ -50,7 +50,7 @@ class CubSortKeysTest : public HloTestBase,
 
 TEST_P(CubSortKeysTest, CompareToReference) {
   int batch_size = std::get<2>(GetParam());
-  int segment_size = GpuSortRewriter::kSortSizeThreshold / batch_size;
+  int segment_size = GpuSortRewriter::SortSizeThreshold() / batch_size;
 
   const char* kHloTpl = R"(
 HloModule TestSortKeys
@@ -100,7 +100,7 @@ class CubSortPairsTest
 
 TEST_P(CubSortPairsTest, CompareToReference) {
   int batch_size = std::get<3>(GetParam());
-  int segment_size = GpuSortRewriter::kSortSizeThreshold / batch_size;
+  int segment_size = GpuSortRewriter::SortSizeThreshold() / batch_size;
 
   const char* kHloTpl = R"(
 HloModule TestSortPairs

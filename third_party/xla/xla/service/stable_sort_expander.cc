@@ -15,20 +15,35 @@ limitations under the License.
 
 #include "xla/service/stable_sort_expander.h"
 
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/op_expander_pass.h"
-#include "xla/statusor.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
+
+int64_t StableSortExpander::IotaOperandIndexForStableSort(
+    const HloSortInstruction& sort) {
+  for (const HloInstruction* operand : sort.operands()) {
+    // TODO(b/122298745): Also support other types.
+    if (operand->opcode() == HloOpcode::kIota &&
+        Cast<HloIotaInstruction>(operand)->iota_dimension() ==
+            sort.sort_dimension() &&
+        operand->shape().element_type() == S32) {
+      return sort.operand_index(operand);
+    }
+  }
+  return -1;
+}
 
 // Looks for a iota operand that can be used as tie breaker in the computation.
 // If no matching iota operand is found, a iota operand is added to Sort. The
@@ -41,22 +56,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
 
   HloInstruction* expanded_sort = nullptr;
   absl::flat_hash_set<int64_t> used_indices;
-  int64_t iota_index = -1;
-  for (const HloInstruction* operand : sort->operands()) {
-    // We can only use the iota operand if it has an iota dimension which is the
-    // same as the dimension to sort. Also it should have an integral type that
-    // is large enough for the number of elements in the sort dimension. For
-    // now, we only allow S32, because we expect to find a S32 iota operand for
-    // all Sort ops which are created by TopK.
-    // TODO(b/122298745): Also support other types.
-    if (operand->opcode() == HloOpcode::kIota &&
-        Cast<HloIotaInstruction>(operand)->iota_dimension() ==
-            sort->sort_dimension() &&
-        operand->shape().element_type() == S32) {
-      iota_index = sort->operand_index(operand);
-      break;
-    }
-  }
+  int64_t iota_index = IotaOperandIndexForStableSort(*sort);
 
   // If there is currently no iota operand which we could use for making the
   // sort stable, we will have to add a new such operand.

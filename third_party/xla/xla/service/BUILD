@@ -5934,12 +5934,11 @@ cc_library(
     srcs = ["stable_sort_expander.cc"],
     hdrs = ["stable_sort_expander.h"],
     deps = [
-        ":hlo_pass",
         ":op_expander_pass",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

@@ -31,8 +31,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
+#include "xla/service/stable_sort_expander.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -51,28 +53,41 @@ struct SortComputationAnalysis {
   bool descending;
 };
 
-std::optional<SortComputationAnalysis> AnalyzeSortComputation(
-    const HloComputation* computation) {
+std::pair<int64_t, int64_t> ParametersFromCmpOperands(
+    const HloCompareInstruction* cmp_op) {
+  if (cmp_op == nullptr) {
+    return std::pair<int64_t, int64_t>(-1, -1);
+  }
+  const HloParameterInstruction* param0 =
+      DynCast<HloParameterInstruction>(cmp_op->operand(0));
+  const HloParameterInstruction* param1 =
+      DynCast<HloParameterInstruction>(cmp_op->operand(1));
+  return (param0 && param1) ? std::make_pair(param0->parameter_number(),
+                                             param1->parameter_number())
+                            : std::pair<int64_t, int64_t>(-1, -1);
+}
+
+// Returns sort info on compatible compare instructions. The instruction may
+// belong to a computation that has 2 or 4 operands. If this is the root
+// instruction of a computation with 4 parameters only succeeds in cases where
+// 2 of the parameters are ignored.
+std::optional<SortComputationAnalysis> AnalyzeCompareOp(
+    const HloInstruction* maybe_compare_op) {
   // Root instruction must be a comparison with a valid direction.
   const HloCompareInstruction* compare =
-      DynCast<HloCompareInstruction>(computation->root_instruction());
+      DynCast<HloCompareInstruction>(maybe_compare_op);
   if (compare == nullptr || compare->direction() == ComparisonDirection::kEq ||
       compare->direction() == ComparisonDirection::kNe) {
     return std::nullopt;
   }
 
   // Compare should operate on the function parameters for a single tensor.
-  const HloParameterInstruction* param0 =
-      DynCast<HloParameterInstruction>(compare->operand(0));
-  const HloParameterInstruction* param1 =
-      DynCast<HloParameterInstruction>(compare->operand(1));
-  if (param0 == nullptr || param1 == nullptr) {
+  auto [index0, index1] = ParametersFromCmpOperands(compare);
+  if (index0 == -1 || index1 == -1) {
     return std::nullopt;
   }
 
   // When sorting a pair of tensors, the parameters should be adjacent.
-  int index0 = param0->parameter_number();
-  int index1 = param1->parameter_number();
   int first_index = std::min(index0, index1);
   if (first_index % 2 != 0 || std::max(index0, index1) != first_index + 1) {
     return std::nullopt;
@@ -83,6 +98,85 @@ std::optional<SortComputationAnalysis> AnalyzeSortComputation(
                     compare->direction() == ComparisonDirection::kGe;
   bool reverse = first_index != index0;
   return SortComputationAnalysis{first_index / 2, descending != reverse};
+}
+
+// Detects a sort with these properties:
+// - Has two operands -- one is an iota op
+// - Has a comparison computation that takes 4 inputs and compares them
+// hierarchically, so that the iota inputs are the final tie-breaker.
+//
+// The above is equivalent to a stable sort where the iota operand is completely
+// ignored. That simpler comparator is the one detected in AnalyzeCompareOp, but
+// that's insufficient, because the StableSortExpander pass expands it into the
+// more complex version detected below.
+std::optional<SortComputationAnalysis> AnalyzeComplexSortComputation(
+    const HloSortInstruction& sort_op) {
+  auto computation = sort_op.called_computations().front();
+  if (computation->num_parameters() != 4) {
+    return std::nullopt;
+  }
+
+  int64_t iota_operand_index =
+      StableSortExpander::IotaOperandIndexForStableSort(sort_op);
+  if (iota_operand_index < 0) {
+    return std::nullopt;
+  }
+
+  auto root = computation->root_instruction();
+  if (root->opcode() != HloOpcode::kSelect) {
+    return std::nullopt;
+  }
+
+  // Check that the middle operand of the select compares the iota input.
+  auto iota_cmp = DynCast<HloCompareInstruction>(root->operand(1));
+  auto [iotap0, iotap1] = ParametersFromCmpOperands(iota_cmp);
+  if (iota_cmp == nullptr ||
+      iota_cmp->direction() != ComparisonDirection::kLt ||
+      iotap0 != iota_operand_index * 2 ||
+      iotap1 != iota_operand_index * 2 + 1) {
+    return std::nullopt;
+  }
+
+  // Check that the first operand of the select is an EQ comparison of the
+  // values (non-iota) input.
+  auto eq_cmp = DynCast<HloCompareInstruction>(root->operand(0));
+  if (eq_cmp == nullptr || eq_cmp->direction() != ComparisonDirection::kEq) {
+    return std::nullopt;
+  }
+
+  // EQ comparison case 1: direct comparison of parameters
+  auto [p0, p1] = ParametersFromCmpOperands(eq_cmp);
+  if (p0 < 0 || p1 < 0) {
+    // EQ comparison case 2: comparison of comparisons. This is what
+    // the StableSortExpander pass currently generates.
+    auto cmp = DynCast<HloCompareInstruction>(eq_cmp->operand(0));
+    auto cmp_reverse = DynCast<HloCompareInstruction>(eq_cmp->operand(1));
+    auto [a, b] = ParametersFromCmpOperands(cmp);
+    auto [p, q] = ParametersFromCmpOperands(cmp_reverse);
+    if (cmp == nullptr || cmp_reverse == nullptr || a < 0 || b < 0 || a != q ||
+        b != p || cmp->direction() != cmp_reverse->direction() ||
+        cmp->direction() == Comparison::Direction::kEq ||
+        cmp->direction() == Comparison::Direction::kNe) {
+      return std::nullopt;
+    }
+  }
+
+  // At this point only the last operand of the select needs to be verified.
+  return AnalyzeCompareOp(root->operand(2));
+}
+
+std::optional<SortComputationAnalysis> AnalyzeSortOp(
+    const HloSortInstruction& sort_op) {
+  auto computation = sort_op.called_computations().front();
+
+  // First, check if the computation is a simple compare op on the operands.
+  auto result = AnalyzeCompareOp(computation->root_instruction());
+  if (!result.has_value()) {
+    // If the above fails, check if the sort instruction and comparer are more
+    // complex, like what is produced by the StableSortExpander pass.
+    result = AnalyzeComplexSortComputation(sort_op);
+  }
+  return result;
 }
 
 // Create runner for CUB sort operation.
@@ -110,13 +204,12 @@ bool IsCubCompatibleSort(HloSortInstruction* sort_op) {
     return false;
   }
   if (Product(operand_shape.dimensions()) <
-      GpuSortRewriter::kSortSizeThreshold) {
+      GpuSortRewriter::SortSizeThreshold()) {
     VLOG(2) << "Tensor shape size is too small to see an improvement";
     return false;
   }
 
-  auto sort_config =
-      AnalyzeSortComputation(sort_op->called_computations().front());
+  auto sort_config = AnalyzeSortOp(*sort_op);
   if (!sort_config.has_value()) {
     VLOG(2) << "Only simple compare computations are supported";
     return false;
@@ -149,8 +242,7 @@ HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
 absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
     HloSortInstruction* sort_op) {
   // Get the sort tensor index and direction.
-  SortComputationAnalysis sort_config =
-      AnalyzeSortComputation(sort_op->called_computations().front()).value();
+  SortComputationAnalysis sort_config = AnalyzeSortOp(*sort_op).value();
 
   // Get scratch size requirements from CUB.
   const Shape& operand_shape = sort_op->operand(0)->shape();
