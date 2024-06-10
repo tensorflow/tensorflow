@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/triton_sparse_extensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
@@ -63,6 +64,8 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
       config.num_ctas));
+  pm.addPass(createAddSparseDotEncodingPass(config.num_warps, threadsPerWarp,
+                                            config.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUF32DotTC());

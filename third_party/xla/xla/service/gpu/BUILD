@@ -495,7 +495,11 @@ cc_library(
 
 cc_library(
     name = "ir_emitter_triton",
-    srcs = if_gpu_is_configured(["ir_emitter_triton.cc"]) + if_cuda_is_configured(["ir_emitter_triton_cuda.cc"]) + if_rocm_is_configured([
+    srcs = if_gpu_is_configured([
+        "ir_emitter_triton.cc",
+    ]) + if_cuda_is_configured([
+        "ir_emitter_triton_cuda.cc",
+    ]) + if_rocm_is_configured([
         "ir_emitter_triton_rocm.cc",
     ]),
     hdrs = if_gpu_is_configured(["ir_emitter_triton.h"]),
@@ -506,6 +510,7 @@ cc_library(
         ":matmul_utils",
         ":target_util",
         ":triton_fusion_analysis",
+        ":triton_sparse_extensions",
         ":triton_tiling_propagation",
         "//xla:autotuning_proto_cc",
         "//xla:comparison_util",
@@ -597,6 +602,23 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_tsl//tsl/platform:rocm_rocdl_path",
     ]),
+)
+
+cc_library(
+    name = "triton_sparse_extensions",
+    srcs = ["triton_sparse_extensions.cc"],
+    hdrs = ["triton_sparse_extensions.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@triton//:TritonDialects",
+        "@triton//:TritonGPUTransforms",
+    ],
 )
 
 xla_test(

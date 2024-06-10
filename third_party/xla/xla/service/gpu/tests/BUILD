@@ -900,11 +900,23 @@ lit_test_suite(
 #     srcs = glob(["*.mlir"]),
 #     cfg = "//xla:lit.cfg.py",
 #     tools = [
+#         ":sparse-opt",
 #         "@llvm-project//llvm:FileCheck",
 #         "@triton//:triton-opt",
 #     ],
 # )
 # copybara:uncomment_end
+
+cc_binary(
+    name = "sparse-opt",
+    srcs = ["sparse-opt.cc"],
+    deps = [
+        "//xla/service/gpu:triton_sparse_extensions",
+        "@llvm-project//mlir:AllExtensions",
+        "@llvm-project//mlir:MlirOptLib",
+        "@triton//:AllPassesAndDialects",
+    ],
+)
 
 xla_test(
     name = "kernel_launch_test",

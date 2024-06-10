@@ -6,4 +6,5 @@ internal patch during the next triton integration process.
 """
 
 temporary_patch_list = [
+    "//third_party/triton/temporary:sparsity_layout.patch",
 ]
