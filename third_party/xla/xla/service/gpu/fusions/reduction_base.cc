@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -80,6 +81,17 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
   if (for_mlir) {
     // MLIR vectorizes loads/stores explicitly and therefore doesn't need
     // unrolling and the associated heuristics.
+
+    // MLIR's vectorization doesn't work with complex types. However, complex
+    // load/stores are effectively always vectorized and have a size
+    // of at least 8 bytes, which is sufficient.
+    for (HloInstructionAdaptor hero : analysis.fusion_heroes()) {
+      for (HloInstructionAdaptor operand : hero.GetOperands()) {
+        if (primitive_util::IsComplexType(operand.shape().element_type())) {
+          return 1;
+        }
+      }
+    }
 
     // 16 byte vector loads are often slower than 8 byte loads.
     if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {

@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
+#include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
@@ -637,22 +638,26 @@ TEST_F(MlirReductionTest, OneGroup) {
   EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
 }
 
-TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+constexpr absl::string_view kColumnVectorizationTemplate = R"(
     add {
-      b = f32[] parameter(1)
-      a = f32[] parameter(0)
-      ROOT out = f32[] add(a, b)
+      b = $0[] parameter(1)
+      a = $0[] parameter(0)
+      ROOT out = $0[] add(a, b)
     }
     fusion {
-      %p0 = f32[192,64,1536] parameter(0)
-      %c0 = f32[] constant(0)
-      ROOT reduce = f32[192,1536] reduce(p0, c0), dimensions={1}, to_apply=add
+      %p0 = $0[192,64,1536] parameter(0)
+      %p1 = $0[] parameter(1)
+      ROOT reduce = $0[192,1536] reduce(p0, p1), dimensions={1}, to_apply=add
     }
     ENTRY entry {
-      %p0 = f32[192,64,1536] parameter(0)
-      ROOT %fusion = f32[192,1536] fusion(%p0), kind=kInput, calls=fusion
-    })")
+      %p0 = $0[192,64,1536] parameter(0)
+      %p1 = $0[] parameter(1)
+      ROOT %fusion = $0[192,1536] fusion(p0, p1), kind=kInput, calls=fusion
+    })";
+
+TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
+  auto module = ParseAndReturnVerifiedModule(
+                    absl::Substitute(kColumnVectorizationTemplate, "f32"))
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
@@ -684,21 +689,8 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
 }
 
 TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    add {
-      b = f32[] parameter(1)
-      a = f32[] parameter(0)
-      ROOT out = f32[] add(a, b)
-    }
-    fusion {
-      %p0 = f16[192,64,1536] parameter(0)
-      %c0 = f16[] constant(0)
-      ROOT reduce = f16[192,1536] reduce(p0, c0), dimensions={1}, to_apply=add
-    }
-    ENTRY entry {
-      %p0 = f16[192,64,1536] parameter(0)
-      ROOT %fusion = f16[192,1536] fusion(%p0), kind=kInput, calls=fusion
-    })")
+  auto module = ParseAndReturnVerifiedModule(
+                    absl::Substitute(kColumnVectorizationTemplate, "f16"))
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
@@ -726,6 +718,41 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
         s2 in [0, 0]
         s3 in [0, 3]
         (d3 mod 12) * 32 + d0 mod 32 in [0, 383]
+        d0 floordiv 32 + s1 * 32 in [0, 63]
+      )"));
+}
+
+TEST_F(MlirReductionTest, ThreadIndexingColumn_Complex) {
+  // Verifies that we do not use the vectorized indexing for complex types.
+  auto module = ParseAndReturnVerifiedModule(
+                    absl::Substitute(kColumnVectorizationTemplate, "c64"))
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  MlirReductionFusion fusion(analysis);
+
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3 floordiv 48,
+          d0 floordiv 32 + s1 * 32,
+          (d3 mod 48) * 32 + d0 mod 32
+        )
+        domain:
+        d0 in [0, 1023]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 9215]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        s1 in [0, 1]
+        s2 in [0, 0]
+        s3 in [0, 0]
+        (d3 mod 48) * 32 + d0 mod 32 in [0, 1535]
         d0 floordiv 32 + s1 * 32 in [0, 63]
       )"));
 }

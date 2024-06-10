@@ -873,6 +873,7 @@ xla_test(
         "//xla:error_spec",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
