@@ -549,6 +549,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   float bytes_accessed() const;
   float optimal_seconds() const;
 
+  Properties properties(const HloInstruction& hlo) const;
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   //

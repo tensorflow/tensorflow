@@ -1282,9 +1282,21 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         casted_fusion->operand(pair.second.first)->shape(), pair.second.second);
     if (opts_.layout_sensitive) {
-      TF_RET_CHECK(operand_subshape == output_subshape)
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+      if (casted_fusion->IsFused()) {
+        // Nested fusions can have aliasing that does not require the
+        // tiling/memory space assignment to be the same in order to alias.
+        TF_RET_CHECK(
+            Shape::Equal().IgnoreTilesInLayout().IgnoreMemorySpaceInLayout()(
+                operand_subshape, output_subshape))
+            << "Different aliasing shapes: "
+            << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+            << output_subshape.ToString(/*print_layout=*/true);
+      } else {
+        TF_RET_CHECK(Shape::Equal()(operand_subshape, output_subshape))
+            << "Different aliasing shapes: "
+            << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+            << output_subshape.ToString(/*print_layout=*/true);
+      }
     } else {
       TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
           << "Different aliasing shapes: " << operand_subshape.ToString()
@@ -1895,8 +1907,9 @@ absl::Status ShapeVerifier::CheckShape(
           // For DynamicUpdateSlice it has an "in-place" update semantics, but
           // inside of fusions memory space propagation doesn't propagate the
           // memory spaces all the way, causing possible mismatches. Relax the
-          // constraint in that condition.
-          equal.IgnoreMemorySpaceInLayout();
+          // constraint in that condition. Tiling also is not necessarily
+          // meaningful within fusions, so we can relax this as well.
+          equal.IgnoreMemorySpaceInLayout().IgnoreTilesInLayout();
         }
         return ShapesSame(instruction->shape(), inferred_shape, equal);
       }

@@ -3299,5 +3299,42 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, NestedLoopWithAliasingInDUSFusion) {
+  const char* kModule = R"(
+    HloModule test
+
+    copy_fusion {
+      input = s8[8,256,1,256] parameter(0)
+      ROOT copy.3 = s8[8,256,1,256] copy(input)
+    }
+
+    fused_computation.0 {
+      p0 = (s8[8,256,1,256],s8[1,256,1,256]) parameter(0)
+      gte0 = s8[8,256,1,256] get-tuple-element(p0), index=0
+      gte1 = s8[1,256,1,256] get-tuple-element(p0), index=1
+      fusion = s8[8,256,1,256] fusion(gte0), kind=kLoop, output_to_operand_aliasing={{}: (0, {})}, calls=copy_fusion
+      p1 = s8[1,256,1,256] parameter(1)
+      added = s8[1,256,1,256] add(gte1, p1)
+      p2 = s32[] parameter(2)
+      c0 = s32[] constant(0)
+      ROOT dynamic-update-slice.0 = s8[8,256,1,256] dynamic-update-slice(fusion, added, p2, c0, c0, c0)
+    }
+
+    ENTRY test {
+      p0 = (s8[8,256,1,256],s8[1,256,1,256]) parameter(0)
+      p1 = s8[1,256,1,256] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = s8[8,256,1,256] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation.0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {0}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
