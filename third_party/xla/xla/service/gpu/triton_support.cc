@@ -35,6 +35,208 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+bool IsDotAlgorithmSupportedByTriton(
+    PrecisionConfig::Algorithm algorithm,
+    const se::GpuComputeCapability& gpu_version) {
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      if (cuda_compute_capability) {
+        return true;
+      }
+      return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      if (cuda_compute_capability) {
+        return true;
+      }
+      if (rocm_compute_capability) {
+        return rocm_compute_capability->has_bf16_dtype_support();
+      }
+      return false;
+
+    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
+    // here.
+    case PrecisionConfig::ALG_DOT_F16_F16_F32:
+    // TODO(b/311331155): Triton F32 is about 3x slower than Triton TF32 and is
+    // slow to compile. Disable it for now.
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    default:
+      return false;
+  }
+}
+
+bool NoNonContractingDimension(const HloDotInstruction& dot) {
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  if (dim_numbers.lhs_batch_dimensions().size() +
+              dim_numbers.lhs_contracting_dimensions().size() ==
+          dot.operand(0)->shape().rank() ||
+      dim_numbers.rhs_batch_dimensions().size() +
+              dim_numbers.rhs_contracting_dimensions().size() ==
+          dot.operand(1)->shape().rank()) {
+    return true;
+  }
+  return false;
+}
+
+// Filters GEMMs which can be handled using Triton.
+CodegenDecision CanTritonHandleGEMM(
+    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
+  // Cases where lhs or rhs have no non-contracting dims are not handled.
+  if (NoNonContractingDimension(dot)) {
+    return "No non-contracting dimensions.";
+  }
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
+
+  CHECK(cuda_compute_capability || rocm_compute_capability);
+
+  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
+    if (!tsl::tensor_float_32_execution_enabled() ||
+        absl::c_any_of(dot.precision_config().operand_precision(),
+                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
+      return "Having non-default operand precisions or TensorFloat-32 disabled "
+             "for Dot op with unset algorithm.";
+    }
+  } else {
+    if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
+                                         gpu_version)) {
+      return "Unsupported algorithm on the current device(s).";
+    }
+  }
+
+  auto supported_output_type = [&](const PrimitiveType t) {
+    switch (t) {
+      case F16:
+      case F32:
+        return true;
+      case BF16:
+        if (cuda_compute_capability) {
+          return true;
+        }
+        if (rocm_compute_capability) {
+          return rocm_compute_capability->has_bf16_dtype_support();
+        }
+        return false;
+      default:
+        return false;
+    }
+  };
+
+  // TODO(b/266862493): Support more output types.
+  if (!supported_output_type(dot.shape().element_type())) {
+    return "Unsupported output data type for Dot op.";
+  }
+
+  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
+                                 gpu_version) ||
+      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
+                                 gpu_version)) {
+    return "Unsupported input data type for Dot op.";
+  }
+
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
+  // TODO(b/269580541): support multiple batch dimensions.
+  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
+    return "Multiple batch dimensions.";
+  }
+
+  return CodegenDecision{};
+}
+
+// Filters Reduces which can be handled using Triton.
+CodegenDecision CanTritonHandleReduce(
+    const HloReduceInstruction& reduce,
+    const se::GpuComputeCapability& gpu_version) {
+  if (!IsTritonSupportedDataType(reduce.shape().element_type(), gpu_version)) {
+    return "Unsupported output data type for Reduce op.";
+  }
+
+  for (const HloInstruction* operand : reduce.operands()) {
+    if (!IsTritonSupportedDataType(operand->shape().element_type(),
+                                   gpu_version)) {
+      return "Unsupported input data type for Reduce op.";
+    }
+  }
+
+  bool is_triton_supported_reduction_computation = [&]() {
+    return absl::c_all_of(
+        reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
+          return IsTritonSupportedInstruction(*instr, gpu_version);
+        });
+  }();
+  if (!is_triton_supported_reduction_computation) {
+    return "Unsupported reduction computation by Triton.";
+  }
+
+  if (reduce.dimensions().size() == 1 &&
+      reduce.dimensions().front() == reduce.operand(0)->shape().rank() - 1 &&
+      reduce.operand_count() == 2) {
+    const HloInstruction* operand = reduce.operand(1);
+    // We assume that the reduction init value was input as a constant, or in
+    // the case of a data type affected by float normalization, a convert of a
+    // constant.
+    if (operand->opcode() == HloOpcode::kConvert) {
+      if (operand->operand(0)->opcode() == HloOpcode::kConstant &&
+          operand->operand(0)->shape().element_type() == BF16 &&
+          operand->shape().element_type() == F32) {
+        return CodegenDecision{};
+      }
+    } else if (operand->opcode() == HloOpcode::kConstant) {
+      return CodegenDecision{};
+    }
+    return "Reduction init value should be a constant or a convert of a "
+           "constant.";
+  }
+  return "Reduction is not a row-reduction of a single operand.";
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+        break;  // supported
+      default:
+        return CodegenDecision(
+            "Dynamic slice is only supported with S8, S16, or S32 indices.");
+    }
+  }
+
+  // Similar to normal slice, we cannot slice a non-major-most dimension as
+  // that would introduce non-contiguous strides under tiling. The existing
+  // check against this in GetRequirementsIfSupportedOrder is not suitable for
+  // dynamic slices, so we instead check for this here.
+  const HloInstruction* input = instr.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions_size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+      return CodegenDecision(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+
+  // TODO(b/343143854): Check the subtleties of which dynamic slices are
+  // supported, for example that a fragmented dimension cannot be sliced.
+  return CodegenDecision{};
+}
+}  // namespace
+
 bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   // The list is most likely incomplete.
   // For example division can be added too but only for operand #0.
@@ -160,202 +362,6 @@ CodegenDecision CanTritonHandleElementwise(
   return CodegenDecision{};
 }
 
-bool IsDotAlgorithmSupportedByTriton(
-    PrecisionConfig::Algorithm algorithm,
-    const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      if (cuda_compute_capability) {
-        return true;
-      }
-      return false;
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      if (cuda_compute_capability) {
-        return true;
-      }
-      if (rocm_compute_capability) {
-        return rocm_compute_capability->has_bf16_dtype_support();
-      }
-      return false;
-
-    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
-    // here.
-    case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    // TODO(b/311331155): Triton F32 is about 3x slower than Triton TF32 and is
-    // slow to compile. Disable it for now.
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
-    default:
-      return false;
-  }
-}
-
-// Filters GEMMs which can be handled using Triton.
-CodegenDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
-
-  CHECK(cuda_compute_capability || rocm_compute_capability);
-
-  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
-                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
-      return "Having non-default operand precisions or TensorFloat-32 disabled "
-             "for Dot op with unset algorithm.";
-    }
-  } else {
-    if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
-                                         gpu_version)) {
-      return "Unsupported algorithm on the current device(s).";
-    }
-  }
-
-  auto supported_output_type = [&](const PrimitiveType t) {
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        if (cuda_compute_capability) {
-          return true;
-        }
-        if (rocm_compute_capability) {
-          return rocm_compute_capability->has_bf16_dtype_support();
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-
-  // TODO(b/266862493): Support more output types.
-  if (!supported_output_type(dot.shape().element_type())) {
-    return "Unsupported output data type for Dot op.";
-  }
-
-  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
-                                 gpu_version) ||
-      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
-                                 gpu_version)) {
-    return "Unsupported input data type for Dot op.";
-  }
-
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // TODO(b/269580541): support multiple batch dimensions.
-  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
-    return "Multiple batch dimensions.";
-  }
-
-  return CodegenDecision{};
-}
-
-// Filters Reduces which can be handled using Triton.
-CodegenDecision CanTritonHandleReduce(
-    const HloReduceInstruction& reduce,
-    const se::GpuComputeCapability& gpu_version) {
-  if (!IsTritonSupportedDataType(reduce.shape().element_type(), gpu_version)) {
-    return "Unsupported output data type for Reduce op.";
-  }
-
-  for (const HloInstruction* operand : reduce.operands()) {
-    if (!IsTritonSupportedDataType(operand->shape().element_type(),
-                                   gpu_version)) {
-      return "Unsupported input data type for Reduce op.";
-    }
-  }
-
-  bool is_triton_supported_reduction_computation = [&]() {
-    return absl::c_all_of(
-        reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-          return IsTritonSupportedInstruction(*instr, gpu_version);
-        });
-  }();
-  if (!is_triton_supported_reduction_computation) {
-    return "Unsupported reduction computation by Triton.";
-  }
-
-  if (reduce.dimensions().size() == 1 &&
-      reduce.dimensions().front() == reduce.operand(0)->shape().rank() - 1 &&
-      reduce.operand_count() == 2) {
-    const HloInstruction* operand = reduce.operand(1);
-    // We assume that the reduction init value was input as a constant, or in
-    // the case of a data type affected by float normalization, a convert of a
-    // constant.
-    if (operand->opcode() == HloOpcode::kConvert) {
-      if (operand->operand(0)->opcode() == HloOpcode::kConstant &&
-          operand->operand(0)->shape().element_type() == BF16 &&
-          operand->shape().element_type() == F32) {
-        return CodegenDecision{};
-      }
-    } else if (operand->opcode() == HloOpcode::kConstant) {
-      return CodegenDecision{};
-    }
-    return "Reduction init value should be a constant or a convert of a "
-           "constant.";
-  }
-  return "Reduction is not a row-reduction of a single operand.";
-}
-
-bool NoNonContractingDimension(const HloDotInstruction& dot) {
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
-    return true;
-  }
-  return false;
-}
-
-CodegenDecision IsTritonSupportedDynamicSlice(
-    const HloDynamicSliceInstruction& instr) {
-  for (const HloInstruction* index_operand : instr.index_operands()) {
-    switch (index_operand->shape().element_type()) {
-      case S8:
-      case S16:
-      case S32:
-        break;  // supported
-      default:
-        return CodegenDecision(
-            "Dynamic slice is only supported with S8, S16, or S32 indices.");
-    }
-  }
-
-  // Similar to normal slice, we cannot slice a non-major-most dimension as
-  // that would introduce non-contiguous strides under tiling. The existing
-  // check against this in GetRequirementsIfSupportedOrder is not suitable for
-  // dynamic slices, so we instead check for this here.
-  const HloInstruction* input = instr.operand(0);
-  Layout in_layout = input->shape().layout();
-  int64_t majormost_dim_id =
-      in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
-
-  for (int i = 0; i < input->shape().dimensions_size(); ++i) {
-    if (i == majormost_dim_id) {
-      continue;
-    } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
-      return CodegenDecision(
-          "Unsupported dynamic slice on non-major-most dimension.");
-    }
-  }
-
-  // TODO(b/343143854): Check the subtleties of which dynamic slices are
-  // supported, for example that a fragmented dimension cannot be sliced.
-  return CodegenDecision{};
-}
-
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (instr.IsElementwise()) {
@@ -364,12 +370,7 @@ CodegenDecision IsTritonSupportedInstruction(
 
   switch (instr.opcode()) {
     case HloOpcode::kDot: {
-      auto* dot = Cast<HloDotInstruction>(&instr);
-      // Cases where lhs or rhs have no non-contracting dims are not handled.
-      if (NoNonContractingDimension(*dot)) {
-        return "No non-contracting dimensions.";
-      }
-      return CanTritonHandleGEMM(*dot, gpu_version);
+      return CanTritonHandleGEMM(*Cast<HloDotInstruction>(&instr), gpu_version);
     }
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),

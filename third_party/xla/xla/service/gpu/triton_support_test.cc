@@ -565,7 +565,8 @@ ENTRY e {
       IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())
           .CanFuse();
   const bool is_supported_dynamic_slice =
-      IsTritonSupportedDynamicSlice(*Cast<HloDynamicSliceInstruction>(instr))
+      IsTritonSupportedInstruction(*Cast<HloDynamicSliceInstruction>(instr),
+                                   /*gpu_version=*/{})
           .CanFuse();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 

@@ -977,8 +977,8 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
       return "Dynamic slices for now are only supported in GEMM fusions.";
     }
 
-    if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
-            *Cast<HloDynamicSliceInstruction>(&hlo));
+    if (CodegenDecision decision = IsTritonSupportedInstruction(
+            *Cast<HloDynamicSliceInstruction>(&hlo), /*gpu_version=*/{});
         !decision.CanFuse()) {
       // CodegenDecision is actually the same type as FusionDecision.
       return decision;
