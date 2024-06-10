@@ -59,10 +59,6 @@ class PlatformManagerImpl {
                                            bool initialize_platform)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  absl::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target,
-      const std::map<std::string, std::string>& options)
-      ABSL_LOCKS_EXCLUDED(mu_);
   absl::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id, const std::map<std::string, std::string>& options)
       ABSL_LOCKS_EXCLUDED(mu_);
@@ -144,22 +140,6 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithId(
   if (initialize_platform && !platform->Initialized()) {
     TF_RETURN_IF_ERROR(platform->Initialize({}));
   }
-
-  return platform;
-}
-
-absl::StatusOr<Platform*> PlatformManagerImpl::InitializePlatformWithName(
-    absl::string_view target,
-    const std::map<std::string, std::string>& options) {
-  absl::MutexLock lock(&mu_);
-
-  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
-  if (platform->Initialized()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("platform \"", target, "\" is already initialized"));
-  }
-
-  TF_RETURN_IF_ERROR(platform->Initialize(options));
 
   return platform;
 }
