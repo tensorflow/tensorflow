@@ -296,7 +296,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
                               const std::unordered_set<string>& tags,
-                              SavedModelBundle* const bundle) {
+                              SavedModelBundle* const bundle,
+                              bool restore_variables_with_saver_def) {
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
                                                     &bundle->meta_graph_def));
   TF_RETURN_IF_ERROR(
@@ -304,7 +305,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   TF_RETURN_IF_ERROR(LoadMetagraphIntoSession(
       session_options, bundle->meta_graph_def, &bundle->session));
   TF_RETURN_IF_ERROR(RestoreSession(run_options, bundle->meta_graph_def,
-                                    export_dir, &bundle->session));
+                                    export_dir, &bundle->session,
+                                    restore_variables_with_saver_def));
   return absl::OkStatus();
 }
 
@@ -423,7 +425,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
                               const std::unordered_set<string>& tags,
-                              SavedModelBundleLite* const bundle) {
+                              SavedModelBundleLite* const bundle,
+                              bool restore_variables_with_saver_def) {
   MetaGraphDef meta_graph_def;
   TF_RETURN_IF_ERROR(
       ReadMetaGraphDefFromSavedModel(export_dir, tags, &meta_graph_def));
@@ -431,8 +434,9 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   TF_RETURN_IF_ERROR(LoadGraphDefIntoSession(
       session_options, std::move(*meta_graph_def.mutable_graph_def()),
       &session));
-  TF_RETURN_IF_ERROR(
-      RestoreSession(run_options, meta_graph_def, export_dir, &session));
+  TF_RETURN_IF_ERROR(RestoreSession(run_options, meta_graph_def, export_dir,
+                                    &session,
+                                    restore_variables_with_saver_def));
   *bundle = SavedModelBundleLite(
       std::make_unique<LiteSessionWrapper>(std::move(session)),
       std::move(*meta_graph_def.mutable_signature_def()));
@@ -444,7 +448,8 @@ Status LoadSavedModelGeneric(const SessionOptions& session_options,
                              const RunOptions& run_options,
                              const string& export_dir,
                              const std::unordered_set<string>& tags,
-                             BundleType* const bundle) {
+                             BundleType* const bundle,
+                             bool restore_variables_with_saver_def = true) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
@@ -456,8 +461,9 @@ Status LoadSavedModelGeneric(const SessionOptions& session_options,
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
-  const Status status = LoadSavedModelInternal(session_options, run_options,
-                                               export_dir, tags, bundle);
+  const Status status =
+      LoadSavedModelInternal(session_options, run_options, export_dir, tags,
+                             bundle, restore_variables_with_saver_def);
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
               << " }; Status: " << status_str << ": " << status << ". Took "
@@ -478,18 +484,21 @@ Status LoadSavedModelGeneric(const SessionOptions& session_options,
 Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
-                      SavedModelBundle* const bundle) {
-  return LoadSavedModelGeneric<SavedModelBundle>(session_options, run_options,
-                                                 export_dir, tags, bundle);
+                      SavedModelBundle* const bundle,
+                      bool restore_variables_with_saver_def) {
+  return LoadSavedModelGeneric<SavedModelBundle>(
+      session_options, run_options, export_dir, tags, bundle,
+      restore_variables_with_saver_def);
 }
 
 Status RestoreSession(const RunOptions& run_options,
                       const MetaGraphDef& meta_graph, const string& export_dir,
-                      std::unique_ptr<Session>* session) {
+                      std::unique_ptr<Session>* session,
+                      bool restore_variables_with_saver_def) {
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(internal::GetAssetFileDefs(meta_graph, &asset_file_defs));
-  if (meta_graph.has_saver_def()) {
+  if (meta_graph.has_saver_def() && restore_variables_with_saver_def) {
     TF_RETURN_IF_ERROR(RunRestore(run_options, export_dir,
                                   meta_graph.saver_def().restore_op_name(),
                                   meta_graph.saver_def().filename_tensor_name(),

@@ -117,7 +117,7 @@ struct AutoShardingOption {
   bool allow_recompute_heavy_op = true;
 
   // If true, allow adding 1d strategies in 2d logical mesh.
-  bool allow_mixed_mesh_shape = false;
+  bool allow_mixed_mesh_shape = true;
 
   // The number of micro batches if gradient accumulation is used.
   // If this is not 1, the cost of all-reduce for gradient synchronization
