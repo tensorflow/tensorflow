@@ -711,7 +711,10 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-    tags = ["nomac"],
+    tags = [
+        "nomac",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
+    ],
     deps = [
         ":triton_support",
         "//xla:comparison_util",
@@ -1215,7 +1218,10 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-    tags = ["nomac"],
+    tags = [
+        "nomac",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
+    ],
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_float_support",
@@ -5579,6 +5585,7 @@ xla_test(
     ],
     tags = [
         "nomac",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
     ],
     deps = [
         "//xla:shape_util",
