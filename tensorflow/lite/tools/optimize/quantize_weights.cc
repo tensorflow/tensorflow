@@ -618,11 +618,8 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       weights_min_num_elements,
-                                       use_hybrid_evaluation) == kTfLiteOk
-               ? absl::OkStatus()
-               : absl::InternalError("QuantizeWeights failed");
+    return mlir::lite::QuantizeWeights(
+        builder, input_model, weights_min_num_elements, use_hybrid_evaluation);
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, use_hybrid_evaluation,
@@ -637,9 +634,7 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     return mlir::lite::QuantizeWeights(builder, input_model,
-                                       weights_min_num_elements) == kTfLiteOk
-               ? absl::OkStatus()
-               : absl::InternalError("QuantizeWeights failed");
+                                       weights_min_num_elements);
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, true,
@@ -656,9 +651,7 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     return mlir::lite::QuantizeWeights(builder, input_model,
                                        (mlir::lite::BufferType)quant_type,
-                                       use_updated_hybrid_scheme) == kTfLiteOk
-               ? absl::OkStatus()
-               : absl::InternalError("QuantizeWeights failed");
+                                       use_updated_hybrid_scheme);
   }
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
@@ -680,11 +673,8 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
     mlir::lite::CustomOpMap mlir_custom_op_map;
     ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       weights_min_num_elements,
-                                       mlir_custom_op_map) == kTfLiteOk
-               ? absl::OkStatus()
-               : absl::InternalError("QuantizeWeights failed");
+    return mlir::lite::QuantizeWeights(
+        builder, input_model, weights_min_num_elements, mlir_custom_op_map);
   }
   return QuantizeWeightsInt8(builder, input_model, true,
                              weights_min_num_elements, custom_op_map,
@@ -702,11 +692,8 @@ absl::Status QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
     mlir::lite::CustomOpMap mlir_custom_op_map;
     ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
     return mlir::lite::QuantizeWeights(
-               builder, input_model, weights_min_num_elements,
-               mlir_custom_op_map, use_updated_hybrid_scheme,
-               op_denylist) == kTfLiteOk
-               ? absl::OkStatus()
-               : absl::InternalError("QuantizeWeights failed");
+        builder, input_model, weights_min_num_elements, mlir_custom_op_map,
+        use_updated_hybrid_scheme, op_denylist);
   }
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,
