@@ -1,0 +1,17 @@
+Build-file-only change, remove this on next integrate.
+
+diff --git a/test/BUILD b/test/BUILD
+--- a/test/BUILD
++++ b/test/BUILD
+@@ -18,8 +18,9 @@ glob_lit_tests(
+     driver = "//third_party/llvm/llvm-project/mlir:run_lit.sh",
+     exclude = [
+         "Conversion/amd/dedup-by-constancy.mlir",  # AMD-specific, broken
+-        "TritonGPU/combine.mlir",  # TODO(b/338346821): needs cse or something.
+-        "TritonGPU/dot-operands.mlir",  # TODO(b/283035396): broken by cl536931041.patch
++        "TritonGPU/combine.mlir",  # TODO: b/338346821 - needs cse or something.
++        "TritonGPU/dot-operands.mlir",  # TODO: b/283035396 - broken by cl536931041.patch
++        "TritonGPU/optimize_epilogue.mlir",  # TODO: b/346283526 - AMD-specific, triggering UBSAN
+     ],
+     test_file_exts = [
+         "mlir",
