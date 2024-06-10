@@ -257,8 +257,7 @@ TEST_F(MlirScatterFusionTest, Scatter_Unsigned) {
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: func.func @fused_computation(
     // CHECK: %[[PARAM:.*]] = xla_gpu.pure_call @scatter_indices
-    // CHECK: %[[CVT:.*]] = builtin.unrealized_conversion_cast %[[PARAM]]
-    // CHECK: %[[INDEX:.*]] = arith.index_castui %[[CVT]]
+    // CHECK: %[[INDEX:.*]] = arith.index_castui %[[PARAM]]
     // CHECK: arith.cmpi ule, %[[INDEX]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));

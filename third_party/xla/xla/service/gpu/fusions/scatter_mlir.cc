@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
@@ -227,11 +228,10 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
           auto index = ProvideParameter(
               root_computation, scatter, kScatterIndicesIndex,
               indices_tensor_indices, call_targets, entry_function, b)[0];
-          auto index_ty = mlir::cast<mlir::IntegerType>(index.getType());
-          if (index_ty.isUnsigned()) {
-            auto int_ty = b.getIntegerType(index_ty.getWidth());
-            index = b.create<mlir::UnrealizedConversionCastOp>(int_ty, index)
-                        .getResult(0);
+          if (primitive_util::IsUnsignedIntegralType(
+                  scatter->operand(kScatterIndicesIndex)
+                      ->shape()
+                      .element_type())) {
             index = b.create<ma::IndexCastUIOp>(b.getIndexType(), index);
           } else {
             index = b.create<ma::IndexCastOp>(b.getIndexType(), index);

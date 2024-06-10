@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -198,7 +199,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   // Allocate shared memory.
   SmallVector<Value> inits;
   for (auto* transpose : shmem_transposes_) {
-    auto elem_type = *ConvertPrimitiveTypeToMlirType(
+    auto elem_type = mlir_converter::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
     inits.push_back(builder.create<AllocateSharedOp>(
         RankedTensorType::get(shmem_tensor_size, elem_type)));

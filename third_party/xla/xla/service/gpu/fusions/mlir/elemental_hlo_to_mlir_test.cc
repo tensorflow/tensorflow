@@ -179,9 +179,9 @@ TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
     })",
                    R"(
     // CHECK:      @main_r(
-    // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xui32>
-    // CHECK-SAME:   %[[ARG1:.*]]: tensor<ui32>
-    // CHECK-SAME:   %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}} -> ui32
+    // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xi32>
+    // CHECK-SAME:   %[[ARG1:.*]]: tensor<i32>
+    // CHECK-SAME:   %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}} -> i32
     // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
     // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
     // CHECK-DAG:  %[[C20:.*]] = arith.constant 20
@@ -342,8 +342,8 @@ TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
     })",
                    R"(
     // CHECK:      @main_r(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xui32>,
-    // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xui32>
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xi32>,
+    // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xi32>
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
     // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
     // CHECK-DAG:    %[[C20:.*]] = arith.constant 20
@@ -351,17 +351,14 @@ TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
     // CHECK:        %[[CONCAT:.*]] = scf.if %[[IN_BOUNDS]]
     // CHECK:          %[[P0_VAL:.*]] = xla_gpu.pure_call @main_p0
     // CHECK-SAME:         %[[X]], %[[Y]], %[[Z]]
-    // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[P0_VAL]]
-    // CHECK:          scf.yield %[[CAST0]]
+    // CHECK:          scf.yield %[[P0_VAL]]
     // CHECK:        } else {
     // CHECK:          %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C20]]
     // CHECK:          %[[P1_VAL:.*]] = xla_gpu.pure_call @main_p1
     // CHECK-SAME:         %[[X]], %[[OFFSET]], %[[Z]]
-    // CHECK:          %[[CAST1:.*]] = builtin.unrealized_conversion_cast %[[P1_VAL]]
-    // CHECK:          scf.yield %[[CAST1]]
+    // CHECK:          scf.yield %[[P1_VAL]]
     // CHECK:        }
-    // CHECK:        %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[CONCAT]]
-    // CHECK:        return %[[CAST2]]
+    // CHECK:        return %[[CONCAT]]
   )"));
 }
 
@@ -445,8 +442,8 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     })",
                    R"(
     // CHECK:      @main_pad(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xui32>,
-    // CHECK-SAME:     %[[ARG1:.*]]: tensor<ui32>,
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xi32>,
+    // CHECK-SAME:     %[[ARG1:.*]]: tensor<i32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
     // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
     // CHECK-DAG:    %[[C1:.*]] = arith.constant 1
@@ -471,15 +468,12 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-SAME:         <(d0) -> (d0 - 4)>
     // CHECK-SAME:         (%[[Y]] in [4, 7])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
-    // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[VAL]]
-    // CHECK:          scf.yield %[[CAST0]]
+    // CHECK:          scf.yield %[[VAL]]
     // CHECK:        } else {
     // CHECK:          %[[PAD_VAL:.*]] = tensor.extract %[[ARG1]][]
-    // CHECK:          %[[CAST1:.*]] = builtin.unrealized_conversion_cast %[[PAD_VAL]]
-    // CHECK:          scf.yield %[[CAST1]]
+    // CHECK:          scf.yield %[[PAD_VAL]]
     // CHECK:        }
-    // CHECK:          %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[RET]]
-    // CHECK:        return %[[CAST2]]
+    // CHECK:        return %[[RET]]
   )"));
 }
 
@@ -627,10 +621,10 @@ TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
     })",
                    R"(
     // CHECK:      @main_dot(
-    // CHECK-SAME: %[[A:.*]]: tensor<3x4xui32>, %[[B:.*]]: tensor<4x5xui32>,
+    // CHECK-SAME: %[[A:.*]]: tensor<3x4xi32>, %[[B:.*]]: tensor<4x5xi32>,
     // CHECK-SAME: %[[I:.*]]: index {xla.range = [0 : index, 2 : index]},
     // CHECK-SAME: %[[J:.*]]: index {xla.range = [0 : index, 4 : index]})
-    // CHECK-SAME: -> ui32
+    // CHECK-SAME: -> i32
     // CHECK-SAME: {
     // CHECK-DAG:    %[[ACCUM_INIT:.*]] = arith.constant 0 : i32
     // CHECK-DAG:    %[[C0:.*]] = arith.constant 0 : index
@@ -647,11 +641,9 @@ TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
     // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
     // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i32) {
-    // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xui32>
-    // CHECK-DAG:        %[[A_I_K_I32:.*]] = builtin.unrealized_conversion_cast %[[A_I_K]] : ui32 to i32
-    // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xui32>
-    // CHECK-DAG:        %[[B_K_J_I32:.*]] = builtin.unrealized_conversion_cast %[[B_K_J]] : ui32 to i32
-    // CHECK-DAG:        %[[MUL0:.*]] = arith.muli %[[A_I_K_I32]], %[[B_K_J_I32]] : i32
+    // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi32>
+    // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi32>
+    // CHECK-DAG:        %[[MUL0:.*]] = arith.muli %[[A_I_K]], %[[B_K_J]] : i32
     // CHECK-DAG:        %[[ADD0:.*]] = arith.addi %[[ACCUM]], %[[MUL0]] : i32
     // CHECK-DAG:        scf.yield %[[ADD0]] : i32
     // CHECK:          } else {
@@ -659,8 +651,7 @@ TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
     // CHECK:          }
     // CHECK:          scf.yield %[[IF0]] : i32
     // CHECK:        }
-    // CHECK:        %[[FOR0_UI32:.*]] = builtin.unrealized_conversion_cast %[[FOR0]] : i32 to ui32
-    // CHECK:        return %[[FOR0_UI32]] : ui32
+    // CHECK:        return %[[FOR0]] : i32
     // CHECK:      }
   )"));
 }
@@ -1209,7 +1200,7 @@ TEST_F(ElementalHloToMlirTest, UnsignedDiv) {
     })",
                    R"(
     // CHECK:      @main_div(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>,
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>,
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
     // CHECK:        %[[DIV:.*]] = arith.divui %{{.*}}, %{{.*}} : i32
   )"));
@@ -1248,9 +1239,7 @@ TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
      })",
                    R"(
     // CHECK:      @main_popcnt(
-    // CHECK:        builtin.unrealized_conversion_cast %{{.*}} : ui32 to i32
     // CHECK:        math.ctpop %{{.*}} : i32
-    // CHECK:        builtin.unrealized_conversion_cast %{{.*}} : i32 to ui32
   )"));
 }
 
@@ -1318,14 +1307,12 @@ TEST_F(ElementalHloToMlirTest, ScalarUnsignedConstant) {
     })",
                    R"(
     // CHECK:      @main_add(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xui32>
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xi32>
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
     // CHECK:        %[[C_1:.*]] = arith.constant 1
     // CHECK:        %[[A:.*]] = tensor.extract %[[ARG0]][%[[X]], %[[Y]]]
-    // CHECK:        %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[A]] : ui32 to i32
-    // CHECK:        %[[RET:.*]] = arith.addi %[[CAST]], %[[C_1]]
-    // CHECK:        %[[CAST_RET:.*]] = builtin.unrealized_conversion_cast %[[RET]] : i32 to ui32
-    // CHECK:        return %[[CAST_RET]]
+    // CHECK:        %[[RET:.*]] = arith.addi %[[A]], %[[C_1]]
+    // CHECK:        return %[[RET]]
   })"));
 }
 
@@ -1408,18 +1395,16 @@ TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
                    R"(
     // CHECK:      @main_slice(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>,
-    // CHECK-SAME:     %[[I0_T:.*]]: tensor<ui32>, %[[I1_T:.*]]: tensor<ui32>,
+    // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
     // CHECK-DAG:    %[[C16:.*]] = arith.constant 16
     // CHECK-DAG:    %[[C25:.*]] = arith.constant 25
     // CHECK:        %[[I0:.*]] = tensor.extract %[[I0_T]]
-    // CHECK:        %[[I0_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[I0]] : ui32 to i32
-    // CHECK:        %[[I0_1:.*]] = arith.index_castui %[[I0_SIGNLESS]]
+    // CHECK:        %[[I0_1:.*]] = arith.index_castui %[[I0]]
     // CHECK:        %[[I0_2:.*]] = arith.minui %[[I0_1]], %[[C16]]
     // CHECK:        %[[X_IN:.*]] = arith.addi %[[X]], %[[I0_2]]
     // CHECK:        %[[I1:.*]] = tensor.extract %[[I1_T]]
-    // CHECK:        %[[I1_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[I1]] : ui32 to i32
-    // CHECK:        %[[I1_1:.*]] = arith.index_castui %[[I1_SIGNLESS]]
+    // CHECK:        %[[I1_1:.*]] = arith.index_castui %[[I1]]
     // CHECK:        %[[I1_2:.*]] = arith.minui %[[I1_1]], %[[C25]]
     // CHECK:        %[[Y_IN:.*]] = arith.addi %[[Y]], %[[I1_2]]
     // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
@@ -1475,7 +1460,7 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
     })",
                    R"(
     // CHECK:      @main_updated(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xui32>, %[[ARG1:.*]]: tensor<5x6xui32>
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xi32>, %[[ARG1:.*]]: tensor<5x6xi32>
     // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
     // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
@@ -1496,10 +1481,8 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
     // CHECK:        %[[BOUNDS:.*]] = arith.andi
     // CHECK:        scf.if %[[BOUNDS]]
     // CHECK:          %[[VAL0:.*]] = tensor.extract %[[ARG1]][%[[UPDATES_X]]
-    // CHECK:          builtin.unrealized_conversion_cast %[[VAL0]]
     // CHECK:        } else {
     // CHECK:          %[[VAL1:.*]] = tensor.extract %[[ARG0]][%[[X]]
-    // CHECK:          builtin.unrealized_conversion_cast %[[VAL1]]
   )"));
 }
 
@@ -1512,7 +1495,6 @@ TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
     // CHECK:      @main_iota(
     // CHECK-SAME:     %[[I0:.*]]: index {{.*}}, %[[I1:.*]]: index {{.*}} {
     // CHECK:        %[[VAL:.*]] = arith.index_castui %[[I0]] : index to i32
-    // CHECK:        builtin.unrealized_conversion_cast %[[VAL]] : i32 to ui32
   )"));
 }
 

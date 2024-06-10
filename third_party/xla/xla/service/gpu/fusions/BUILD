@@ -458,6 +458,7 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:computation_partitioner",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
+        "//xla/service/gpu/fusions/mlir:type_util",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
         "@com_google_absl//absl/algorithm:container",

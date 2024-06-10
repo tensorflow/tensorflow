@@ -581,8 +581,7 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
                                               output_indices);
       }
     }
-    return mlir_converter::UnrealizedConversionCast(
-        state.entry_function.getResultTypes(), outputs, b);
+    return outputs;
   };
 
   HloValueMap inits;
@@ -612,10 +611,7 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
     for (auto* reduction : reductions) {
       auto reducer = state.GetReducer(reduction);
       int max_dist = WarpSize() / 2 / GetRowsPerWarp();
-      const auto& inits_for_reduction = inits.at(reduction);
       auto& values = accumulated[reduction];
-      values = mlir_converter::UnrealizedConversionCast(
-          mlir::TypeRange(inits_for_reduction), values, b);
       values =
           b.create<ShuffleReduceOp>(reducer, values, max_dist).getResults();
     }
@@ -639,9 +635,6 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
             if (mlir::isa<mlir::VectorType>(value.getType())) {
               value = b.create<mlir::vector::ExtractOp>(value, vector_index);
             }
-            // Convert back to unsigned if necessary.
-            value = mlir_converter::UnrealizedConversionCast(init.getType(),
-                                                             value, b);
             auto indices = shared_write_indices(vector_index, b);
             auto& tile = written[shared_index++];
             tile = b.create<PredicatedInsertOp>(loc, shared_write_condition,
@@ -728,7 +721,6 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     iter_arg_starts[hero] = iter_arg_inits.size();
     iter_arg_inits.append(init);
   }
-  iter_arg_inits = mlir_converter::ConvertToSignless(iter_arg_inits, builder);
 
   auto body_builder = [&](ValueRange iter_args, ValueRange dim_values,
                           ValueRange symbol_values) -> SmallVector<Value> {
@@ -748,18 +740,13 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     for (auto* reduction : reductions) {
       int arity = reduction->operand_count() / 2;
       int start = iter_arg_starts[reduction];
-      const auto& inits_for_reduction = inits.at(reduction);
-      SmallVector<Value> reduce_args = mlir_converter::UnrealizedConversionCast(
-          mlir::TypeRange(inits_for_reduction), iter_args.slice(start, arity),
-          builder);
+      SmallVector<Value> reduce_args = iter_args.slice(start, arity);
       reduce_args.append(ProvideParameterRange(
           computation, reduction, 0, arity, get_input_indices(reduction, true),
           call_target, entry_function, builder));
       const auto& reducer = GetReducer(reduction);
       absl::c_copy(
-          mlir_converter::ConvertToSignless(
-              builder.create<PureCallOp>(reducer, reduce_args).getResults(),
-              builder),
+          builder.create<PureCallOp>(reducer, reduce_args).getResults(),
           results.begin() + start);
     }
     struct SideOutput {
@@ -773,7 +760,6 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
       Value value = mlir_converter::ProvideParameter(
           computation, root_tuple, root_tuple->operand_index(side_output),
           indices, call_target, entry_function, builder)[0];
-      value = mlir_converter::ConvertToSignless(value, builder).front();
       side_output_values.push_back({std::move(indices), value});
     }
     for (const auto& [side_output, values] :
@@ -791,11 +777,6 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
   HloValueMap results_per_hero;
   for (const auto& [hero, init] : inits) {
     results_per_hero[hero] = results.slice(iter_arg_starts[hero], init.size());
-  }
-  for (auto* side_output : side_outputs) {
-    auto& results_for_hero = results_per_hero[side_output];
-    results_for_hero = mlir_converter::UnrealizedConversionCast(
-        mlir::TypeRange(inits.at(side_output)), results_for_hero, builder);
   }
   return results_per_hero;
 }

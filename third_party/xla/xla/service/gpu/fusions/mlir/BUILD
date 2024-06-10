@@ -65,6 +65,7 @@ cc_library(
     hdrs = ["elemental_hlo_to_mlir.h"],
     deps = [
         ":computation_partitioner",
+        ":type_util",
         "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -352,6 +353,7 @@ cc_library(
     hdrs = ["type_util.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/mlir/utils:type_util",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "@com_google_absl//absl/log:check",

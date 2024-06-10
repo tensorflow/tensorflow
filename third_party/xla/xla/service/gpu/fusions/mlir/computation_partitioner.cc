@@ -447,7 +447,7 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   llvm::SmallVector<mlir::Type> result_types;
 
   auto element_type = [&](const auto& shape) {
-    return *ConvertPrimitiveTypeToMlirType(shape.element_type(), b);
+    return PrimitiveTypeToMlirType(shape.element_type(), b);
   };
 
   for (auto* root : subgraph.roots) {
