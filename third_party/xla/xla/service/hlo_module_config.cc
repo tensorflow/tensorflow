@@ -286,7 +286,7 @@ absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
 
   if (has_static_device_assignment()) {
     auto proto_assignment = proto.mutable_static_device_assignment();
-    TF_RETURN_IF_ERROR(static_device_assignment_->Serialize(proto_assignment));
+    static_device_assignment_->Serialize(proto_assignment);
   }
   AssignProtoShardableValueUpdatePairs(
       proto.mutable_shardable_value_update_pairs(),

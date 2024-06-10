@@ -84,7 +84,7 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
   return device_to_logical_id;
 }
 
-absl::Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
+void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {
@@ -94,7 +94,6 @@ absl::Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return absl::OkStatus();
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
