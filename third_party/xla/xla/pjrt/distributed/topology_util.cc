@@ -125,7 +125,8 @@ static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
 
 // Steals the contents of `local_topologies`.
 GlobalTopologyProto BuildGlobalTopology(
-    absl::Span<LocalTopologyProto> local_topologies) {
+    absl::Span<LocalTopologyProto> local_topologies,
+    bool assign_global_device_ids) {
   GlobalTopologyProto global_topology;
   int next_global_device_id = 0;
   // Assign local devices of the same host to the same slice_index.
@@ -140,7 +141,9 @@ GlobalTopologyProto BuildGlobalTopology(
       ++next_slice_index;
     }
     for (DeviceProto& device : *local.mutable_devices()) {
-      device.set_global_device_id(next_global_device_id++);
+      if (assign_global_device_ids) {
+        device.set_global_device_id(next_global_device_id++);
+      }
       device.set_slice_index(it->second);
     }
     global_topology.add_nodes()->Swap(&local);
@@ -161,7 +164,8 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
                                 absl::Duration get_global_topology_timeout,
                                 KeyValueStoreInterface* kv_store,
                                 const LocalTopologyProto& local_topology,
-                                GlobalTopologyProto* global_topology) {
+                                GlobalTopologyProto* global_topology,
+                                bool assign_global_device_ids) {
   VLOG(3) << "Local Topology for platform" << platform << ":\n"
           << local_topology.DebugString();
   if (num_nodes == 1) {
@@ -184,7 +188,8 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
                         GetAllLocalTopologies(platform, num_nodes, kv_store,
                                               get_local_topology_timeout));
     *global_topology =
-        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies));
+        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
+                            assign_global_device_ids);
     TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
                                      global_topology->SerializeAsString()));
   } else {

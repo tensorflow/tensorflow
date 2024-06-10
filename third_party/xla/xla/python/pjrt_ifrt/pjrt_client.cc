@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -41,8 +42,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -65,6 +70,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
@@ -81,6 +87,48 @@ namespace {
 // explicitly said this is WAI. See b/258212655#comment10.
 absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
   return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+void SerializePjRtDeviceAttributes(
+    const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes,
+    DeviceProto& device_proto) {
+  for (const auto& [key, value] : attributes) {
+    DeviceAttributeProto& attribute = (*device_proto.mutable_attributes())[key];
+    if (std::holds_alternative<std::string>(value)) {
+      attribute.set_string_value(std::get<std::string>(value));
+    } else if (std::holds_alternative<int64_t>(value)) {
+      attribute.set_int_value(std::get<int64_t>(value));
+    } else if (std::holds_alternative<std::vector<int64_t>>(value)) {
+      auto values = std::get<std::vector<int64_t>>(value);
+      attribute.mutable_int_values()->mutable_values()->Assign(values.begin(),
+                                                               values.end());
+    } else if (std::holds_alternative<bool>(value)) {
+      attribute.set_bool_value(std::get<bool>(value));
+    } else if (std::holds_alternative<float>(value)) {
+      attribute.set_float_value(std::get<float>(value));
+    }
+  }
+}
+
+absl::Status DeserializePjRtDeviceAttributes(
+    const DeviceProto& device_proto,
+    absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes) {
+  for (const auto& [key, value] : device_proto.attributes()) {
+    if (value.has_string_value()) {
+      attributes[key] = value.string_value();
+    } else if (value.has_int_value()) {
+      attributes[key] = value.int_value();
+    } else if (value.has_int_values()) {
+      attributes[key] =
+          std::vector<int64_t>(value.int_values().values().begin(),
+                               value.int_values().values().end());
+    } else if (value.has_bool_value()) {
+      attributes[key] = value.bool_value();
+    } else if (value.has_float_value()) {
+      attributes[key] = value.float_value();
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
@@ -249,55 +297,165 @@ AssembleStringArrayFromSingleDeviceStringArrays(
 char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
 
-std::unique_ptr<PjRtClient> PjRtClient::Create(
-    std::shared_ptr<xla::PjRtClient> pjrt_client) {
-  return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
-}
+absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
+    PjRtClient::CreateOptions options) {
+  auto client =
+      absl::WrapUnique(new PjRtClient(std::move(options.pjrt_client)));
+  xla::PjRtClient* pjrt_client = client->pjrt_client();
 
-PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {
-  devices_.reserve(pjrt_client_->devices().size());
-  device_map_.reserve(pjrt_client_->devices().size());
-  for (xla::PjRtDevice* device : pjrt_client_->devices()) {
-    auto ifrt_device = std::make_unique<PjRtDevice>(
-        this, DeviceId(device->global_device_id().value()),
-        std::string(device->device_kind()), std::string(device->ToString()),
-        std::string(device->DebugString()), device->process_index(),
-        device->Attributes(), device->IsAddressable() ? device : nullptr);
-    devices_.push_back(ifrt_device.get());
-    CHECK(device_id_map_.emplace(ifrt_device->Id(), ifrt_device.get()).second);
-    CHECK(device_map_.emplace(device, std::move(ifrt_device)).second);
-  }
-  addressable_devices_.reserve(pjrt_client_->addressable_devices().size());
-  for (xla::PjRtDevice* device : pjrt_client_->addressable_devices()) {
-    auto it = device_map_.find(device);
-    CHECK(it != device_map_.end());
-    addressable_devices_.push_back(it->second.get());
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  if (!options.kv_store) {
+    // If no KV-store was provided, we trust whatever devices the PjRtClient
+    // has.
+    // TODO(phawkins): the intention is to remove this code path.
+    devices.reserve(pjrt_client->devices().size());
+    for (xla::PjRtDevice* device : pjrt_client->devices()) {
+      auto ifrt_device = std::make_unique<PjRtDevice>(
+          client.get(), DeviceId(device->global_device_id().value()),
+          std::string(device->device_kind()), std::string(device->ToString()),
+          std::string(device->DebugString()), device->process_index(),
+          device->Attributes(), device->IsAddressable() ? device : nullptr);
+      devices.push_back(std::move(ifrt_device));
+    }
+  } else {
+    // If a KV-store was provided, we perform a topology exchange to aggregate
+    // topology information from all processes.
+    LocalTopologyProto local_topology;
+    local_topology.set_node_id(options.process_id);
+    std::string boot_id_str;
+    auto boot_id_str_or_status = GetBootIdString();
+    if (!boot_id_str_or_status.ok()) {
+      LOG(INFO) << boot_id_str_or_status.status();
+    } else {
+      boot_id_str = boot_id_str_or_status.value();
+    }
+    local_topology.set_boot_id(boot_id_str);
+    absl::flat_hash_map<PjRtLocalDeviceId, xla::PjRtDevice*> pjrt_devices;
+    // We ignore any non-addressable devices. We're going to do our own topology
+    // exchange, so we don't care what devices any given client things that some
+    // other process has.
+    for (xla::PjRtDevice* device : pjrt_client->addressable_devices()) {
+      pjrt_devices[device->local_device_id()] = device;
+      DeviceProto& device_proto = *local_topology.add_devices();
+      device_proto.set_global_device_id(device->global_device_id().value());
+      device_proto.set_local_device_ordinal(device->local_device_id().value());
+      device_proto.set_device_kind(
+          std::string(device->description().device_kind()));
+      device_proto.set_to_string(std::string(device->ToString()));
+      device_proto.set_debug_string(std::string(device->DebugString()));
+      SerializePjRtDeviceAttributes(device->Attributes(), device_proto);
+    }
+
+    GlobalTopologyProto global_topology;
+    TF_RETURN_IF_ERROR(ExchangeTopologies(
+        pjrt_client->platform_name(), options.process_id, options.num_processes,
+        options.get_local_topology_timeout, options.get_global_topology_timeout,
+        options.kv_store.get(), local_topology, &global_topology,
+        /*assign_global_device_ids=*/false));
+
+    // Some PJRT implementations (e.g., TPU) assign their own "slice_index"
+    // values. If these are present, leave them alone. Otherwise, we assign
+    // the same slice_index to all devices of the same host, as determined by
+    // the boot_id.
+    int next_slice_index = 0;
+    absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
+    for (const LocalTopologyProto& node : global_topology.nodes()) {
+      int64_t slice_index = -1;
+      if (!node.boot_id().empty()) {
+        // Every new boot_id seen is treated as a new host/slice.
+        std::string_view boot_id = node.boot_id();
+        auto [it, inserted] =
+            boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
+        slice_index = it->second;
+        if (inserted) {
+          ++next_slice_index;
+        }
+      }
+
+      bool node_is_me = (node.node_id() == options.process_id);
+      for (const DeviceProto& device_proto : node.devices()) {
+        absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
+        TF_RETURN_IF_ERROR(
+            DeserializePjRtDeviceAttributes(device_proto, attributes));
+        if (!attributes.contains("slice_index")) {
+          attributes["slice_index"] = slice_index;
+        }
+        xla::PjRtDevice* pjrt_device = nullptr;
+        if (node_is_me) {
+          auto it = pjrt_devices.find(
+              PjRtLocalDeviceId(device_proto.local_device_ordinal()));
+          TF_RET_CHECK(it != pjrt_devices.end());
+          pjrt_device = it->second;
+        }
+        auto ifrt_device = std::make_unique<PjRtDevice>(
+            client.get(), DeviceId(device_proto.global_device_id()),
+            device_proto.device_kind(), device_proto.to_string(),
+            device_proto.debug_string(), node.node_id(), std::move(attributes),
+            pjrt_device);
+        devices.push_back(std::move(ifrt_device));
+      }
+    }
   }
 
-  memory_map_.reserve(pjrt_client_->memory_spaces().size());
-  for (xla::PjRtMemorySpace* memory_space : pjrt_client_->memory_spaces()) {
-    auto ifrt_memory_space = std::make_unique<PjRtMemory>(this, memory_space);
-    memory_map_[memory_space] = std::move(ifrt_memory_space);
+  client->devices_.reserve(devices.size());
+  client->device_map_.reserve(pjrt_client->addressable_device_count());
+  for (auto& ifrt_device : devices) {
+    client->devices_.push_back(ifrt_device.get());
+    TF_RET_CHECK(
+        client->device_id_map_.emplace(ifrt_device->Id(), ifrt_device.get())
+            .second);
+    xla::PjRtDevice* pjrt_device = ifrt_device->pjrt_device();
+    if (pjrt_device) {
+      TF_RET_CHECK(
+          client->device_map_.emplace(pjrt_device, ifrt_device.get()).second);
+    }
+    client->owned_devices_.push_back(std::move(ifrt_device));
   }
 
-  for (size_t i = 0; i < devices_.size(); ++i) {
-    auto* device = tensorflow::down_cast<PjRtDevice*>(devices_[i]);
-    auto* pjrt_device = pjrt_client_->devices()[i];
+  client->addressable_devices_.reserve(
+      pjrt_client->addressable_devices().size());
+  for (xla::PjRtDevice* device : pjrt_client->addressable_devices()) {
+    auto it = client->device_map_.find(device);
+    CHECK(it != client->device_map_.end());
+    client->addressable_devices_.push_back(it->second);
+  }
+
+  client->memory_map_.reserve(pjrt_client->memory_spaces().size());
+  for (xla::PjRtMemorySpace* memory_space : pjrt_client->memory_spaces()) {
+    auto ifrt_memory = std::make_unique<PjRtMemory>(client.get(), memory_space);
+    client->memory_map_[memory_space] = ifrt_memory.get();
+    client->owned_memories_.push_back(std::move(ifrt_memory));
+  }
+
+  for (Device* ifrt_device : client->addressable_devices_) {
+    auto* device = tensorflow::down_cast<PjRtDevice*>(ifrt_device);
+    auto* pjrt_device = device->pjrt_device();
     device->memories_.reserve(pjrt_device->memory_spaces().size());
     for (xla::PjRtMemorySpace* pjrt_memory_space :
          pjrt_device->memory_spaces()) {
-      device->memories_.push_back(*LookupPjRtMemory(pjrt_memory_space));
+      device->memories_.push_back(*client->LookupPjRtMemory(pjrt_memory_space));
     }
+
     absl::StatusOr<PjRtMemorySpace*> memory =
         pjrt_device->default_memory_space();
     if (memory.ok()) {
-      device->default_memory_ = *LookupPjRtMemory(*memory);
+      device->default_memory_ = *client->LookupPjRtMemory(*memory);
     } else {
       device->default_memory_ = memory.status();
     }
   }
+  return client;
 }
+
+std::unique_ptr<PjRtClient> PjRtClient::Create(
+    std::shared_ptr<xla::PjRtClient> pjrt_client) {
+  PjRtClient::CreateOptions options;
+  options.pjrt_client = std::move(pjrt_client);
+  return *Create(std::move(options));
+}
+
+PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {}
 
 PjRtClient::~PjRtClient() = default;
 
@@ -308,7 +466,7 @@ absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
     return InvalidArgument("PjRtDevice not found: %s",
                            pjrt_device->DebugString());
   }
-  return it->second.get();
+  return it->second;
 }
 
 absl::StatusOr<PjRtCompatibleMemory*> PjRtClient::LookupPjRtMemory(
@@ -318,7 +476,7 @@ absl::StatusOr<PjRtCompatibleMemory*> PjRtClient::LookupPjRtMemory(
     return InvalidArgument("PjRtMemorySpace not found: %s",
                            pjrt_memory->DebugString());
   }
-  return it->second.get();
+  return it->second;
 }
 
 absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
@@ -397,11 +555,11 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
   std::unique_ptr<PjRtBuffer> buffer;
   // If the sharding has memory_kind specified, use a version of
   // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
-  // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with PjRt
-  // implementations without memories support.
+  // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with
+  // PjRt implementations without memories support.
   if (sharding->memory_kind().memory_kind().has_value()) {
-    // Find `PjRtMemorySpace` that is associated with the sharding's device and
-    // matches the sharding's memory_kind.
+    // Find `PjRtMemorySpace` that is associated with the sharding's device
+    // and matches the sharding's memory_kind.
     Memory* memory = nullptr;
     for (Memory* ms : sharding->devices().front()->Memories()) {
       if (ms->Kind() == sharding->memory_kind()) {
@@ -468,8 +626,8 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   if (sharding->devices().size() != arrays.size()) {
     return InvalidArgument(
-        "Number of output shards must match the number of single-shard arrays: "
-        "%d vs. %d",
+        "Number of output shards must match the number of single-shard "
+        "arrays: %d vs. %d",
         sharding->devices().size(), arrays.size());
   }
   if (arrays[0]->dtype().kind() == DType::kString) {

@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <cfenv>  // NOLINT
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -62,12 +62,12 @@ limitations under the License.
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_topology.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
-#include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/semaphore.h"
@@ -253,13 +253,13 @@ class TfrtCpuAsyncHostToDeviceTransferManager
 
 }  // namespace
 
-TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int id, int process_index,
-                                                   int local_hardware_id)
-    : id_(id),
-      process_index_(process_index),
-      local_hardware_id_(local_hardware_id) {
-  debug_string_ = absl::StrCat("TFRT_CPU_", id);
-  to_string_ = absl::StrCat("CpuDevice(id=", id, ")");
+TfrtCpuDeviceDescription::TfrtCpuDeviceDescription(int process_id,
+                                                   int local_device_id)
+    : id_(PackCpuDeviceId(process_id, local_device_id)),
+      process_index_(process_id),
+      local_hardware_id_(local_device_id) {
+  debug_string_ = absl::StrCat("TFRT_CPU_", id_.value());
+  to_string_ = absl::StrCat("CpuDevice(id=", id_.value(), ")");
 }
 
 absl::string_view TfrtCpuDeviceDescription::device_kind() const {
@@ -282,8 +282,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
-    cpu_devices.push_back(
-        {device->id(), device->process_index(), device->local_hardware_id()});
+    cpu_devices.push_back(CpuTopology::CpuDevice{device->process_index(),
+                                                 device->local_hardware_id()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
                                     platform_version, cpu_devices,
@@ -304,9 +304,20 @@ absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
   return result;
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, int process_index, int local_hardware_id,
+std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+TfrtCpuTopologyDescription::DeviceDescriptions() const {
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
+  devices.reserve(cpu_topology_.number_of_devices());
+  for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
+    devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
+        device.process_id, device.local_device_id));
+  }
+  return devices;
+}
+
+TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
                              int max_inflight_computations)
-    : description_(id, process_index, local_hardware_id),
+    : description_(process_id, local_device_id),
       max_inflight_computations_semaphore_(
           /*capacity=*/max_inflight_computations) {}
 
@@ -375,42 +386,17 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   int cpu_device_count = options.cpu_device_count.value_or(CpuDeviceCount());
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
-  LocalTopologyProto local_topology;
-  local_topology.set_node_id(options.node_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
-  } else {
-    boot_id_str = boot_id_str_or_status.value();
-  }
-  local_topology.set_boot_id(boot_id_str);
-  for (int i = 0; i < cpu_device_count; ++i) {
-    DeviceProto* device_proto = local_topology.add_devices();
-    device_proto->set_local_device_ordinal(i);
-    device_proto->set_name("cpu");
-  }
-
-  GlobalTopologyProto global_topology;
-  TF_RETURN_IF_ERROR(ExchangeTopologies(
-      "cpu", options.node_id, options.num_nodes, absl::Minutes(2),
-      absl::Minutes(5), options.kv_store.get(), local_topology,
-      &global_topology));
-
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
-  for (const LocalTopologyProto& node : global_topology.nodes()) {
-    for (const DeviceProto& device_proto : node.devices()) {
-      auto device = std::make_unique<TfrtCpuDevice>(
-          /*id=*/device_proto.global_device_id(), node.node_id(),
-          device_proto.local_device_ordinal(),
-          options.max_inflight_computations_per_device);
-      devices.push_back(std::move(device));
-    }
+  for (int i = 0; i < cpu_device_count; ++i) {
+    auto device = std::make_unique<TfrtCpuDevice>(
+        options.process_id, /*local_device_id=*/i,
+        options.max_inflight_computations_per_device);
+    devices.push_back(std::move(device));
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
-      /*process_index=*/options.node_id, std::move(devices),
-      std::move(options.collectives), num_threads, options.asynchronous));
+      options.process_id, std::move(devices), std::move(options.collectives),
+      num_threads, options.asynchronous));
 }
 
 static tsl::ThreadOptions GetThreadOptions() {
@@ -450,8 +436,9 @@ TfrtCpuClient::TfrtCpuClient(
       asynchronous_(asynchronous) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
-    CHECK(id_to_device_.insert({device->id(), device.get()}).second)
-        << "Duplicate device id: " << device->id();
+    CHECK(
+        id_to_device_.insert({device->global_device_id(), device.get()}).second)
+        << "Duplicate device id: " << device->global_device_id();
 
     device->SetClient(this);
     if (device->IsAddressable()) {
@@ -484,7 +471,7 @@ TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
 
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
     xla::PjRtGlobalDeviceId global_device_id) const {
-  auto it = id_to_device_.find(global_device_id.value());
+  auto it = id_to_device_.find(global_device_id);
   if (it != id_to_device_.end()) {
     return it->second;
   }
@@ -675,14 +662,12 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        int64_t device_id = (*device_assignment)(replica, partition);
-        PjRtGlobalDeviceId global_device_id(device_id);
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                            LookupDevice(global_device_id));
-        if (device->process_index() != process_index()) {
+        PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
+        if (UnpackCpuProcessIndex(device_id) != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
+        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
@@ -774,10 +759,8 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
       for (int computation = 0;
            computation < device_assignment->computation_count();
            ++computation) {
-        int64_t id = (*device_assignment)(replica, computation);
-        PjRtGlobalDeviceId global_device_id(id);
-        TF_ASSIGN_OR_RETURN(auto* device, LookupDevice(global_device_id));
-        if (device->process_index() != process_index()) {
+        PjRtGlobalDeviceId id((*device_assignment)(replica, computation));
+        if (UnpackCpuProcessIndex(id) != process_index()) {
           // TODO(phawkins): improve this error message when we're ready to
           // publicize that multiprocess collectives exist.
           return InvalidArgument(
@@ -801,14 +784,12 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        int64_t device_id = (*device_assignment)(replica, partition);
-        PjRtGlobalDeviceId global_device_id(device_id);
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                            LookupDevice(global_device_id));
-        if (device->process_index() != process_index()) {
+        PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
+        if (UnpackCpuProcessIndex(device_id) != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
+        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;

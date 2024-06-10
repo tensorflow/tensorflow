@@ -114,6 +114,7 @@ cc_library(
     hdrs = ["cpu_topology.h"],
     deps = [
         ":cpu_topology_proto_cc",
+        "//xla/pjrt:pjrt_common",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -164,7 +165,6 @@ cc_library(
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed:topology_util",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
@@ -207,7 +207,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@llvm-project//mlir:IR",

@@ -237,7 +237,8 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
         ExchangeTopologies("cuda", /*node_id=*/0, /*num_nodes=*/2,
                            /*get_local_topology_timeout=*/absl::Minutes(1),
                            /*get_global_topology_timeout=*/absl::Minutes(1),
-                           kv_store.get(), locals[0], &topology));
+                           kv_store.get(), locals[0], &topology,
+                           /*assign_global_device_ids=*/true));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
@@ -259,11 +260,11 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     // within the call that would cause a deadlock.
     n.Notify();
     auto kv_store = GetDistributedKeyValueStore(client, /*key_prefix=*/"");
-    TF_RETURN_IF_ERROR(
-        ExchangeTopologies("cuda", /*node_id=*/1, /*num_nodes=*/2,
-                           /*get_local_topology_timeout=*/absl::Minutes(1),
-                           /*get_global_topology_timeout=*/absl::Minutes(1),
-                           kv_store.get(), locals[1], &topology));
+    TF_RETURN_IF_ERROR(ExchangeTopologies(
+        "cuda", /*node_id=*/1, /*num_nodes=*/2,
+        /*get_local_topology_timeout=*/absl::Minutes(1),
+        /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
+        locals[1], &topology, /*assign_global_device_ids=*/true));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
@@ -318,11 +319,11 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
     auto kv_store = GetDistributedKeyValueStore(client, /*key_prefix=*/"");
-    TF_RETURN_IF_ERROR(
-        ExchangeTopologies("cuda", /*node_id=*/node_id, num_nodes,
-                           /*get_local_topology_timeout=*/absl::Minutes(1),
-                           /*get_global_topology_timeout=*/absl::Minutes(1),
-                           kv_store.get(), locals[node_id], &topology));
+    TF_RETURN_IF_ERROR(ExchangeTopologies(
+        "cuda", /*node_id=*/node_id, num_nodes,
+        /*get_local_topology_timeout=*/absl::Minutes(1),
+        /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
+        locals[node_id], &topology, /*assign_global_device_ids=*/true));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();

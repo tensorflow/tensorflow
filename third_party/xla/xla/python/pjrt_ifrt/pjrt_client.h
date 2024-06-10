@@ -28,9 +28,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -87,7 +89,30 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
+  struct CreateOptions {
+    std::shared_ptr<xla::PjRtClient> pjrt_client;
+
+    // KV store for sharing topology information. If present, PJRT-IFRT will do
+    // its own topology exchange. If omitted, we will trust  whatever topology
+    // information the PJRT client reports.
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr;
+
+    // Number of distributed processes. Ignored if kv_store is omitted.
+    int num_processes = 1;
+
+    // My process ID. Ignored if kv_store is omitted.
+    int process_id = 0;
+
+    absl::Duration get_local_topology_timeout = absl::Minutes(2);
+    absl::Duration get_global_topology_timeout = absl::Minutes(5);
+  };
+
+  static absl::StatusOr<std::unique_ptr<PjRtClient>> Create(
+      CreateOptions options);
+
   // Creates a `Client` with a `PjRtClient`.
+  // Dies if Create() fails.
+  // Deprecated, use the overload that accepts `CreateOptions`.
   static std::unique_ptr<PjRtClient> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
 
@@ -157,7 +182,7 @@ class PjRtClient final
 
   int device_count() const override {
     DCHECK(this);
-    return pjrt_client_->device_count();
+    return devices_.size();
   }
   int addressable_device_count() const override {
     DCHECK(this);
@@ -216,12 +241,13 @@ class PjRtClient final
   std::shared_ptr<xla::PjRtClient> pjrt_client_;
   PjRtCompiler default_compiler_;
 
+  std::vector<std::unique_ptr<PjRtDevice>> owned_devices_;
+  std::vector<std::unique_ptr<PjRtMemory>> owned_memories_;
+
   std::vector<Device*> devices_;
   std::vector<Device*> addressable_devices_;
-  absl::flat_hash_map<xla::PjRtDevice*, std::unique_ptr<PjRtDevice>>
-      device_map_;
-  absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
-      memory_map_;
+  absl::flat_hash_map<xla::PjRtDevice*, PjRtDevice*> device_map_;
+  absl::flat_hash_map<xla::PjRtMemorySpace*, PjRtMemory*> memory_map_;
   absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
 };
 

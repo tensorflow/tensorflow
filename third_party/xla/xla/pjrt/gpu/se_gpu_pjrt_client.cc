@@ -983,12 +983,13 @@ absl::Status BuildDistributedDevices(
     for (int i = 0; i < num_nodes; ++i) {
       local_topologies[i].set_node_id(i);
     }
-    global_topology = BuildGlobalTopology(absl::MakeSpan(local_topologies));
+    global_topology = BuildGlobalTopology(absl::MakeSpan(local_topologies),
+                                          /*assign_global_device_ids=*/true);
   } else {
     TF_RETURN_IF_ERROR(ExchangeTopologies(
         platform_name, node_id, num_nodes, get_local_topology_timeout,
         get_global_topology_timeout, kv_store.get(), local_topology,
-        &global_topology));
+        &global_topology, /*assign_global_device_ids=*/true));
   }
 
   std::map<int, GlobalDeviceId> gpu_device_ids;

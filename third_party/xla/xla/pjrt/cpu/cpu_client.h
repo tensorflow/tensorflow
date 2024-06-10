@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_topology.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -75,9 +74,9 @@ class TfrtCpuDevice;  // forward declare
 
 class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
  public:
-  TfrtCpuDeviceDescription(int id, int process_index, int local_hardware_id);
+  explicit TfrtCpuDeviceDescription(int process_id, int local_device_id);
 
-  int id() const override { return id_; }
+  int id() const override { return id_.value(); }
 
   int process_index() const override { return process_index_; }
 
@@ -95,7 +94,7 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
   }
 
  private:
-  int id_;
+  PjRtGlobalDeviceId id_;
   int process_index_;
   int local_hardware_id_;
   std::string debug_string_;
@@ -141,15 +140,7 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
   }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override {
-    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-    devices.reserve(cpu_topology_.number_of_devices());
-    for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
-      devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
-          device.id, device.process_index, device.local_hardware_id));
-    }
-    return devices;
-  }
+      const override;
 
   const CpuTopology& cpu_topology() const { return cpu_topology_; }
   const CpuTopology* cpu_topology_ptr() const { return &cpu_topology_; }
@@ -199,7 +190,7 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
 
 class TfrtCpuDevice final : public PjRtDevice {
  public:
-  explicit TfrtCpuDevice(int id, int process_index, int local_hardware_id,
+  explicit TfrtCpuDevice(int process_id, int local_device_id,
                          int max_inflight_computations = 32);
 
   const TfrtCpuDeviceDescription& description() const override {
@@ -451,7 +442,7 @@ class TfrtCpuClient final : public PjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
+  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<ComputationPlacer> computation_placer_;
@@ -721,15 +712,8 @@ struct CpuClientOptions {
 
   int max_inflight_computations_per_device = 32;
 
-  // Number of distributed nodes. node_id, kv_get, and kv_put are ignored if
-  // this is set to 1.
-  int num_nodes = 1;
-
-  // My node ID.
-  int node_id = 0;
-
-  // KV store for sharing topology information.
-  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+  // My process ID.
+  int process_id = 0;
 
   // Distributed collectives implementation. Optional. If not provided, an
   // in-process collectives implementation will be used.
