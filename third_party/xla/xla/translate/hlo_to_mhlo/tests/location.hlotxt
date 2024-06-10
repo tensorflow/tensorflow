@@ -4,10 +4,10 @@ HloModule Test
 
 // CHECK-LABEL: func @main
 ENTRY A {
-  // CHECK: loc(unknown)
-  %arg0 = f32[4] parameter(0)
-  // CHECK: loc(unknown)
-  %arg1 = f32[4] parameter(1)
+  // CHECK: loc("x")
+  %arg0 = f32[4] parameter(0), metadata={op_name="x"}
+  // CHECK: loc("y")
+  %arg1 = f32[4] parameter(1), metadata={op_name="y"}
 
   // CHECK: loc(#[[LOC0:.*]])
   %add0 = f32[4] add(f32[4] %arg0, f32[4] %arg1)
