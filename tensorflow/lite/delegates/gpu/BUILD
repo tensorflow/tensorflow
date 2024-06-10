@@ -20,6 +20,48 @@ exports_files([
     "metal_delegate.h",
 ])
 
+_DELEGATE_NO_GL_DEPS = select({
+    "//tensorflow:android": [
+        ":async_buffers",
+        "//tensorflow/lite/core/async/c:task",
+        "//tensorflow/lite/core/async/interop/c:attribute_map",
+        "//tensorflow/lite/core/async/interop/c:constants",
+        "//tensorflow/lite/delegates/gpu/gl:android_sync",
+        "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/utils",
+        "//tensorflow/lite/delegates/utils:async_type_helpers",
+        "//tensorflow/lite/delegates/utils:ret_macros",
+        "//tensorflow/lite/delegates/utils:sync_fence",
+    ],
+    "//conditions:default": [],
+}) + [
+    ":android_hardware_buffer",
+    ":api",
+    ":delegate_options",
+    ":tflite_profile",
+    #"//third_party/GL:EGL_headers",
+    #"//third_party/GL:GLES3_headers",
+    "@com_google_absl//absl/container:flat_hash_map",
+    "@com_google_absl//absl/container:flat_hash_set",
+    "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/strings",
+    "@com_google_absl//absl/types:span",
+    "//tensorflow/lite:kernel_api",
+    "//tensorflow/lite:minimal_logging",
+    "//tensorflow/lite/async:backend_async_kernel_interface",
+    "//tensorflow/lite/core/async/interop/c:types",
+    "//tensorflow/lite/core/c:common",
+    "//tensorflow/lite/delegates:serialization",
+    "//tensorflow/lite/delegates/gpu/cl:util",
+    "//tensorflow/lite/delegates/gpu/common:model_builder",
+    "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
+    "//tensorflow/lite/delegates/gpu/common:quantization_util",
+    "//tensorflow/lite/kernels:kernel_util",
+    "//tensorflow/lite/profiling/telemetry",
+    "//tensorflow/lite/profiling/telemetry:telemetry_status",
+    "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+]
+
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
@@ -227,6 +269,25 @@ cc_library(
     deps = ["//tensorflow/lite/core/c:common"],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "delegate_no_gl",
+#     srcs = [
+#         # copybara:comment_begin(oss-only)
+# "android_version.cc",
+#         # copybara:comment_end
+#         "delegate.cc",
+#     ],
+#     hdrs = ["delegate.h"],
+#     defines = ["CL_DELEGATE_NO_GL"],
+#     linkopts = gpu_delegate_linkopts(),
+#     deps = _DELEGATE_NO_GL_DEPS + [
+#         "//tensorflow/lite/delegates/gpu/cl:api_no_gl",
+#         "//tensorflow/lite/delegates/gpu/gl:api2",
+#     ],
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "delegate",
     srcs = [
@@ -242,46 +303,7 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/lite/delegates/gpu/gl:api2",
         ],
-    }) + select({
-        "//tensorflow:android": [
-            ":async_buffers",
-            "//tensorflow/lite/core/async/c:task",
-            "//tensorflow/lite/core/async/interop/c:attribute_map",
-            "//tensorflow/lite/core/async/interop/c:constants",
-            "//tensorflow/lite/delegates/gpu/gl:android_sync",
-            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
-            "//tensorflow/lite/delegates/utils",
-            "//tensorflow/lite/delegates/utils:async_type_helpers",
-            "//tensorflow/lite/delegates/utils:ret_macros",
-            "//tensorflow/lite/delegates/utils:sync_fence",
-        ],
-        "//conditions:default": [],
-    }) + [
-        ":android_hardware_buffer",
-        ":api",
-        ":delegate_options",
-        ":tflite_profile",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/async:backend_async_kernel_interface",
-        "//tensorflow/lite/core/async/interop/c:types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates:serialization",
-        "//tensorflow/lite/delegates/gpu/cl:api",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:model_builder",
-        "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
-        "//tensorflow/lite/delegates/gpu/common:quantization_util",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/profiling/telemetry",
-        "//tensorflow/lite/profiling/telemetry:telemetry_status",
-        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    }) + _DELEGATE_NO_GL_DEPS + ["//tensorflow/lite/delegates/gpu/cl:api"],
 )
 
 cc_library(
