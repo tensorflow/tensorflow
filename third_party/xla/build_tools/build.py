@@ -204,7 +204,7 @@ def nvidia_gpu_build_with_compute_capability(
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
       type_=type_,
-      repo="xla",
+      repo="openxla/xla",
       docker_image=_CUDNN_9_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=("warnings", "rbe_linux_cuda_nvcc"),
@@ -218,7 +218,7 @@ def nvidia_gpu_build_with_compute_capability(
 
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
-    repo="xla",
+    repo="openxla/xla",
     docker_image=_DEFAULT_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
@@ -232,7 +232,7 @@ _CPU_X86_BUILD = Build(
 )
 _CPU_ARM64_BUILD = Build(
     type_=BuildType.CPU_ARM64,
-    repo="xla",
+    repo="openxla/xla",
     docker_image=_ARM64_JAX_MULTI_PYTHON_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64_xla", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS + ("-//xla/service/gpu/...",),
@@ -284,8 +284,9 @@ def main():
         ],
     )
 
+  _, repo_name = build.repo.split("/")
   with build.docker_image.pull_and_run(
-      workdir=f"/github/{build.repo}", **_DEFAULT_DOCKER_OPTIONS
+      workdir=f"/github/{repo_name}", **_DEFAULT_DOCKER_OPTIONS
   ) as docker_exec:
     docker_exec(build.bazel_test_command())
     docker_exec(["bazel", "analyze-profile", "profile.json.gz"])
