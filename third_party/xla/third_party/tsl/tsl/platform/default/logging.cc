@@ -169,7 +169,7 @@ class VlogFileMgr {
  public:
   // Determines if the env variable is set and if necessary
   // opens the file for write access.
-  VlogFileMgr();
+  VlogFileMgr(const TFLogEntry& entry);
   // Closes the file.
   ~VlogFileMgr();
   // Returns either a pointer to the file or stderr.
@@ -177,17 +177,16 @@ class VlogFileMgr {
 
  private:
   FILE* vlog_file_ptr;
-  char* vlog_file_name;
 };
 
-VlogFileMgr::VlogFileMgr() {
-  vlog_file_name = getenv("TF_CPP_VLOG_FILENAME");
-  vlog_file_ptr =
-      vlog_file_name == nullptr ? nullptr : fopen(vlog_file_name, "w");
-
-  if (vlog_file_ptr == nullptr) {
-    vlog_file_ptr = stderr;
-  }
+VlogFileMgr::VlogFileMgr(const TFLogEntry& entry) {
+  vlog_file_ptr = stderr;
+  if (entry.verbose_level() == -1) return;
+  const char* vlog_file_name = getenv("TF_CPP_VLOG_FILENAME");
+  if (vlog_file_name == nullptr) return;
+  FILE* fp = fopen(vlog_file_name, "w");
+  if (fp == nullptr) return;
+  vlog_file_ptr = fp;
 }
 
 VlogFileMgr::~VlogFileMgr() {
@@ -323,8 +322,15 @@ int64_t MaxVLogLevelFromEnv() {
 #endif
 }
 
+LogMessage::LogMessage(const char* fname, int line, int severity,
+                       int verbose_level)
+    : fname_(fname),
+      line_(line),
+      severity_(severity),
+      verbose_level_(verbose_level) {}
+
 LogMessage::LogMessage(const char* fname, int line, int severity)
-    : fname_(fname), line_(line), severity_(severity) {}
+    : LogMessage(fname, line, severity, /*verbose_level=*/-1) {}
 
 LogMessage& LogMessage::AtLocation(const char* fname, int line) {
   fname_ = fname;
@@ -341,7 +347,8 @@ LogMessage::~LogMessage() {
 }
 
 void LogMessage::GenerateLogMessage() {
-  TFLogSinks::Instance().Send(TFLogEntry(severity_, fname_, line_, str()));
+  TFLogSinks::Instance().Send(
+      TFLogEntry(severity_, fname_, verbose_level_, line_, str()));
 }
 
 int64_t LogMessage::MaxVLogLevel() {
@@ -531,7 +538,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
     abort();
   }
 #else   // PLATFORM_POSIX_ANDROID
-  static const internal::VlogFileMgr vlog_file;
+  static const internal::VlogFileMgr vlog_file(entry);
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
   uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);

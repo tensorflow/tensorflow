@@ -1304,21 +1304,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "vmodule_test",
-    srcs = ["vmodule_test.cc"],
-    tags = ["optonly"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
 tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
