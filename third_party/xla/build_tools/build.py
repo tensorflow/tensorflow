@@ -156,6 +156,7 @@ class Build:
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
   tag_filters: Tuple[str, ...] = ()
+  action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
   def bazel_test_command(self) -> List[str]:
@@ -163,7 +164,10 @@ class Build:
     configs = [f"--config={config}" for config in self.configs]
     build_tag_filters = f"--build_tag_filters={','.join(self.tag_filters)}"
     test_tag_filters = f"--test_tag_filters={','.join(self.tag_filters)}"
-    all_options = [build_tag_filters, test_tag_filters] + configs + options
+    action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
+    all_options = (
+        [build_tag_filters, test_tag_filters] + configs + action_env + options
+    )
     return ["bazel", "test", *all_options, "--", *self.target_patterns]
 
 
@@ -205,6 +209,7 @@ def nvidia_gpu_build_with_compute_capability(
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=("warnings", "rbe_linux_cuda_nvcc"),
       tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
+      action_env={"TF_CUDA_COMPUTE_CAPABILITIES": compute_capability},
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
           **_DEFAULT_BAZEL_OPTIONS,
@@ -243,6 +248,9 @@ _CPU_ARM64_BUILD = Build(
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU, compute_capability=75
 )
+
+# NOTE(ddunleavy): compute_cability=80 should really be 89, but I want to catch
+# anything marked as `requires_sm80_only`.
 _GPU_CONTINUOUS_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU_CONTINUOUS, compute_capability=80
 )
