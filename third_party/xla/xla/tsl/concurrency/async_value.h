@@ -497,15 +497,15 @@ void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
 struct AsyncValueTraits {
   // Under the normal behavior, if an AsyncValue is in kConstructed state (i.e.
   // the payload data is constructed), it will destruct the payload data when
-  // the AsyncValue enters the error state (e.g. on AsyncValue::SetError()).
+  // the AsyncValue enters the error state (e.g., on AsyncValue::SetError()).
   //
   // However, for the payload types that inherit from
   // `KeepAsyncValuePayloadOnError`, AsyncValue exhibits a different behavior:
-  // the payload value if constructed will be kept valid when the AsyncValue
+  // the payload value if constructed, will be kept valid when the AsyncValue
   // goes into the error state.
   struct KeepAsyncValuePayloadOnError {};
 
-  // If async value payload inherits from this type we allow implicit
+  // If async value payload inherits from this type, we allow implicit
   // AsyncValueRef<T> construction from `absl::Status` as an error async value.
   struct AllowImplicitStatusConstruction {};
 };

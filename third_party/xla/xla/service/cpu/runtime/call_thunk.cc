@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -36,7 +36,8 @@ CallThunk::CallThunk(Info info, ThunkSequence called_sequence)
     : Thunk(Kind::kCall, std::move(info)),
       called_sequence_(std::move(called_sequence)) {}
 
-absl::Status CallThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> CallThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
   return called_sequence_.Execute(params);
 }

@@ -51,11 +51,11 @@ std::string_view Thunk::KindToString(Kind kind) {
   }
 }
 
-tsl::AsyncValueRef<Thunk::CompletionEvent> Thunk::ReadyCompletionEvent() {
-  static tsl::AsyncValueOwningRef<CompletionEvent>* event = [] {
-    auto* storage = new tsl::internal::AsyncValueStorage<CompletionEvent>();
-    return new tsl::AsyncValueOwningRef<CompletionEvent>(
-        tsl::MakeAvailableAsyncValueRef<CompletionEvent>(*storage, 1ull));
+tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
+  static tsl::AsyncValueOwningRef<ExecuteEvent>* event = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
+    return new tsl::AsyncValueOwningRef<ExecuteEvent>(
+        tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
   }();
   return event->AsRef();
 }
@@ -84,12 +84,15 @@ void ThunkSequence::Append(ThunkSequence other) {
   }
 }
 
-absl::Status ThunkSequence::Execute(const Thunk::ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkSequence::Execute(
+    const Thunk::ExecuteParams& params) {
   VLOG(2) << "Execute thunk sequence of size " << size();
   for (auto& thunk : *this) {
-    TF_RETURN_IF_ERROR(thunk->Execute(params));
+    auto event = thunk->Execute(params);
+    tsl::BlockUntilReady(event);
+    if (event.IsError()) return event.GetError();
   }
-  return absl::OkStatus();
+  return Thunk::OkExecuteEvent();
 }
 
 ThunkSequence::BufferUses ThunkSequence::buffer_uses() const {

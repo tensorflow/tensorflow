@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -57,7 +58,10 @@ TEST(CopyThunkTest, CopySameShape) {
       CopyThunk::Create({"copy"}, src_slice, shape, dst_slice, shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
-  TF_ASSERT_OK(thunk->Execute(params));
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
 
   EXPECT_EQ(src, dst);
 }
@@ -88,7 +92,10 @@ TEST(CopyThunkTest, CopyTransposed) {
       CopyThunk::Create({"copy"}, src_slice, src_shape, dst_slice, dst_shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
-  TF_ASSERT_OK(thunk->Execute(params));
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
 
   std::vector<float> expected = {1.0, 3.0, 2.0, 4.0};
   EXPECT_EQ(expected, dst);

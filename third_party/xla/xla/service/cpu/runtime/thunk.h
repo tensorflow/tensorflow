@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "tsl/platform/statusor.h"
 
 namespace Eigen {
@@ -119,21 +121,20 @@ class Thunk {
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
   };
 
-  // A completion event that becomes ready when all tasks are completed.
-  struct CompletionEvent {
-    size_t num_tasks;
-  };
+  // An execute event that becomes ready when all tasks are completed.
+  using ExecuteEvent = tsl::Chain;
+
+  // Returns non-reference-counted async value ref for thunks executed in the
+  // caller thread to avoid reference counting overhead.
+  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent();
 
   // Thunk execution must be asynchronous and never block the caller thread,
   // especially waiting for work submitted into the `intra_op_threadpool`,
   // because thunks themselves are executed on the same thread pool.
   //
-  // Thunk execution completion must be reported via the `CompletionEvent`.
-  virtual absl::Status Execute(const ExecuteParams& params) = 0;
-
-  // Returns available completion event with `num_tasks` set to 1. This is an
-  // optimization for the case when a thunk executed in the caller thread.
-  static tsl::AsyncValueRef<CompletionEvent> ReadyCompletionEvent();
+  // Thunk execution completion must be reported via the `ExecuteEvent`.
+  virtual tsl::AsyncValueRef<ExecuteEvent> Execute(
+      const ExecuteParams& params) = 0;
 
  protected:
   // Encodes thunk info into the TraceMe compatible format.
@@ -165,7 +166,8 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   // Returns an empty thunk sequence.
   static ThunkSequence Empty() { return ThunkSequence(); }
 
-  absl::Status Execute(const Thunk::ExecuteParams& params);
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
+      const Thunk::ExecuteParams& params);
 
   using BufferUses = Thunk::BufferUses;
   BufferUses buffer_uses() const;

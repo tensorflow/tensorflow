@@ -46,7 +46,8 @@ OutfeedThunk::OutfeedThunk(Info info,
     : Thunk(Kind::kOutfeed, info),
       outfeed_buffers_(outfeed_buffers.begin(), outfeed_buffers.end()) {}
 
-absl::Status OutfeedThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat("Outfeed %d buffers", outfeed_buffers_.size());
@@ -88,7 +89,7 @@ absl::Status OutfeedThunk::Execute(const ExecuteParams& params) {
                                            outfeed_buffer.shape);
   }
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 OutfeedThunk::BufferUses OutfeedThunk::buffer_uses() const {

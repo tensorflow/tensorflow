@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -39,7 +39,7 @@ class InfeedThunk final : public Thunk {
   static absl::StatusOr<std::unique_ptr<InfeedThunk>> Create(
       Info info, absl::Span<const InfeedBuffer> infeed_buffers);
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 

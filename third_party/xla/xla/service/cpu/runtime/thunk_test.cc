@@ -20,10 +20,9 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(ThunkTest, CompletionEvent) {
-  auto event = Thunk::ReadyCompletionEvent();
-  ASSERT_TRUE(event.IsAvailable());
-  ASSERT_EQ(event->num_tasks, 1);
+TEST(ThunkTest, OkExecuteEvent) {
+  auto event = Thunk::OkExecuteEvent();
+  ASSERT_TRUE(event.IsConcrete());
 }
 
 }  // namespace

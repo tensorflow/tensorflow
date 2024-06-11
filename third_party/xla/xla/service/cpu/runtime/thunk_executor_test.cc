@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -75,7 +76,7 @@ class AddI32Thunk final : public Thunk {
                               BufferAllocation::Slice src_slice,
                               BufferAllocation::Slice dst_slice);
 
-  absl::Status Execute(const ExecuteParams&) final;
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final;
 
   BufferUses buffer_uses() const final;
 
@@ -133,7 +134,8 @@ absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
   return absl::OkStatus();
 }
 
-absl::Status AddI32Thunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
+    const ExecuteParams& params) {
   if (trace_) trace_->push_back(info().op_name);
 
   CHECK_EQ(srcs_.size(), dsts_.size());
@@ -142,7 +144,7 @@ absl::Status AddI32Thunk::Execute(const ExecuteParams& params) {
         Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
   }
 
-  return absl::OkStatus();
+  return Thunk::OkExecuteEvent();
 }
 
 AddI32Thunk::BufferUses AddI32Thunk::buffer_uses() const {

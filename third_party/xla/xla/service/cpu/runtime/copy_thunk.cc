@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -82,7 +83,8 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice source_buffer,
   }
 }
 
-absl::Status CopyThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(
@@ -116,7 +118,7 @@ absl::Status CopyThunk::Execute(const ExecuteParams& params) {
     std::memcpy(destination_data.opaque(), source_data.opaque(), size_in_bytes);
   }
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

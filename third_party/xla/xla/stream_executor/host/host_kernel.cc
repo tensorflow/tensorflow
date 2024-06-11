@@ -35,6 +35,18 @@ limitations under the License.
 
 namespace stream_executor::host {
 
+using LaunchEvent = HostKernel::LaunchEvent;
+
+// Non-reference-counted async value ref for host kernels executed inline.
+static tsl::AsyncValueRef<LaunchEvent> OkLaunchEvent() {
+  static tsl::AsyncValueOwningRef<LaunchEvent>* event = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<LaunchEvent>();
+    return new tsl::AsyncValueOwningRef<LaunchEvent>(
+        tsl::MakeAvailableAsyncValueRef<LaunchEvent>(*storage));
+  }();
+  return event->AsRef();
+}
+
 static absl::InlinedVector<SE_HOST_KernelArg, 8> ConvertBuffersToKernelArgs(
     absl::Span<const DeviceMemoryBase> buffers) {
   absl::InlinedVector<SE_HOST_KernelArg, 8> args(buffers.size());
@@ -43,17 +55,6 @@ static absl::InlinedVector<SE_HOST_KernelArg, 8> ConvertBuffersToKernelArgs(
     args[i].size = buffers[i].size();
   }
   return args;
-}
-
-// Non-reference-counted async value ref for host kernels executed inline.
-using CompletionEvent = HostKernel::CompletionEvent;
-static tsl::AsyncValueRef<CompletionEvent> ReadyCompletionEvent() {
-  static tsl::AsyncValueOwningRef<CompletionEvent>* event = [] {
-    auto* storage = new tsl::internal::AsyncValueStorage<CompletionEvent>();
-    return new tsl::AsyncValueOwningRef<CompletionEvent>(
-        tsl::MakeAvailableAsyncValueRef<CompletionEvent>(*storage, 1ull));
-  }();
-  return event->AsRef();
 }
 
 namespace {
@@ -74,9 +75,7 @@ class HostKernelExecuteState
   // runner to schedule work. Executes a single task in the caller thread.
   void CallAsync(uint64_t start_index, uint64_t end_index);
 
-  tsl::AsyncValueRef<CompletionEvent> completion_event() const {
-    return event_;
-  }
+  tsl::AsyncValueRef<LaunchEvent> event() const { return event_; }
 
  private:
   // Converts linear task index in [0, num_tasks) to (x, y, z) coordinate. We
@@ -91,9 +90,8 @@ class HostKernelExecuteState
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
 
   std::atomic<int64_t> counter_;
-  tsl::AsyncValueRef<CompletionEvent> event_;
+  tsl::AsyncValueRef<LaunchEvent> event_;
 };
-
 }  // namespace
 
 HostKernel::HostKernel(std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
@@ -136,7 +134,7 @@ absl::Status HostKernel::Launch(
   return absl::OkStatus();
 }
 
-tsl::AsyncValueRef<CompletionEvent> HostKernel::Launch(
+tsl::AsyncValueRef<LaunchEvent> HostKernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
     TaskRunner task_runner) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
@@ -146,7 +144,7 @@ tsl::AsyncValueRef<CompletionEvent> HostKernel::Launch(
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
     absl::Status launched = Launch(thread_dims, buffers);
     return ABSL_PREDICT_TRUE(launched.ok())
-               ? ReadyCompletionEvent()
+               ? OkLaunchEvent()
                : tsl::MakeErrorAsyncValueRef(std::move(launched));
   }
 
@@ -156,7 +154,7 @@ tsl::AsyncValueRef<CompletionEvent> HostKernel::Launch(
 
   state->CallAsync(/*start_index=*/0, /*end_index=*/num_tasks);
 
-  return state->completion_event();
+  return state->event();
 }
 
 HostKernelExecuteState::HostKernelExecuteState(
@@ -168,7 +166,7 @@ HostKernelExecuteState::HostKernelExecuteState(
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(ConvertBuffersToKernelArgs(buffers)),
       counter_(num_tasks_),
-      event_(tsl::MakeConstructedAsyncValueRef<CompletionEvent>(num_tasks_)) {}
+      event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
 
 void HostKernelExecuteState::CallSync(uint64_t task_index) {
   DCHECK_LT(task_index, num_tasks_) << "Task index out of range";

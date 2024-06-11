@@ -39,7 +39,7 @@ class KernelThunk final : public Thunk {
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim);
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 

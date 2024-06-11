@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "tsl/platform/threadpool.h"
 
 namespace stream_executor::host {
@@ -44,9 +45,7 @@ class HostKernel : public Kernel {
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
   // A struct to report completion of the kernel execution.
-  struct CompletionEvent {
-    size_t num_tasks;
-  };
+  using LaunchEvent = tsl::Chain;
 
   // Virtual base class that owns the function behind the host kernel. It can be
   // a function in a jit-compiled LLVM module or simply a pointer to the
@@ -91,7 +90,7 @@ class HostKernel : public Kernel {
   // The returned async value becomes available after all tasks are completed.
   // Async value returned in constructed state and the caller can access it to
   // get the number of tasks that are expected to be completed.
-  tsl::AsyncValueRef<CompletionEvent> Launch(
+  tsl::AsyncValueRef<LaunchEvent> Launch(
       const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
       TaskRunner task_runner) const;
 

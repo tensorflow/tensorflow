@@ -64,7 +64,8 @@ KernelThunk::KernelThunk(
       thread_dim_(thread_dim),
       kernel_ptr_(nullptr) {}
 
-absl::Status KernelThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
+    const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat(
@@ -113,7 +114,7 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
 
   } else {
-    tsl::AsyncValueRef<se::host::HostKernel::CompletionEvent> event =
+    tsl::AsyncValueRef<se::host::HostKernel::LaunchEvent> event =
         kernel.Launch(thread_dim_, buffers_data, [&](auto task) {
           params.intra_op_threadpool->getPool()->Schedule(
               ToCopyableTask(std::move(task)));
@@ -128,7 +129,7 @@ absl::Status KernelThunk::Execute(const ExecuteParams& params) {
     if (event.IsError()) return event.GetError();
   }
 
-  return absl::OkStatus();
+  return OkExecuteEvent();
 }
 
 KernelThunk::BufferUses KernelThunk::buffer_uses() const {

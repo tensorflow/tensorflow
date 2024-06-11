@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -148,7 +149,9 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
     // Execute thunk for the given node id.
     Thunk& thunk = *state->executor->thunk_sequence_[id];
     // TODO(ezhulenev): Add proper error handling.
-    CHECK_OK(thunk.Execute(params));
+    auto execute_event = thunk.Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    CHECK(!execute_event.IsError());
 
     // Load `is_sink` before dropping node counters because otherwise it might
     // race with NodeDef destructor.

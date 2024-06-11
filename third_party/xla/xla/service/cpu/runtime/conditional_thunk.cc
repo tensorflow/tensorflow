@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -47,7 +46,8 @@ ConditionalThunk::ConditionalThunk(Info info,
       branch_index_buffer_(branch_index_buffer),
       branch_sequences_(std::move(branch_sequences)) {}
 
-absl::Status ConditionalThunk::Execute(const ExecuteParams& params) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
+    const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase branch_index_data,
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_));

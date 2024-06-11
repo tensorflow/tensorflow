@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -37,7 +37,7 @@ class CopyThunk final : public Thunk {
       const Shape& source_shape, BufferAllocation::Slice destination_buffer,
       const Shape& destination_shape);
 
-  absl::Status Execute(const ExecuteParams& params) final;
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final {
     return {{source_buffer_, BufferUse::kRead},
