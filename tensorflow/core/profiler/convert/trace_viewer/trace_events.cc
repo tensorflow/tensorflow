@@ -131,6 +131,16 @@ void MaybeAddEventUniqueId(std::vector<TraceEvent*>& events) {
 
 }  // namespace
 
+int GetLevelForDuration(uint64_t duration_ps) {
+  int i = 0;
+  for (; i < NumLevels(); ++i) {
+    if (duration_ps > kLayerResolutions[i]) {
+      return i;
+    }
+  }
+  return i;
+}
+
 std::vector<TraceEvent*> MergeEventTracks(
     const std::vector<const TraceEventTrack*>& event_tracks) {
   std::vector<TraceEvent*> events;
