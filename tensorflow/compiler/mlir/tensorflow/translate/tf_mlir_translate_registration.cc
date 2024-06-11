@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
@@ -173,7 +174,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
   absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::ConvertMlirToGraphdef(module, confs));
+      tensorflow::tf2xla::v2::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
     return mlir::failure();
