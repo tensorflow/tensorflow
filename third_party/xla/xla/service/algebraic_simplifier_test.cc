@@ -11195,6 +11195,58 @@ TEST_F(AlgebraicSimplifierTest, BroadcastToTranspose2) {
   EXPECT_EQ(root->dimensions(), std::vector<int64_t>({1, 0, 2}));
 }
 
+TEST_F(AlgebraicSimplifierTest, LayoutConstraintToNoop) {
+  const std::string hlo_string = R"(
+  HloModule layout_constraint
+    ENTRY %main {
+      input = f32[6,4,3]{0,1,2} parameter(0)
+      ROOT output = f32[6,4,3]{0,1,2} custom-call(input), custom_call_target="LayoutConstraint"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, LayoutConstraintToCopy) {
+  const std::string hlo_string = R"(
+  HloModule layout_constraint
+    ENTRY %main {
+      input = f32[6,4,3]{0,1,2} parameter(0)
+      ROOT output = f32[6,4,3]{2,0,1} custom-call(input), custom_call_target="LayoutConstraint"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Copy(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, KeepLayoutConstraint) {
+  const std::string hlo_string = R"(
+  HloModule layout_constraint
+    ENTRY %main {
+      input = f32[6,4,3]{0,1,2} parameter(0)
+      ROOT output = f32[6,4,3]{2,0,1} custom-call(input), custom_call_target="LayoutConstraint"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, PreserveSharding) {
   const std::string hlo_string = R"(
   HloModule jit_matmul, entry_computation_layout={(f64[8,3]{1,0}, f64[])->f64[8,3]{1,0}}, allow_spmd_sharding_propagation_to_parameters={false,true}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=2
