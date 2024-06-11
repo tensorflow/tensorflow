@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -372,9 +373,10 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 
 absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    const MultiProcessKeyValueStore& key_value_store) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
-                                         thread_pool);
+                                         thread_pool, key_value_store);
   return absl::OkStatus();
 }
 

@@ -80,7 +80,7 @@ static void SortAutotuneResults(AutotuneResults* results) {
 }
 
 // Serialize `results` to string as a proto.
-static absl::StatusOr<std::string> AutotuneResultsToString(
+absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto) {
   if (as_textproto) {
     std::string textproto;

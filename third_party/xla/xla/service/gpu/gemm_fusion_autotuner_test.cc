@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -193,11 +194,12 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
     DebugOptions opts;
+    MultiProcessKeyValueStore key_value_store;
     pipeline.AddPass<GemmFusionAutotuner>(
         AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
                                     backend().memory_allocator()},
                        opts},
-        GetToolkitVersion(), &thread_pool);
+        GetToolkitVersion(), &thread_pool, key_value_store);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
@@ -661,6 +663,7 @@ ENTRY e {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                       tsl::port::MaxParallelism());
   DebugOptions opts;
+  MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(
       AutotuneConfig{DevicelessConfig{backend()
                                           .default_stream_executor()
@@ -671,7 +674,7 @@ ENTRY e {
                                           ->GetDeviceDescription()
                                           .cuda_compute_capability()},
                      opts},
-      GetToolkitVersion(), &thread_pool);
+      GetToolkitVersion(), &thread_pool, key_value_store);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));

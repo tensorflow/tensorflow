@@ -94,7 +94,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
   } else {
     if (num_nodes == 1) {
-      return xla::FunctionalHloRunner::CreateGpuClient();
+      return xla::FunctionalHloRunner::CreateGpuClient({});
     } else {
       CHECK_GT(address.length(), 0);
       // Multinode. Start service on task 0.
@@ -116,8 +116,12 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
       TF_QCHECK_OK(distributed_client->Connect());
       kv_store = GetDistributedKeyValueStore(distributed_client,
                                              /*key_prefix=*/"gpu:");
-      return xla::FunctionalHloRunner::CreateGpuClient(kv_store, node_id,
-                                                       num_nodes);
+      GpuClientOptions gpu_client_options;
+      gpu_client_options.node_id = node_id;
+      gpu_client_options.num_nodes = num_nodes;
+      gpu_client_options.kv_store = kv_store;
+      return xla::FunctionalHloRunner::CreateGpuClient(
+          std::move(gpu_client_options));
     }
   }
 }
@@ -330,8 +334,12 @@ FunctionalHloRunner::CreateHostClient() {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>>
-FunctionalHloRunner::CreateGpuClient() {
-  return GetStreamExecutorGpuClient(GpuClientOptions());
+FunctionalHloRunner::CreateGpuClient(GpuClientOptions options) {
+  if (options.node_id < 0 || options.node_id >= options.num_nodes) {
+    return absl::InvalidArgumentError(
+        "Node id is expected to be in range [0, num_nodes)");
+  }
+  return GetStreamExecutorGpuClient(options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>>
@@ -339,24 +347,6 @@ FunctionalHloRunner::CreateMockGpuClient(int num_nodes) {
   GpuClientOptions options;
   options.num_nodes = num_nodes;
   options.enable_mock_nccl = true;
-  return GetStreamExecutorGpuClient(options);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient>>
-FunctionalHloRunner::CreateGpuClient(
-    std::shared_ptr<xla::KeyValueStoreInterface> kv_store, int node_id,
-    int num_nodes) {
-  if (node_id < 0 || node_id >= num_nodes) {
-    return absl::InvalidArgumentError(
-        "Node id is expected to be in range [0, num_nodes)");
-  }
-
-  TF_RET_CHECK(kv_store != nullptr);
-
-  GpuClientOptions options;
-  options.node_id = node_id;
-  options.num_nodes = num_nodes;
-  options.kv_store = kv_store;
   return GetStreamExecutorGpuClient(options);
 }
 

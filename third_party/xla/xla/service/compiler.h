@@ -29,7 +29,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -162,9 +161,7 @@ class Compiler {
     // If non-null, it will be used to construct relevant MLIR contexts.
     mlir::DialectRegistry* registry = nullptr;
 
-    int process_index = 0;
-    int process_count = 1;
-    std::shared_ptr<KeyValueStoreInterface> key_value_store;
+    MultiProcessKeyValueStore key_value_store;
   };
 
   virtual ~Compiler() = default;

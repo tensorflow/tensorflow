@@ -297,10 +297,9 @@ absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
                           debug_options};
   }
-  AutotuneConfig deviceless_config =
-      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str},
-                     debug_options};
-  return deviceless_config;
+  return AutotuneConfig{
+      DevicelessConfig{gpu_target_config.device_description_str},
+      debug_options};
 }
 
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
@@ -1438,8 +1437,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(
-      &pipeline, hlo_module, autotune_config, thread_pool));
+  TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(&pipeline, hlo_module,
+                                                   autotune_config, thread_pool,
+                                                   options.key_value_store));
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated

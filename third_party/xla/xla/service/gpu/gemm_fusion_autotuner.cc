@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
@@ -1117,6 +1118,47 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
   return absl::OkStatus();
 }
 
+// Trim the set of configs to what one rank has to run.
+static TilingConfigs TrimConfigs(const TilingConfigs& gemm_config_sets,
+                                 const int shard_index, const int shard_count) {
+  const uint64_t bucket_size =
+      (gemm_config_sets.size() + shard_count - 1) / shard_count;
+  const uint64_t start = bucket_size * shard_index;
+  const uint64_t end = std::min(start + bucket_size, gemm_config_sets.size());
+  if (start >= end) {
+    return {};
+  }
+  return TilingConfigs(gemm_config_sets.cbegin() + start,
+                       gemm_config_sets.cbegin() + end);
+}
+
+// Exchange the results with the other ranks.
+absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
+                             const int module_id, const int shard_index,
+                             const int shard_count) {
+  AutotuneResults results;
+  TF_RETURN_IF_ERROR(AutotunerUtil::SerializeAutotuneResults(&results));
+  TF_ASSIGN_OR_RETURN(std::string results_str,
+                      AutotuneResultsToString(results, true));
+  constexpr absl::string_view kKeyPrefix = "gemm_fusion_autotuning_results";
+  TF_RETURN_IF_ERROR(key_value_store.Set(
+      absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, shard_index),
+      results_str));
+  for (int i = 0; i < shard_count; ++i) {
+    if (i == shard_index) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::string autotune_results_str,
+        key_value_store.Get(
+            absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, i),
+            absl::InfiniteDuration()));
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::LoadAutotuneResults(autotune_results_str, true));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> GemmFusionAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1129,6 +1171,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
   TF_ASSIGN_OR_RETURN(TilingConfigs gemm_config_sets,
                       gemm_config_set_collector.CollectGemmConfigSets(
                           module, execution_threads));
+  const int total_fusion_count = gemm_config_sets.size();
 
   AutoTuneCacheKeyCount fusion_count_map =
       gemm_config_set_collector.GetFusionsCount();
@@ -1165,11 +1208,33 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
                                             ? "(with correctness check)"
                                             : "(without correctness check)";
 
-    VLOG(1) << "Autotuning " << gemm_config_sets.size() << " fusions "
-            << correctness_check_str << ".";
+    const bool shard_autotuning = debug_options.xla_gpu_shard_autotuning() &&
+                                  key_value_store_.process_count > 1 &&
+                                  total_fusion_count > 0;
+    if (shard_autotuning) {
+      if (key_value_store_.key_value_store == nullptr) {
+        return absl::FailedPreconditionError(
+            "Sharded autotuning requested but key-value store is missing.");
+      }
+      gemm_config_sets =
+          TrimConfigs(gemm_config_sets, key_value_store_.process_index,
+                      key_value_store_.process_count);
+    }
+
+    VLOG(1) << absl::StrFormat(
+        "Shard %d / %d: autotuning %d / %d fusions for %s %s.",
+        key_value_store_.process_index + 1, key_value_store_.process_count,
+        gemm_config_sets.size(), total_fusion_count, module->name(),
+        correctness_check_str);
     TF_RETURN_IF_ERROR(autotuner.Autotune(*opt_compile_util, gemm_config_sets,
                                           std::move(fusion_count_map)));
     VLOG(1) << "Done autotuning.";
+
+    if (shard_autotuning) {
+      TF_RETURN_IF_ERROR(ExchangeResults(
+          *key_value_store_.key_value_store, module->unique_id(),
+          key_value_store_.process_index, key_value_store_.process_count));
+    }
   }
 
   return GemmFusionAutotunerVisitor(config_).RunOnModule(module,
