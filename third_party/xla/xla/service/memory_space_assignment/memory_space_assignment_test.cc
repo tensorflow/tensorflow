@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -109,18 +110,6 @@ int64_t ReservedScopedMemoryFn(
         operands_in_alternate_memory,
     const absl::flat_hash_set<ShapeIndex>& outputs_in_alternate_memory) {
   return 0;
-}
-
-template <typename MessageType>
-absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
-  MessageType parsed_proto;
-  tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
-                                                   text_proto.size());
-  if (!parser.Parse(&input_stream, &parsed_proto)) {
-    return absl::InvalidArgumentError("Could not parse text proto");
-  }
-  return parsed_proto;
 }
 
 class TestBufferIntervalComparator : public BufferIntervalComparator {

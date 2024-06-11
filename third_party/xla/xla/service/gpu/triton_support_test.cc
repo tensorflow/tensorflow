@@ -124,7 +124,7 @@ using UnaryElementwiseTest = TritonSupportTestWithParam;
 
 // TODO(b/331636835): updates elementwise op tests to directly emit single op
 // instead of relying on triton gemm kernel.
-TEST_P(UnaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForUnary) {
+TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   PrimitiveType data_type;
   HloOpcode opcode;
   std::tie(data_type, opcode) = GetParam();
@@ -198,7 +198,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BinaryElementwiseTest = TritonSupportTestWithParam;
 
-TEST_P(BinaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForBinaryE) {
+TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
   PrimitiveType data_type;
   HloOpcode opcode;
   std::tie(data_type, opcode) = GetParam();
@@ -209,24 +209,18 @@ TEST_P(BinaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForBinaryE) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
+triton_computation {
+  parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  binary = $0[11,63]{1,0} $1(parameter_1, parameter_2)
-  convert = f32[11,63]{1,0} convert(binary)
-  ROOT dot = f32[92,63]{1,0} dot(parameter_0, convert),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+  ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
 }
 
 ENTRY e {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
+  parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  ROOT triton_gemm = f32[92,63]{1,0} fusion(parameter_0, parameter_1, parameter_2),
-    kind=kCustom, calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  ROOT triton_op = $0[11,63]{1,0} fusion(parameter_0, parameter_1),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -234,15 +228,15 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
   const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm___computation");
+      module->GetComputationWithName("triton_computation");
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    float tolerance = getTolerance(data_type);
     TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
-    EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+        *computation, /*config=*/{}, /*output_tile_sizes=*/{1, 32}, EmitGeneric,
+        "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(TritonFusionAnalysis::Execute(*computation),
                 ::testing::AnyOf(
@@ -281,7 +275,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using CompareTest = TritonSupportTestWithParam;
 
-TEST_P(CompareTest, IsTritonSupportedExecutesCorrectlyForCompare) {
+TEST_P(CompareTest, IsTritonSupportedCompare) {
   PrimitiveType data_type;
   HloOpcode opcode;
   std::tie(data_type, opcode) = GetParam();
@@ -292,24 +286,19 @@ TEST_P(CompareTest, IsTritonSupportedExecutesCorrectlyForCompare) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
+triton_computation {
+  parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  compare = pred[11,63]{1,0} $1(parameter_1, parameter_2), direction=GE
-  convert = f32[11,63]{1,0} convert(compare)
-  ROOT dot = f32[92,63]{1,0} dot(parameter_0, convert),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+  compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
+  ROOT convert = f32[11,63]{1,0} convert(compare)
 }
 
 ENTRY e {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
+  parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  ROOT triton_gemm = f32[92,63]{1,0} fusion(parameter_0, parameter_1, parameter_2),
-    kind=kCustom, calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  ROOT triton_op = f32[11,63]{1,0} fusion(parameter_0, parameter_1),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -317,15 +306,15 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
   const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm___computation");
+      module->GetComputationWithName("triton_computation");
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    float tolerance = getTolerance(data_type);
     TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
-    EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+        *computation, /*config=*/{}, /*output_tile_sizes=*/{1, 32}, EmitGeneric,
+        "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(
         TritonFusionAnalysis::Execute(*computation),
@@ -343,7 +332,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using TernaryElementwiseTest = TritonSupportTestWithParam;
 
-TEST_P(TernaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForTernary) {
+TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   PrimitiveType data_type;
   HloOpcode opcode;
   std::tie(data_type, opcode) = GetParam();
@@ -354,26 +343,21 @@ TEST_P(TernaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForTernary) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[92,13]{1,0} parameter(0)
+triton_computation {
+  parameter_0 = $0[13,63]{1,0} parameter(0)
   parameter_1 = $0[13,63]{1,0} parameter(1)
-  parameter_2 = $0[13,63]{1,0} parameter(2)
-  parameter_3 = pred[13,63]{1,0} parameter(3)
-  ternary = $0[13,63]{1,0} $1(parameter_3, parameter_1, parameter_2)
-  convert = f32[13,63]{1,0} convert(ternary)
-  ROOT dot = f32[92,63]{1,0} dot(parameter_0, convert),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+  parameter_2 = pred[13,63]{1,0} parameter(2)
+  ternary = $0[13,63]{1,0} $1(parameter_2, parameter_0, parameter_1)
+  ROOT convert = f32[13,63]{1,0} convert(ternary)
 }
 
 ENTRY e {
-  parameter_0 = f32[92,13]{1,0} parameter(0)
+  parameter_0 = $0[13,63]{1,0} parameter(0)
   parameter_1 = $0[13,63]{1,0} parameter(1)
-  parameter_2 = $0[13,63]{1,0} parameter(2)
-  parameter_3 = pred[13,63]{1,0} parameter(3)
-  ROOT triton_gemm = f32[92,63]{1,0} fusion(parameter_0, parameter_1, parameter_2, parameter_3),
-    kind=kCustom, calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  parameter_2 = pred[13,63]{1,0} parameter(2)
+  ROOT triton_op = f32[13,63]{1,0} fusion(parameter_0, parameter_1, parameter_2),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -381,15 +365,15 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
   const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm___computation");
+      module->GetComputationWithName("triton_computation");
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    float tolerance = getTolerance(data_type);
     TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
-    EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+        *computation, /*config=*/{}, /*output_tile_sizes=*/{1, 32}, EmitGeneric,
+        "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(
         TritonFusionAnalysis::Execute(*computation),
@@ -407,7 +391,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using DotTest = TritonSupportTestWithParam;
 
-TEST_P(DotTest, IsTritonSupportedExecutesCorrectlyForDot) {
+TEST_P(DotTest, IsTritonSupportedDot) {
   PrimitiveType data_type;
   HloOpcode opcode;
   std::tie(data_type, opcode) = GetParam();
@@ -418,7 +402,7 @@ TEST_P(DotTest, IsTritonSupportedExecutesCorrectlyForDot) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
+triton_computation {
   parameter_0 = $0[92,11]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   ROOT dot = $0[92,63]{1,0} $1(parameter_0, parameter_1),
@@ -428,10 +412,12 @@ triton_gemm___computation {
 ENTRY e {
   parameter_0 = $0[92,11]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT triton_gemm = $0[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_gemm___computation,
+  ROOT triton_op = $0[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
+  // TODO(b/345763510): Change the kind above to "__triton" once dots are
+  // supported.
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
       HloOpcodeString(opcode));
@@ -445,6 +431,8 @@ ENTRY e {
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
+    // TODO(b/345763510): Change the the line below to a file check on generated
+    // code once dots are supported.
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
   } else {
@@ -494,7 +482,7 @@ class DynamicSliceTest
     : public TritonSupportTest,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType> {};
 
-TEST_P(DynamicSliceTest, IsTritonSupportedExecutesCorrectlyForDynamicSlice) {
+TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSlice) {
   const DynamicSliceTestParam param(GetParam());
 
   if (!GetCudaComputeCapability().IsAtLeast(
@@ -507,7 +495,7 @@ TEST_P(DynamicSliceTest, IsTritonSupportedExecutesCorrectlyForDynamicSlice) {
       R"(
 HloModule m
 
-triton_gemm {
+triton_computation {
   dynamic_slice_input = $0[$2,$3] parameter(0)
   dot_rhs = f32[2,4] parameter(1)
   start_index0 = $1[] parameter(2)
@@ -525,7 +513,7 @@ ENTRY e {
   start_index0 = $1[] constant($4)
   start_index1 = $1[] constant($5)
   ROOT fusion = f32[5,4] fusion(dynamic_slice_input, dot_rhs, start_index0, start_index1),
-       kind=kCustom, calls=triton_gemm,
+       kind=kCustom, calls=triton_computation,
        backend_config={
          "fusion_backend_config":{
            "kind":"__triton_gemm","triton_gemm_config":{
@@ -545,7 +533,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
   const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm");
+      module->GetComputationWithName("triton_computation");
   ASSERT_NE(computation, nullptr);
   const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
       *computation, HloOpcode::kDynamicSlice);
@@ -577,7 +565,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(TritonSupportTest, UnsupportedDotOutputTypeFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
-triton_gemm___computation {
+triton_computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   parameter_1 = f32[11,63]{1,0} parameter(1)
   ROOT dot = pred[92,63]{1,0} dot(parameter_0, parameter_1),
@@ -587,8 +575,8 @@ triton_gemm___computation {
 ENTRY e {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   parameter_1 = f32[11,63]{1,0} parameter(1)
-  ROOT triton_gemm = pred[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_gemm___computation,
+  ROOT triton_op = pred[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -618,7 +606,7 @@ ENTRY e {
 TEST_F(TritonSupportTest,
        UnsupportedDotWithMultipleBatchDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
-triton_gemm___computation {
+triton_computation {
   parameter_0 = f32[2,2,2,2]{3,2,1,0} parameter(0)
   parameter_1 = f32[2,2,2,2]{3,2,1,0} parameter(1)
   ROOT dot = f32[2,2,2,2]{3,2,1,0} dot(parameter_0, parameter_1),
@@ -629,8 +617,8 @@ triton_gemm___computation {
 ENTRY e {
   parameter_0 = f32[2,2,2,2]{3,2,1,0} parameter(0)
   parameter_1 = f32[2,2,2,2]{3,2,1,0} parameter(1)
-  ROOT triton_gemm = f32[2,2,2,2]{3,2,1,0} fusion(parameter_0, parameter_1),
-    kind=kCustom, calls=triton_gemm___computation,
+  ROOT triton_op = f32[2,2,2,2]{3,2,1,0} fusion(parameter_0, parameter_1),
+    kind=kCustom, calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
@@ -659,7 +647,7 @@ ENTRY e {
 TEST_F(TritonSupportTest,
        UnsupportedDotWithNoNonContractingDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
-triton_gemm___computation {
+triton_computation {
   parameter_0 = f32[2]{0} parameter(0)
   parameter_1 = f32[2]{0} parameter(1)
   ROOT dot = f32[] dot(parameter_0, parameter_1),
@@ -669,15 +657,15 @@ triton_gemm___computation {
 ENTRY e {
   parameter_0 = f32[2]{0} parameter(0)
   parameter_1 = f32[2]{0} parameter(1)
-  ROOT triton_gemm = f32[] fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_gemm___computation,
+  ROOT triton_op = f32[] fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloTest));
 
   const HloComputation* computation =
-      hlo_module->GetComputationWithName("triton_gemm___computation");
+      hlo_module->GetComputationWithName("triton_computation");
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);

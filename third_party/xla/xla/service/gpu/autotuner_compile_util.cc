@@ -95,6 +95,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   // Avoid using GPU graphs as we don't want to measure graph construction time.
   opts_.clear_xla_gpu_enable_command_buffer();
   opts_.set_xla_embed_ir_in_executable(false);
+  opts_.set_xla_gpu_kernel_cache_file("");
 }
 
 absl::StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>

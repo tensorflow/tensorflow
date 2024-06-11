@@ -54,6 +54,7 @@ struct CompileModuleResults {
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
   std::string module_name;
+  CompilationCacheProto kernel_compilation_cache;
 
   // If true, the compiled module uses buffer allocations owned by
   // buffer_assignment. Otherwise the compiled module uses buffer allocations
