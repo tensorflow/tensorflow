@@ -350,6 +350,7 @@ ml-dtypes==0.4.0 \
     --hash=sha256:ee9f91d4c4f9959a7e1051c141dc565f39e54435618152219769e24f5e9a4d06 \
     --hash=sha256:f1724ddcdf5edbaf615a62110af47407f1719b8d02e68ccee60683acb5f74da1
     # via
+    #   -r requirements.in
     #   jax
     #   keras-nightly
 namex==0.0.8 \
