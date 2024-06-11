@@ -1613,7 +1613,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
     proto_.set_entry_function_name(std::string(function_name));
     proto_.set_obj_file(std::string(obj_file));
     *proto_.mutable_hlo_module()->mutable_config() =
-        *hlo_module->config().ToProto();
+        hlo_module->config().ToProto();
     module_ = hlo_module->Clone();
   }
 

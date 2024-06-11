@@ -303,10 +303,8 @@ TEST(XlaHloModuleConfig, ToAndFromC) {
   XLA_HloModuleConfig c_config = ToC(in_config);
   xla::HloModuleConfig out_config = FromC(c_config);
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleConfigProto in_config_proto,
-                          in_config.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleConfigProto out_config_proto,
-                          out_config.ToProto());
+  xla::HloModuleConfigProto in_config_proto = in_config.ToProto();
+  xla::HloModuleConfigProto out_config_proto = out_config.ToProto();
 
   tsl::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(

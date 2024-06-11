@@ -505,7 +505,7 @@ HloModuleProto HloModule::ToProto() const {
 
 absl::StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
+  *result.mutable_config() = config_.get().ToProto();
   *result.mutable_hlo_module() = ToProto();
   return result;
 }
