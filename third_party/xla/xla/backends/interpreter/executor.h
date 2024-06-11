@@ -45,6 +45,19 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
+// A HostStream that is used for the interpreter.
+class InterpreterStream : public host::HostStream {
+ public:
+  explicit InterpreterStream(StreamExecutor *executor)
+      : host::HostStream(executor) {}
+  absl::Status WaitFor(Stream *stream) override {
+    return host::HostStream::WaitFor(stream);
+  }
+  absl::Status WaitFor(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+};
+
 class XlaInterpreterExecutor : public StreamExecutorCommon {
  public:
   XlaInterpreterExecutor(int device_ordinal, Platform *platform)
@@ -117,10 +130,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
   }
 
-  absl::Status WaitForEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
-  }
-
   void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
@@ -150,7 +159,7 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override {
-    return std::make_unique<host::HostStream>(this);
+    return std::make_unique<InterpreterStream>(this);
   }
 
  private:

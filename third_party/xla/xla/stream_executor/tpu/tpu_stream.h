@@ -1,3 +1,5 @@
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_stream_interface.h"
 
 namespace tensorflow {
@@ -35,10 +38,12 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
   explicit TpuStream(SE_Stream* stream,
                      stream_executor::StreamExecutor* executor,
-                     SE_StreamExecutor* se_executor)
+                     SE_StreamExecutor* se_executor,
+                     tensorflow::tpu::TpuPlatform* tpu_platform)
       : TpuStreamInterface(executor),
         stream_(stream),
-        se_executor_(se_executor) {}
+        se_executor_(se_executor),
+        tpu_platform_(tpu_platform) {}
   ~TpuStream() override {
     BlockHostUntilDone().IgnoreError();
     parent()->DeallocateStream(this);
@@ -84,6 +89,19 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
+
+  absl::Status WaitFor(stream_executor::Stream* stream) override {
+    return TpuStreamInterface::WaitFor(stream);
+  }
+
+  absl::Status WaitFor(stream_executor::Event* event) override {
+    StatusHelper status;
+    auto se_event = tpu_platform_->LookupEvent(event);
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_WaitForEventFn(
+        se_executor_, stream_, se_event, status.c_status);
+    return status.status();
+  }
+
   absl::Status RefreshStatus() override {
     StatusHelper status;
     stream_executor::tpu::ExecutorApiFn()->TpuExecutor_GetStatusFn(
@@ -97,6 +115,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  private:
   mutable SE_Stream* stream_;
   SE_StreamExecutor* se_executor_;
+  tensorflow::tpu::TpuPlatform* tpu_platform_;
 };
 
 }  // namespace tpu

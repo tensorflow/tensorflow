@@ -120,7 +120,6 @@ class HostExecutor : public StreamExecutorCommon {
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
   absl::Status RecordEvent(Stream* stream, Event* event) override;
-  absl::Status WaitForEvent(Stream* stream, Event* event) override;
 
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;

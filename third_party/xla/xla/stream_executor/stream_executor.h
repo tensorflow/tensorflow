@@ -271,9 +271,6 @@ class StreamExecutor {
   // Inserts the specified event at the end of the specified stream.
   virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
 
-  // Waits for the specified event at the end of the specified stream.
-  virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 

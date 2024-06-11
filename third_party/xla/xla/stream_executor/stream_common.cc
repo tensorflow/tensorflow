@@ -157,10 +157,6 @@ absl::Status StreamCommon::WaitFor(Stream *other) {
   return absl::InternalError("stream cannot wait for other");
 }
 
-absl::Status StreamCommon::WaitFor(Event *event) {
-  return parent_->WaitForEvent(this, event);
-}
-
 absl::Status StreamCommon::Memcpy(void *host_dst,
                                   const DeviceMemoryBase &gpu_src,
                                   uint64_t size) {

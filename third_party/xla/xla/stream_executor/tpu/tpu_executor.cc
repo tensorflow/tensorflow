@@ -90,20 +90,11 @@ absl::Status TpuExecutor::RecordEvent(Stream* stream,
   return status.status();
 }
 
-absl::Status TpuExecutor::WaitForEvent(Stream* stream,
-                                       ::stream_executor::Event* event) {
-  StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event);
-  ExecutorApiFn()->TpuExecutor_WaitForEventFn(executor_, get_stream(stream),
-                                              se_event, status.c_status);
-  return status.status();
-}
-
 absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
-  auto stream =
-      std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream, this, executor_);
+  auto stream = std::make_unique<tensorflow::tpu::TpuStream>(
+      tpu_stream, this, executor_, &tpu_platform());
   tpu_platform().mutex().Lock();
   stream_map()[stream.get()] = tpu_stream;
   tpu_platform().mutex().Unlock();

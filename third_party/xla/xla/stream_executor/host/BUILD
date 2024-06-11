@@ -63,6 +63,15 @@ cc_library(
 )
 
 cc_library(
+    name = "host_event",
+    hdrs = ["host_event.h"],
+    deps = [
+        "//xla/stream_executor:event",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "host_stream",
     srcs = [
         "host_stream.cc",
@@ -71,6 +80,8 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
+        ":host_event",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:stream_common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
@@ -148,6 +159,7 @@ cc_library(
         "host_executor.h",
     ],
     deps = [
+        ":host_event",
         ":host_kernel",
         ":host_stream",
         "//xla/stream_executor",

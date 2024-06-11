@@ -119,7 +119,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                                  uint64_t size) override;
 
   absl::Status RecordEvent(Stream* stream, Event* event) override;
-  absl::Status WaitForEvent(Stream* stream, Event* event) override;
 
   absl::Status UnloadAllPrograms() override;
 

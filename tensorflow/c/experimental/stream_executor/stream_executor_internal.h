@@ -1,3 +1,4 @@
+#include "xla/stream_executor/stream.h"
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -96,50 +97,6 @@ class CPlatform : public Platform {
   stream_executor::ExecutorCache executor_cache_;
 };
 
-class CStream : public StreamCommon {
- public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor,
-          StreamExecutor* executor)
-      : StreamCommon(executor),
-        device_(device),
-        stream_executor_(stream_executor),
-        stream_handle_(nullptr) {}
-  ~CStream() override {
-    parent()->BlockHostUntilDone(this).IgnoreError();
-    parent()->DeallocateStream(this);
-    Destroy();
-  }
-
-  absl::Status Create() {
-    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
-    return s;
-  }
-
-  void Destroy() {
-    if (stream_handle_ != nullptr) {
-      stream_executor_->destroy_stream(device_, stream_handle_);
-      stream_handle_ = nullptr;
-    }
-  }
-  absl::Status RefreshStatus() override {
-    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->get_stream_status(device_, stream_handle_,
-                                        c_status.get());
-    absl::Status status = tensorflow::StatusFromTF_Status(c_status.get());
-    CheckStatus(status);
-    return status;
-  }
-
-  SP_Stream Handle() { return stream_handle_; }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Stream stream_handle_;
-};
-
 class CEvent : public Event {
  public:
   CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
@@ -190,6 +147,62 @@ class CEvent : public Event {
   SP_Device* device_;
   SP_StreamExecutor* stream_executor_;
   SP_Event event_handle_;
+};
+
+class CStream : public StreamCommon {
+ public:
+  CStream(SP_Device* device, SP_StreamExecutor* stream_executor,
+          StreamExecutor* executor)
+      : StreamCommon(executor),
+        device_(device),
+        stream_executor_(stream_executor),
+        stream_handle_(nullptr) {}
+  ~CStream() override {
+    parent()->BlockHostUntilDone(this).IgnoreError();
+    parent()->DeallocateStream(this);
+    Destroy();
+  }
+
+  absl::Status Create() {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
+    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
+    return s;
+  }
+
+  void Destroy() {
+    if (stream_handle_ != nullptr) {
+      stream_executor_->destroy_stream(device_, stream_handle_);
+      stream_handle_ = nullptr;
+    }
+  }
+  absl::Status RefreshStatus() override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    stream_executor_->get_stream_status(device_, stream_handle_,
+                                        c_status.get());
+    absl::Status status = tensorflow::StatusFromTF_Status(c_status.get());
+    CheckStatus(status);
+    return status;
+  }
+
+  absl::Status WaitFor(Stream* stream) override {
+    return StreamCommon::WaitFor(stream);
+  }
+  absl::Status WaitFor(Event* event) override {
+    SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    stream_executor_->wait_for_event(device_, stream_handle_, event_handle,
+                                     c_status.get());
+    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
+    return s;
+  }
+
+  SP_Stream Handle() { return stream_handle_; }
+
+ private:
+  SP_Device* device_;
+  SP_StreamExecutor* stream_executor_;
+  SP_Stream stream_handle_;
 };
 
 }  // namespace stream_executor

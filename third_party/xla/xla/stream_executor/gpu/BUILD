@@ -318,14 +318,17 @@ gpu_only_cc_library(
     hdrs = ["gpu_stream.h"],
     deps = [
         ":gpu_driver_header",
+        ":gpu_event_header",
         ":gpu_executor_header",
         ":gpu_types_header",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

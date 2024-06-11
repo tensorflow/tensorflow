@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_stream.h"
 
 #include <cfenv>  // NOLINT
-#include <cstddef>
+#include <memory>
 #include <queue>
 #include <utility>
 
@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -48,6 +50,13 @@ HostStream::~HostStream() {
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
   parent()->DeallocateStream(this);
+}
+
+absl::Status HostStream::WaitFor(Event* event) {
+  std::shared_ptr<absl::Notification> notification =
+      static_cast<HostEvent*>(event)->notification();
+  EnqueueTask([notification]() { notification->WaitForNotification(); });
+  return absl::OkStatus();
 }
 
 bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {

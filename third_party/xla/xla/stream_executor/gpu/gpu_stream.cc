@@ -20,7 +20,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
@@ -50,6 +53,17 @@ Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
   handle.stream = gpu_stream_;
   return handle;
+}
+
+absl::Status GpuStream::WaitFor(Event* event) {
+  if (GpuDriver::WaitStreamOnEvent(
+          parent_->gpu_context(), gpu_stream(),
+          static_cast<GpuEvent*>(event)->gpu_event())) {
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError(absl::StrFormat(
+        "error recording waiting for event on stream %p", this));
+  }
 }
 
 void GpuStream::Destroy() {

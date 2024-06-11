@@ -664,18 +664,6 @@ absl::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
   return AsGpuEvent(event)->Record(AsGpuStream(stream));
 }
 
-absl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
-  if (GpuDriver::WaitStreamOnEvent(context_, AsGpuStream(stream)->gpu_stream(),
-                                   AsGpuEvent(event)->gpu_event())) {
-    return absl::OkStatus();
-  } else {
-    return absl::Status{
-        absl::StatusCode::kInternal,
-        absl::StrFormat("error recording waiting for ROCM event on stream %p",
-                        stream)};
-  }
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
