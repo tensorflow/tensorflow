@@ -967,7 +967,7 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().fdo_profile(), kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().fdo_profile(), kFdoProfile);
 }
 
@@ -991,7 +991,7 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().device_memory_size(), kDeviceMemorySize);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().device_memory_size(), kDeviceMemorySize);
 }
 

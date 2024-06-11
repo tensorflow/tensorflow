@@ -314,8 +314,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
              std::string_view asm_text, absl::Span<const uint8_t> binary,
              const Thunk::BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
-    TF_ASSIGN_OR_RETURN(*proto.mutable_hlo_module_with_config(),
-                        hlo_module->ToProtoWithConfig());
+    *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto.set_asm_text(std::string(asm_text));
     proto.set_binary(binary.data(), binary.size());

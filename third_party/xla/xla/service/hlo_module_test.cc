@@ -746,8 +746,7 @@ ENTRY ReduceR3ToR2.v3 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(computation_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig proto,
-                          module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig proto = module->ToProtoWithConfig();
   std::string serialized_module;
   ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
   std::string original_debug_str = proto.DebugString();
@@ -756,9 +755,8 @@ ENTRY ReduceR3ToR2.v3 {
   // Verify that we can create a module from our parsed proto copy
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,
                           HloModule::CreateFromProtoWithConfig(proto));
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::HloModuleProtoWithConfig reconstructed_module_proto,
-      reconstructed_module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig reconstructed_module_proto =
+      reconstructed_module->ToProtoWithConfig();
 
   // The two protos should be equivalent except for the `id` field
   google::protobuf::util::MessageDifferencer diff;

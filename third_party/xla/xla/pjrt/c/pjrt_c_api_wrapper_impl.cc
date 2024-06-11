@@ -1141,8 +1141,7 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   program->format_size = kHloWithConfigFormat.size();
   PJRT_ASSIGN_OR_RETURN(std::shared_ptr<xla::HloModule> hlo_module,
                         GetOptimizedProgramModule(args));
-  PJRT_ASSIGN_OR_RETURN(xla::HloModuleProtoWithConfig proto,
-                        hlo_module->ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig proto = hlo_module->ToProtoWithConfig();
   if (program->code == nullptr) {
     program->code_size = proto.ByteSizeLong();
     if (program->code_size >= 2ull * 1024 * 1024 * 1024) {
