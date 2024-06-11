@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
@@ -46,16 +45,12 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/gpu/triton_test_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -77,42 +72,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-
-class TritonTest : public GpuCodegenTest {
- protected:
-  const auto& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-
- public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
-
-  const se::GpuComputeCapability& GpuComputeComp() {
-    return device_desc().gpu_compute_capability();
-  }
-
-  bool SkipBF16Tests() {
-    if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-      auto rcc = device_desc().rocm_compute_capability();
-      return !rcc.has_bf16_dtype_support();
-    }
-    return false;
-  }
-
-  se::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-      return se::GpuComputeCapability{device_desc().rocm_compute_capability()};
-    } else {
-      return se::GpuComputeCapability{
-          se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
-    }
-  }
-};
 
 class TritonGemmTest : public TritonTest {
  public:
@@ -152,56 +111,6 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
     return debug_options;
   }
 };
-
-class TritonFilecheckTest : public TritonTest {
- public:
-  absl::Status CreateTritonIrAndFileCheck(
-      absl::string_view hlo_text, const TritonGemmConfig& config,
-      std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
-      absl::string_view triton_fusion_name,
-      absl::string_view filecheck_pattern);
-};
-
-absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
-    absl::string_view hlo_text, const TritonGemmConfig& config,
-    std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
-                      ParseAndReturnVerifiedModule(hlo_text));
-
-  auto* computation =
-      verified_module->GetComputationWithName(triton_fusion_name);
-  auto* fusion = Cast<HloFusionInstruction>(computation->FusionInstruction());
-  TF_RET_CHECK(computation != nullptr);
-  TF_ASSIGN_OR_RETURN(auto analysis,
-                      TritonFusionAnalysis::Execute(*computation));
-
-  auto fusion_analysis = HloFusionAnalysis::Create(fusion, &device_desc());
-
-  if (fusion_analysis.fusion_backend_config().kind() ==
-      kTritonSoftmaxFusionKind) {
-    TritonFusion triton_fusion(fusion_analysis);
-    if (auto launch_config = triton_fusion.launch_config()) {
-      output_tile_sizes = launch_config->output_tile_sizes;
-    }
-  }
-
-  mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      CreateTritonModule(analysis, "triton_fn", fusion,
-                         TestGpuDeviceInfo::RTXA6000DeviceInfo(), config,
-                         output_tile_sizes, emitter, context));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  module->print(os);
-  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
-  if (!succeeded) {
-    return absl::InternalError("FileCheck failed.");
-  }
-  return absl::OkStatus();
-}
 
 TEST_F(TritonFilecheckTest, TestGemm) {
   const std::string kHloText = R"(
