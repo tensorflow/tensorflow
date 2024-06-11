@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -31,7 +30,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -56,6 +54,13 @@ limitations under the License.
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
+
+namespace tsl {
+// Forward declare AsyncValueRef to enable implicit conversion from XLA errors
+// to error async values.
+template <typename T>
+class AsyncValueRef;
+}  // namespace tsl
 
 namespace xla {
 
@@ -248,6 +253,11 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
   operator absl::Status() const { return status; }                       \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  template <typename T>                                                  \
+  operator tsl::AsyncValueRef<T>() const {                               \
+    return status;                                                       \
+  }                                                                      \
   }                                                                      \
   ;                                                                      \
   /*Deduction guide to make variadic arguments play nice with default */ \

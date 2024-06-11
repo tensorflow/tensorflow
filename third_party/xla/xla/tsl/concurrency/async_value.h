@@ -23,9 +23,11 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -491,19 +493,28 @@ void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
 
 //===----------------------------------------------------------------------===//
 
+// Traits for customizing AsyncValue behavior for different payload types.
+struct AsyncValueTraits {
+  // Under the normal behavior, if an AsyncValue is in kConstructed state (i.e.
+  // the payload data is constructed), it will destruct the payload data when
+  // the AsyncValue enters the error state (e.g. on AsyncValue::SetError()).
+  //
+  // However, for the payload types that inherit from
+  // `KeepAsyncValuePayloadOnError`, AsyncValue exhibits a different behavior:
+  // the payload value if constructed will be kept valid when the AsyncValue
+  // goes into the error state.
+  struct KeepAsyncValuePayloadOnError {};
+
+  // If async value payload inherits from this type we allow implicit
+  // AsyncValueRef<T> construction from `absl::Status` as an error async value.
+  struct AllowImplicitStatusConstruction {};
+};
+
 namespace internal {
 
-// Under the normal behavior, if an AsyncValue is in kConstructed state (i.e.
-// the payload data is constructed), it will destruct the payload data when the
-// AsyncValue enters the error state (e.g. on AsyncValue::SetError()).
-//
-// However, for the payload types that inherit from
-// `KeepAsyncValuePayloadOnError`, AsyncValue exhibits a different behavior: the
-// payload value if constructed will be kept valid when the AsyncValue goes into
-// the error state. This behavior is intended for use only in the TpuRuntime
-// code. All the other code shall *not* use this behavior. We keep this struct
-// in the `internal` namespace to indicate this restriction.
-struct KeepAsyncValuePayloadOnError {};
+// TODO(ezhulenev): Remove backward-compatible alias after migrating all users.
+using KeepAsyncValuePayloadOnError =
+    AsyncValueTraits::KeepAsyncValuePayloadOnError;
 
 // Async value itself is a container that either holds `absl::Status` (in error
 // state) or a concrete value of type `T` (in concrete state). Async value that
@@ -715,9 +726,9 @@ class ConcreteAsyncValue : public AsyncValue {
     std::unique_ptr<absl::Status> error_;
   };
 
-  using DataStoreT =
-      std::conditional_t<std::is_base_of_v<KeepAsyncValuePayloadOnError, T>,
-                         DataAndError, DataOrError>;
+  using DataStoreT = std::conditional_t<
+      std::is_base_of_v<AsyncValueTraits::KeepAsyncValuePayloadOnError, T>,
+      DataAndError, DataOrError>;
   alignas(AsyncValue::kDataOffset) DataStoreT data_store_;
 
   void Destroy() { data_store_.Destroy(state()); }

@@ -36,9 +36,32 @@ limitations under the License.
 
 namespace tsl {
 
+// Forward declare owning typed async value pointer.
+template <typename T>
+class AsyncValueRef;
+
 // Forward declare non-owning typed async value pointer.
 template <typename T>
 class AsyncValuePtr;
+
+// Constructs a ConcreteAsyncValue in error state with the given status.
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
+
+ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
+
+// Constructs an IndirectAsyncValue without forwarding it to anything.
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
+template <typename T>
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
+
+// Forward declare AsyncValueRef constructors.
+template <typename T>
+AsyncValueRef<T> MakeUnconstructedAsyncValueRef();
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
 
 // RCReference<AsyncValue> wrapper.
 //
@@ -67,7 +90,17 @@ class AsyncValueRef {
   AsyncValueRef(AsyncValueRef<Derived>&& u)  // NOLINT
       : value_(u.ReleaseRCRef()) {}
 
-  // Support implicit conversion from RCReference<ErrorAsyncValue>.
+  // Support implicit construction from absl::Status.
+  template <typename Status,
+            std::enable_if_t<std::is_same_v<Status, absl::Status>>* = nullptr>
+  AsyncValueRef(Status status)  // NOLINT
+      : AsyncValueRef(MakeErrorAsyncValueRef(std::move(status))) {
+    static_assert(
+        std::is_base_of_v<AsyncValueTraits::AllowImplicitStatusConstruction, T>,
+        "Payload must explicitly opt-in implicit status construction");
+  }
+
+  // Support implicit construction from RCReference<ErrorAsyncValue>.
   AsyncValueRef(RCReference<ErrorAsyncValue> value)  // NOLINT
       : value_(std::move(value)) {}
 
@@ -294,19 +327,6 @@ struct IsAsyncValueRef<AsyncValueRef<T>> : std::true_type {};
 
 template <typename T>
 inline constexpr bool is_async_value_ref_v = IsAsyncValueRef<T>::value;
-
-// Forward declare AsyncValueRef constructors.
-template <typename T>
-AsyncValueRef<T> MakeUnconstructedAsyncValueRef();
-template <typename T, typename... Args>
-AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
-template <typename T, typename... Args>
-AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
-
-// Forward declare indirect async value constructors.
-RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
-template <typename T>
-RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 
 // Non owning typed pointer for the AsyncValue. Can be cheaply passed around
 // when the lifetime of the underlying async value is clear from the context.
@@ -729,12 +749,6 @@ class AsyncValuePtr {
   AsyncValue* value_;  // doesn't own the async value
 };
 
-// Create a ConcreteAsyncValue in error state with the given status.
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
-
-ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
-
 //===----------------------------------------------------------------------===//
 // Functions for awaiting on the async values.
 //===----------------------------------------------------------------------===//
@@ -840,6 +854,12 @@ T* AllocateAndConstruct(Args&&... args) {
 
 }  // namespace internal
 
+// Construct an empty IndirectAsyncValue with a known type.
+template <typename T>
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue() {
+  return TakeRef(internal::AllocateAndConstruct<TypedIndirectAsyncValue<T>>());
+}
+
 // Allocate an unconstructed AsyncValueRef. The AsyncValueRef should be made
 // available later by invoking AsyncValueRef::emplace or
 // AsyncValueRef::SetError.
@@ -868,15 +888,6 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
       internal::AllocateAndConstruct<internal::ConcreteAsyncValue<T>>(
           typename internal::ConcreteAsyncValue<T>::ConcretePayload{},
           std::forward<Args>(args)...)));
-}
-
-// Construct an empty IndirectAsyncValue, not forwarding to anything.
-RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
-
-// Construct an empty IndirectAsyncValue with a known type.
-template <typename T>
-RCReference<IndirectAsyncValue> MakeIndirectAsyncValue() {
-  return TakeRef(internal::AllocateAndConstruct<TypedIndirectAsyncValue<T>>());
 }
 
 //===----------------------------------------------------------------------===//

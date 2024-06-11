@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_TSL_CONCURRENCY_CHAIN_H_
 #define XLA_TSL_CONCURRENCY_CHAIN_H_
 
+#include "xla/tsl/concurrency/async_value.h"
+
 namespace tsl {
 
-class Chain {};
+// An empty struct to signal completion of asynchronous events. We explicitly
+// enable implicit conversion from absl::Status to asynchronous errors.
+class Chain : public AsyncValueTraits::AllowImplicitStatusConstruction {};
 
 }  // namespace tsl
 

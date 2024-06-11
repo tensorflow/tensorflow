@@ -42,6 +42,18 @@ class WrappedInt32 {
 
 constexpr int32_t kTestValue = 42;
 
+TEST(AsyncValueRefTest, ImplicitStatusConversion) {
+  struct Empty : public AsyncValueTraits::AllowImplicitStatusConstruction {};
+
+  auto error = []() -> AsyncValueRef<Empty> {
+    return absl::InternalError("error");
+  }();
+
+  EXPECT_TRUE(error.IsAvailable());
+  EXPECT_TRUE(error.IsError());
+  EXPECT_EQ(error.GetError(), absl::InternalError("error"));
+}
+
 TEST(AsyncValueRefTest, ValueCheck) {
   auto wrapped_int_value = MakeAvailableAsyncValueRef<WrappedInt32>(kTestValue);
   EXPECT_EQ(wrapped_int_value.get().value(), kTestValue);
