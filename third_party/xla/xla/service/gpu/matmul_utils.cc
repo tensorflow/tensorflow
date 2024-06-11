@@ -616,15 +616,15 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
     return absl::InternalError("No Blas support for stream");
   }
 
-  // Set a workspace for all Blas operations launched below.
-  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
-
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, precision_algorithm,
         *algorithm, compute_precision, numeric_options, profile_result,
         context);
   }
+
+  // Set a workspace for all Blas operations launched below.
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
 
   if (output.batch_size != 1) {
     return blas->BlasGemmStridedBatched(
