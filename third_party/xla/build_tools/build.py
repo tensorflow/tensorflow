@@ -82,6 +82,9 @@ class BuildType(enum.Enum):
   GPU = enum.auto()
   GPU_CONTINUOUS = enum.auto()
 
+  JAX_CPU = enum.auto()
+  JAX_GPU = enum.auto()
+
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class DockerImage:
@@ -157,6 +160,7 @@ class Build:
   configs: Tuple[str, ...] = ()
   tag_filters: Tuple[str, ...] = ()
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
   def bazel_test_command(self) -> List[str]:
@@ -165,9 +169,10 @@ class Build:
     build_tag_filters = f"--build_tag_filters={','.join(self.tag_filters)}"
     test_tag_filters = f"--test_tag_filters={','.join(self.tag_filters)}"
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
-    all_options = (
-        [build_tag_filters, test_tag_filters] + configs + action_env + options
-    )
+    test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
+
+    tag_filters = [build_tag_filters, test_tag_filters]
+    all_options = tag_filters + configs + action_env + test_env + options
     return ["bazel", "test", *all_options, "--", *self.target_patterns]
 
 
@@ -255,6 +260,54 @@ _GPU_CONTINUOUS_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU_CONTINUOUS, compute_capability=80
 )
 
+_JAX_CPU_BUILD = Build(
+    type_=BuildType.JAX_CPU,
+    repo="google/jax",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "avx_posix",
+        "mkl_open_source_only",
+        "rbe_cpu_linux_py3.12",
+        "tensorflow_testing_rbe_linux",
+    ),
+    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    test_env=dict(
+        JAX_NUM_GENERATED_CASES=25,
+        JAX_SKIP_SLOW_TESTS=1,
+    ),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
+_JAX_GPU_BUILD = Build(
+    type_=BuildType.JAX_GPU,
+    repo="google/jax",
+    docker_image=_DEFAULT_IMAGE,
+    configs=(
+        "avx_posix",
+        "mkl_open_source_only",
+        "rbe_linux_cuda12.3_nvcc_py3.9",
+        "tensorflow_testing_rbe_linux",
+    ),
+    target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
+    tag_filters=("-multiaccelerator",),
+    test_env=dict(
+        JAX_SKIP_SLOW_TESTS=1,
+        TF_CPP_MIN_LOG_LEVEL=0,
+        JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
+    ),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
@@ -262,6 +315,8 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_CONTINUOUS_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
+    "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
+    "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
 }
 
 
@@ -272,6 +327,16 @@ def main():
   build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
 
   sh(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
+
+  _, repo_name = build.repo.split("/")
+  if build.repo != "openxla/xla":
+    sh([
+        "git",
+        "clone",
+        "--depth=1",
+        f"https://github.com/{build.repo}",
+        f"./github/{repo_name}",
+    ])
 
   # TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
   if build.type_ in (BuildType.GPU, BuildType.GPU_CONTINUOUS):
@@ -284,7 +349,6 @@ def main():
         ],
     )
 
-  _, repo_name = build.repo.split("/")
   with build.docker_image.pull_and_run(
       workdir=f"/github/{repo_name}", **_DEFAULT_DOCKER_OPTIONS
   ) as docker_exec:
