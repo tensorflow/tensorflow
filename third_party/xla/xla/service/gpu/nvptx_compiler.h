@@ -97,10 +97,10 @@ class NVPTXCompiler : public GpuCompiler {
     kDriver,
   };
 
- private:
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config) override;
 
+ private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,

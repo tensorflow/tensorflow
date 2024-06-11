@@ -807,7 +807,9 @@ message DebugOptions {
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
 
-  // Next id: 306
+  string xla_gpu_kernel_cache_file = 306;
+
+  // Next id: 307
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

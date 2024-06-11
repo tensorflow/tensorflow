@@ -244,6 +244,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -1775,37 +1776,44 @@ GpuCompiler::CompileSingleModule(const HloModuleConfig& module_config,
   return result;
 }
 
-absl::StatusOr<GpuCompiler::BackendCompileResult>
-GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
-                                   CompileModuleResults& compile_module_results,
-                                   se::GpuComputeCapability gpu_version,
-                                   se::StreamExecutor* stream_exec,
-                                   const CompileOptions& options,
-                                   const HloModule* debug_module) {
-  MaybeOwningThreadPool thread_pool =
-      module_config.debug_options()
-              .xla_gpu_enable_llvm_module_compilation_parallelism()
-          ? CreateMaybeOwningThreadPool(
-                /*parallelism=*/module_config.debug_options()
-                    .xla_gpu_force_compilation_parallelism(),
-                /*default_thread_pool=*/options.thread_pool,
-                /*default_parallelism=*/1)
-          : MaybeOwningThreadPool(nullptr);
-  llvm::Module* llvm_module = &*compile_module_results.llvm_module;
-
-  // Test whether LinkModules is supported.
-  TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
-                      CanUseLinkModules(module_config));
-
-  // Disable multi-threading during deviceless AOT compilation.
-  // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
-  // enabled.
-  if (!can_use_link_modules || !thread_pool.get() || !stream_exec) {
-    return CompileSingleModule(module_config, gpu_version, debug_module,
-
-                               llvm_module, /*relocatable=*/false, options,
-                               /*shard_number=*/std::nullopt);
+namespace {
+int CountFunctions(const llvm::Module& module) {
+  int num_functions = 0;
+  for (const llvm::Function& func : module.functions()) {
+    if (!func.isDeclaration() &&
+        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
+      ++num_functions;
+    }
   }
+  return num_functions;
+}
+
+// Returns the name of the single function in the module or empty string if it's
+// not a single-function module.
+std::string SingleFunctionName(const llvm::Module& module) {
+  std::string name;
+  for (const llvm::Function& func : module.functions()) {
+    if (!func.isDeclaration() &&
+        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
+      if (name.empty()) {
+        // First function in a module: name the module with it.
+        name = func.getName().str();
+      } else {
+        // Not the first function - the module is not cacheable.
+        return "";
+      }
+    }
+  }
+  return name;
+}
+}  // namespace
+
+absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
+    const HloModuleConfig& module_config,
+    CompileModuleResults& compile_module_results,
+    se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
+    const CompileOptions& options, const HloModule* debug_module) {
+  llvm::Module* llvm_module = &*compile_module_results.llvm_module;
 
   bool force_module_split =
       module_config.debug_options().xla_llvm_force_inline_before_split();
@@ -1829,15 +1837,6 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
           };
         }
       }
-    }
-  }
-
-  std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
-  int num_functions = 0;
-  for (llvm::Function& func : llvm_module->functions()) {
-    if (!func.isDeclaration() &&
-        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
-      num_functions++;
     }
   }
 
@@ -1867,14 +1866,42 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     }
   }
 
-  if (compile_module_results.llvm_module_constants != nullptr) {
-    llvm_modules.push_back(
-        std::move(compile_module_results.llvm_module_constants));
+  llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module,
+                           /*optimized=*/false, "inlined");
+
+  absl::string_view cache_path =
+      module_config.debug_options().xla_gpu_kernel_cache_file();
+  const bool use_cache = !cache_path.empty();
+
+  struct NamedModule {
+    // The string is the function name for single-function modules (used to
+    // cache them), empty for all other modules.
+    std::string name;
+    std::unique_ptr<llvm::Module> module;
+  };
+  std::vector<NamedModule> llvm_modules;
+  MaybeOwningThreadPool thread_pool = CreateMaybeOwningThreadPool(
+      /*parallelism=*/module_config.debug_options()
+          .xla_gpu_force_compilation_parallelism(),
+      /*default_thread_pool=*/options.thread_pool,
+      /*default_parallelism=*/1);
+  // Only single-function module are cacheable -> for caching try to get 1
+  // function per module. If caching is not used limit the number of modules to
+  // the number of threads.
+  int num_modules = CountFunctions(*llvm_module);
+  if (thread_pool.get() != nullptr && !use_cache) {
+    num_modules = std::max(1, std::min(thread_pool->NumThreads(), num_modules));
   }
+  if (compile_module_results.llvm_module_constants != nullptr) {
+    llvm_modules.reserve(num_modules + 1);
+    llvm_modules.push_back(
+        {"", std::move(compile_module_results.llvm_module_constants)});
+  } else {
+    llvm_modules.reserve(num_modules);
+  }
+  int single_function_module_count = 0;
   llvm::SplitModule(
-      *llvm_module,
-      std::max<unsigned>(
-          1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
+      *llvm_module, num_modules,
       [&](std::unique_ptr<llvm::Module> module) {
         // Change the linkage type of some global constant variables to internal
         for (llvm::GlobalVariable& gv : module->globals()) {
@@ -1884,45 +1911,132 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
             gv.setLinkage(llvm::GlobalValue::InternalLinkage);
           }
         }
-        llvm_modules.push_back(std::move(module));
+        const std::string name = SingleFunctionName(*module);
+        if (!name.empty()) {
+          ++single_function_module_count;
+        }
+        llvm_modules.push_back({name, std::move(module)});
       },
       /*PreserveLocals=*/true);
+  VLOG(2) << "Single-function cacheable modules: "
+          << single_function_module_count << " / " << llvm_modules.size();
 
-  std::vector<absl::StatusOr<BackendCompileResult>> compile_results(
-      llvm_modules.size());
-  tsl::BlockingCounter counter(llvm_modules.size());
-  for (int i = 0; i < llvm_modules.size(); i++) {
-    thread_pool.get_mutable()->Schedule(
-        [&compile_results, i, &llvm_modules, &counter, this, &module_config,
-         &gpu_version, &debug_module, &options] {
-          // Each thread has its own context to avoid race conditions.
-          llvm::LLVMContext new_context;
-          std::unique_ptr<llvm::Module> new_module =
-              CopyToContext(*llvm_modules.at(i), new_context);
-          compile_results.at(i) = CompileSingleModule(
-              module_config, gpu_version, debug_module, new_module.get(),
-              /*relocatable=*/true, options,
-              /*shard_number=*/i);
-          counter.DecrementCount();
-        });
+  struct NamedCompileResult {
+    // Single function name or empty just like for llvm_modules.
+    std::string name;
+    absl::StatusOr<BackendCompileResult> result;
+  };
+  std::vector<NamedCompileResult> compile_results(llvm_modules.size());
+  if (thread_pool.get() != nullptr) {
+    tsl::BlockingCounter counter(llvm_modules.size());
+    for (int i = 0; i < llvm_modules.size(); ++i) {
+      thread_pool.get_mutable()->Schedule(
+          [&compile_results, i, &llvm_modules, &counter, this, &module_config,
+           &gpu_version, &debug_module, &options] {
+            // Each thread has its own context to avoid race conditions.
+            llvm::LLVMContext new_context;
+            std::unique_ptr<llvm::Module> new_module =
+                CopyToContext(*llvm_modules.at(i).module, new_context);
+            compile_results.at(i) = {
+                llvm_modules.at(i).name,
+                CompileSingleModule(module_config, gpu_version, debug_module,
+                                    new_module.get(),
+                                    /*relocatable=*/true, options,
+                                    /*shard_number=*/i)};
+            counter.DecrementCount();
+          });
+    }
+    counter.Wait();
+  } else {
+    for (int i = 0; i < llvm_modules.size(); ++i) {
+      compile_results.at(i) = {
+          llvm_modules.at(i).name,
+          CompileSingleModule(module_config, gpu_version, debug_module,
+                              &*llvm_modules.at(i).module,
+                              /*relocatable=*/true, options,
+                              /*shard_number=*/i)};
+    }
   }
-  counter.Wait();
 
   std::string ptx_snippets;
-  std::vector<std::vector<uint8_t>> submodule_compile_results;
-  for (auto& maybe_result : compile_results) {
+  std::vector<std::vector<uint8_t>> binaries_to_link;
+  binaries_to_link.reserve(compile_results.size());
+  struct NamedBinary {
+    // The string is the function name or empty just like for llvm_modules.
+    std::string name;
+    std::vector<uint8_t> binary;
+  };
+  std::vector<NamedBinary> binaries_to_cache;
+  binaries_to_cache.reserve(single_function_module_count);
+  for (const auto& [name, maybe_result] : compile_results) {
     TF_ASSIGN_OR_RETURN(auto result, maybe_result);
     if (result.binary.empty()) {
       continue;
     }
     ptx_snippets += result.asm_text;
     ptx_snippets += "\n";
-    submodule_compile_results.push_back(result.binary);
+    binaries_to_link.push_back(result.binary);
+    if (!name.empty()) {
+      binaries_to_cache.push_back({name, result.binary});
+    }
   }
 
-  auto maybe_backend_result =
-      this->LinkModules(stream_exec, std::move(submodule_compile_results),
-                        module_config.debug_options());
+  if (use_cache) {
+    std::string resolved_path;
+    if (!tsl::io::ResolveTestPrefixes(cache_path, resolved_path)) {
+      return FailedPrecondition("File path can not be resolved: %s",
+                                cache_path);
+    }
+    CompilationCacheProto& cache =
+        compile_module_results.kernel_compilation_cache;
+    if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
+      int loaded_kernel_count = 0;
+      for (const auto& [name, entry] : cache.entries()) {
+        if (llvm_module->getFunction(name)) {
+          VLOG(5)
+              << "Skipping cached " << name
+              << " in favor of the just compiled kernel with the same name.";
+          CHECK(entry.binary().empty());
+          continue;
+        }
+        const uint8_t* binary =
+            reinterpret_cast<const uint8_t*>(entry.binary().data());
+        binaries_to_link.push_back(
+            std::vector<uint8_t>(binary, binary + entry.binary().size()));
+        VLOG(5) << "Loaded " << name << ": " << entry.binary().size();
+        ++loaded_kernel_count;
+      }
+      VLOG(2) << "Loaded " << loaded_kernel_count << " / "
+              << cache.entries_size() << " cached kernels.";
+    } else {
+      auto entries = cache.mutable_entries();
+      for (const auto& [name, binary] : binaries_to_cache) {
+        auto it = entries->find(name);
+        if (it == entries->end()) {
+          continue;
+        }
+        it->second.set_binary(reinterpret_cast<const char*>(binary.data()),
+                              binary.size());
+        VLOG(5) << "Cached kernels: " << name << ": " << binary.size();
+      }
+      for (auto it = entries->begin(); it != entries->end();) {
+        if (it->second.binary().empty()) {
+          it = entries->erase(it);
+        } else {
+          ++it;
+        }
+      }
+      if (cache.entries_size() > 0) {
+        TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+            tsl::Env::Default(), resolved_path, cache.SerializeAsString()));
+        VLOG(2) << "Stored " << cache.entries_size() << " / "
+                << binaries_to_cache.size();
+      }
+    }
+  }
+
+  auto maybe_backend_result = LinkModules(
+      stream_exec, std::move(binaries_to_link), module_config.debug_options());
   if (!maybe_backend_result.ok()) {
     LOG(ERROR) << "The CUDA linking API did not work. Please use XLA_FLAGS="
                   "--xla_gpu_enable_llvm_module_compilation_parallelism=false "
@@ -1931,6 +2045,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                << maybe_backend_result.status();
     return maybe_backend_result.status();
   }
+  VLOG(4) << "Binary size after linking [B]: " << maybe_backend_result->size();
   return BackendCompileResult{ptx_snippets, std::move(*maybe_backend_result)};
 }
 
@@ -1948,12 +2063,28 @@ GpuCompiler::CompileToBackendResult(
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithId(PlatformId()));
 
+  // Test whether LinkModules is supported.
+  bool can_use_link_modules = (executor != nullptr);
+  if (can_use_link_modules) {
+    TF_ASSIGN_OR_RETURN(can_use_link_modules,
+                        CanUseLinkModules(module->config()));
+  }
+  const bool split_modules =
+      can_use_link_modules &&
+      module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism();
+  const bool use_cache =
+      split_modules &&
+      !module->config().debug_options().xla_gpu_kernel_cache_file().empty();
+
   // Compile the module
   TF_ASSIGN_OR_RETURN(
       CompileModuleResults compile_module_results,
       CompileModuleToLlvmIr(module, llvm_context, target_triple_, data_layout_,
                             platform->Name(), platform->id(), gpu_device_info,
-                            GetCanShareBuffer(), BufferSizeBytesFunction()));
+                            GetCanShareBuffer(), BufferSizeBytesFunction(),
+                            /*split_constants_module=*/use_cache));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1965,18 +2096,31 @@ GpuCompiler::CompileToBackendResult(
 
   llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
                            /*optimized=*/false);
-
   if (compile_module_results.llvm_module_constants != nullptr) {
     llvm_ir::DumpIrIfEnabled(*module,
                              *compile_module_results.llvm_module_constants,
                              /*optimized=*/false, "constants");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      BackendCompileResult backend_result,
-      CompileToTargetBinary(module->config(), compile_module_results,
-                            gpu_device_info.gpu_compute_capability(), executor,
-                            options, module));
+  BackendCompileResult backend_result;
+  // Disable multi-threading during deviceless AOT compilation.
+  // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
+  // enabled.
+  if (split_modules) {
+    TF_ASSIGN_OR_RETURN(backend_result,
+                        CompileAndLink(module->config(), compile_module_results,
+                                       gpu_device_info.gpu_compute_capability(),
+                                       executor, options, module));
+  } else {
+    CHECK(compile_module_results.llvm_module_constants == nullptr);
+    TF_ASSIGN_OR_RETURN(
+        backend_result,
+        CompileSingleModule(module->config(),
+                            gpu_device_info.gpu_compute_capability(), module,
+                            &*compile_module_results.llvm_module,
+                            /*relocatable=*/false, options,
+                            /*shard_number=*/std::nullopt));
+  }
   RecordXlaDeviceBinarySize(backend_result.binary.size());
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
@@ -2092,7 +2236,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                : std::move(res.compile_module_results.allocations)),
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
-          /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
+          /*debug_buffer_assignment_show_max=*/
+          debug_buffer_assignment_show_max,
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),
@@ -2288,13 +2433,13 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline pipeline("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>();
     // Wrap remaining unfused ops that have no LHLO equivalent in single-op
-    // fusions. This needs to happen after rematerialization, because that will
-    // insert additional copies.
+    // fusions. This needs to happen after rematerialization, because that
+    // will insert additional copies.
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
-  // After we have a scheduled module and all operations wrapped into fusions we
-  // can decide how to wrap them into command buffers.
+  // After we have a scheduled module and all operations wrapped into fusions
+  // we can decide how to wrap them into command buffers.
   {
     HloPassPipeline pipeline("command-buffer-scheduling");
     auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
@@ -2331,8 +2476,8 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
   if (absl::string_view file_path =
           debug_options.xla_gpu_dump_autotune_results_to();
       !file_path.empty()) {
-    // Warning: This writes the autotune results at every compilation, possibly
-    // multiple times per process.
+    // Warning: This writes the autotune results at every compilation,
+    // possibly multiple times per process.
     TF_RETURN_IF_ERROR(
         AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
   }

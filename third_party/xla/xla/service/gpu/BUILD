@@ -5690,6 +5690,7 @@ cc_library(
     srcs = ["kernel_reuse_cache.cc"],
     hdrs = ["kernel_reuse_cache.h"],
     deps = [
+        ":executable_proto_cc",
         ":kernel_arguments",
         ":launch_dimensions",
         "//xla:util",
@@ -5700,6 +5701,17 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_reuse_cache_test",
+    srcs = ["kernel_reuse_cache_test.cc"],
+    deps = [
+        ":kernel_reuse_cache",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

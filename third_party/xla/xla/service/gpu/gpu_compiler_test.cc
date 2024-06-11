@@ -62,6 +62,7 @@ namespace m = ::xla::match;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
+using ::tsl::testing::StatusIs;
 
 class GpuCompilerTest : public HloTestBase {
  public:
@@ -531,6 +532,119 @@ CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
       bool filecheck_matched,
       RunFileCheck(optimized_module->ToString(options), kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+class KernelCacheTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    TF_ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
+                            dynamic_cast<GpuCompiler*>(backend().compiler())
+                                ->CanUseLinkModules(config));
+    if (!can_use_link_modules) {
+      GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
+    }
+  }
+  DebugOptions GetDebugOptionsForTest() override {
+    CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
+    return debug_options;
+  }
+
+  bool CacheFileExists() {
+    if (!tsl::Env::Default()->FileExists(cache_file_name_).ok()) {
+      return false;
+    }
+    return true;
+  }
+
+  bool NonEmptyCacheExists() {
+    if (!CacheFileExists()) {
+      return false;
+    }
+    std::string serialized;
+    TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
+                                       &serialized));
+    CompilationCacheProto proto;
+    EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
+    return proto.entries_size() > 0;
+  }
+
+  std::string cache_file_name_;
+  static constexpr absl::string_view kHloText = R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    c = s8[] constant(8)
+    ROOT _ = s8[] add(p, c)
+  })";
+};
+
+TEST_F(KernelCacheTest, CacheIsGenerated) {
+  // First run - no cache file
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  // First run generates a cache
+  EXPECT_TRUE(NonEmptyCacheExists());
+  // Second run - with cache file
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+}
+
+TEST_F(KernelCacheTest, NoCacheIsGeneratedWithoutCompiledKernels) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    a = f32[5,5] parameter(0)
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+      backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+  })",
+                  /*run_hlo_passes=*/false));
+  EXPECT_FALSE(CacheFileExists());
+}
+
+TEST_F(KernelCacheTest, UsingCacheFromAnotherModuleDoesNotFail) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(NonEmptyCacheExists());
+  // Second run - with cache file and another HLO
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    ROOT _ = s8[] multiply(p, p)
+  })",
+                  /*run_hlo_passes=*/false));
+}
+
+class KernelCacheTestSingleThreaded : public KernelCacheTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_force_compilation_parallelism(1);
+    return debug_options;
+  }
+};
+
+TEST_F(KernelCacheTestSingleThreaded, CacheIsGenerated) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(NonEmptyCacheExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+}
+
+class NoKernelCacheTest : public KernelCacheTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
+    return debug_options;
+  }
+};
+
+TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_FALSE(NonEmptyCacheExists());
 }
 
 }  // namespace
