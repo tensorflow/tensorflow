@@ -263,7 +263,9 @@ xla_cc_test(
     deps = [
         ":all_reduce_splitter",
         ":hlo_module_config",
+        ":hlo_pass_pipeline",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_reduce_scatter_creator",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/algorithm:container",
