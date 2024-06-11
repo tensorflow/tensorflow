@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/gpu/triton_test_utils.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -60,14 +60,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonSupportTest : public GpuCodegenTest {
+class TritonSupportTest : public TritonFilecheckTest {
  public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
   absl::StatusOr<bool> ApplyFloatNormalization(HloModule* module) {
     const GpuFloatSupport bf16_support(GetCudaComputeCapability(), BF16);
     HloPassPipeline pipeline("hlo float normalization");
@@ -141,22 +135,17 @@ TEST_P(UnaryElementwiseTest, IsTritonSupportedExecutesCorrectlyForUnary) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[15,33]{1,0} parameter(0)
-  parameter_1 = $0[33,68]{1,0} parameter(1)
-  unary = $0[33,68]{1,0} $1(parameter_1)
-  convert = f32[33,68]{1,0} convert(unary)
-  ROOT dot = f32[15,68]{1,0} dot(parameter_0, convert),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  unary = $0[33,68]{1,0} $1(parameter_0)
+  ROOT convert = f32[33,68]{1,0} convert(unary)
 }
 
 ENTRY e {
-  parameter_0 = f32[15,33]{1,0} parameter(0)
-  parameter_1 = $0[33,68]{1,0} parameter(1)
-  ROOT triton_gemm = f32[15,68]{1,0} fusion(parameter_0, parameter_1),
-    kind=kCustom, calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT root_op = f32[33,68]{1,0} fusion(parameter_0),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -164,15 +153,15 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_test));
   const HloComputation* computation =
-      module->GetComputationWithName("triton_gemm___computation");
+      module->GetComputationWithName("triton_computation");
   ASSERT_TRUE(computation != nullptr);
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
   if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    float tolerance = getTolerance(data_type);
     TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
-    EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+        *computation, /*config=*/{}, /*output_tile_sizes=*/{1, 32}, EmitGeneric,
+        "CHECK: tt.func @triton_fn"));
   } else {
     // TODO(b/331632717): update the check to use SymbolicTileAnalysis to avoid
     // tiling failures and check triton emitter fails gracefully.

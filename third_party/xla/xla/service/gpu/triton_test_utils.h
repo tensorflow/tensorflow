@@ -17,10 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -56,6 +58,11 @@ class TritonFilecheckTest : public TritonTest {
       absl::string_view hlo_text, const TritonGemmConfig& config,
       std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
       absl::string_view triton_fusion_name,
+      absl::string_view filecheck_pattern);
+
+  absl::Status CreateTritonIrAndFileCheck(
+      const HloComputation& computation, const TritonGemmConfig& config,
+      std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
       absl::string_view filecheck_pattern);
 };
 

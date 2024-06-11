@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
 bool TritonTest::SkipBF16Tests() {
   if (std::holds_alternative<stream_executor::RocmComputeCapability>(
           GpuComputeComp())) {
@@ -68,13 +70,20 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       ParseAndReturnVerifiedModule(hlo_text));
+  auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(comp != nullptr);
+  return CreateTritonIrAndFileCheck(*comp, config, output_tile_sizes, emitter,
+                                    filecheck_pattern);
+}
 
-  auto* computation =
-      verified_module->GetComputationWithName(triton_fusion_name);
-  auto* fusion = Cast<HloFusionInstruction>(computation->FusionInstruction());
-  TF_RET_CHECK(computation != nullptr);
+absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
+    const HloComputation& computation, const TritonGemmConfig& config,
+    std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
+    absl::string_view filecheck_pattern) {
+  auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
+
   TF_ASSIGN_OR_RETURN(auto analysis,
-                      TritonFusionAnalysis::Execute(*computation));
+                      TritonFusionAnalysis::Execute(computation));
 
   auto fusion_analysis = HloFusionAnalysis::Create(fusion, &device_desc());
 
