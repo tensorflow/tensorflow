@@ -26,9 +26,7 @@ extern "C" {
 
 SE_Platform* TpuPlatform_New();
 void TpuPlatform_Free(SE_Platform* platform);
-void TpuPlatform_Initialize(SE_Platform* platform, size_t options_size,
-                            const char** options_key,
-                            const char** options_value, TF_Status* status);
+void TpuPlatform_Initialize(SE_Platform* platform, TF_Status* status);
 bool TpuPlatform_Initialized(SE_Platform* platform);
 SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform,
                                            SE_StreamExecutorConfig* config,
