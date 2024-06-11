@@ -2,11 +2,12 @@
 
 ## TensorFlow
 
-### Breaking Changes
-
-### Known Caveats
-
 ### Major Features and Improvements
+
+*   Add `is_cpu_target_available`, which indicates whether or not TensorFlow was built with support for a given CPU target. This can be useful for skipping target-specific tests if a target is not supported.
+
+*   `tf.data`
+    * Support `data.experimental.distribued_save`. `distribued_save` uses tf.data service (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service) to write distributed dataset snapshots. The call is non-blocking and returns without waiting for the snapshot to finish. Setting `wait=True` to `tf.data.Dataset.load` allows the snapshots to be read while they are being written.
 
 ### Bug Fixes and Other Changes
 
@@ -16,24 +17,6 @@
 * Add TensorFlow to StableHLO converter to TensorFlow pip package.
 * TensorRT support: this is the last release supporting TensorRT. It will be removed in the next release.
 * NumPy 2.0 support: TensorFlow is going to support NumPy 2.0 in the next release. It may break some edge cases of TensorFlow API usage.
-
-## Keras
-
-### Breaking Changes
-
-* GPU
-    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation) has been removed from TF binary distributions (Python wheels).
-
-### Known Caveats
-
-### Major Features and Improvements
-
-*   Add `is_cpu_target_available`, which indicates whether or not TensorFlow was built with support for a given CPU target. This can be useful for skipping target-specific tests if a target is not supported.
-
-*   `tf.data`
-    * Support `data.experimental.distribued_save`. `distribued_save` uses tf.data service (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service) to write distributed dataset snapshots. The call is non-blocking and returns without waiting for the snapshot to finish. Setting `wait=True` to `tf.data.Dataset.load` allows the snapshots to be read while they are being written.
-
-### Bug Fixes and Other Changes
 
 * `tf.lite`
     * Quantization for `FullyConnected` layer is switched from per-tensor to per-channel scales for dynamic range quantization use case (`float32` inputs / outputs and `int8` weights). The change enables new quantization schema globally in the converter and inference engine. The new behaviour can be disabled via experimental flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
@@ -49,6 +32,13 @@
 * `tf.tpu.experimental.embedding.TPUEmbeddingV2`
     * Add `compute_sparse_core_stats` for sparse core users to profile the  data with this API to get the `max_ids` and `max_unique_ids`. These numbers will be needed to configure the sparse core embedding mid level api.
     * Remove the `preprocess_features` method since that's no longer needed.
+
+## Keras
+
+### Breaking Changes
+
+* GPU
+    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation) has been removed from TF binary distributions (Python wheels).
 
 ## Thanks to our Contributors
 
@@ -134,10 +124,6 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
 
 ### Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
-
 * `tf.lite`
     * Added support for `stablehlo.gather`.
     * Added support for `stablehlo.add`.
@@ -213,22 +199,6 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
     * Added the option to set adaptive epsilon to match implementations with Jax
       and PyTorch equivalents.
 
-### Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-### Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-### Major Features and Improvements
-
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -239,7 +209,7 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
 
 This release contains contributions from many people at Google, as well as:
 
-RoboTux, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Aakar Dwivedi, Akhil Goel, Alexander Grund, Alexander Pivovarov, Andrew Goodbody, Andrey Portnoy, Aneta Kaczyńska, AnetaKaczynska, ArkadebMisra, Ashiq Imran, Ayan Moitra, Ben Barsdell, Ben Creech, Benedikt Lorch, Bhavani Subramanian, Bianca Van Schaik, Chao, Chase Riley Roberts, Connor Flanagan, David Hall, David Svantesson, David Svantesson-Yeung, dependabot[bot], Dr. Christoph Mittendorf, Dragan Mladjenovic, ekuznetsov139, Eli Kobrin, Eugene Kuznetsov, Faijul Amin, Frédéric Bastien, fsx950223, gaoyiyeah, Gauri1 Deshpande, Gautam, Giulio C.N, guozhong.zhuang, Harshit Monish, James Hilliard, Jane Liu, Jaroslav Sevcik, jeffhataws, Jerome Massot, Jerry Ge, jglaser, jmaksymc, Kaixi Hou, kamaljeeti, Kamil Magierski, Koan-Sin Tan, lingzhi98, looi, Mahmoud Abuzaina, Malik Shahzad Muzaffar, Meekail Zain, mraunak, Neil Girdhar, Olli Lupton, Om Thakkar, Paul Strawder, Pavel Emeliyanenko, Pearu Peterson, pemeliya, Philipp Hack, Pierluigi Urru, Pratik Joshi, radekzc, Rafik Saliev, Ragu, Rahul Batra, rahulbatra85, Raunak, redwrasse, Rodrigo Gomes, ronaghy, Sachin Muradi, Shanbin Ke, shawnwang18, Sheng Yang, Shivam Mishra, Shu Wang, Strawder, Paul, Surya, sushreebarsa, Tai Ly, talyz, Thibaut Goetghebuer-Planchon, Tj Xu, Tom Allsop, Trevor Morris, Varghese, Jojimon, weihanmines, wenchenvincent, Wenjie Zheng, Who Who Who, Yasir Ashfaq, yasiribmcon, Yoshio Soma, Yuanqiang Liu, Yuriy Chernyshov
 
 # Release 2.15.0.post1
 
