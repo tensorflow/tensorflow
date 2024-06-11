@@ -100,8 +100,14 @@ class ThunkExecutor {
     absl::BlockingCounter done;
   };
 
+  // Executes nodes in the ready queue with given thunk parameters.
   absl::Status Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
                        ReadyQueue ready_queue);
+
+  // Processes out edges of a completed `node` and updates `ready_queue` with
+  // nodes that are ready to execute.
+  void ProcessOutEdges(ExecuteState* state, Node& node,
+                       ReadyQueue& ready_queue);
 
   ThunkSequence thunk_sequence_;
   std::vector<NodeDef> nodes_defs_;

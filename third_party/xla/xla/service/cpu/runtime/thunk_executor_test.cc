@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/thunk_executor.h"
 
+#define EIGEN_USE_THREADS
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -22,12 +24,14 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
@@ -138,12 +142,26 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
     const ExecuteParams& params) {
   if (trace_) trace_->push_back(info().op_name);
 
-  CHECK_EQ(srcs_.size(), dsts_.size());
-  for (int i = 0; i < srcs_.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
+  auto execute = [&]() -> absl::Status {
+    CHECK_EQ(srcs_.size(), dsts_.size());
+    for (int i = 0; i < srcs_.size(); ++i) {
+      TF_RETURN_IF_ERROR(
+          Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
+    }
+    return absl::OkStatus();
+  };
+
+  // Offload the execution to the intra-op thread pool.
+  if (params.intra_op_threadpool) {
+    auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
+    params.intra_op_threadpool->getPool()->Schedule([event, execute] {
+      CHECK_OK(execute());
+      event.SetStateConcrete();
+    });
+    return event;
   }
 
+  TF_RETURN_IF_ERROR(execute());
   return Thunk::OkExecuteEvent();
 }
 
@@ -268,28 +286,47 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks) {
 // Parameterized thunk executor stress tests that builds a random thunk sequence
 // and optionally uses a thread pool to execute thunk executor tasks.
 class ThunkExecutorStressTest
-    : public testing::TestWithParam<std::pair<size_t, bool>> {
+    : public testing::TestWithParam<std::tuple<size_t, bool, bool>> {
  public:
   void SetUp() override {
-    if (auto& [_, use_thread_pool] = GetParam(); use_thread_pool) {
+    auto& [_, use_task_runner, use_device] = GetParam();
+
+    use_task_runner_ = use_task_runner;
+    use_device_ = use_device;
+
+    // Both the task runner and the intra-op device share the same underlying
+    // thread pool, and we test that they do not deadlock each other and
+    // everything works via chaining together asynchronous events. It is a
+    // common source of deadlocks to wait for the completion of tasks scheduled
+    // into the same thread pool where awaiting thread is executing.
+    if (use_task_runner_ || use_device_) {
       thread_pool_.emplace(tsl::Env::Default(), "thunk-executor", 8);
+      device_.emplace(thread_pool_->AsEigenThreadPool(),
+                      thread_pool_->NumThreads());
     }
   }
 
   ThunkExecutor::TaskRunner task_runner() {
-    if (!thread_pool_.has_value()) return nullptr;
-
+    if (!use_task_runner_) return nullptr;
     return [&](ThunkExecutor::Task task) {
       thread_pool_->Schedule(ToCopyableTask(std::move(task)));
     };
   }
 
+  Eigen::ThreadPoolDevice* device() {
+    if (!use_device_) return nullptr;
+    return &*device_;
+  }
+
  private:
+  bool use_task_runner_;
+  bool use_device_;
   std::optional<tsl::thread::ThreadPool> thread_pool_;
+  std::optional<Eigen::ThreadPoolDevice> device_;
 };
 
 TEST_P(ThunkExecutorStressTest, Execute) {
-  auto [num_thunks, _] = GetParam();
+  auto [num_thunks, use_task_runner, use_device] = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GeneratedThunkSequence> g,
@@ -299,7 +336,7 @@ TEST_P(ThunkExecutorStressTest, Execute) {
                           ThunkExecutor::Create(std::move(g->sequence)));
 
   BufferAllocations allocations(g->buffers);
-  Thunk::ExecuteParams params = {nullptr, &allocations};
+  Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, device()};
   TF_ASSERT_OK(executor.Execute(params, task_runner()));
 
   EXPECT_EQ(g->dst, g->expected);
@@ -307,13 +344,18 @@ TEST_P(ThunkExecutorStressTest, Execute) {
 
 INSTANTIATE_TEST_SUITE_P(
     ThunkExecutor, ThunkExecutorStressTest,
-    testing::Values(
-        std::make_pair(/*num_thunks=*/10, /*use_thread_pool=*/false),
-        std::make_pair(/*num_thunks=*/10, /*use_thread_pool=*/true),
-        std::make_pair(/*num_thunks=*/100, /*use_thread_pool=*/false),
-        std::make_pair(/*num_thunks=*/100, /*use_thread_pool=*/true),
-        std::make_pair(/*num_thunks=*/1000, /*use_thread_pool=*/false),
-        std::make_pair(/*num_thunks=*/1000, /*use_thread_pool=*/true)));
+    testing::Values(std::make_tuple(/*num_thunks=*/10, false, false),
+                    std::make_tuple(/*num_thunks=*/10, false, true),
+                    std::make_tuple(/*num_thunks=*/10, true, false),
+                    std::make_tuple(/*num_thunks=*/10, true, true),
+                    std::make_tuple(/*num_thunks=*/100, false, false),
+                    std::make_tuple(/*num_thunks=*/100, false, true),
+                    std::make_tuple(/*num_thunks=*/100, true, false),
+                    std::make_tuple(/*num_thunks=*/100, true, true),
+                    std::make_tuple(/*num_thunks=*/1000, false, false),
+                    std::make_tuple(/*num_thunks=*/1000, false, true),
+                    std::make_tuple(/*num_thunks=*/1000, true, false),
+                    std::make_tuple(/*num_thunks=*/1000, true, true)));
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
@@ -337,12 +379,14 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "thunk-executor", 8);
+  Eigen::ThreadPoolDevice device(thread_pool.AsEigenThreadPool(),
+                                 thread_pool.NumThreads());
 
   auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks).value();
   auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
 
   BufferAllocations allocations(g->buffers);
-  Thunk::ExecuteParams params = {nullptr, &allocations};
+  Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, &device};
 
   for (auto _ : state) {
     CHECK_OK(e.Execute(params, [&](ThunkExecutor::Task task) {

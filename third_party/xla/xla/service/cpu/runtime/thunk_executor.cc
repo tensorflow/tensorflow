@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -120,7 +121,7 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
                                     const Thunk::ExecuteParams& params,
                                     ReadyQueue ready_queue) {
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
-  CHECK(!ready_queue.empty()) << "Ready queue must not be empty";
+  if (ready_queue.empty()) return absl::OkStatus();
 
   bool has_runner = state->runner != nullptr;
 
@@ -148,29 +149,47 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
 
     // Execute thunk for the given node id.
     Thunk& thunk = *state->executor->thunk_sequence_[id];
-    // TODO(ezhulenev): Add proper error handling.
     auto execute_event = thunk.Execute(params);
-    tsl::BlockUntilReady(execute_event);
-    CHECK(!execute_event.IsError());
 
-    // Load `is_sink` before dropping node counters because otherwise it might
-    // race with NodeDef destructor.
-    bool is_sink = node.out_edges->empty();
+    // If thunk execution is not completed yet, attach a continuation to the
+    // event and resume execution on the continuation thread.
+    if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
+      execute_event.AndThen([&, state](absl::Status status) mutable {
+        CHECK_OK(status);  // TODO(ezhulenev): Add proper error handling.
 
-    // Append ready nodes to the back of the queue.
-    for (NodeId out_edge : *node.out_edges) {
-      Node& out_node = state->nodes[out_edge];
-
-      int64_t cnt = out_node.counter->fetch_sub(1, std::memory_order_release);
-      DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
-      if (cnt == 1) ready_queue.push_back(out_edge);
+        ReadyQueue ready_queue;
+        ProcessOutEdges(state, node, ready_queue);
+        // TODO(ezhulenev): Add proper error handling.
+        CHECK_OK(Execute(state, params, std::move(ready_queue)));
+      });
+      continue;
     }
 
-    // Drop done counter if the node is a sink.
-    if (is_sink) state->done.DecrementCount();
+    // If thunk execution is completed process out edges in the current thread.
+    CHECK(execute_event.IsConcrete());  // TODO(ezhulenev): Add error handling.
+    ProcessOutEdges(state, node, ready_queue);
   }
 
   return absl::OkStatus();
+}
+
+void ThunkExecutor::ProcessOutEdges(ExecuteState* state, Node& node,
+                                    ReadyQueue& ready_queue) {
+  // Load `is_sink` before dropping node counters because otherwise it might
+  // race with NodeDef destructor.
+  bool is_sink = node.out_edges->empty();
+
+  // Append ready nodes to the back of the ready queue.
+  for (NodeId out_edge : *node.out_edges) {
+    Node& out_node = state->nodes[out_edge];
+
+    int64_t cnt = out_node.counter->fetch_sub(1, std::memory_order_release);
+    DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
+    if (cnt == 1) ready_queue.push_back(out_edge);
+  }
+
+  // Drop done counter if the node is a sink.
+  if (is_sink) state->done.DecrementCount();
 }
 
 std::string ThunkExecutor::ToString() const {
