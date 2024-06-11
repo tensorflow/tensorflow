@@ -822,11 +822,6 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   absl::Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                CUpti_CallbackId cbid,
                                const CUpti_CallbackData *cbdata) override {
-    // If we are not collecting CPU events from Callback API, we can return now.
-    if (!option_.required_callback_api_events) {
-      return absl::OkStatus();
-    }
-
     // Grab timestamp for API exit. API entry timestamp saved in cbdata.
     uint64_t end_tsc = CuptiTracer::GetTimestamp();
     uint64_t start_tsc = *cbdata->correlationData;
@@ -968,7 +963,8 @@ void CuptiTracer::Disable() {
   cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
 
   collector_->OnTracerCollectedCallbackData(
-      GatherCallbackAnnotationsAndEvents());
+      GatherCallbackAnnotationsAndEvents(),
+      option_.has_value() ? option_->required_callback_api_events : false);
   collector_->OnTracerCachedActivityBuffers(std::move(activity_buffers_));
   if (cupti_dropped_activity_event_count_ > 0) {
     collector_->OnEventsDropped("Activity Event dropped by Cupti Lib:",

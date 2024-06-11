@@ -58,9 +58,11 @@ class CuptiTraceCollector {
   // (for later activity event usage), and b) direct add all event by calling
   // AddEvent(). Yet collector could just save those callback events without
   // processing now, but merge annotation and AddEvent() later when needed, such
-  // as during export().
+  // as during export(). If need_callback_events is false, only annotation map
+  // will be merged, all events will be dropped.
   virtual void OnTracerCollectedCallbackData(
-      std::vector<CallbackAnnotationsAndEvents> callback_events);
+      std::vector<CallbackAnnotationsAndEvents> callback_events,
+      bool need_callback_events);
 
   // CuptiTracer tracer now cache all activity buffers during tracing.
   // After tracing stop, the cached activity buffers will be send here.
@@ -86,6 +88,7 @@ class CuptiTraceCollector {
 
  protected:
   CuptiTracerCollectorOptions options_;
+  bool need_callback_events_ = false;
 
  private:
   AnnotationMap annotation_map_;
