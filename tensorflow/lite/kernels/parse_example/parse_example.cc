@@ -164,7 +164,7 @@ Status FastParseSerializedExample(
     };
 
     tf::DataType example_dtype;
-    if (feature.ParseDataType(&example_dtype) != ::tensorflow::OkStatus()) {
+    if (feature.ParseDataType(&example_dtype) != absl::OkStatus()) {
       return parse_error();
     }
     if (is_dense) {
@@ -387,7 +387,7 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
@@ -638,7 +638,7 @@ Status FastParseExampleLite(
                    elements_per_stride);
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -971,7 +971,7 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       data->config, serialized, {}, data->quick_filter, data->quick_filter_size,
       data->config_index, data->config_index_size, &data->hasher, &data->got,
       stats, context);
-  if (status != ::tensorflow::OkStatus()) {
+  if (status != absl::OkStatus()) {
     TF_LITE_KERNEL_LOG(context, status.ToString().c_str());
     return kTfLiteError;
   }
