@@ -1747,6 +1747,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "write the compilation cache of the first compiled HLO module into it."
       "Once the file exists, further compilations will read it to reuse "
       "the kernels, but not write it. This behavior may change later."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_make_dot_async",
+                bool_setter_for(&DebugOptions::set_xla_gpu_make_dot_async),
+                debug_options->xla_gpu_make_dot_async(),
+                "Wrap `dot` operations into async computations in an effort to "
+                "parallelize matrix operations."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

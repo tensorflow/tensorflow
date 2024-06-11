@@ -815,7 +815,9 @@ message DebugOptions {
 
   string xla_gpu_kernel_cache_file = 306;
 
-  // Next id: 308
+  // If enabled, the `AsyncWrapper` pass will wrap `dot` operations into async
+  // computations in an effort to parallelize matrix operations.
+  bool xla_gpu_make_dot_async = 309;
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

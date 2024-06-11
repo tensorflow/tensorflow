@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/algorithm_checker.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
+#include "xla/service/gpu/async_wrapper.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/command_buffer_scheduling.h"
@@ -1342,6 +1343,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       sub_pipeline.AddPass<SimplifyFPConversions>();
     }
   };
+
+  {
+    HloPassPipeline pipeline("async");
+    if (debug_options.xla_gpu_make_dot_async()) {
+      pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+        return instruction->opcode() == HloOpcode::kDot;
+      });
+    }
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
 
   {
     HloPassPipeline pipeline("hlo normalization");
