@@ -422,6 +422,7 @@ cc_library(
         ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
+        ":xplane_mutators",
         ":xplane_schema",
         "//tsl/profiler/lib:context_types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -542,6 +543,12 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
+)
+
+cc_library(
+    name = "xplane_mutators",
+    hdrs = ["xplane_mutators.h"],
+    deps = [":xplane_builder"],
 )
 
 tsl_cc_test(
