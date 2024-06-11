@@ -483,8 +483,8 @@ six==1.16.0 \
     # via
     #   astunparse
     #   tb-nightly
-tb-nightly==2.17.0a20240605 \
-    --hash=sha256:b7116f29ea6b79cf7201596fa3ebba1609ee00a77e017518d69b2d8df0b3f2b7
+tb-nightly==2.18.0a20240611 \
+    --hash=sha256:c299eb7dc3de22c7164a1b0c0091b784f2214d65b9a8b967eeeba9818314016d
     # via -r requirements.in
 tblib==2.0.0 \
     --hash=sha256:9100bfa016b047d5b980d66e7efed952fbd20bd85b56110aaf473cb97d18709a \
