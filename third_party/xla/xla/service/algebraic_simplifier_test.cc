@@ -11209,5 +11209,31 @@ TEST_F(AlgebraicSimplifierTest, PreserveSharding) {
   EXPECT_TRUE(m->entry_computation()->parameter_instruction(0)->has_sharding());
 }
 
+// Move parameter from the LHS of a dot to the RHS.
+TEST_F(AlgebraicSimplifierTest, SwapDotOperands) {
+  verifier_layout_sensitive_ = false;
+  instruction_can_change_layout_func_ = {};
+  const std::string hlo_string = R"(
+HloModule main
+
+ENTRY main.1 {
+  param_0 = s8[1024,1024] parameter(0)
+  param_1 = bf16[1024,1024] parameter(1)
+  activations = bf16[1024,1024] add(param_1, param_1)
+  weights = bf16[1024,1024] convert(param_0)
+  ROOT dot = bf16[1024,1024] dot(weights, activations), lhs_batch_dims={}, lhs_contracting_dims={1}, rhs_batch_dims={}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  default_options_.set_enable_move_dot_param_to_rhs(true);
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTranspose);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kDot);
+  EXPECT_NE(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(root->operand(0)->operand(1)->operand(0)->opcode(),
+            HloOpcode::kParameter);
+}
+
 }  // namespace
 }  // namespace xla

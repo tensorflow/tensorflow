@@ -2515,6 +2515,71 @@ AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
   return true;
 }
 
+namespace {
+// Whether an HloInstruction is either a kParameter directly, or produced from
+// a parameter through a series of trivial operations.
+bool IsParameterLike(const HloInstruction* inst) {
+  while (true) {
+    if (inst->opcode() == HloOpcode::kParameter) {
+      return true;
+    }
+    if (inst->operand_count() != 1) {
+      return false;
+    }
+    inst = inst->operand(0);
+  }
+}
+}  // namespace
+
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::MoveDotParamToRhs(
+    HloDotInstruction* dot) {
+  const bool swap_operands =
+      IsParameterLike(dot->operand(0)) && !IsParameterLike(dot->operand(1));
+  if (!swap_operands || !options_.enable_move_dot_param_to_rhs()) {
+    return false;
+  }
+  // If operand0 is parameter-like, but operand1 is not, swap the two operands.
+  DotDimensionNumbers dot_dims = dot->dot_dimension_numbers();
+  std::swap(*dot_dims.mutable_lhs_contracting_dimensions(),
+            *dot_dims.mutable_rhs_contracting_dimensions());
+  std::swap(*dot_dims.mutable_lhs_batch_dimensions(),
+            *dot_dims.mutable_rhs_batch_dimensions());
+  PrecisionConfig precision_config = dot->precision_config();
+  std::swap(precision_config.mutable_operand_precision()->at(0),
+            precision_config.mutable_operand_precision()->at(1));
+
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_inst,
+      MakeDotHlo(dot->mutable_operand(1), dot->mutable_operand(0), dot_dims,
+                 precision_config, dot->shape().element_type()));
+  HloDotInstruction* new_dot = Cast<HloDotInstruction>(new_inst);
+  VLOG(10) << "Replacing: " << dot->ToString() << " with "
+           << new_dot->ToString();
+  std::vector<int64_t> permutation;
+  const int64_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
+  const int64_t lhs_non_contracting_batch =
+      new_dot->operand(0)->shape().rank() - num_batch_dims -
+      dot_dims.lhs_contracting_dimensions_size();
+  const int64_t rhs_non_contracting_batch =
+      new_dot->operand(1)->shape().rank() - num_batch_dims -
+      dot_dims.rhs_contracting_dimensions_size();
+  for (int i = 0; i != num_batch_dims; ++i) {
+    permutation.push_back(i);
+  }
+  for (int i = 0; i != rhs_non_contracting_batch; ++i) {
+    permutation.push_back(num_batch_dims + lhs_non_contracting_batch + i);
+  }
+  for (int i = 0; i != lhs_non_contracting_batch; ++i) {
+    permutation.push_back(num_batch_dims + i);
+  }
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
+                      MakeTransposeHlo(new_dot, permutation));
+  dot->SetupDerivedInstruction(new_dot);
+  dot->SetupDerivedInstruction(new_transpose);
+  TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_transpose));
+  return true;
+}
+
 absl::StatusOr<HloInstruction*>
 AlgebraicSimplifierVisitor::NormalizeDotOperandToBatchMajorAndContractingMinor(
     HloInstruction* dot_operand, absl::Span<const int64_t> batch_dimensions,
@@ -3848,6 +3913,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   if (removed_transposes) {
     return absl::OkStatus();
   }
+
+  TF_ASSIGN_OR_RETURN(bool moved_param_to_rhs, MoveDotParamToRhs(dot_cast));
+  if (moved_param_to_rhs) {
+    return absl::OkStatus();
+  }
+
   return absl::OkStatus();
 }
 
@@ -8156,6 +8227,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
                                            transpose->dimensions())));
   }
 
+  const auto consider_swapping_dot_operands = [&](HloInstruction* dot) {
+    // If the RHS is a parameter-like, and the LHS is not, do not swap the
+    // operands, since the dot operands are in a convenient order for layout
+    // assignment (even if we have to transpose the batch dimensions of the
+    // output).
+    return !(options_.enable_move_dot_param_to_rhs() &&
+             !IsParameterLike(dot->operand(0)) &&
+             IsParameterLike(dot->operand(1)));
+  };
+
   // Convert transpose(dot(a,b)) to dot(b,a).
   auto do_transpose_of_dot = [&]() -> absl::StatusOr<bool> {
     if (options_.supports_non_canonical_dots() ||
@@ -8163,6 +8244,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
         Cast<HloDotInstruction>(operand)->sparse_operands()) {
       return false;
     }
+
+    if (!consider_swapping_dot_operands(operand)) {
+      return false;
+    }
+
     HloInstruction* dot = operand;
     HloInstruction* lhs = dot->mutable_operand(0);
     HloInstruction* rhs = dot->mutable_operand(1);
@@ -8217,6 +8303,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
       dot->user_count() == 1 &&
       !Cast<HloDotInstruction>(dot)->sparse_operands()) {
     TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> absl::StatusOr<bool> {
+      if (!consider_swapping_dot_operands(operand)) {
+        return false;
+      }
+
       const auto& dnums = dot->dot_dimension_numbers();
       const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();
       for (int64_t i = 0; i < num_batch_dims; ++i) {

@@ -120,6 +120,14 @@ class AlgebraicSimplifierOptions {
     return enable_dot_to_multiply_rewrite_;
   }
 
+  void set_enable_move_dot_param_to_rhs(bool enable_move_dot_param_to_rhs) {
+    enable_move_dot_param_to_rhs_ = enable_move_dot_param_to_rhs;
+  }
+
+  bool enable_move_dot_param_to_rhs() const {
+    return enable_move_dot_param_to_rhs_;
+  }
+
   // This platform will not run the DotDecomposer to canonicalize dots.
   void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
     supports_non_canonical_dots_ = supports_non_canonical_dots;
@@ -258,6 +266,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_strength_reduction_{true};
   bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
+  bool enable_move_dot_param_to_rhs_{false};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
   bool enable_scalar_multiply_reduction_{false};
@@ -488,6 +497,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //   LHS [batch dims..., non-contracting dim, contracting dim]
   //   RHS [batch dims..., contracting dim, non-contracting dim].
   absl::StatusOr<bool> RemoveTransposesFromDotOperands(HloDotInstruction* dot);
+
+  // Swap the operands of dots, if one operand is "parameter-like" (i.e. a
+  // parameter, or a pointwise transformation of a parameter), so the
+  // "parameter-like" operand (e.g. a weight tensor) is placed on the RHS.
+  absl::StatusOr<bool> MoveDotParamToRhs(HloDotInstruction* dot);
 
   // Helper method to perform and add reduction on a list of dimensions.
   HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64_t> dims,
