@@ -187,7 +187,8 @@ class GpuCompiler : public LLVMCompiler {
       const se::DeviceDescription& gpu_device_info);
 
   absl::StatusOr<BackendCompileResult> CompileToTargetBinary(
-      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      const HloModuleConfig& module_config,
+      CompileModuleResults& compile_module_results,
       se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const HloModule* debug_module);
 
