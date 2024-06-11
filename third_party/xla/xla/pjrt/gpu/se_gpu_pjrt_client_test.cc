@@ -670,38 +670,58 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   }
 }
 
-TEST(GpuTopology, FromProto) {
+TEST(GpuTopology, FromDefaultProto) {
   GpuTopologyProto msg;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
-        device_ids: [ 3, 2, 1 ]
         platform_version: "platform_version"
-        num_slices: 2
-        num_hosts_per_slice: 1
-        num_devices_per_host: 3
+        default_topology { device_ids: 3 device_ids: 2 device_ids: 1 }
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
-  EXPECT_THAT(gpu_topology->num_slices(), 2);
-  EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
-  EXPECT_THAT(gpu_topology->num_devices_per_host(), 3);
+  EXPECT_THAT(gpu_topology->number_of_devices(), 3);
+  EXPECT_THAT(gpu_topology->number_of_hosts(), 1);
 }
 
-TEST(GpuTopology, ToProto) {
+TEST(GpuTopology, FromPathwaysProto) {
+  GpuTopologyProto msg;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_version: "platform_version"
+        pathways_topology {
+          num_slices: 2
+          num_hosts_per_slice: 1
+          num_devices_per_host: 3
+        }
+      )pb",
+      &msg));
+
+  std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
+  EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
+  EXPECT_THAT(gpu_topology->number_of_hosts(), 2);
+  EXPECT_THAT(gpu_topology->number_of_devices(), 6);
+}
+
+TEST(GpuTopology, ToDefaultProto) {
   GpuTopology gpu_topology(/*gpu_device_ids=*/{3, 2, 1},
-                           /*platform_version=*/"platform_version",
-                           /*num_slices=*/2,
-                           /*num_hosts_per_slice=*/1,
+                           /*platform_version=*/"platform_version");
+  GpuTopologyProto msg = gpu_topology.ToProto();
+  EXPECT_THAT(msg.default_topology().device_ids(), ElementsAre(3, 2, 1));
+  EXPECT_THAT(msg.platform_version(), "platform_version");
+}
+
+TEST(GpuTopology, ToPathwaysProto) {
+  GpuTopology gpu_topology(/*platform_version=*/"platform_version",
+                           /*num_slices=*/2, /*num_hosts_per_slice=*/1,
                            /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
-  EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(msg.platform_version(), "platform_version");
-  EXPECT_THAT(msg.num_slices(), 2);
-  EXPECT_THAT(msg.num_hosts_per_slice(), 1);
-  EXPECT_THAT(msg.num_devices_per_host(), 3);
+  EXPECT_THAT(msg.pathways_topology().num_slices(), 2);
+  EXPECT_THAT(msg.pathways_topology().num_hosts_per_slice(), 1);
+  EXPECT_THAT(msg.pathways_topology().num_devices_per_host(), 3);
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {

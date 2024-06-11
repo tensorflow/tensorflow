@@ -19,24 +19,56 @@ limitations under the License.
 #include <vector>
 
 namespace xla {
+int GpuTopology::number_of_devices() const {
+  if (has_default_topology()) {
+    return std::get<DefaultTopology>(topology_kind_).number_of_devices();
+  }
+  return std::get<PathwaysTopology>(topology_kind_).number_of_devices();
+}
+
+int GpuTopology::number_of_hosts() const {
+  if (has_default_topology()) {
+    return std::get<DefaultTopology>(topology_kind_).number_of_hosts();
+  }
+  return std::get<PathwaysTopology>(topology_kind_).number_of_hosts();
+}
 
 std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
+  if (gpu_topology_proto.topology_kind_case() ==
+      GpuTopologyProto::kDefaultTopology) {
+    return std::make_unique<GpuTopology>(
+        std::vector<int>(
+            gpu_topology_proto.default_topology().device_ids().begin(),
+            gpu_topology_proto.default_topology().device_ids().end()),
+        gpu_topology_proto.platform_version());
+  }
+
   return std::make_unique<GpuTopology>(
-      std::vector<int>{gpu_topology_proto.device_ids().begin(),
-                       gpu_topology_proto.device_ids().end()},
-      gpu_topology_proto.platform_version(), gpu_topology_proto.num_slices(),
-      gpu_topology_proto.num_hosts_per_slice(),
-      gpu_topology_proto.num_devices_per_host());
+      gpu_topology_proto.platform_version(),
+      gpu_topology_proto.pathways_topology().num_slices(),
+      gpu_topology_proto.pathways_topology().num_hosts_per_slice(),
+      gpu_topology_proto.pathways_topology().num_devices_per_host());
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
   GpuTopologyProto proto;
-  proto.mutable_device_ids()->Add(device_ids().begin(), device_ids().end());
   proto.set_platform_version(platform_version());
-  proto.set_num_slices(num_slices());
-  proto.set_num_hosts_per_slice(num_hosts_per_slice());
-  proto.set_num_devices_per_host(num_devices_per_host());
+  if (has_default_topology()) {
+    DefaultTopology default_topology =
+        std::get<DefaultTopology>(topology_kind_);
+    proto.mutable_default_topology()->mutable_device_ids()->Add(
+        default_topology.device_ids.begin(), default_topology.device_ids.end());
+  } else if (has_pathways_topology()) {
+    PathwaysTopology pathways_topology =
+        std::get<PathwaysTopology>(topology_kind_);
+    proto.mutable_pathways_topology()->set_num_slices(
+        pathways_topology.num_slices);
+    proto.mutable_pathways_topology()->set_num_hosts_per_slice(
+        pathways_topology.num_hosts_per_slice);
+    proto.mutable_pathways_topology()->set_num_devices_per_host(
+        pathways_topology.num_devices_per_host);
+  }
   return proto;
 }
 

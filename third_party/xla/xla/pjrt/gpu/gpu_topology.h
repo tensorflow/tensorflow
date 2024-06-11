@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 #define XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -25,45 +28,71 @@ limitations under the License.
 namespace xla {
 class GpuTopology {
  public:
+  struct DefaultTopology {
+    const std::vector<int> device_ids;
+
+    bool operator==(const DefaultTopology& other) const {
+      return device_ids == other.device_ids;
+    }
+
+    int number_of_devices() const { return device_ids.size(); }
+    int number_of_hosts() const { return 1; }
+  };
+
+  struct PathwaysTopology {
+    const int32_t num_slices;
+    const int32_t num_hosts_per_slice;
+    const int32_t num_devices_per_host;
+
+    bool operator==(const PathwaysTopology& other) const {
+      return num_slices == other.num_slices &&
+             num_hosts_per_slice == other.num_hosts_per_slice &&
+             num_devices_per_host == other.num_devices_per_host;
+    }
+
+    int number_of_devices() const {
+      return num_slices * num_hosts_per_slice * num_devices_per_host;
+    }
+    int number_of_hosts() const { return num_slices * num_hosts_per_slice; }
+  };
+
   explicit GpuTopology(const std::vector<int>& gpu_device_ids,
-                       absl::string_view platform_version, int32_t num_slices,
+                       absl::string_view platform_version)
+      : platform_version_(platform_version),
+        topology_kind_(DefaultTopology{gpu_device_ids}) {}
+  explicit GpuTopology(absl::string_view platform_version, int32_t num_slices,
                        int32_t num_hosts_per_slice,
                        int32_t num_devices_per_host)
-      : devices_ids_(gpu_device_ids),
-        platform_version_(platform_version),
-        num_slices_(num_slices),
-        num_hosts_per_slice_(num_hosts_per_slice),
-        num_devices_per_host_(num_devices_per_host) {}
+      : platform_version_(platform_version),
+        topology_kind_(PathwaysTopology{num_slices, num_hosts_per_slice,
+                                        num_devices_per_host}) {}
 
   bool operator==(const GpuTopology& other) const {
-    return devices_ids_ == other.devices_ids_ &&
-           platform_version_ == other.platform_version_ &&
-           num_slices_ == other.num_slices_ &&
-           num_hosts_per_slice_ == other.num_hosts_per_slice_ &&
-           num_devices_per_host_ == other.num_devices_per_host_;
+    return platform_version_ == other.platform_version_ &&
+           topology_kind_ == other.topology_kind_;
+  }
+  bool has_default_topology() const {
+    return std::holds_alternative<DefaultTopology>(topology_kind_);
+  }
+  bool has_pathways_topology() const {
+    return std::holds_alternative<PathwaysTopology>(topology_kind_);
   }
 
-  int number_of_devices() const {
-    return number_of_hosts() * num_devices_per_host_;
-  }
-  const std::vector<int>& device_ids() const { return devices_ids_; }
-  int number_of_hosts() const { return num_slices_ * num_hosts_per_slice_; }
+  int number_of_devices() const;
+  const std::vector<int>& device_ids() const {
+    return std::get<DefaultTopology>(topology_kind_).device_ids;
+  };
+  int number_of_hosts() const;
 
   static std::unique_ptr<const GpuTopology> FromProto(
       const GpuTopologyProto& proto);
   GpuTopologyProto ToProto() const;
 
   std::string platform_version() const { return platform_version_; }
-  int32_t num_slices() const { return num_slices_; }
-  int32_t num_hosts_per_slice() const { return num_hosts_per_slice_; }
-  int32_t num_devices_per_host() const { return num_devices_per_host_; }
 
  private:
-  const std::vector<int> devices_ids_;
   const std::string platform_version_;
-  const int32_t num_slices_;
-  const int32_t num_hosts_per_slice_;
-  const int32_t num_devices_per_host_;
+  std::variant<DefaultTopology, PathwaysTopology> topology_kind_;
 };
 
 }  // namespace xla

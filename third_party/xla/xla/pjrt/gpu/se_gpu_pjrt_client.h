@@ -88,9 +88,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
         platform_name_(platform_name),
         platform_version_(platform_version),
         // TODO(b/331224674): Add support for multi-host.
-        gpu_topology_(gpu_device_ids, platform_version, /*num_slices=*/1,
-                      /*num_hosts_per_slice=*/1,
-                      /*num_devices_per_host=*/gpu_device_ids.size()),
+        gpu_topology_(gpu_device_ids, platform_version),
         attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {

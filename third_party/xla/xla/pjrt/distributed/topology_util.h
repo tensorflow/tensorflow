@@ -61,7 +61,8 @@ GlobalTopologyProto BuildGlobalTopology(
 // Builds a GpuTopologyProto representing the GPU configuration described in the
 // given GlobalTopologyProto.
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
-    const GlobalTopologyProto& global_topology);
+    const GlobalTopologyProto& global_topology,
+    bool generate_pathways_topology = false);
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_

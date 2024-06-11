@@ -203,11 +203,24 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
   return absl::OkStatus();
 }
 
-absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
+absl::StatusOr<DefaultTopologyProto> BuildDefaultGpuTopology(
     const GlobalTopologyProto& global_topology) {
-  GpuTopologyProto gpu_topology;
-  std::map<int, std::vector<int>> slice_id_to_node_ids;
+  DefaultTopologyProto default_topology;
   std::vector<int> device_ids;
+  for (const LocalTopologyProto& local_topology : global_topology.nodes()) {
+    for (const DeviceProto& device : local_topology.devices()) {
+      device_ids.push_back(device.global_device_id());
+    }
+  }
+  default_topology.mutable_device_ids()->Add(device_ids.begin(),
+                                             device_ids.end());
+  return default_topology;
+}
+
+absl::StatusOr<PathwaysTopologyProto> BuildPathwaysTopology(
+    const GlobalTopologyProto& global_topology) {
+  PathwaysTopologyProto pathways_topology;
+  std::map<int, std::vector<int>> slice_id_to_node_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
@@ -216,35 +229,43 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
 
     // Initializes GPU topology with the first local topology.
     if (i == 0) {
-      gpu_topology.set_platform_version((local_topology.devices(0).name()));
-      gpu_topology.set_num_devices_per_host(local_topology.devices_size());
+      pathways_topology.set_num_devices_per_host(local_topology.devices_size());
     } else {
       // Check for consistent number of devices per host.
-      if (gpu_topology.num_devices_per_host() !=
+      if (pathways_topology.num_devices_per_host() !=
           local_topology.devices_size()) {
         return absl::InternalError(
             "GpuTopology doesn't support multi-host with different number of "
             "devices per host.");
       }
     }
-
-    for (const DeviceProto& device : local_topology.devices()) {
-      device_ids.push_back(device.global_device_id());
-    }
   }
 
-  gpu_topology.set_num_slices(slice_id_to_node_ids.size());
-  gpu_topology.set_num_hosts_per_slice(
+  pathways_topology.set_num_slices(slice_id_to_node_ids.size());
+  pathways_topology.set_num_hosts_per_slice(
       slice_id_to_node_ids.begin()->second.size());
   // Check for consistent number of hosts per slice.
   for (const auto& [boot_id, node_ids] : slice_id_to_node_ids) {
-    if (node_ids.size() != gpu_topology.num_hosts_per_slice()) {
+    if (node_ids.size() != pathways_topology.num_hosts_per_slice()) {
       return absl::InternalError(
           "GpuTopology doesn't support multi-host with different number of "
           "hosts per slice.");
     }
   }
-  gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
+  return pathways_topology;
+}
+
+absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
+    const GlobalTopologyProto& global_topology,
+    bool generate_pathways_topology) {
+  GpuTopologyProto gpu_topology;
+  if (generate_pathways_topology) {
+    TF_ASSIGN_OR_RETURN(*gpu_topology.mutable_pathways_topology(),
+                        BuildPathwaysTopology(global_topology));
+  } else {
+    TF_ASSIGN_OR_RETURN(*gpu_topology.mutable_default_topology(),
+                        BuildDefaultGpuTopology(global_topology));
+  }
   return gpu_topology;
 }
 
