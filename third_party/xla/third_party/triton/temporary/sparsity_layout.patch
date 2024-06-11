@@ -15,31 +15,6 @@
      llvm_unreachable("Source rematerialization should not happen in Triton -> "
                       "TritonGPU Conversion");
      return std::nullopt;
-==== triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp#36 - /google/src/cloud/csigg/triton_sparse/triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp ====
-# action=edit type=text
---- triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2024-05-14 06:33:36.000000000 -0700
-+++ triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2024-06-04 04:34:23.000000000 -0700
-@@ -636,7 +636,6 @@
-       GenericOpPattern<triton::ExperimentalDescriptorStoreOp>,
-       GenericOpPattern<triton::CallOp>, TritonFuncOpPattern>(typeConverter,
-                                                              context);
--  patterns.insert<TritonSparseDotPattern>(typeConverter, context);
- }
- 
- //
-@@ -878,12 +877,6 @@
-     mod->setAttr(AttrTargetName,
-                  StringAttr::get(context, this->target.getValue()));
- 
--    // Only transform sparse dot op with undefined layout.
--    target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
--        [](triton::gpu::SparseDotOp op) {
--          return op.getAMeta().getType().getEncoding() != nullptr;
--        });
--
-     if (failed(applyPartialConversion(mod, target, std::move(patterns))))
-       return signalPassFailure();
- 
 ==== triton/lib/Dialect/TritonGPU/IR/Dialect.cpp#51 - /google/src/cloud/csigg/triton_sparse/triton/lib/Dialect/TritonGPU/IR/Dialect.cpp ====
 # action=edit type=text
 --- triton/lib/Dialect/TritonGPU/IR/Dialect.cpp	2024-06-07 05:28:31.000000000 -0700
