@@ -310,6 +310,7 @@ ml-dtypes==0.3.2 \
     --hash=sha256:e8505946df1665db01332d885c2020b4cb9e84a8b1241eb4ba69d59591f65855 \
     --hash=sha256:f47619d978ab1ae7dfdc4052ea97c636c6263e1f19bd1be0e42c346b98d15ff4
     # via
+    #   -r requirements.in
     #   jax
     #   keras
 namex==0.0.7 \
