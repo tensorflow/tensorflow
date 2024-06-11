@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,9 +28,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -37,13 +41,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/status.h"
+#include "xla/service/name_uniquer.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -126,7 +133,7 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
       block_id_to_tile_offset_indexing.GetRangeVars(),
       block_id_to_tile_offset_indexing.GetRTVars()};
 
-  simplified_indexing_map.Simplify(GetIndexingMapForInstruction);
+  simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
   simplified_indexing_map.RemoveUnusedSymbols();
 
@@ -137,6 +144,12 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
     const HloComputation& computation, MLIRContext* ctx) {
+  auto fusion = HloFusionAdaptor::ForComputation(&computation);
+  return SymbolicTileAnalysis::AnalyzeFusion(*fusion, ctx);
+}
+
+/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
+    const HloFusionAdaptor& fusion, MLIRContext* ctx) {
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       tiled_hlo_instructions;
   absl::flat_hash_map<std::pair<const HloInstruction*, IndexingMap>,
@@ -146,14 +159,16 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
   absl::flat_hash_map<SymbolicTiledHloInstruction*, int64_t> topological_order;
 
   std::function<std::variant<SymbolicTiledHloInstruction*, FusionDecision>(
-      const HloInstruction*, IndexingMap)>
+      const HloInstructionAdaptor&, IndexingMap)>
       get_tiled_hlo_instruction;
 
   // Create a new tiled hlo instruction or return existing instruction from
   // cache for the given hlo and indexing map.
-  get_tiled_hlo_instruction = [&](const HloInstruction* hlo,
-                                  IndexingMap indexing_map)
+  get_tiled_hlo_instruction =
+      [&](const HloInstructionAdaptor& instruction_adaptor,
+          IndexingMap indexing_map)
       -> std::variant<SymbolicTiledHloInstruction*, FusionDecision> {
+    const HloInstruction* hlo = &instruction_adaptor.instruction();
     auto key = std::make_pair(hlo, indexing_map);
 
     auto it = tiled_hlo_instructions_map.find(key);
@@ -191,33 +206,34 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
     auto tiled_hlo_instruction = tiled_hlo_instructions.back().get();
 
     std::optional<HloInstructionIndexing> operands_indexing =
-        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
-                                     /*output_id=*/0, ctx);
+        ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx);
 
     if (!operands_indexing.has_value()) {
       return FusionDecision{} << "Failed to compute operands indexing for "
                               << tiled_hlo_instruction->hlo()->ToString();
     }
 
-    for (auto [operand, operand_indexing_map_set] :
-         llvm::zip(tiled_hlo_instruction->hlo()->operands(),
-                   operands_indexing->indexing_maps)) {
-      CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
+    if (fusion.ContainsInstruction(instruction_adaptor)) {
+      for (auto [operand, operand_indexing_map_set] :
+           llvm::zip(instruction_adaptor.GetOperands(),
+                     operands_indexing->indexing_maps)) {
+        CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
 
-      IndexingMap operand_indexing_map =
-          ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
-                              *operand_indexing_map_set.begin());
+        IndexingMap operand_indexing_map =
+            ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
+                                *operand_indexing_map_set.begin());
 
-      auto tiled_operand_or =
-          get_tiled_hlo_instruction(operand, std::move(operand_indexing_map));
+        auto tiled_operand_or =
+            get_tiled_hlo_instruction(operand, std::move(operand_indexing_map));
 
-      if (auto fusion_decison =
-              std::get_if<FusionDecision>(&tiled_operand_or)) {
-        return *fusion_decison;
+        if (auto fusion_decison =
+                std::get_if<FusionDecision>(&tiled_operand_or)) {
+          return *fusion_decison;
+        }
+
+        tiled_hlo_instruction->AppendOperand(
+            std::get<SymbolicTiledHloInstruction*>(tiled_operand_or));
       }
-
-      tiled_hlo_instruction->AppendOperand(
-          std::get<SymbolicTiledHloInstruction*>(tiled_operand_or));
     }
 
     topological_order[tiled_hlo_instruction] = topological_order.size();
@@ -225,9 +241,14 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
     return tiled_hlo_instruction;
   };
 
-  const HloInstruction* root = computation.root_instruction();
+  auto roots = fusion.GetRoots();
+  if (roots.size() > 1) {
+    return FusionDecision{} << "Multi-output fusions are not supported. "
+                            << fusion.ToString();
+  }
+  auto& root = roots[0];
   auto tiled_root =
-      get_tiled_hlo_instruction(root, CreateIdentityMap(root->shape(), ctx));
+      get_tiled_hlo_instruction(root, CreateIdentityMap(root.shape(), ctx));
   if (auto* fusion_decision = std::get_if<FusionDecision>(&tiled_root)) {
     return *fusion_decision;
   }
@@ -240,7 +261,7 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
   return SymbolicTileAnalysis(std::move(tiled_hlo_instructions), ctx);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<TiledHloInstruction>>>
+absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
     const std::vector<int64_t>& tile_parameters) const {
   IndexingMap block_id_to_root_tile_offset = ComputeBlockIdToOutputTileIndexing(
@@ -311,7 +332,32 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     return topological_order.at(i1.get()) < topological_order.at(i2.get());
   });
 
-  return tiled_hlo_instructions;
+  return TiledHloComputation::FromSortedTiledHloInstructions(
+      std::move(tiled_hlo_instructions));
+}
+
+std::string SymbolicTileAnalysis::ToString(
+    const AffineMapPrinter& printer) const {
+  std::stringstream ss;
+  NameUniquer name_uniquer("_");
+  absl::flat_hash_map<SymbolicTiledHloInstruction*, std::string> tile_names;
+
+  for (const auto& tiled_hlo : symbolic_tiled_hlo_instructions_) {
+    std::string tile_name = name_uniquer.GetUniqueName(
+        absl::StrCat(tiled_hlo->hlo()->name(), ".tile_0"));
+    tile_names[tiled_hlo.get()] = tile_name;
+
+    absl::InlinedVector<std::string, 4> operand_names;
+    for (const auto& operand : tiled_hlo->operands()) {
+      operand_names.push_back(tile_names.at(operand));
+    }
+
+    ss << tile_name << " = " << HloOpcodeString(tiled_hlo->hlo()->opcode())
+       << "(" << absl::StrJoin(operand_names, ", ") << ")\n";
+
+    ss << tiled_hlo->ToString();
+  }
+  return ss.str();
 }
 
 }  // namespace gpu

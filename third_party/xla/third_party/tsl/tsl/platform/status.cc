@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -112,7 +113,7 @@ namespace errors {
 static constexpr const char kStackTraceProtoUrl[] =
     "type.googleapis.com/tensorflow.StackTracePayload";
 
-void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
+void SetStackTrace(absl::Status& status, std::vector<StackFrame> stack_trace) {
   // Given the StackFrame fields are (a) line number (b) filename (c) function
   // name, we can safely assume that there is no `\n` in there.
   // Thus, we can serialize as strings using a simple new line delimiter.
@@ -134,7 +135,7 @@ void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
                     absl::Cord(absl::StrJoin(items, "\n")));
 }
 
-std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
+std::vector<StackFrame> GetStackTrace(const absl::Status& status) {
   std::vector<StackFrame> stack_trace;
   absl::optional<absl::Cord> maybe_serialized_payload =
       status.GetPayload(kStackTraceProtoUrl);
@@ -163,19 +164,18 @@ const char* NullTerminatedMessage(const absl::Status& status) {
 }
 #endif
 
-std::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v, const char* msg) {
-  std::string r("Non-OK-status: ");
-  r += msg;
-  r += " status: ";
-  r += v.ToString();
+std::string* TfCheckOpHelperOutOfLine(const absl::Status& v, const char* msg) {
+  std::stringstream ss;
+  ss << "Non-OK-status: " << msg << "\nStatus: " << v;
+
   // Leaks string but this is only to be used in a fatal error message
-  return new std::string(r);
+  return new std::string(ss.str());
 }
 
 StatusGroup::StatusGroup() {}
 
-StatusGroup::StatusGroup(std::initializer_list<Status> statuses) {
-  for (const Status& s : statuses) {
+StatusGroup::StatusGroup(std::initializer_list<absl::Status> statuses) {
+  for (const absl::Status& s : statuses) {
     Update(s);
   }
 }
@@ -183,11 +183,11 @@ StatusGroup::StatusGroup(std::initializer_list<Status> statuses) {
 static constexpr const char kDerivedStatusProtoUrl[] =
     "type.googleapis.com/tensorflow.DerivedStatus";
 
-Status StatusGroup::MakeDerived(const Status& s) {
+absl::Status StatusGroup::MakeDerived(const absl::Status& s) {
   if (IsDerived(s)) {
     return s;
   } else {
-    Status derived(s);
+    absl::Status derived(s);
     // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
     // of using the string directly. The string is never used so it is not
     // causing any issues at the moment.
@@ -196,7 +196,7 @@ Status StatusGroup::MakeDerived(const Status& s) {
   }
 }
 
-bool StatusGroup::IsDerived(const Status& s) {
+bool StatusGroup::IsDerived(const absl::Status& s) {
   return s.GetPayload(kDerivedStatusProtoUrl).has_value();
 }
 
@@ -204,7 +204,7 @@ void StatusGroup::ConfigureLogHistory() {
   StatusLogSink::GetInstance()->enable();
 }
 
-void StatusGroup::Update(const Status& s) {
+void StatusGroup::Update(const absl::Status& s) {
   if (s.ok()) {
     ++num_ok_;
   } else {
@@ -241,25 +241,26 @@ std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(absl::StatusCode code, absl::string_view message,
-                  const std::unordered_map<std::string, absl::Cord>& payloads) {
-  Status status(code, message);
+absl::Status MakeStatus(
+    absl::StatusCode code, absl::string_view message,
+    const std::unordered_map<std::string, absl::Cord>& payloads) {
+  absl::Status status(code, message);
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);
   }
   return status;
 }
 
-std::string MakeString(const Status& status) {
+std::string MakeString(const absl::Status& status) {
   return absl::StrCat(absl::StatusCodeToString(status.code()), ": ",
                       status.message());
 }
 
 // Summarize all the status objects in the StatusGroup. This is used when
 // individual Status objects in the StatusGroup are not already summarized.
-Status StatusGroup::as_summary_status() const {
+absl::Status StatusGroup::as_summary_status() const {
   if (ok_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Gather recent logs as a string
@@ -322,9 +323,9 @@ Status StatusGroup::as_summary_status() const {
 
 // Concatenate all the status objects in the StatusGroup. This is used when
 // individual Status objects in the StatusGroup are already summarized Status.
-Status StatusGroup::as_concatenated_status() const {
+absl::Status StatusGroup::as_concatenated_status() const {
   if (ok_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If only one root status is found, return it directly.

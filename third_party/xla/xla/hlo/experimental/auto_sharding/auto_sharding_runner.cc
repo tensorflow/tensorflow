@@ -17,10 +17,10 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/status.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "tsl/platform/init_main.h"
 
@@ -28,7 +28,7 @@ namespace xla {
 namespace spmd {
 namespace {
 
-Status RunAutoShardingPassFromFile(const std::string& file_name) {
+absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   std::string hlo_text;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), file_name, &hlo_text));
@@ -44,7 +44,7 @@ Status RunAutoShardingPassFromFile(const std::string& file_name) {
   TF_ASSIGN_OR_RETURN(bool changed, AutoSharding(option).Run(hlo_module.get()));
   CHECK(changed);
   std::cout << hlo_module->ToString() << std::endl;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

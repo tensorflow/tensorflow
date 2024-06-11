@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
-#include <climits>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -49,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
@@ -70,8 +68,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/util.h"
@@ -341,20 +337,6 @@ bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
       });
 }
 
-static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
-  // For i1 memrefs, the underlying allocation is 8 bits.
-  if (type.getElementType().isInteger(/*width=*/1)) {
-    return type.getNumElements();
-  } else if (auto complexType =
-                 mlir::dyn_cast<mlir::ComplexType>(type.getElementType())) {
-    auto elementType = complexType.getElementType();
-    return elementType.getIntOrFloatBitWidth() * type.getNumElements() * 2 /
-           CHAR_BIT;
-  } else {
-    return type.getNumElements() * type.getElementTypeBitWidth() / CHAR_BIT;
-  }
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index) {
@@ -362,15 +344,15 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 }
 
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const std::vector<const HloInstruction*>& roots) {
+    absl::Span<HloInstructionAdaptor const> roots) {
   std::vector<const HloInstruction*> dus_ops;
-  for (const HloInstruction* root : roots) {
-    while (root->opcode() == HloOpcode::kBitcast) {
-      root = root->operand(0);
+  for (HloInstructionAdaptor root : roots) {
+    while (root.opcode() == HloOpcode::kBitcast) {
+      root = root.GetOperand(0);
     }
 
-    if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dus_ops.push_back(root);
+    if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
+      dus_ops.push_back(&root.instruction());
     }
   }
   return dus_ops;
@@ -390,7 +372,7 @@ absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
-    const std::vector<const HloInstruction*>& roots) {
+    absl::Span<HloInstructionAdaptor const> roots) {
   std::vector<const HloInstruction*> dus_instrs =
       GetOutputDefiningDynamicUpdateSlices(roots);
 
@@ -637,29 +619,11 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
-                    const HloFusionAdaptor* fusion,
-                    bool add_single_user_check) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
     return false;
-  }
-
-  if (add_single_user_check) {
-    // Check that intermediate `instr` doesn't have multiple users. If we have a
-    // fusion, only consider users within the fusion.
-    // TODO(akuegel): Figure out why we still need this check for transpose
-    // fusions.
-    int64_t num_users =
-        fusion
-            ? absl::c_count_if(
-                  HloInstructionAdaptor{*instr, fusion}.GetUsers(),
-                  [&](auto user) { return fusion->ContainsInstruction(user); })
-            : instr->user_count();
-    if (num_users > 1) {
-      return false;
-    }
   }
 
   if (instr->IsElementwise()) {
@@ -701,11 +665,7 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
       return TraversalResult::kSkip;
     }
 
-    // We set add_single_user_check to true because it could be that it causes
-    // problems if we have more than one user in a transpose fusion.
-    // TODO(akuegel): Verify and possibly fix this.
-    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3,
-                        /*fusion=*/nullptr, /*add_single_user_check=*/true)) {
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
       return TraversalResult::kSkip;
     }
     return TraversalResult::kAdvance;
@@ -717,14 +677,10 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
 
   // Make sure that no non-elementwise op is reachable from the transpose.
   auto is_nontrivial = [](HloInstructionAdaptor node) {
-    // We set add_single_user_check to true because it could be that it causes
-    // problems if we have more than one user in a transpose fusion.
-    // TODO(akuegel): Verify and possibly fix this.
     return node.instruction().opcode() != HloOpcode::kTuple &&
            node.instruction().opcode() != HloOpcode::kParameter &&
            !IsIntermediate(&node.instruction(),
-                           /*allowed_operand_count=*/3, /*fusion=*/nullptr,
-                           /*add_single_user_check=*/true);
+                           /*allowed_operand_count=*/3);
   };
   bool visit_operands = false;
   if (HloAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
@@ -741,8 +697,7 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
   // that no memoization is needed due to number of operands constraints: we
   // never have to revisit same nodes.
-  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
-                        &hero.parent()) &&
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1) &&
          hero.parent().ContainsInstruction(hero.GetOperand(0))) {
     hero = hero.GetOperand(0);
   }
@@ -751,7 +706,8 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   // transpose and concat emitters also work if there are elementwise ops with
   // more than 1 operand on the path between root and the root op.
   auto is_transpose = [](const HloInstruction& node) {
-    return FindTiledLogicalTranspose(node).has_value();
+    return FindTiledLogicalTranspose(node).has_value() ||
+           FindTiledTranspose(node).has_value();
   };
   if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
     return *transpose;

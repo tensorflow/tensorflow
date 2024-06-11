@@ -354,7 +354,8 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   // Copy the ExecutionContext and its user contexts for async execution.
   auto user_contexts = caller_context.CopyUserContexts();
   mlrt::ExecutionContext execution_context(&caller_context.loaded_executable(),
-                                           std::move(user_contexts));
+                                           std::move(user_contexts),
+                                           caller_context.user_error_loggers());
   execution_context.GetUserContext<tf_mlrt::Context>()
       .set_fallback_request_state(&fallback_request_state);
 

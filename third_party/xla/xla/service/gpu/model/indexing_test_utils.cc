@@ -18,8 +18,10 @@ limitations under the License.
 #include <cctype>
 #include <cstddef>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -31,10 +33,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -144,7 +144,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
   size_t lhs_length = lhs.size();
   size_t rhs_length = rhs.size();
   size_t l = 0, r = 0;
-  while (l < lhs_length && r < rhs_length) {
+  while (l < lhs_length || r < rhs_length) {
     while (l < lhs_length && std::isspace(lhs[l])) {
       ++l;
     }
@@ -152,7 +152,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
       ++r;
     }
     if (l == lhs_length || r == rhs_length) {
-      continue;
+      break;
     }
     if (lhs[l++] != rhs[r++]) {
       return false;

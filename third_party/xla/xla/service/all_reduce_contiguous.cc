@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -28,7 +29,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
+absl::Status ReplaceWithContiguousAllReduce(
+    HloAllReduceInstruction* all_reduce) {
   TF_RET_CHECK(all_reduce);
   TF_RET_CHECK(!all_reduce->has_sharding());
 
@@ -79,7 +81,7 @@ Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
   // Replace original all-reduce with tuple of slices from new all-reduce.
   TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

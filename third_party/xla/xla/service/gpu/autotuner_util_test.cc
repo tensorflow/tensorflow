@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -61,6 +60,29 @@ ENTRY e {
     lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
 })";
 
+  static constexpr absl::string_view kResultText = R"(
+version: 3
+results {
+  device: "sm_8.0 with 42331013120B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  hlo: "{\n  tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)\n  tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)\n  tmp_2 = s8[16,17,3]{2,1,0} parameter(1)\n  tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)\n  tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)\n  tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)\n}"
+  result {
+    run_time {
+      nanos: 31744
+    }
+    triton {
+      block_m: 32
+      block_n: 32
+      block_k: 32
+      split_k: 1
+      num_stages: 1
+      num_warps: 4
+      num_ctas: 1
+    }
+  }
+})";
+
+  void SetUp() override { AutotunerUtil::ClearAutotuneResults(); }
+
   std::string GetUniqueTempFilePath(absl::string_view suffix) {
     std::string filename = TempDir();
     CHECK(tsl::Env::Default()->CreateUniqueFileName(&filename,
@@ -82,24 +104,30 @@ ENTRY e {
     stream_executor::StreamExecutorConfig config(/*ordinal=*/0);
     return platform->GetUncachedExecutor(config).value();
   }
+
+  absl::Status PopulateResultCache() {
+    EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
+    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(kResultText, true));
+    EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
+    return absl::OkStatus();
+  }
 };
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                          &results));
+  EXPECT_GT(results.results_size(), 0);
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
@@ -109,9 +137,8 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
@@ -120,27 +147,45 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_Protobuf) {
+  TF_EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  AutotunerUtil::ClearAutotuneResults();
+  EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
+}
+
+TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {
+  TF_EXPECT_OK(PopulateResultCache());
+  std::string kFilePath = GetUniqueTempFilePath(".pb");
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_THAT(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Duplicate autotuning result")));
 }
 
 // Test that when complete AOT autotuning is required, and there is cache miss,

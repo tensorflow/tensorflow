@@ -27,7 +27,7 @@ namespace interpreter {
 
 host::HostStream *AsExecutorStream(Stream *stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<host::HostStream *>(stream->implementation());
+  return dynamic_cast<host::HostStream *>(stream);
 }
 
 DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,

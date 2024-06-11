@@ -19,10 +19,12 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/translate/mhlo_to_hlo/layout_util.h"
 
 namespace mlir {
@@ -45,19 +47,37 @@ struct MlirToHloConversionOptions {
 
   LayoutPreferenceFn layout_preference_fn;
   ShapeRepresentationFn shape_representation_fn;
+
+  // If use_tuple_args is set, then the entry computations's arguments are
+  // converted to a tuple and passed as a single parameter.
+  bool use_tuple_args = false;
+
+  // If return tuple is true, then the entry function's return values
+  // are converted to a tuple even when there is only a single return value.
+  // Multiple return values are always converted to a tuple and returned as a
+  // single value.
+  bool return_tuple = true;
 };
 
-// Converts a MLIR module in HLO dialect into a HloModuleProto. If
-// use_tuple_args is set, then the entry computations's arguments are converted
-// to a tuple and passed as a single parameter.
-// Similarly, if return tuple is true, then the entry function's return values
-// are converted to a tuple even when there is only a single return value.
-// Multiple return values are always converted to a tuple and returned as a
-// single value.
+// Prefer `ConvertMlirHloToHloModule` over this method when possible, as it
+// preserves more information and abstracts away the proto. This method is
+// preserved for legacy reasons.
+// TODO (b/345806521): Migrate callsites to ConvertMlirHloToHloModule,
+// and delete this method.
+//
+// Converts a MLIR module in HLO dialect into a HloModuleProto.
+//
 absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
                                  ::xla::HloProto* hlo_proto,
                                  bool use_tuple_args, bool return_tuple,
                                  MlirToHloConversionOptions options = {});
+
+// Converts a MLIR module in HLO dialect into a HloModule with HloModuleConfig.
+// This method preserves config data stored in MHLO module attributes.
+//
+// See `MlirToHloConversionOptions` for details on conversion flags.
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
+    mlir::ModuleOp module, MlirToHloConversionOptions options = {});
 
 // Transforms a Block into HLO, where the HLO is represented as calls into an
 // XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.

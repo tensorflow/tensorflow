@@ -7,9 +7,12 @@ container_digests = {
     # JAX manylinux2014 configs.
     "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:45619e91f14faabddd79fe0cb1526df4c4ad92fc2e6ebdc725ea4419225429c3",
     "cuda12.1-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:8c266e5b0acd203aed5e8871b63f68a39d8d23f6d882e619797e58b973f7fe63",
+    "cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython": "sha256:7822b47867ecfc1f57df1cfadeaf091b72191d94cb722c271ed38809be7e7a61",
     "cuda12.2-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:9fefda035b4a12b24cd5bae56c7dbb9527a5fd06a41ced0a22ac86fe5ed26428",
+    "cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython": "sha256:0c78f3428cde36f041b758fc2f01d23d2f0dd72dec248f78667fb0c9d1f74cef",
     "cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:6f9524a2ed7f75255dc4be3a0c5e3bda581385a1c13e2fa890bc17fa62da95b2",
     "cuda12.3-cudnn8.9-ubuntu22.04-manylinux2014-multipython": "sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545",
+    "cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython": "sha256:7128b33e8f22d5f5ec9640bc377c3afddf7eb31daa1f958d1dd91dd7fda6a790",
     # ROCM, probably not all of them still in use
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:6e953a09b145df338bcb03e9e36f99b291140c29b72d0a048fb6c5905ccad5eb",
     "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:906faec7765fe5dd067f2b092b5d5f220c1fedde725fb42c83d031b4d6f32204",
@@ -101,6 +104,13 @@ containers = {
         "digest": container_digests["cuda12.1-cudnn8.9-ubuntu20.04-manylinux2014-multipython"],
     },
 
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython.
+    "cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython",
+        "digest": container_digests["cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython"],
+    },
+
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.2-cudnn8.9-ubuntu20.04-manylinux2014-multipython.
     "cuda12.2-cudnn8.9-ubuntu20.04-manylinux2014-multipython": {
         "registry": "gcr.io",
@@ -108,11 +118,25 @@ containers = {
         "digest": container_digests["cuda12.2-cudnn8.9-ubuntu20.04-manylinux2014-multipython"],
     },
 
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython.
+    "cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython",
+        "digest": container_digests["cuda12.2-cudnn9.1-ubuntu20.04-manylinux2014-multipython"],
+    },
+
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython.
     "cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython": {
         "registry": "gcr.io",
         "repository": "tensorflow-testing/nosla-cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython",
         "digest": container_digests["cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython"],
+    },
+
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython.
+    "cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython",
+        "digest": container_digests["cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython"],
     },
 
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython.

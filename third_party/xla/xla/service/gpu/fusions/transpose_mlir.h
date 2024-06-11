@@ -19,20 +19,22 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -59,9 +61,6 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       mlir::MLIRContext* mlir_context) const override;
 
  protected:
-  IndexingMap ComputeThreadIdToInputIndexing(
-      const HloInstruction& hero, mlir::MLIRContext* mlir_context) const;
-
   absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
@@ -93,8 +92,21 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
-  Tiling tiling_;
+
+  IndexingMap GetIndexing(bool input, const xla::Shape& shape,
+                          mlir::MLIRContext* ctx) const;
+  IndexingMap GetSharedMemoryIndexing(bool read, mlir::MLIRContext* ctx) const;
+  llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
+      mlir::MLIRContext* ctx) const;
+
+  TransposeDescription transpose_;
   Vector3 permutation_;
+  std::vector<int64_t> input_shape_;
+  std::vector<int64_t> block_sizes_;  // In input elements.
+  std::vector<int64_t> block_counts_;
+  int vector_size_;
+  int block_size_;
+
   std::vector<const HloInstruction*> shmem_transposes_;
   std::vector<const HloInstruction*> shmem_transpose_roots_;
   std::vector<int> shmem_transpose_root_indices_;

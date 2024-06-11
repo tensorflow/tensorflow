@@ -478,7 +478,7 @@ Status CompileTFFunctionToHlo(
     args[i].node_name = fbody->arg_nodes[i]->name();
   }
 
-  std::vector<gtl::InlinedVector<int64_t, 4>> arg_shape_dims;
+  std::vector<absl::InlinedVector<int64_t, 4UL>> arg_shape_dims;
   arg_shape_dims.reserve(arg_shapes.size());
   std::vector<PartialTensorShape> partial_arg_shapes(arg_shapes.size());
   for (const TensorShape& shape : arg_shapes) {

@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.17.0'
+_VERSION = '2.18.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -78,7 +78,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 24.3.7',
+    'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 3.10.0',

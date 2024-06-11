@@ -3645,7 +3645,7 @@ func.func @convert_floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10
 // CHECK-LABEL:   func @convert_gather(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<147456xf16>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<192x256x1xi32>)
-// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : {{.*}} -> tensor<192x256xf16>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<192x256xf16>
 // CHECK:            return %[[VAL_0]]
 // CHECK:         }
 func.func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) -> tensor<192x256xf16> {
@@ -3665,7 +3665,7 @@ func.func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<147456xf16>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<192x256x1xui32>)
 // CHECK:            %[[INDICES:.*]] = "tf.Cast"(%arg1) <{Truncate = false}> : (tensor<192x256x1xui32>) -> tensor<192x256x1xi64>
-// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[INDICES]]) : {{.*}} -> tensor<192x256xf16>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[INDICES]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<192x256xf16>
 // CHECK:            return %[[VAL_0]]
 // CHECK:         }
 func.func @convert_gather_with_ui32indices(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xui32>) -> tensor<192x256xf16> {
@@ -3686,7 +3686,7 @@ func.func @convert_gather_with_ui32indices(%arg0: tensor<147456xf16>, %arg1: ten
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<4x64xi32>)
 // CHECK:           %[[VAL_2:.*]] = arith.constant dense<[4, 64, 1]> : tensor<3xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_2]]) : {{.*}} -> tensor<4x64x1xi32>
-// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_0]], %[[VAL_3]]) : {{.*}} -> tensor<4x64x128xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_0]], %[[VAL_3]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<4x64x128xf32>
 // CHECK:           return %[[VAL_4]]
 // CHECK:         }
 func.func @convert_gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>) -> tensor<4x64x128xf32> {
@@ -3708,7 +3708,7 @@ func.func @convert_gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>)
 // CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<4x1xi32>) -> tensor<4x128xf32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Const"{{.*}}value = dense<[1, 0]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) : {{.*}} -> tensor<256x128xf32>
-// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_3]], %[[VAL_1]]) : {{.*}} -> tensor<4x128xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_3]], %[[VAL_1]]) <{bad_indices_policy = ""}> : {{.*}} -> tensor<4x128xf32>
 // CHECK:           return %[[VAL_4]]
 // CHECK:         }
 // Test the case when start_index_map isn't an iota what requires a transpose to
@@ -3732,7 +3732,7 @@ func.func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x
 // CHECK-SAME:                                      %[[VAL_1:.*]]: tensor<1x1xi32>) -> tensor<1x1xi32> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) : (tensor<1x20xi32>, tensor<2xi64>) -> tensor<20x1xi32>
-// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_3]], %[[VAL_1]]) : (tensor<20x1xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
+// CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_3]], %[[VAL_1]]) <{bad_indices_policy = ""}> : (tensor<20x1xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
 // CHECK:           %[[VAL_5:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Transpose"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x1xi32>, tensor<2xi64>) -> tensor<1x1xi32>
 // CHECK:           return %[[VAL_6]] : tensor<1x1xi32>
@@ -3780,7 +3780,7 @@ func.func @convert_gather_to_slice_batch_size_1(%arg0: tensor<1x2944xi32>, %arg1
 // CHECK-LABEL:   func @convert_gather_slice_dynamic_indices(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000x1024xi8>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
-// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) <{bad_indices_policy = ""}> : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
 // CHECK:            return %[[VAL_0]] : tensor<?x?x1024xi8>
 // CHECK:         }
 func.func @convert_gather_slice_dynamic_indices(%arg0: tensor<256000x1024xi8>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
@@ -3799,7 +3799,7 @@ func.func @convert_gather_slice_dynamic_indices(%arg0: tensor<256000x1024xi8>, %
 // CHECK-LABEL:   func @convert_gather_scalar_dynamic_indices(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000xf32>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
-// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) <{bad_indices_policy = ""}> : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
 // CHECK:            return %[[VAL_0]] : tensor<?x?xf32>
 // CHECK:         }
 func.func @convert_gather_scalar_dynamic_indices(%arg0: tensor<256000xf32>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?xf32> {

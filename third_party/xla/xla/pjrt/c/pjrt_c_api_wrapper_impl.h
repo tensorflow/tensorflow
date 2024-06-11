@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 
 struct PJRT_Error {
   absl::Status status;
@@ -109,6 +108,10 @@ struct PJRT_Memory {
   xla::PjRtMemorySpace* memory_space;
   std::vector<PJRT_Device*> devices;
   PJRT_Client* client;
+};
+
+struct PJRT_ExecuteContext {
+  std::shared_ptr<xla::ExecuteContext> execute_context;
 };
 
 struct PJRT_Executable {
@@ -409,6 +412,13 @@ PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
 // Does not check the program format itself.
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
 
+// Creates a C PJRT execute context from a C++ PJRT execute context.
+//
+// The returned execute context is owned by the caller and should be destroyed
+// with PJRT_ExecuteContext_Destroy.
+PJRT_ExecuteContext* CreateWrapperExecuteContext(
+    std::unique_ptr<xla::ExecuteContext> cpp_execute_context);
+
 // Creates a C PJRT topology from a C++ PJRT topology.
 //
 // The returned topology is owned by the caller and should be destroyed with
@@ -447,6 +457,7 @@ PJRT_Layouts_Extension CreateLayoutsExtension(
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
+                       PJRT_ExecuteContext_Create* execute_context_create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
                        PJRT_Extension_Base* extension_start = nullptr,

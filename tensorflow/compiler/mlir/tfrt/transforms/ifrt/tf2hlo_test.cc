@@ -97,7 +97,8 @@ TEST(Tf2HloTest, Empty) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), {}, *client));
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, {}));
 
   auto result =
       CompileTfToHlo(mlir_module.get(), {}, "main", *client, compile_metadata,
@@ -135,7 +136,8 @@ TEST(Tf2HloTest, Tuple) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
                                *client, compile_metadata,
@@ -172,7 +174,8 @@ TEST(Tf2HloTest, Spmd) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
                                *client, compile_metadata,
@@ -247,7 +250,8 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
                                *client, compile_metadata,
@@ -347,7 +351,8 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
                                *client, compile_metadata,

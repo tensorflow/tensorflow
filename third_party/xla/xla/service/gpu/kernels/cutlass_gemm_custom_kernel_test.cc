@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -46,7 +47,8 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
       /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+      auto gemm,
+      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;
@@ -96,7 +98,8 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
       /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+      auto gemm,
+      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;

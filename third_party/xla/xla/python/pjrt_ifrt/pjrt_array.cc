@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
@@ -60,8 +60,9 @@ namespace {
 
 // Validates the sharding and PjRtBuffers have consistent device and memory
 // kind.
-Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
-                                  const PjRtArray::PjRtBuffers& pjrt_buffers) {
+absl::Status ValidateArrayCreationInput(
+    std::shared_ptr<const Sharding> sharding,
+    const PjRtArray::PjRtBuffers& pjrt_buffers) {
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
@@ -96,7 +97,7 @@ Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
           canonicalized_sharding_memory_kind.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Validates the PjRtBuffers have consistent memory kind and returns the memory
@@ -136,11 +137,13 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     return PT
     CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
     CASE(DType::kPred, xla::PrimitiveType::PRED);
+    CASE(DType::kS2, xla::PrimitiveType::S2);
     CASE(DType::kS4, xla::PrimitiveType::S4);
     CASE(DType::kS8, xla::PrimitiveType::S8);
     CASE(DType::kS16, xla::PrimitiveType::S16);
     CASE(DType::kS32, xla::PrimitiveType::S32);
     CASE(DType::kS64, xla::PrimitiveType::S64);
+    CASE(DType::kU2, xla::PrimitiveType::U2);
     CASE(DType::kU4, xla::PrimitiveType::U4);
     CASE(DType::kU8, xla::PrimitiveType::U8);
     CASE(DType::kU16, xla::PrimitiveType::U16);
@@ -170,11 +173,13 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
+    case xla::PrimitiveType::S2:
     case xla::PrimitiveType::S4:
     case xla::PrimitiveType::S8:
     case xla::PrimitiveType::S16:
     case xla::PrimitiveType::S32:
     case xla::PrimitiveType::S64:
+    case xla::PrimitiveType::U2:
     case xla::PrimitiveType::U4:
     case xla::PrimitiveType::U8:
     case xla::PrimitiveType::U16:
@@ -355,7 +360,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
                                 std::move(buffers)));
           result.push_back(std::move(array));
         }
-        return xla::OkStatus();
+        return absl::OkStatus();
       },
       shape_));
 
@@ -416,7 +421,7 @@ Future<> PjRtArray::CopyToHostBuffer(
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
-                promise = std::move(promise)](Status s) mutable {
+                promise = std::move(promise)](absl::Status s) mutable {
         promise.Set(std::move(s));
         literal = nullptr;
       });
@@ -567,7 +572,7 @@ Future<> PjRtArray::Delete() {
     buffer->Delete();
   }
   // TODO(hyeontaek): Return a correct future.
-  return Future<>(OkStatus());
+  return Future<>(absl::OkStatus());
 }
 
 bool PjRtArray::IsDeleted() const {

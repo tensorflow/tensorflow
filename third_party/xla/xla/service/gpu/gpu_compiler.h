@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -115,6 +114,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
     return &FusionCanShareBufferHint;
   }
+
+  virtual int32_t GetToolkitVersion() const = 0;
 
  protected:
   struct BackendCompileResult {
@@ -199,6 +200,9 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
   absl::Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options);
+
+  absl::Status RunPreSchedulingPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and

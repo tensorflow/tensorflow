@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -72,7 +74,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -96,13 +97,13 @@ const HloInstruction::Rare* const HloInstruction::kEmptyRare =
 namespace {
 // Specialization for erasing from PtrVec<T>.
 template <typename T>
-Status EraseElementFromVector(PtrVec<T>* container, T value) {
+absl::Status EraseElementFromVector(PtrVec<T>* container, T value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1209,7 +1210,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
   *instruction->metadata_ = proto.metadata();
-  instruction->backend_config_ = proto.backend_config();
+  instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -2102,7 +2103,6 @@ HloInstruction::CreateBroadcastSequence(
             ShapeUtil::StaticExtentProduct(operand->shape()))
       << "shape: " << ShapeUtil::HumanString(shape)
       << " operand: " << ShapeUtil::HumanString(operand->shape());
-
   return std::make_unique<HloReshapeInstruction>(shape, operand,
                                                  inferred_dimension);
 }
@@ -2586,7 +2586,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->backend_config_ = backend_config_.Clone();
+  clone->backend_config_ = BackendConfigWrapper(backend_config_);
   // The new instruction's name will be uniquified when it's added to a
   // computation.
   clone->SetAndSanitizeName(name());
@@ -2703,7 +2703,8 @@ HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   return unique;
 }
 
-Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
+absl::Status HloInstruction::AddControlDependencyTo(
+    HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (!absl::c_linear_search(control_successors(), instruction)) {
     mutable_rare()->control_successors.push_back(instruction);
@@ -2711,10 +2712,11 @@ Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
         instruction->rare()->control_predecessors, this));
     instruction->mutable_rare()->control_predecessors.push_back(this);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
+absl::Status HloInstruction::RemoveControlDependencyTo(
+    HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (has_rare()) {
     TF_RETURN_IF_ERROR(EraseElementFromVector(
@@ -2724,10 +2726,10 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
     TF_RETURN_IF_ERROR(EraseElementFromVector(
         &instruction->mutable_rare()->control_predecessors, this));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::DropAllControlDeps() {
+absl::Status HloInstruction::DropAllControlDeps() {
   if (has_rare()) {
     for (auto* ctrl_succ : rare()->control_successors) {
       TF_RETURN_IF_ERROR(EraseElementFromVector(
@@ -2741,10 +2743,10 @@ Status HloInstruction::DropAllControlDeps() {
     r->control_successors.clear();
     r->control_predecessors.clear();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::SafelyDropAllControlDependencies() {
+absl::Status HloInstruction::SafelyDropAllControlDependencies() {
   // Add all pairs of transitive dependencies from predecessors to successors.
   if (has_rare()) {
     for (HloInstruction* predecessor : rare()->control_predecessors) {
@@ -2754,7 +2756,7 @@ Status HloInstruction::SafelyDropAllControlDependencies() {
     }
   }
   TF_RETURN_IF_ERROR(DropAllControlDeps());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::HasControlDependencies() const {
@@ -2762,15 +2764,15 @@ bool HloInstruction::HasControlDependencies() const {
   return (!r->control_predecessors.empty() || !r->control_successors.empty());
 }
 
-Status HloInstruction::CopyAllControlDepsTo(HloInstruction* start,
-                                            HloInstruction* end) const {
+absl::Status HloInstruction::CopyAllControlDepsTo(HloInstruction* start,
+                                                  HloInstruction* end) const {
   for (auto* ctrl_pred : control_predecessors()) {
     TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(start));
   }
   for (auto* ctrl_succ : control_successors()) {
     TF_RETURN_IF_ERROR(end->AddControlDependencyTo(ctrl_succ));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::IdenticalInternal(
@@ -3034,8 +3036,8 @@ bool HloInstruction::IdenticalSlowPath(
   return false;
 }
 
-Status HloInstruction::ReplaceUseWith(HloInstruction* user,
-                                      HloInstruction* new_producer) {
+absl::Status HloInstruction::ReplaceUseWith(HloInstruction* user,
+                                            HloInstruction* new_producer) {
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
       << "this shape: " << ShapeUtil::HumanString(shape())
@@ -3044,7 +3046,7 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
   return ReplaceUseWithDifferentShape(user, new_producer);
 }
 
-Status HloInstruction::ReplaceUseWithDifferentShape(
+absl::Status HloInstruction::ReplaceUseWithDifferentShape(
     HloInstruction* user, HloInstruction* new_producer) {
   VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
           << " with " << new_producer->name();
@@ -3060,11 +3062,12 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
-                                      HloInstruction* new_producer) {
+absl::Status HloInstruction::ReplaceUseWith(HloInstruction* user,
+                                            int operand_number,
+                                            HloInstruction* new_producer) {
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
       << "this shape: " << ShapeUtil::HumanString(shape())
@@ -3073,7 +3076,7 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
   return ReplaceUseWithDifferentShape(user, operand_number, new_producer);
 }
 
-Status HloInstruction::ReplaceUseWithDifferentShape(
+absl::Status HloInstruction::ReplaceUseWithDifferentShape(
     HloInstruction* user, int operand_number, HloInstruction* new_producer) {
   VLOG(3) << "Replacing operand " << operand_number << " of " << name()
           << " in " << user->name() << " with " << new_producer->name();
@@ -3087,11 +3090,11 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
-                                          HloInstruction* new_operand) {
+absl::Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
+                                                HloInstruction* new_operand) {
   auto old_operand = operand(operand_num);
   TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
                                                         new_operand->shape()))
@@ -3100,13 +3103,13 @@ Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
   return ReplaceOperandWithDifferentShape(operand_num, new_operand);
 }
 
-Status HloInstruction::ReplaceOperandWithDifferentShape(
+absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     int64_t operand_num, HloInstruction* new_operand) {
   TF_RET_CHECK(operand_num >= 0);
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
   if (old_operand == new_operand) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   operands_[operand_num] = new_operand;
@@ -3118,15 +3121,15 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Copy all the instructions in the given fusion instruction into the fusion
 // instruction's parent computation and replace the use of the fusion
 // instruction with the copy of the fusion expression root.
-Status HloInstruction::Defuse() {
+absl::Status HloInstruction::Defuse() {
   if (opcode() != HloOpcode::kFusion) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(2) << "Defusing instruction: " << ToString();
 
@@ -3169,15 +3172,15 @@ Status HloInstruction::Defuse() {
   return module->RemoveEmbeddedComputation(fused_computation);
 }
 
-Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
-                                       HloInstruction* new_producer) {
+absl::Status HloInstruction::ReplaceUsesWith(
+    absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
       << shape() << " is not compatible with " << new_producer->shape();
   return ReplaceAllUsesWithDifferentShape(users, new_producer);
 }
 
-Status HloInstruction::ReplaceAllUsesWithDifferentShape(
+absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
   // Make a copy since users span might get mutated during the loop
   std::vector<HloInstruction*> users_vector(users.begin(), users.end());
@@ -3189,11 +3192,11 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
-                                          absl::string_view trigger) {
+absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                                absl::string_view trigger) {
   auto print_options = HloPrintOptions::ShortParsable()
                            .set_print_operand_shape(true)
                            .set_print_extra_attributes(false);
@@ -3206,7 +3209,7 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 
-Status HloInstruction::ReplaceAllUsesWithDifferentShape(
+absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     HloInstruction* new_producer) {
   bool new_producer_is_user = false;
   // Make a copy since users span might get mutated during the loop
@@ -3237,7 +3240,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
                                   /*accept_different_shape=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::IsEffectiveBitcast() const {
@@ -4063,7 +4066,8 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
 }
 
 template <typename HloInstructionPtr>
-Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
+absl::Status HloInstruction::Visit(
+    DfsHloVisitorBase<HloInstructionPtr>* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this);
@@ -4316,8 +4320,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 }
 
 // Explicit instantiations.
-template Status HloInstruction::Visit(DfsHloVisitor* visitor);
-template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
+template absl::Status HloInstruction::Visit(DfsHloVisitor* visitor);
+template absl::Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
@@ -4345,10 +4349,10 @@ using InternalCompareFunction =
     absl::FunctionRef<bool(std::pair<int, const HloInstruction*>,
                            std::pair<int, const HloInstruction*>)>;
 template <typename Visitor>
-static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
-                           std::optional<InternalCompareFunction> operand_order,
-                           bool ignore_control_predecessors,
-                           bool cross_computation) {
+static absl::Status PostOrderDFS(
+    HloInstruction* root, Visitor* visitor,
+    std::optional<InternalCompareFunction> operand_order,
+    bool ignore_control_predecessors, bool cross_computation) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
@@ -4439,14 +4443,13 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
   } while (!dfs_stack.empty());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename HloInstructionPtr>
-Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                              bool call_finish_visit,
-                              bool ignore_control_predecessors,
-                              bool cross_computation) {
+absl::Status HloInstruction::Accept(
+    DfsHloVisitorBase<HloInstructionPtr>* visitor, bool call_finish_visit,
+    bool ignore_control_predecessors, bool cross_computation) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
   TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, std::nullopt,
                                   ignore_control_predecessors,
@@ -4454,16 +4457,17 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Explicit instantiations.
-template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
-template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool, bool);
+template absl::Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+template absl::Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool,
+                                             bool);
 
-Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
-                                              CompareFunction operand_order,
-                                              bool call_finish_visit) {
+absl::Status HloInstruction::AcceptWithOperandOrder(
+    DfsHloVisitor* visitor, CompareFunction operand_order,
+    bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
   auto func = [operand_order](std::pair<int, const HloInstruction*> a,
                               std::pair<int, const HloInstruction*> b) {
@@ -4480,7 +4484,7 @@ Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder AFTER FINISH VISIT";
   }
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const Shape& HloInstruction::shape() const { return shape_; }
@@ -4962,30 +4966,6 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
     return lhs_module->unique_id() < rhs_module->unique_id();
   }
   return lhs->unique_id() < rhs->unique_id();
-}
-
-Status HloInstruction::GetBackendConfigInternal(
-    tsl::protobuf::Message* proto) const {
-  proto->Clear();
-
-  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    if (proto_ptr->GetDescriptor() != proto->GetDescriptor()) {
-      return Internal("Mismatched backend config descriptors.");
-    }
-
-    proto->CopyFrom(*proto_ptr);
-    return OkStatus();
-  }
-
-  auto& raw_string = raw_backend_config_string();
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (raw_string.empty()) {
-    return OkStatus();
-  }
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string, proto));
-  backend_config_.SetProto(*proto);
-  return OkStatus();
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {

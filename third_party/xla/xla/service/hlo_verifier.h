@@ -155,93 +155,97 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Verifies that entry computation layout matches parameters and root shape of
   // the module's entry computation.
-  virtual Status VerifyEntryComputationLayout(const HloModule& module);
+  virtual absl::Status VerifyEntryComputationLayout(const HloModule& module);
 
-  Status Preprocess(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
 
-  Status HandleElementwiseUnary(HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(HloInstruction* hlo) override;
-  Status HandleClamp(HloInstruction* clamp) override;
-  Status HandleSelect(HloInstruction* select) override;
-  Status HandleConcatenate(HloInstruction* concatenate) override;
-  Status HandleIota(HloInstruction* hlo) override;
-  Status HandleConvert(HloInstruction* convert) override;
-  Status HandleBitcastConvert(HloInstruction* convert) override;
-  Status HandleStochasticConvert(HloInstruction* convert) override;
-  Status HandleCopy(HloInstruction* copy) override;
-  Status HandleDot(HloInstruction* dot) override;
-  Status HandleConvolution(HloInstruction* convolution) override;
-  Status HandleFft(HloInstruction* fft) override;
-  Status HandleCholesky(HloInstruction* hlo) override;
-  Status HandleTriangularSolve(HloInstruction* hlo) override;
-  Status HandleAllGather(HloInstruction* hlo) override;
-  Status HandleAllGatherStart(HloInstruction* hlo) override;
-  Status HandleAllGatherDone(HloInstruction* hlo) override;
-  Status HandleAllReduce(HloInstruction* hlo) override;
-  Status HandleAllReduceStart(HloInstruction* hlo) override;
-  Status HandleAllReduceDone(HloInstruction* hlo) override;
-  Status HandleAllToAll(HloInstruction* hlo) override;
-  Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
-  Status HandleCollectivePermute(HloInstruction* hlo) override;
-  Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
-  Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
-  Status HandlePartitionId(HloInstruction* hlo) override;
-  Status HandleReplicaId(HloInstruction* hlo) override;
-  Status HandleReducePrecision(HloInstruction* reduce_precision) override;
-  Status HandleInfeed(HloInstruction*) override;
-  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
-  Status HandleOutfeed(HloInstruction*) override;
-  Status HandleRng(HloInstruction*) override;
-  Status HandleRngBitGenerator(HloInstruction*) override;
-  Status HandleRngGetAndUpdateState(HloInstruction*) override;
-  Status HandleReverse(HloInstruction* reverse) override;
-  Status HandleSort(HloInstruction* hlo) override;
-  Status HandleTopK(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleReduce(HloInstruction* reduce) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandleReshape(HloInstruction* reshape) override;
-  Status HandleDynamicReshape(HloInstruction* dynamic_reshape) override;
-  Status HandleTranspose(HloInstruction* transpose) override;
-  Status HandleParameter(HloInstruction*) override;
-  Status HandleFusion(HloInstruction*) override;
-  Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction*) override;
-  Status HandleSlice(HloInstruction* slice) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleElementwiseUnary(HloInstruction* hlo) override;
+  absl::Status HandleElementwiseBinary(HloInstruction* hlo) override;
+  absl::Status HandleClamp(HloInstruction* clamp) override;
+  absl::Status HandleSelect(HloInstruction* select) override;
+  absl::Status HandleConcatenate(HloInstruction* concatenate) override;
+  absl::Status HandleIota(HloInstruction* hlo) override;
+  absl::Status HandleConvert(HloInstruction* convert) override;
+  absl::Status HandleBitcastConvert(HloInstruction* convert) override;
+  absl::Status HandleStochasticConvert(HloInstruction* convert) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
+  absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleFft(HloInstruction* fft) override;
+  absl::Status HandleCholesky(HloInstruction* hlo) override;
+  absl::Status HandleTriangularSolve(HloInstruction* hlo) override;
+  absl::Status HandleAllGather(HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(HloInstruction* hlo) override;
+  absl::Status HandleAllGatherDone(HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(HloInstruction* hlo) override;
+  absl::Status HandleAllReduceDone(HloInstruction* hlo) override;
+  absl::Status HandleAllToAll(HloInstruction* hlo) override;
+  absl::Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermute(HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
+  absl::Status HandlePartitionId(HloInstruction* hlo) override;
+  absl::Status HandleReplicaId(HloInstruction* hlo) override;
+  absl::Status HandleReducePrecision(HloInstruction* reduce_precision) override;
+  absl::Status HandleInfeed(HloInstruction*) override;
+  absl::Status HandleOptimizationBarrier(HloInstruction* hlo) override;
+  absl::Status HandleOutfeed(HloInstruction*) override;
+  absl::Status HandleRng(HloInstruction*) override;
+  absl::Status HandleRngBitGenerator(HloInstruction*) override;
+  absl::Status HandleRngGetAndUpdateState(HloInstruction*) override;
+  absl::Status HandleReverse(HloInstruction* reverse) override;
+  absl::Status HandleSort(HloInstruction* hlo) override;
+  absl::Status HandleTopK(HloInstruction* hlo) override;
+  absl::Status HandleConstant(HloInstruction* constant) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleBroadcast(HloInstruction* broadcast) override;
+  absl::Status HandleReshape(HloInstruction* reshape) override;
+  absl::Status HandleDynamicReshape(HloInstruction* dynamic_reshape) override;
+  absl::Status HandleTranspose(HloInstruction* transpose) override;
+  absl::Status HandleParameter(HloInstruction*) override;
+  absl::Status HandleFusion(HloInstruction*) override;
+  absl::Status HandleCall(HloInstruction* call) override;
+  absl::Status HandleCustomCall(HloInstruction*) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
+  absl::Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  absl::Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleMap(HloInstruction* map) override;
-  Status HandleReduceScatter(HloInstruction* hlo) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window) override;
-  Status HandleSelectAndScatter(HloInstruction* instruction) override;
-  Status HandleWhile(HloInstruction* xla_while) override;
-  Status HandleConditional(HloInstruction* conditional) override;
-  Status HandlePad(HloInstruction* pad) override;
-  Status HandleAsyncStart(HloInstruction* async_start) override;
-  Status HandleAsyncUpdate(HloInstruction* async_update) override;
-  Status HandleAsyncDone(HloInstruction* async_done) override;
-  Status HandleCopyStart(HloInstruction* copy_start) override;
-  Status HandleCopyDone(HloInstruction* copy_done) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleSendDone(HloInstruction* send_done) override;
-  Status HandleRecv(HloInstruction* recv) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
-  Status HandleBatchNormInference(
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleMap(HloInstruction* map) override;
+  absl::Status HandleReduceScatter(HloInstruction* hlo) override;
+  absl::Status HandleReduceWindow(HloInstruction* reduce_window) override;
+  absl::Status HandleSelectAndScatter(HloInstruction* instruction) override;
+  absl::Status HandleWhile(HloInstruction* xla_while) override;
+  absl::Status HandleConditional(HloInstruction* conditional) override;
+  absl::Status HandlePad(HloInstruction* pad) override;
+  absl::Status HandleAsyncStart(HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(HloInstruction* async_done) override;
+  absl::Status HandleCopyStart(HloInstruction* copy_start) override;
+  absl::Status HandleCopyDone(HloInstruction* copy_done) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleSendDone(HloInstruction* send_done) override;
+  absl::Status HandleRecv(HloInstruction* recv) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandleBatchNormTraining(
+      HloInstruction* batch_norm_training) override;
+  absl::Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override;
-  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
-  Status HandleGather(HloInstruction* gather) override;
-  Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleAfterAll(HloInstruction* token) override;
-  Status HandleGetDimensionSize(HloInstruction* get_size) override;
-  Status HandleSetDimensionSize(HloInstruction* set_size) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  absl::Status HandleGather(HloInstruction* gather) override;
+  absl::Status HandleScatter(HloInstruction* scatter) override;
+  absl::Status HandleAfterAll(HloInstruction* token) override;
+  absl::Status HandleGetDimensionSize(HloInstruction* get_size) override;
+  absl::Status HandleSetDimensionSize(HloInstruction* set_size) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction*) override { return OkStatus(); }
+  absl::Status FinishVisit(HloInstruction*) override {
+    return absl::OkStatus();
+  }
 
  protected:
   // Helpers that switch on layout_sensitive_.
@@ -249,23 +253,23 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
-  Status CheckShape(const HloInstruction* instruction,
-                    const Shape& inferred_shape,
-                    bool only_compare_minor_to_major_in_layout = false);
+  absl::Status CheckShape(const HloInstruction* instruction,
+                          const Shape& inferred_shape,
+                          bool only_compare_minor_to_major_in_layout = false);
 
-  // Overload which takes a StatusOr to reduce boilerplate in the caller.
-  Status CheckShape(const HloInstruction* instruction,
-                    const absl::StatusOr<Shape>& inferred_shape_status);
+  // Overload which takes a absl::StatusOr to reduce boilerplate in the caller.
+  absl::Status CheckShape(const HloInstruction* instruction,
+                          const absl::StatusOr<Shape>& inferred_shape_status);
 
-  static Status CheckParameterCount(const HloInstruction* calling_instruction,
-                                    const HloComputation* computation,
-                                    int expected);
+  static absl::Status CheckParameterCount(
+      const HloInstruction* calling_instruction,
+      const HloComputation* computation, int expected);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
-  Status CheckUnaryShape(const HloInstruction* instruction);
-  Status CheckBinaryShape(const HloInstruction* instruction);
-  Status CheckTernaryShape(const HloInstruction* instruction);
-  Status CheckVariadicShape(const HloInstruction* instruction);
+  absl::Status CheckUnaryShape(const HloInstruction* instruction);
+  absl::Status CheckBinaryShape(const HloInstruction* instruction);
+  absl::Status CheckTernaryShape(const HloInstruction* instruction);
+  absl::Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
   std::string StringifyShape(const Shape& s) {
@@ -281,20 +285,20 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   // Checks that the given operand of the given instruction is of type TOKEN.
-  Status CheckIsTokenOperand(const HloInstruction* instruction,
-                             int64_t operand_no);
+  absl::Status CheckIsTokenOperand(const HloInstruction* instruction,
+                                   int64_t operand_no);
 
   // Checks that the shape of the given operand of the given instruction matches
   // the given parameter of the given computation.
-  Status CheckOperandAndParameter(const HloInstruction* instruction,
-                                  int64_t operand_number,
-                                  const HloComputation* computation,
-                                  int64_t parameter_number);
+  absl::Status CheckOperandAndParameter(const HloInstruction* instruction,
+                                        int64_t operand_number,
+                                        const HloComputation* computation,
+                                        int64_t parameter_number);
 
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.
-  Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                       const Shape& async_shape);
+  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
+                                             const Shape& async_shape);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
@@ -395,7 +399,7 @@ class MetadataTracker : public DfsHloVisitorWithDefault {
  public:
   explicit MetadataTracker(absl::string_view prefix);
   ~MetadataTracker() override;
-  Status DefaultAction(HloInstruction* instruction) override;
+  absl::Status DefaultAction(HloInstruction* instruction) override;
   void HandleMetadata(const OpMetadata& metadata);
 
  private:

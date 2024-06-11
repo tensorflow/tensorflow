@@ -19,20 +19,19 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -61,30 +60,19 @@ namespace ifrt_serving {
 
 class IfrtServingExecutable {
  public:
-  IfrtServingExecutable(
+  static absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> Create(
       int64_t program_id, absl::string_view model_name,
       absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
       const tsl::thread::ThreadPool* thread_pool,
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
-      const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
+      const IfrtRestoreTensorRegistry* ifrt_restore,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-      tensorflow::StaticDeviceMgr* device_mgr,
+      tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-      IfrtServingCoreSelector* ifrt_serving_core_selector)
-      : program_id_(program_id),
-        model_name_(std::string(model_name)),
-        signature_name_(std::string(signature_name)),
-        module_(std::move(module)),
-        ifrt_client_(std::move(client)),
-        thread_pool_(*thread_pool),
-        ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
-        ifrt_restore_tensor_registry_(*ifrt_restore_tensor_registry),
-        checkpoint_loader_queue_(checkpoint_loader_queue),
-        device_mgr_(device_mgr),
-        shape_representation_fn_(std::move(shape_representation_fn)),
-        ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)) {}
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
+      tsl::protobuf::Message* compilation_environment_proto);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -100,6 +88,10 @@ class IfrtServingExecutable {
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices);
+
+  // Freezes the model. After the Freeze(), JIT compile is not supported and
+  // Execute() will return error if inputs contain uncompiled shapes.
+  void Freeze();
 
   int num_executables() const {
     absl::MutexLock lock(&mutex_);
@@ -139,13 +131,46 @@ class IfrtServingExecutable {
         delete;
   };
 
+  IfrtServingExecutable(
+      int64_t program_id, absl::string_view model_name,
+      absl::string_view signature_name,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      std::shared_ptr<xla::ifrt::Client> client,
+      const tsl::thread::ThreadPool* thread_pool,
+      IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
+      tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
+      tensorflow::DeviceMgr* device_mgr,
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
+      tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
+      tsl::protobuf::Message* compilation_environment_proto)
+      : program_id_(program_id),
+        model_name_(std::string(model_name)),
+        signature_name_(std::string(signature_name)),
+        module_(std::move(module)),
+        original_compile_metadata_(std::move(original_compile_metadata)),
+        ifrt_client_(std::move(client)),
+        thread_pool_(*thread_pool),
+        ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
+        ifrt_restore_tensor_registry_(*ifrt_restore_tensor_registry),
+        checkpoint_loader_queue_(checkpoint_loader_queue),
+        device_mgr_(device_mgr),
+        shape_representation_fn_(std::move(shape_representation_fn)),
+        ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
+        compilation_environment_proto_(compilation_environment_proto) {}
+
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
 
   std::string model_name_;
   std::string signature_name_;
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ ABSL_GUARDED_BY(mutex_);
+  // The original compile metadata. We need to keep it around to be able to
+  // test portable execution condition even if the Module itsel is already
+  // released.
+  tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   const tsl::thread::ThreadPool& thread_pool_;
@@ -153,13 +178,18 @@ class IfrtServingExecutable {
   IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_;
-  tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
+  tensorflow::DeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;
+
+  tsl::protobuf::Message*
+      compilation_environment_proto_;  // NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
+
+  bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
 
   // Asynchronously load the restored variable tensors to Ifrt array.
   absl::Status AsyncLoadIfrtArray(
@@ -178,6 +208,7 @@ class IfrtServingExecutable {
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
+      mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
 

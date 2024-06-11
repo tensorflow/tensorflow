@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/string_type.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 

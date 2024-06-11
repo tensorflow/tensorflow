@@ -53,6 +53,10 @@ bool EnsureAttribute(const DictionaryAttr& composite_attributes,
 bool DenseI64AttrToI32Vector(const DenseIntElementsAttr& dense_attr,
                              std::vector<int32_t>* out_vec);
 
+// Gets boolean from composite attrs if it exists.
+std::optional<bool> GetBoolFromCompositeAttr(
+    const DictionaryAttr& composite_attrs, llvm::StringRef attr_name);
+
 // Given a DictionaryAttr, checks if it has a DenseIntElementsAttr attribute
 // with the name attr_name. If so, extracts its values and stores as a vector
 // of int32_t elements.
@@ -64,10 +68,6 @@ bool GetI32VectorFromDenseI64CompositeAttr(
 // Get a DenseIntElementsAttr of type I64 and convert it to an I32 attribute.
 DenseIntElementsAttr DenseI64AttrToI32Attr(
     const DenseIntElementsAttr& dense_attr, PatternRewriter& builder);
-
-// Returns true if the given input and output are in NCHW layout
-bool IsSupportedNchwUpsampleBlinear(
-    Value input, Value output, const DenseIntElementsAttr& output_size_attr);
 
 // Returns a NHWC shaped type from an NCHW shaped type op.
 // For example- Given a Composite op that wraps a core.aten.avg_pool2d, this

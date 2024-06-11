@@ -167,11 +167,16 @@ Status RemoteMgr::DeleteTensorHandle(
 
 Status RemoteMgr::SerializeRemoteTensorHandle(
     TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
-    Device* device, const string& device_name,
+    Device* device, absl::string_view device_name,
     const bool serialize_resource_dtype_and_shape) {
   int64_t op_id;
   int32_t output_num;
-  if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
+  auto status =
+      in->RemoteAddress(device, wait_until_ready, &op_id, &output_num);
+  if (!status.ok()) {
+    LOG(ERROR)
+        << "Failed to get remote address for tensor handle with given device "
+        << device->name() << " error " << status.message();
     tf_shared_lock l(remote_tensor_handle_mu_);
     TF_RETURN_IF_ERROR(
         GetRemoteTensorHandle(in, wait_until_ready, &op_id, &output_num));
@@ -180,7 +185,9 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
   out->set_op_id(op_id);
   out->set_output_num(output_num);
   out->set_op_device(in->op_device() ? in->op_device()->name() : "");
-  out->set_device(device_name);
+  out->set_device(device_name.empty()
+                      ? std::string(in->DeviceOrHostCPU(*parent_)->name())
+                      : std::string(device_name));
   out->set_dtype(in->dtype);
   if (serialize_resource_dtype_and_shape) {
     std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;

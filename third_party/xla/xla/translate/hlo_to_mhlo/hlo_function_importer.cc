@@ -70,7 +70,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/translate/hlo_to_mhlo/custom_call_importer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -182,7 +181,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder,
-    std::string func_name, std::function<Status(sync_op)> mutate_op) {
+    std::string func_name, std::function<absl::Status(sync_op)> mutate_op) {
   auto result_types = result_type.cast<mlir::TupleType>().getTypes();
   if (result_types.size() < 2) {
     return tsl::errors::InvalidArgument(
@@ -442,7 +441,7 @@ absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
   return importer.ImportAsFunc(computation, is_main);
 }
 
-Status HloFunctionImporter::ImportAsRegion(
+absl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::SymbolTable& symbol_table,
     mlir::Region* region, mlir::Builder* builder,
     bool flatten_computation_args_result) {
@@ -492,6 +491,9 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                                  : FuncOp::Visibility::Private);
 
   int arg_index = 0;
+  // Create block so that the function has arguments we can attach
+  // `mlir::Location`s to.
+  mlir::Block* block = function.addEntryBlock();
   for (auto instruction : computation.parameter_instructions()) {
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(instruction);
@@ -532,6 +534,10 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
           function.setArgAttr(arg_index, kParameterReplicationAttr,
                               builder_->getBoolArrayAttr({true}));
         }
+        // NOTE: since we are flattening args, all arguments will share the same
+        // location as the tuple parameter instruction.
+        function.getArgument(i).setLoc(
+            mlir::mhlo::GenerateInstructionLocation(instruction, context_));
         ++arg_index;
       }
     } else {
@@ -558,6 +564,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
               builder_->getBoolArrayAttr(replicated_at_leaf_buffers));
         }
       }
+      function.getArgument(arg_index).setLoc(
+          mlir::mhlo::GenerateInstructionLocation(instruction, context_));
       ++arg_index;
     }
   }
@@ -617,14 +625,13 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     *imported = function;
   }
 
-  mlir::Block* block = function.addEntryBlock();
   TF_RETURN_IF_ERROR(ImportInstructions(computation, block));
 
   return function;
 }
 
-Status HloFunctionImporter::ImportAsRegion(const HloComputation& computation,
-                                           mlir::Region* region) {
+absl::Status HloFunctionImporter::ImportAsRegion(
+    const HloComputation& computation, mlir::Region* region) {
   auto loc = region->getLoc();
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
@@ -681,7 +688,7 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   return GetMlirValue(computation.root_instruction());
 }
 
-Status HloFunctionImporter::ImportInstructions(
+absl::Status HloFunctionImporter::ImportInstructions(
     const HloComputation& computation, mlir::Block* block) {
   llvm::SmallVector<Value, 4> arguments(block->args_begin(), block->args_end());
   mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
@@ -1408,7 +1415,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
-          [](auto) { return OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kSendDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1442,7 +1449,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
-          [](auto) { return OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kRecvDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -2271,7 +2278,7 @@ HloFunctionImporter::GetOperands(const HloInstruction* instruction) {
   return operands;
 }
 
-Status HloFunctionImporter::GetMlirTypes(
+absl::Status HloFunctionImporter::GetMlirTypes(
     absl::Span<const HloInstruction* const> instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
@@ -2430,7 +2437,7 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
   op->setAttr(attr_name, GetLayoutAttribute(b, shape));
 }
 
-Status HloFunctionImporter::ConvertShapeToMlirLayout(
+absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {

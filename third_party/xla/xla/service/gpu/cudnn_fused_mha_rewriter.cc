@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -132,6 +132,7 @@ auto OptionalBroadcast(Pattern pattern) {
 
 bool IsBatchedMatmul(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kDot) return false;
+  if (Cast<HloDotInstruction>(instr)->sparse_operands()) return false;
   const DotDimensionNumbers& dot_dims = instr->dot_dimension_numbers();
   bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
                       !dot_dims.rhs_batch_dimensions().empty();
@@ -616,11 +617,30 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
     // bmm1 - (scale) - bias - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
-    match_result.matched_bias = bias;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
                     : kCudnnfMHAScaleBiasSoftmaxCallTarget;
     match_result.is_causal_mask |= IsCausalMaskPattern(bias);
+    if (!match_result.is_causal_mask &&
+        bias->opcode() == HloOpcode::kBroadcast) {
+      // we can take the bias before broadcast
+      auto dims = Cast<HloBroadcastInstruction>(bias)->dimensions();
+      if (dims == std::vector<int64_t>{2, 3} ||
+          dims == std::vector<int64_t>{0, 2, 3} ||
+          dims == std::vector<int64_t>{1, 2, 3}) {
+        // shapes [1, 1, s, s], [b, 1, s, s], [1, h, s, s] are supported
+        HloInstruction* bias_bc = bias->mutable_operand(0);
+        // bitcast bias_before_broadcast to be 4D
+        std::vector<int64_t> bitcast_dims(bias->shape().rank(), 1);
+        for (int dim : dims) {
+          bitcast_dims[dim] = bias->shape().dimensions()[dim];
+        }
+        bias = bias_bc->AddInstruction(HloInstruction::CreateBitcast(
+            ShapeUtil::MakeShape(bias->shape().element_type(), bitcast_dims),
+            bias_bc));
+      }
+    }
+    match_result.matched_bias = bias;
     match_result.has_match = true;
   } else {
     match_result.has_match = false;
@@ -804,7 +824,16 @@ MatchBwdResult MatchDbias(MatchBwdResult previous_result,
       user_count == 1 &&
       Match(dbias_user, m::Reduce(&dbias, m::Op(), m::Op()).WithOneUse()) &&
       dbias->shape().rank() == 3 && ConsumeExtraConvert(dbias);
-  match_result.matched_dbias = dbias;
+  if (match_result.has_match) {
+    // cuDNN only supports dbias for [1, h, s, s]
+    // make sure reduce dimension is on batch dim
+    auto reduce_dim = dbias->dimensions();
+    if (reduce_dim.size() == 1 && reduce_dim[0] == 0) {
+      match_result.matched_dbias = dbias;
+    } else {
+      match_result.has_match = false;
+    }
+  }
   return match_result;
 }
 
@@ -882,9 +911,10 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
 
   // Backward scale input pattern
   HloInstruction* bwd_scale_input = nullptr;
+  HloInstruction* bwd_scale = nullptr;
 
   auto bwd_scale_pattern =
-      m::MultiplyAnyOrder(m::Op(&bwd_scale_input),
+      m::MultiplyAnyOrder(&bwd_scale, m::Op(&bwd_scale_input),
                           m::Broadcast(m::Constant().WithPredicate(IsScalar)))
           .WithNumUser(2);
   int intermediate_input_pos = is_bmm1_grad1_canonicalized ? 1 : 0;
@@ -947,7 +977,7 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
       // no dbias
       match_result.has_match = true;
     } else if (dS->user_count() == 2) {
-      match_result = MatchDbias(match_result, dS, {bwd_scale_input});
+      match_result = MatchDbias(match_result, dS, {bwd_scale});
     } else {
       match_result.has_match = false;
     }
@@ -1243,15 +1273,14 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   fmha_config.set_mask_type(is_causal_mask ? CudnnfMHABackendConfig::CAUSAL
                                            : CudnnfMHABackendConfig::NO_MASK);
 
-  // Output Order: {O, scratch, Fwd act*}
   const Shape& output_shape = bmm_2->shape();
 
   Shape call_shape;
   // Activation output is used by backward gemm.
   HloInstruction* activation_output = nullptr;
 
-  std::vector<Shape> output_shapes = {output_shape,
-                                      ShapeUtil::MakeShape(U8, {0})};
+  // Output Order: {O, Fwd act*, workspace}
+  std::vector<Shape> output_shapes = {output_shape};
   if (is_training) {
     activation_output = bmm_2->mutable_operand(0);
     // Sometimes activation output is bitcast, the actual activation is the
@@ -1277,6 +1306,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     output_shapes.push_back(
         ShapeUtil::MakeShape(F32, reduce_sum->shape().dimensions()));
   }
+  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
   call_shape = ShapeUtil::MakeTupleShape(output_shapes);
 
   // Input Order: {Q, K, V, bias*}
@@ -1315,7 +1345,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
         bcast_dimensions.push_back(dim - starting_index);
       }
 
-      Shape bcast_shape = bmm_1->shape();
+      const Shape& bcast_shape = bmm_1->shape();
       bias = comp->AddInstruction(HloInstruction::CreateBroadcast(
           bcast_shape, original_bias, bcast_dimensions));
     }
@@ -1335,7 +1365,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   if (activation_output) {
     HloInstruction* activation_gte =
         comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-            activation_output->shape(), fmha_call, 2));
+            activation_output->shape(), fmha_call, 1));
     TF_RETURN_IF_ERROR(comp->ReplaceInstructionWithDifferentShape(
                                activation_output, activation_gte,
                                /*preserve_sharding=*/false,
@@ -1373,7 +1403,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       fwd_fmha_call->backend_config<GpuBackendConfig>());
-  CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
+  const CudnnfMHABackendConfig& fwd_config =
+      gpu_config.cudnn_fmha_backend_config();
   bool is_causal_mask =
       fwd_config.mask_type() == CudnnfMHABackendConfig::CAUSAL;
   CudnnfMHABackendConfig bwd_fmha_config;
@@ -1391,7 +1422,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   // Forward activation
   // softmax_stats
   HloInstruction* fwd_act;
-  int64_t fwd_act_index = 2;
+  int64_t fwd_act_index = 1;
   fwd_act = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
       fwd_fmha_call->shape().tuple_shapes(fwd_act_index), fwd_fmha_call,
       fwd_act_index));
@@ -1485,12 +1516,9 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   }
 
   // Output order:
-  // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
-  // d_intermediate_tensor*, scratch, dbias*}
+  // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1), dbias*, workspace}
   std::vector<Shape> output_shapes = {
       bmm_1_grad_2->shape(), bmm_1_grad_1->shape(), bmm_2_grad_1->shape()};
-  // Reserved placeholder for workspace
-  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
   if (dbias) {
     // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
@@ -1502,6 +1530,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
         ShapeUtil::MakeShape(dbias->shape().element_type(), dbias_shape_vector);
     output_shapes.push_back(cudnn_dbias_shape);
   }
+  // Reserved placeholder for workspace
+  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1533,7 +1563,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloInstruction* dbias_user = dbias->users()[0];
     HloInstruction* cudnn_dbias_output =
         comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-            output_shapes.back(), fmha_bwd_call, 5));
+            output_shapes[3], fmha_bwd_call, 3));
     HloInstruction* reshape_dbias = comp->AddInstruction(
         HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
     TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
@@ -1545,7 +1575,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   return true;
 }
 
-Status RestoreFwdGraph(
+absl::Status RestoreFwdGraph(
     HloComputation* comp, HloInstruction* fwd_fmha_call, HloInstruction* bmm2,
     HloInstruction* activation, HloInstruction* original_bmm2_producer0,
     HloInstruction* original_bmm2_producer1,
@@ -1581,7 +1611,7 @@ Status RestoreFwdGraph(
   }
   TF_RETURN_IF_ERROR(
       comp->ReplaceInstruction(activation_gte, cloned_activation));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1596,7 +1626,7 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     const DebugOptions& debug_options =
         comp->parent()->config().debug_options();
     const se::dnn::VersionInfo cudnn_version =
-        GetDnnVersionInfo(stream_executor_, cudnn_version_);
+        GetDnnVersionInfoOrDefault(stream_executor_, cudnn_version_);
 #if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
     // CUDA needs to be >= 12.0 for cuDNN to work with all supported hardware.
     // Some cuDNN versions work with CUDA 11, but it is impractical for us to
@@ -1606,7 +1636,7 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version,
-            stream_executor::dnn::VersionInfo(8, 8, 0))) {
+            stream_executor::dnn::VersionInfo(8, 9, 4))) {
       return false;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
@@ -1691,13 +1721,11 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
                               matched_result.need_canonicalization));
           continue;
         }
-        // check if dbias exist and the cudnn version is > 8.9.1. We
-        // won't lower bwd if this condition is not met as we won't deal with
-        // unswizzling now
         if (matched_bwd_result.matched_dbias &&
-            !IsComputeCapabilityAndCudnnSupported(
-                compute_capability_, cudnn_version,
-                stream_executor::dnn::VersionInfo(8, 9, 1))) {
+            !(compute_capability_.IsAtLeastHopper() &&
+              compute_capability_.minor == 0 &&
+              cudnn_version >= stream_executor::dnn::VersionInfo(8, 9, 6))) {
+          VLOG(2) << "Flash attention dbias requires cudnn 8.9.6 + hopper.";
           // restore fwd graph if bwd pattern match failed
           TF_RETURN_IF_ERROR(
               RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,

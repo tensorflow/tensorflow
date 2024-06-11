@@ -88,16 +88,19 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
       }
     });
 
-    auto executable = std::make_unique<IfrtServingExecutable>(
-        program_id, model_name, entry_function_name.str(),
-        *std::move(submodule), ifrt_model_context.GetClient(),
-        &ifrt_model_context.GetThreadPool(),
-        &ifrt_model_context.GetLoadedVariableRegistry(),
-        &ifrt_model_context.GetRestoreTensorRegistry(),
-        ifrt_model_context.checkpoint_loader_queue(),
-        ifrt_model_context.GetDeviceMgr(),
-        ifrt_model_context.GetShapeRepresentationFn(),
-        ifrt_model_context.GetIfrtServingCoreSelector());
+    TF_ASSIGN_OR_RETURN(
+        auto executable,
+        IfrtServingExecutable::Create(
+            program_id, model_name, entry_function_name.str(),
+            *std::move(submodule), ifrt_model_context.GetClient(),
+            &ifrt_model_context.GetThreadPool(),
+            &ifrt_model_context.GetLoadedVariableRegistry(),
+            &ifrt_model_context.GetRestoreTensorRegistry(),
+            ifrt_model_context.checkpoint_loader_queue(),
+            ifrt_model_context.GetDeviceMgr(),
+            ifrt_model_context.GetShapeRepresentationFn(),
+            ifrt_model_context.GetIfrtServingCoreSelector(),
+            ifrt_model_context.GetCompilationEnvironmentProto()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.

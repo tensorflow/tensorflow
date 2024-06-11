@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
@@ -63,8 +62,8 @@ class PyHostValue {
   PyHostValue& operator=(const PyHostValue&) = delete;
   PyHostValue& operator=(PyHostValue&&) = delete;
 
-  Status CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
-                         ifrt::Array* ifrt_array);
+  absl::Status CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
+                               ifrt::Array* ifrt_array);
 
   absl::StatusOr<nanobind::object> AsNumPyArray(
       std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
@@ -152,7 +151,7 @@ class PyArray : public nanobind::object {
       tsl::RCReference<ifrt::Array> ifrt_array, nanobind::object sharding,
       bool weak_type, bool committed, bool skip_checks);
 
-  static Status RegisterTypes(nanobind::module_& m);
+  static absl::Status RegisterTypes(nanobind::module_& m);
 
   using Storage = PyArray_Storage;
 
@@ -238,7 +237,7 @@ class PyArray : public nanobind::object {
   const std::vector<PyArray>& py_arrays_cached();
 
   nanobind::object arrays();
-  Status set_arrays(nanobind::object obj);
+  absl::Status set_arrays(nanobind::object obj);
   absl::StatusOr<PyArray> FullyReplicatedShard();
 
   int num_shards() const {
@@ -258,17 +257,17 @@ class PyArray : public nanobind::object {
     return arg.type().is(PyArray::type());
   }
 
-  Status BlockUntilReady() const;
+  absl::Status BlockUntilReady() const;
 
   absl::Status BlockUntilResultStatusIsReady();
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes();
   absl::StatusOr<nanobind::object> SingleDeviceArrayToNumpyArray();
-  Status CopySingleDeviceArrayToHostAsync();
+  absl::Status CopySingleDeviceArrayToHostAsync();
   nanobind::dict CudaArrayInterface();
   absl::StatusOr<std::uintptr_t> UnsafeBufferPointer();
 
-  Status Delete();
+  absl::Status Delete();
 
   bool IsDeleted() const;
 

@@ -72,11 +72,11 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_executor.h"

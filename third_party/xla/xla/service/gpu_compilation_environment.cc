@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
@@ -66,10 +66,7 @@ absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar() {
   GpuCompilationEnvironment env;
   std::vector<tsl::Flag> flag_objects;
   InitializeFlagsForGpuCompEnv(&flag_objects, &env);
-  bool result = ParseFlagsFromEnvAndIgnoreUnknown("XLA_FLAGS", flag_objects);
-  if (!result) {
-    return InvalidArgument("Could not parse XLA_FLAGS.");
-  }
+  ParseFlagsFromEnvAndIgnoreUnknown("XLA_FLAGS", flag_objects);
   return env;
 }
 
@@ -79,7 +76,8 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
   return env;
 }
 
-Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env) {
+absl::Status InitializeMissingFieldsFromXLAFlags(
+    GpuCompilationEnvironment& env) {
   TF_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
                       CreateGpuCompEnvFromEnvVar());
 
@@ -108,7 +106,7 @@ Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env) {
   if (!missing_fields.empty()) {
     reflection->SwapFields(&env, &default_env, missing_fields);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

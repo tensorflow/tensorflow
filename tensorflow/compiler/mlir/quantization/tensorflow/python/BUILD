@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_export",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:types",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",

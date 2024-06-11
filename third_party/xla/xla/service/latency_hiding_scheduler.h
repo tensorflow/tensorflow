@@ -77,7 +77,12 @@ enum class ResourceUsageType {
 enum class ResourceHazardType {
   kShareable = 0,
   kSerial = 1,
-  kUnshareable = 2,
+  // The following hazard type represents the resources that are used by the
+  // async ops and should be released right after the estimated time cost has
+  // past. This hazard type is useful to prevent increasing such ops' overlaps
+  // more than necessary.
+  kNonextendable = 2,
+  kUnshareable = 3,
 };
 
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
@@ -137,6 +142,7 @@ class LatencyEstimator {
     return get_canonical_async_op_(hlo);
   }
   bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
+  bool IsP2pPair(const HloGraphNode& from, const HloGraphNode& target) const;
   explicit LatencyEstimator(
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
       : get_canonical_async_op_(func) {}
@@ -253,6 +259,12 @@ class AsyncTracker {
   virtual absl::InlinedVector<int64_t, 1> GetOccupiedSerialResourcesFromVector(
       const ResourcesVector& resources) const;
 
+  // Returns the list of the released nonextendable resources filtered from the
+  // given resources vector.
+  virtual absl::InlinedVector<int64_t, 1>
+  GetReleasedNonextendableResourcesFromVector(
+      const ResourcesVector& resources) const;
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -277,7 +289,7 @@ class AsyncTracker {
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
-  virtual Status InitializeScheduler(const HloModule* module) = 0;
+  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) = 0;
   virtual ~SchedulerCore() = default;
@@ -841,7 +853,7 @@ class DefaultSchedulerCore : public SchedulerCore {
         target_scheduling_rule_(target_scheduling_rule),
         early_target_scheduling_rule_(early_target_scheduling_rule),
         post_processing_fn_(post_processing_fn) {}
-  Status InitializeScheduler(const HloModule* module) override;
+  absl::Status InitializeScheduler(const HloModule* module) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   static bool AddOccupierToResource(
@@ -866,7 +878,7 @@ class DefaultSchedulerCore : public SchedulerCore {
       HloGraphNode* n, SchedulingState* sched_state) const;
   // Perform the scheduling of one or more instructions. Called every time the
   // ready set is not empty.
-  virtual Status SchedulingStep(SchedulingState* sched_state);
+  virtual absl::Status SchedulingStep(SchedulingState* sched_state);
   // Pick a node to schedule according to cost model.
   virtual absl::StatusOr<HloGraphNode*> FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,

@@ -37,12 +37,14 @@ constexpr const char kGrpcTransferProtocol[] = "grpc";
 // Client for communicating with the tf.data service worker.
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
-  DataServiceWorkerClient(const std::string& address,
-                          const std::string& protocol,
-                          const std::string& transfer_protocol,
-                          Allocator* allocator)
+  DataServiceWorkerClient(
+      const std::string& address, const std::string& protocol,
+      const std::string& transfer_protocol,
+      const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+      Allocator* allocator)
       : DataServiceClientBase(address, protocol),
         transfer_protocol_(transfer_protocol),
+        accelerator_device_info_(accelerator_device_info),
         allocator_(allocator) {}
 
   // Fetches an element from the worker.
@@ -66,6 +68,7 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 
  private:
   std::string transfer_protocol_;
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
   Allocator* allocator_;
 
   mutex mu_;
@@ -76,10 +79,11 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 
 // Creates and initializes a new tf.data service worker client to read
 // from the data transfer server specified in `info`.
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info,
-                              Allocator* allocator);
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(
+    const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+    Allocator* allocator);
 
 }  // namespace data
 }  // namespace tensorflow

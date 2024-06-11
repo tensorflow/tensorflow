@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
@@ -301,7 +302,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstructionBase* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
-    HloPredicate match_partition_id, HloPredicate match_replica_id) {
+    HloPredicate match_partition_id, HloPredicate match_replica_id,
+    bool allow_intervening_bitcast) {
   if (ar->opcode() == HloOpcode::kReduceScatter) {
     return SpecFromReduceScatterInstr(
         ar, num_partitions, num_replicas, min_rank, ar->constrain_layout(),
@@ -311,7 +313,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
       ar, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
       ar->constrain_layout(), ar->use_global_device_ids(),
-      ar->channel_id() && ar->opcode() == HloOpcode::kAllReduce);
+      ar->channel_id() && ar->opcode() == HloOpcode::kAllReduce,
+      allow_intervening_bitcast);
   return spec;
 }
 
@@ -336,8 +339,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id,
-    bool is_constrain_layout, bool use_global_device_ids,
-    bool is_cross_module) {
+    bool is_constrain_layout, bool use_global_device_ids, bool is_cross_module,
+    bool allow_intervening_bitcast) {
   if (!instruction->shape().IsArray() || is_constrain_layout ||
       (is_cross_module &&
        !instruction->GetModule()->config().use_spmd_partitioning())) {
@@ -382,6 +385,18 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     }
     user = reshape->users().front();
   }
+  HloInstruction* bitcast = nullptr;
+  if (allow_intervening_bitcast && user->opcode() == HloOpcode::kBitcast) {
+    VLOG(2) << "Allowing intervening bitcast " << user->ToString();
+    bitcast = user;
+    if (bitcast->user_count() != 1) {
+      VLOG(2) << "Bitcast following all-reduce has user count > 1"
+              << bitcast->ToString();
+      return std::nullopt;
+    }
+    user = bitcast->users().front();
+  }
+
   if (user->opcode() != HloOpcode::kDynamicSlice) {
     VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
     return std::nullopt;

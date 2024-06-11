@@ -251,7 +251,7 @@ class LiteralUtil {
 
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
@@ -260,7 +260,7 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation, and using the engine as entropy generator.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename E,
             typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
@@ -270,7 +270,7 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
                                                      T stddev);

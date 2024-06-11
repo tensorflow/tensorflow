@@ -86,8 +86,18 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
                                      CreateBuilderFunction create_builder)
     : filename_(filename),
       create_builder_(std::move(create_builder)),
-      tmpname_(strings::StrCat(filename, ".tempstate", random::New64())),
       slices_(0) {
+  Env* env = Env::Default();
+  Status status = env->CanCreateTempFile(filename_, &use_temp_file_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to get CanCreateTempFile attribute: " << filename_;
+    use_temp_file_ = true;
+  }
+
+  data_filename_ = filename_;
+  if (use_temp_file_) {
+    data_filename_ = strings::StrCat(filename_, ".tempstate", random::New64());
+  }
   VersionDef* versions = sts_.mutable_meta()->mutable_versions();
   versions->set_producer(TF_CHECKPOINT_VERSION);
   versions->set_min_consumer(TF_CHECKPOINT_VERSION_MIN_CONSUMER);
@@ -95,7 +105,7 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
 
 Status TensorSliceWriter::Finish() {
   Builder* b;
-  Status s = create_builder_(tmpname_, &b);
+  Status s = create_builder_(data_filename_, &b);
   if (!s.ok()) {
     delete b;
     return s;
@@ -114,18 +124,21 @@ Status TensorSliceWriter::Finish() {
 
   int64_t file_size;
   s = builder->Finish(&file_size);
-  // We need to rename the file to the proper name
-  if (s.ok()) {
-    s = Env::Default()->RenameFile(tmpname_, filename_);
+  // If use temp file, we need to rename the file to the proper name.
+  if (use_temp_file_) {
     if (s.ok()) {
-      VLOG(1) << "Written " << slices_ << " slices for "
-              << sts_.meta().tensor_size() << " tensors (" << file_size
-              << " bytes) to " << filename_;
+      s = Env::Default()->RenameFile(data_filename_, filename_);
+      if (s.ok()) {
+        VLOG(1) << "Written " << slices_ << " slices for "
+                << sts_.meta().tensor_size() << " tensors (" << file_size
+                << " bytes) to " << filename_;
+      } else {
+        LOG(ERROR) << "Failed to rename file " << data_filename_ << " to "
+                   << filename_;
+      }
     } else {
-      LOG(ERROR) << "Failed to rename file " << tmpname_ << " to " << filename_;
+      Env::Default()->DeleteFile(data_filename_).IgnoreError();
     }
-  } else {
-    Env::Default()->DeleteFile(tmpname_).IgnoreError();
   }
   return s;
 }

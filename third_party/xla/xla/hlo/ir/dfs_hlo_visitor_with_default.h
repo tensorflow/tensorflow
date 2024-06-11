@@ -48,239 +48,244 @@ class DfsHloVisitorWithDefaultBase
   ~DfsHloVisitorWithDefaultBase() override = default;
 
   // Default action performed on HloInstruction.
-  virtual Status DefaultAction(HloInstructionPtr hlo_instruction) = 0;
+  virtual absl::Status DefaultAction(HloInstructionPtr hlo_instruction) = 0;
 
-  Status HandleElementwiseUnary(HloInstructionPtr hlo) override {
+  absl::Status HandleElementwiseUnary(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleElementwiseBinary(HloInstructionPtr hlo) override {
-    return DefaultAction(hlo);
-  }
-
-  Status HandleBatchNormTraining(HloInstructionPtr hlo) override {
+  absl::Status HandleElementwiseBinary(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleBatchNormInference(HloInstructionPtr hlo) override {
+  absl::Status HandleBatchNormTraining(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleBatchNormGrad(HloInstructionPtr hlo) override {
+  absl::Status HandleBatchNormInference(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
 
-  Status HandleClamp(HloInstructionPtr clamp) override {
+  absl::Status HandleBatchNormGrad(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+
+  absl::Status HandleClamp(HloInstructionPtr clamp) override {
     return DefaultAction(clamp);
   }
-  Status HandleConcatenate(HloInstructionPtr concatenate) override {
+  absl::Status HandleConcatenate(HloInstructionPtr concatenate) override {
     return DefaultAction(concatenate);
   }
-  Status HandleSelect(HloInstructionPtr select) override {
+  absl::Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
-  Status HandleDot(HloInstructionPtr dot) override {
+  absl::Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
-  Status HandleConvolution(HloInstructionPtr convolution) override {
+  absl::Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
-  Status HandleFft(HloInstructionPtr fft) override {
+  absl::Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
-  Status HandleTriangularSolve(HloInstructionPtr hlo) override {
+  absl::Status HandleTriangularSolve(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleCholesky(HloInstructionPtr hlo) override {
+  absl::Status HandleCholesky(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleOptimizationBarrier(HloInstructionPtr hlo) override {
+  absl::Status HandleOptimizationBarrier(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleAllGather(HloInstructionPtr crs) override {
+  absl::Status HandleAllGather(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllGatherStart(HloInstructionPtr crs) override {
+  absl::Status HandleAllGatherStart(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllGatherDone(HloInstructionPtr crs) override {
+  absl::Status HandleAllGatherDone(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllReduce(HloInstructionPtr crs) override {
+  absl::Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleReduceScatter(HloInstructionPtr hlo) override {
+  absl::Status HandleReduceScatter(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleAllReduceStart(HloInstructionPtr hlo) override {
+  absl::Status HandleAllReduceStart(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleAllReduceDone(HloInstructionPtr hlo) override {
+  absl::Status HandleAllReduceDone(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleAllToAll(HloInstructionPtr hlo) override {
+  absl::Status HandleAllToAll(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleCollectiveBroadcast(HloInstructionPtr hlo) override {
+  absl::Status HandleCollectiveBroadcast(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleCollectivePermute(HloInstructionPtr hlo) override {
+  absl::Status HandleCollectivePermute(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleCollectivePermuteStart(HloInstructionPtr hlo) override {
+  absl::Status HandleCollectivePermuteStart(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleCollectivePermuteDone(HloInstructionPtr hlo) override {
+  absl::Status HandleCollectivePermuteDone(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleReplicaId(HloInstructionPtr hlo) override {
+  absl::Status HandleReplicaId(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandlePartitionId(HloInstructionPtr hlo) override {
+  absl::Status HandlePartitionId(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
-  Status HandleRng(HloInstructionPtr random) override {
+  absl::Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
-  Status HandleRngBitGenerator(HloInstructionPtr random) override {
+  absl::Status HandleRngBitGenerator(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
-  Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
+  absl::Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
-  Status HandleInfeed(HloInstructionPtr infeed) override {
+  absl::Status HandleInfeed(HloInstructionPtr infeed) override {
     return DefaultAction(infeed);
   }
-  Status HandleOutfeed(HloInstructionPtr outfeed) override {
+  absl::Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
   }
-  Status HandleReverse(HloInstructionPtr reverse) override {
+  absl::Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
   }
-  Status HandleSort(HloInstructionPtr sort) override {
+  absl::Status HandleSort(HloInstructionPtr sort) override {
     return DefaultAction(sort);
   }
-  Status HandleConstant(HloInstructionPtr constant) override {
+  absl::Status HandleConstant(HloInstructionPtr constant) override {
     return DefaultAction(constant);
   }
-  Status HandleIota(HloInstructionPtr iota) override {
+  absl::Status HandleIota(HloInstructionPtr iota) override {
     return DefaultAction(iota);
   }
-  Status HandleGetTupleElement(HloInstructionPtr get_tuple_element) override {
+  absl::Status HandleGetTupleElement(
+      HloInstructionPtr get_tuple_element) override {
     return DefaultAction(get_tuple_element);
   }
-  Status HandleParameter(HloInstructionPtr parameter) override {
+  absl::Status HandleParameter(HloInstructionPtr parameter) override {
     return DefaultAction(parameter);
   }
-  Status HandleFusion(HloInstructionPtr fusion) override {
+  absl::Status HandleFusion(HloInstructionPtr fusion) override {
     return DefaultAction(fusion);
   }
-  Status HandleCall(HloInstructionPtr call) override {
+  absl::Status HandleCall(HloInstructionPtr call) override {
     return DefaultAction(call);
   }
-  Status HandleCustomCall(HloInstructionPtr custom_call) override {
+  absl::Status HandleCustomCall(HloInstructionPtr custom_call) override {
     return DefaultAction(custom_call);
   }
-  Status HandleSlice(HloInstructionPtr slice) override {
+  absl::Status HandleSlice(HloInstructionPtr slice) override {
     return DefaultAction(slice);
   }
-  Status HandleDynamicSlice(HloInstructionPtr dynamic_slice) override {
+  absl::Status HandleDynamicSlice(HloInstructionPtr dynamic_slice) override {
     return DefaultAction(dynamic_slice);
   }
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleDynamicUpdateSlice(
       HloInstructionPtr dynamic_update_slice) override {
     return DefaultAction(dynamic_update_slice);
   }
-  Status HandleTuple(HloInstructionPtr tuple) override {
+  absl::Status HandleTuple(HloInstructionPtr tuple) override {
     return DefaultAction(tuple);
   }
-  Status HandleMap(HloInstructionPtr map) override {
+  absl::Status HandleMap(HloInstructionPtr map) override {
     return DefaultAction(map);
   }
-  Status HandleReduce(HloInstructionPtr reduce) override {
+  absl::Status HandleReduce(HloInstructionPtr reduce) override {
     return DefaultAction(reduce);
   }
-  Status HandleReduceWindow(HloInstructionPtr reduce_window) override {
+  absl::Status HandleReduceWindow(HloInstructionPtr reduce_window) override {
     return DefaultAction(reduce_window);
   }
-  Status HandleSelectAndScatter(HloInstructionPtr select_and_scatter) override {
+  absl::Status HandleSelectAndScatter(
+      HloInstructionPtr select_and_scatter) override {
     return DefaultAction(select_and_scatter);
   }
-  Status HandleBitcast(HloInstructionPtr bitcast) override {
+  absl::Status HandleBitcast(HloInstructionPtr bitcast) override {
     return DefaultAction(bitcast);
   }
-  Status HandleBroadcast(HloInstructionPtr broadcast) override {
+  absl::Status HandleBroadcast(HloInstructionPtr broadcast) override {
     return DefaultAction(broadcast);
   }
-  Status HandlePad(HloInstructionPtr pad) override {
+  absl::Status HandlePad(HloInstructionPtr pad) override {
     return DefaultAction(pad);
   }
-  Status HandleDynamicReshape(HloInstructionPtr dynamic_reshape) override {
+  absl::Status HandleDynamicReshape(
+      HloInstructionPtr dynamic_reshape) override {
     return DefaultAction(dynamic_reshape);
   }
-  Status HandleReshape(HloInstructionPtr reshape) override {
+  absl::Status HandleReshape(HloInstructionPtr reshape) override {
     return DefaultAction(reshape);
   }
-  Status HandleTranspose(HloInstructionPtr transpose) override {
+  absl::Status HandleTranspose(HloInstructionPtr transpose) override {
     return DefaultAction(transpose);
   }
-  Status HandleWhile(HloInstructionPtr xla_while) override {
+  absl::Status HandleWhile(HloInstructionPtr xla_while) override {
     return DefaultAction(xla_while);
   }
-  Status HandleConditional(HloInstructionPtr conditional) override {
+  absl::Status HandleConditional(HloInstructionPtr conditional) override {
     return DefaultAction(conditional);
   }
-  Status HandleAsyncStart(HloInstructionPtr async_start) override {
+  absl::Status HandleAsyncStart(HloInstructionPtr async_start) override {
     return DefaultAction(async_start);
   }
-  Status HandleAsyncUpdate(HloInstructionPtr async_update) override {
+  absl::Status HandleAsyncUpdate(HloInstructionPtr async_update) override {
     return DefaultAction(async_update);
   }
-  Status HandleAsyncDone(HloInstructionPtr async_done) override {
+  absl::Status HandleAsyncDone(HloInstructionPtr async_done) override {
     return DefaultAction(async_done);
   }
-  Status HandleCopyStart(HloInstructionPtr copy_start) override {
+  absl::Status HandleCopyStart(HloInstructionPtr copy_start) override {
     return DefaultAction(copy_start);
   }
-  Status HandleCopyDone(HloInstructionPtr copy_done) override {
+  absl::Status HandleCopyDone(HloInstructionPtr copy_done) override {
     return DefaultAction(copy_done);
   }
-  Status HandleRecv(HloInstructionPtr recv) override {
+  absl::Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
   }
-  Status HandleRecvDone(HloInstructionPtr recv_done) override {
+  absl::Status HandleRecvDone(HloInstructionPtr recv_done) override {
     return DefaultAction(recv_done);
   }
-  Status HandleSend(HloInstructionPtr send) override {
+  absl::Status HandleSend(HloInstructionPtr send) override {
     return DefaultAction(send);
   }
-  Status HandleTopK(HloInstructionPtr topk) override {
+  absl::Status HandleTopK(HloInstructionPtr topk) override {
     return DefaultAction(topk);
   }
-  Status HandleSendDone(HloInstructionPtr send_done) override {
+  absl::Status HandleSendDone(HloInstructionPtr send_done) override {
     return DefaultAction(send_done);
   }
-  Status HandleGather(HloInstructionPtr gather) override {
+  absl::Status HandleGather(HloInstructionPtr gather) override {
     return DefaultAction(gather);
   }
-  Status HandleScatter(HloInstructionPtr scatter) override {
+  absl::Status HandleScatter(HloInstructionPtr scatter) override {
     return DefaultAction(scatter);
   }
-  Status HandleAfterAll(HloInstructionPtr token) override {
+  absl::Status HandleAfterAll(HloInstructionPtr token) override {
     return DefaultAction(token);
   }
-  Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
+  absl::Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
     return DefaultAction(get_size);
   }
-  Status HandleSetDimensionSize(HloInstructionPtr get_size) override {
+  absl::Status HandleSetDimensionSize(HloInstructionPtr get_size) override {
     return DefaultAction(get_size);
   }
-  Status HandleAddDependency(HloInstructionPtr add_dependency) override {
+  absl::Status HandleAddDependency(HloInstructionPtr add_dependency) override {
     return DefaultAction(add_dependency);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
-  Status FinishVisit(HloInstructionPtr /*root*/) override { return OkStatus(); }
+  absl::Status FinishVisit(HloInstructionPtr /*root*/) override {
+    return absl::OkStatus();
+  }
 
  private:
   DfsHloVisitorWithDefaultBase(const DfsHloVisitorWithDefaultBase&) = delete;
@@ -304,7 +309,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   absl::StatusOr<bool> RunOnModule(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
-    Status status;
+    absl::Status status;
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
       status = computation->Accept(this);
@@ -314,8 +319,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   }
 
   // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return OkStatus();
+  absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+    return absl::OkStatus();
   }
 
   bool changed() const { return changed_; }
@@ -323,14 +328,14 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  protected:
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceWithNewInstruction(
+  // Returns the absl::Status representing the result of the replace operation.
+  absl::Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
     VLOG(3) << "Replacing instruction:" << "\n  old: "
             << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
-    Status status = old_instruction->parent()->ReplaceWithNewInstruction(
+    absl::Status status = old_instruction->parent()->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction));
     if (ABSL_PREDICT_TRUE(status.ok())) {
       changed_ = true;
@@ -340,7 +345,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
+  // Returns the absl::Status representing the result of the replace operation.
   absl::StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction,
                                           bool preserve_sharding) {
@@ -356,8 +361,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
     return changed_or;
   }
 
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
+  absl::Status ReplaceInstruction(HloInstruction* old_instruction,
+                                  HloInstruction* new_instruction) {
     absl::StatusOr<bool> changed_or =
         ReplaceInstruction(old_instruction, new_instruction,
                            /*preserve_sharding=*/false);
@@ -375,7 +380,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 };
 
 // (Const)FunctionVisitor lets you transform an
-// std::function<Status((const) HloInstruction*)> into a (Const)DfsHloVisitor.
+// std::function<absl::Status((const) HloInstruction*)> into a
+// (Const)DfsHloVisitor.
 //
 // This is useful if you have code that needs to handle visitors in the form of
 // both std::function and DfsHloVisitor.  You can wrap the function in a
@@ -385,10 +391,10 @@ class FunctionVisitorBase
     : public DfsHloVisitorWithDefaultBase<HloInstructionPtr> {
  public:
   explicit FunctionVisitorBase(
-      std::function<Status(HloInstructionPtr)> visitor_func)
+      std::function<absl::Status(HloInstructionPtr)> visitor_func)
       : visitor_func_(std::move(visitor_func)) {}
 
-  Status DefaultAction(HloInstructionPtr hlo_instruction) override {
+  absl::Status DefaultAction(HloInstructionPtr hlo_instruction) override {
     return visitor_func_(hlo_instruction);
   }
 
@@ -396,7 +402,7 @@ class FunctionVisitorBase
   FunctionVisitorBase(const FunctionVisitorBase&) = delete;
   FunctionVisitorBase& operator=(const FunctionVisitorBase&) = delete;
 
-  std::function<Status(HloInstructionPtr)> visitor_func_;
+  std::function<absl::Status(HloInstructionPtr)> visitor_func_;
 };
 
 using FunctionVisitor = FunctionVisitorBase<HloInstruction*>;

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -81,9 +82,8 @@ TEST_F(ScatterFusionTest, ScatterFusion) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto scatter_fusion = dynamic_cast<ScatterFusion*>(emitter.get());
   ASSERT_NE(scatter_fusion, nullptr);
   EXPECT_EQ(scatter_fusion->launch_dimensions().launch_bound(),
@@ -138,9 +138,8 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto fusion = dynamic_cast<ScatterFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
@@ -148,7 +147,7 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     ((bl_x * 16 + th_x floordiv 8) floordiv 25) mod 42,
     ((bl_x * 32 + th_x floordiv 4) floordiv 5) mod 10,
-    (th_x + bl_x * 128) mod 20)
+    (bl_x * 128 + th_x) mod 20)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]

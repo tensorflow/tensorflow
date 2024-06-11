@@ -77,6 +77,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -96,8 +98,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

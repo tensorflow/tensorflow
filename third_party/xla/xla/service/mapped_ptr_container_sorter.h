@@ -43,9 +43,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -94,9 +94,9 @@ class MappedPtrContainerSorter {
   // - unmapped_index() returns an invalid index
   // - An internal error occurs. (This should theoretically not happen.)
   template <typename OrderedTy, typename UnorderedTy>
-  static Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
-                     const OrderedTy& ordered_container,
-                     UnorderedTy& unordered_container);
+  static absl::Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
+                           const OrderedTy& ordered_container,
+                           UnorderedTy& unordered_container);
 
  private:
   // A class for sorting the indices of the unordered_container.
@@ -114,8 +114,8 @@ class MappedPtrContainerSorter {
     // Specify the partial ordering value of a mapped element from the
     // unordered container. The partial ordering is amongst other mapped
     // elements.
-    Status AddMappedElement(size_t unordered_container_index,
-                            size_t partial_order);
+    absl::Status AddMappedElement(size_t unordered_container_index,
+                                  size_t partial_order);
 
     // Specify the index (amongst mapped elements), where an unmapped element
     // should be inserted. The unmapped element is inserted just after the
@@ -227,7 +227,8 @@ MappedPtrContainerSorter<PointedToTy>::InvalidIndexFn() {
 }
 
 template <typename PointedToTy>
-Status MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
+absl::Status
+MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
     size_t unordered_container_index, size_t partial_order) {
   if (partial_order >= mapped_element_indices_by_partial_order_.size()) {
     return InternalStrCat("invalid partial order: ", partial_order, " v max(",
@@ -236,7 +237,7 @@ Status MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
 
   mapped_element_indices_by_partial_order_[partial_order].push_back(
       unordered_container_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename PointedToTy>
@@ -440,7 +441,7 @@ void MappedPtrContainerSorter<PointedToTy>::Reorder(
 
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
-Status MappedPtrContainerSorter<PointedToTy>::Sort(
+absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;
@@ -448,7 +449,7 @@ Status MappedPtrContainerSorter<PointedToTy>::Sort(
       indices, ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
                                  unordered_container));
   Reorder(std::move(indices), unordered_container);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

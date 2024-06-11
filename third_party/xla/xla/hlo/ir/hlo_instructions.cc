@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -2016,14 +2016,30 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         clone->ReplaceOperandWith(operand_num, called_computation_parameter));
   }
 
+  if (clone != instruction_to_append) {
+    VLOG(2) << "New clone:\n" << clone->ToString();
+  }
+
   if (add_output) {
     int64_t user_count = instruction_to_append->user_count();
     CHECK(user_count > 0 || instruction_to_append->IsRoot())
         << "Unable to append instruction: " << instruction_to_append->ToString()
         << ", which has " << user_count << " users.";
+    HloInstruction* root = called_computation_root();
+    // Check whether we have replaced an existing fusion root with 'clone'. If
+    // yes, no need to add a duplicate root.
+    if (root->opcode() == HloOpcode::kTuple) {
+      for (int64_t i = 0; i < root->operand_count(); ++i) {
+        if (root->operand(i) == clone) {
+          HloInstruction* new_gte = AddInstruction(
+              HloInstruction::CreateGetTupleElement(clone->shape(), this, i));
+          TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+          return clone;
+        }
+      }
+    }
     // If this is already a multioutput instruction, expand the root tuple
     // by 1.
-    HloInstruction* root = called_computation_root();
     HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
     if (root->opcode() == HloOpcode::kTuple) {
@@ -2085,9 +2101,6 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     }
   }
 
-  if (clone != instruction_to_append) {
-    VLOG(2) << "New clone:\n" << clone->ToString();
-  }
   return clone;
 }
 
@@ -2498,9 +2511,9 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
   return new_fusion_instruction;
 }
 
-Status HloFusionInstruction::DeduplicateFusionOperands() {
+absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (IsCustomFusion()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
@@ -2515,12 +2528,12 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
     }
   }
   if (operands_to_remove.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(fused_instructions_computation()
                          ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloCallInstruction::HloCallInstruction(const Shape& shape,

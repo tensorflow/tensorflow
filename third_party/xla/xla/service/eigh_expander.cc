@@ -236,9 +236,9 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
 // implicit way of computing a tournament for n players such that each player
 // plays every other player exactly once in n - 1 rounds. See the Brent/Luk
 // paper for more details.
-Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
-                      XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
-                      XlaOp& v_br) {
+absl::Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
+                            XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
+                            XlaOp& v_br) {
   TF_ASSIGN_OR_RETURN(Eigh2x2 rotation,
                       HermitianEigenDecomposition2x2(w_tl, w_tr, w_br));
 
@@ -260,7 +260,7 @@ Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
   ApplyJacobiRotationOverRows(rotation, v_tl, v_tr, v_bl, v_br);
   PermuteRowsInColumn(v_tl, v_bl);
   PermuteRowsInColumn(v_tr, v_br);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct FrobeniusNorms {
@@ -351,7 +351,7 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
 
 }  // namespace
 
-Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
+absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
@@ -370,7 +370,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This is the cyclic Jacobi iteration.

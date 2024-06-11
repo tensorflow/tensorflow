@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/protobuf.h"
@@ -39,57 +40,76 @@ namespace xla {
 absl::StatusOr<std::string> BackendConfigToRawString(
     const tsl::protobuf::Message& proto);
 
-// A wrapper around the BackendConfig proto. The wrapper holds either a proto
-// object or a proto encoded as a JSON string. If the wrapper holds a proto and
-// the string is requested, it is lazily computed and stored. If the wrapper
-// holds only a string, a nullptr proto is always returned.
+// Clones the provided proto. If the input is nullptr, the result is also
+// nullptr.
+std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
+    const tsl::protobuf::Message* proto);
+
+// A wrapper around the BackendConfig proto. It can be initialized either with
+// a proto object or a string representing the JSON encoding of a proto. Once
+// the wrapper is initialized (either during construction or via an assignment)
+// it becomes immutable and any further assignment attempts will fail.
+//
+// When the wrapper is initialized only the provided format is stored. If the
+// other format is requested from the wrapper later, it is lazily computed and
+// cached internally, before it is returned. Subsequent accesses will directly
+// return the cached value.
+//
+// All accesses are protected via a mutex because instances of this class are
+// accessed concurrently during auto tuning.
 class BackendConfigWrapper {
  public:
-  const tsl::protobuf::Message* GetProtoPtr() const { return proto_.get(); }
+  BackendConfigWrapper() = default;
+  explicit BackendConfigWrapper(std::string raw_string)
+      : raw_string_(std::move(raw_string)) {}
+  explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
+      : proto_(CloneBackendConfigProto(&proto)) {}
+  BackendConfigWrapper(const BackendConfigWrapper& other) {
+    absl::MutexLock other_lock{&other.mutex_};
+    proto_ = CloneBackendConfigProto(other.proto_.get());
+    raw_string_ = other.raw_string_;
+  }
 
-  const std::string& GetRawString() const;
-
-  BackendConfigWrapper Clone() const;
-
+  BackendConfigWrapper& operator=(BackendConfigWrapper&& other);
   bool operator==(const BackendConfigWrapper& other) const;
   bool operator!=(const BackendConfigWrapper& other) const {
     return !(*this == other);
   }
+
+  // Returns a reference to the raw string that corresponds to this backend
+  // config.
+  //
+  // WARNING: This function returns a reference which is valid at the time the
+  //          call terminates. If the BackendConfig is reassigned the reference
+  //          becomes invalid, which could lead to subtle and hard to detect
+  //          bugs, especially in multi-threaded code. The caller is responsible
+  //          for ensuring the lifetime of the referenced string.
+  //
+  //          Prefer to use the safer (but potentially slower) GetProto().
+  const std::string& GetRawString() const {
+    absl::WriterMutexLock lock{&mutex_};
+    return GetRawStringWithoutMutex();
+  }
+  absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
 
   bool empty() const {
     absl::MutexLock lock{&mutex_};
     return proto_ == nullptr && raw_string_.empty();
   }
 
-  void clear() {
-    proto_.reset();
-    absl::MutexLock lock{&mutex_};
-    raw_string_.clear();
-  }
-
-  BackendConfigWrapper() = default;
-  BackendConfigWrapper(BackendConfigWrapper&& other)
-      : proto_(std::move(other.proto_)), raw_string_([&] {
-          absl::MutexLock lock{&other.mutex_};
-          return std::move(other.raw_string_);
-        }()) {}
-
-  BackendConfigWrapper& operator=(std::string raw_string);
-  BackendConfigWrapper& operator=(const tsl::protobuf::Message& proto);
-  BackendConfigWrapper& operator=(BackendConfigWrapper&& other) {
-    proto_ = std::move(other.proto_);
-    absl::MutexLock destination_lock{&mutex_};
-    absl::MutexLock source_lock{&other.mutex_};
-    raw_string_ = std::move(other.raw_string_);
-    return *this;
-  }
-
-  void SetProto(const tsl::protobuf::Message& proto);
-
  private:
-  std::unique_ptr<tsl::protobuf::Message> proto_;
-  // If proto_ is not null, raw_string_ is a lazy cache of its string format.
+  const std::string& GetRawStringWithoutMutex() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // proto_ and raw_string_ must be consistent. If one is set, the other
+  // will be lazily initialized when requested. Because this class is accessed
+  // concurrently, a mutex is used to protect all access.
+  //
+  // Unfortunately, all members have to be mutable, since either of them can be
+  // the cached one.
   mutable absl::Mutex mutex_;
+  mutable std::unique_ptr<tsl::protobuf::Message> proto_
+      ABSL_GUARDED_BY(mutex_);
   mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
 };
 

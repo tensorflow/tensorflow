@@ -47,7 +47,7 @@ class SerializeTensorOpTest : public OpsTestBase {
                                   Tensor* serialized, Tensor* parse_output) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4> inputs;
     inputs.push_back({nullptr, serialized});
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),

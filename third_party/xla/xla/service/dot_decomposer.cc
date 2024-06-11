@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -48,7 +48,7 @@ namespace {
 // * Batch dimensions are the most major dimensions.
 // This requires transposing and reshaping of the lhs and rhs, and reshaping the
 // output batch to the original shape.
-Status CanonicalizeDot(HloDotInstruction* original_dot) {
+absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   auto computation = original_dot->parent();
   const auto& original_dnums = original_dot->dot_dimension_numbers();
   const int64_t num_batch_dims = original_dnums.lhs_batch_dimensions_size();

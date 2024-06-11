@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
@@ -60,6 +61,11 @@ class ServingExecutableRegistry {
     // Unregisters the owned executable, if any, early (before the destructor).
     // Calling this method multiple times is a no-op.
     void Release();
+
+    // Freezes the program's compilation. After Freeze() is called, no new model
+    // signature will be compiled. Using a signature or an input shape that
+    // wasn't compiled before the freeze will lead to an error.
+    absl::Status Freeze();
 
    private:
     friend class ServingExecutableRegistry;

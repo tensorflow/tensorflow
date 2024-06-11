@@ -106,10 +106,10 @@ TiledHloInstruction::Create(const HloInstruction* hlo,
 
 std::string TiledHloInstruction::ToString() const {
   std::stringstream ss;
-  ss << "hlo: " << hlo_->ToString() << "\n";
-  ss << "tile_sizes: {" << absl::StrJoin(tile_sizes_, ", ") << "}\n";
-  ss << "tile_strides: {" << absl::StrJoin(tile_strides_, ", ") << "}\n";
-  ss << "block_id_to_tile_offsets_indexing: "
+  ss << "\thlo: " << hlo_->ToString() << "\n";
+  ss << "\ttile_sizes: (" << absl::StrJoin(tile_sizes_, ", ") << ")\n";
+  ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
+  ss << "\tblock_id_to_tile_offsets_indexing: "
      << block_id_to_tile_offsets_indexing_;
   return ss.str();
 }

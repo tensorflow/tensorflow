@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_WHILE_LOOP_UNROLLER_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,7 +26,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -40,25 +44,17 @@ struct WhileLoopConfig {
   int64_t induction_var_idx;
 };
 
-// Runs a sequence of passes that are necessary to prepare loops for unrolling.
-// Failure to run these passes will prevent unroller from unrolling loops that
-// would have been otherwise unrollable.
-absl::StatusOr<bool> PrepareModuleForUnrolling(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads);
-
-// Returns the list of unrollable loops in the given module
-
-std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads);
-
-// Unrolls the given while loop with the default behaviour set to full unroll.
-// If wrap_in_trivial_loop is set, the unrolled body of the loop will be wrapped
-// in a loop with trip count of one.
-absl::StatusOr<bool> Unroll(HloInstruction* while_op,
-                            int64_t unroll_factor = -1,
-                            bool wrap_in_trivial_loop = false);
+// Check if `instr` is a dynamic index instruction, i.e., dynamic-slice or
+// dynamic-update-slice with the given input that operates on the entire
+// shape of the instruction. To satisfy this:
+// 1. All start indices must be constant zero except only a single dimension.
+// 2. The start index of that dimension should be equal to the enclosing loop
+//    induction variable.
+// 3. And, the size of that dimension must match the loop trip count.
+// If so, it returns the dynamic index.
+std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
+    HloInstruction* instr, HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config);
 
 // This pass unrolls while loops with the given unrolling factor. The value of
 // unroll_factor = -1 will fully unroll the loop.
@@ -86,6 +82,33 @@ class WhileLoopUnroller : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Runs a sequence of passes that are necessary to prepare loops for
+  // unrolling. Failure to run these passes will prevent unroller from unrolling
+  // loops that would have been otherwise unrollable.
+  static absl::StatusOr<bool> PrepareModuleForUnrolling(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Function that decides whether a loop is unrollable or not and returns the
+  // loop config.
+  static std::optional<WhileLoopConfig> IsLoopUnrollable(
+      HloInstruction* while_op);
+
+  // Returns the list of unrollable loops in the given module
+  static std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
+  GetUnrollableLoops(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Unrolls the given while loop with the default behaviour set to full unroll.
+  // If wrap_in_trivial_loop is set, the unrolled body of the loop will be
+  // wrapped in a loop with trip count of one. Forcing unroll will not perform
+  // soft checking of the conditions.
+  static absl::StatusOr<bool> Unroll(HloInstruction* while_op,
+                                     int64_t unroll_factor = -1,
+                                     bool wrap_in_trivial_loop = false,
+                                     bool force_unroll = false);
 
  private:
   int64_t unroll_factor_;

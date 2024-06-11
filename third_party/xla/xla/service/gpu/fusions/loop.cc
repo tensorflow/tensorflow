@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/loop.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -42,7 +45,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
 
@@ -247,7 +249,7 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
   CHECK_EQ(output_to_input_indexing_set.size(), 1);
   IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
       *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
+  thread_id_to_input_indexing_map.Simplify();
   return thread_id_to_input_indexing_map;
 }
 

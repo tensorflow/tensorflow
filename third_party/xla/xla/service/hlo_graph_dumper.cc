@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
@@ -283,10 +283,11 @@ std::string NodeColorAttributes(ColorScheme color) {
                    node_colors.stroke_color, node_colors.fill_color);
 }
 
-// Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
-// graphviz HTML-like string.
+// Replaces <> with &lt;&gt; and " with &quot;, so that this string is safe(er)
+// for use in a graphviz HTML-like string.
 std::string HtmlLikeStringSanitize(absl::string_view s) {
-  return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
+  return absl::StrReplaceAll(s,
+                             {{"<", "&lt;"}, {">", "&gt;"}, {"\"", "&quot;"}});
 }
 
 bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {
@@ -1842,14 +1843,14 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
 
-    Status Append(absl::string_view data) override {
+    absl::Status Append(absl::string_view data) override {
       absl::StrAppend(data_, data);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status Close() override { return OkStatus(); }
-    Status Flush() override { return OkStatus(); }
-    Status Sync() override { return OkStatus(); }
+    absl::Status Close() override { return absl::OkStatus(); }
+    absl::Status Flush() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
 
    private:
     std::string* data_;

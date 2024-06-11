@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -28,6 +29,10 @@ namespace mlir_converter {
 // encoding attribute, if it is not the default layout. `shape` must be an
 // array.
 mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b);
+
+// Converts an XLA primitive type to an MLIR type. All integers are converted to
+// signless integers.
+mlir::Type PrimitiveTypeToMlirType(PrimitiveType type, mlir::OpBuilder& b);
 
 // If `shape` is a tuple, returns the converted tuple shapes. Otherwise returns
 // just the converted shape. Nested tuples are not supported.

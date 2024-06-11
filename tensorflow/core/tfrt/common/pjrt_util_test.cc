@@ -14,18 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "tensorflow/core/framework/resource_mgr.h"
+#include <memory>
+#include <utility>
+
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
@@ -42,6 +46,18 @@ TEST(PjRtStateResourceManagerTest, SetNullPjRtClient) {
   EXPECT_THAT(
       SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
       StatusIs(error::INVALID_ARGUMENT, HasSubstr("PJRT client is nullptr")));
+}
+
+TEST(PjRtGpuClientCreationInfoTest, SetAndGet) {
+  auto info = std::make_unique<PjRtGpuClientCreationInfo>();
+  info->allowed_devices.insert(123);
+  TF_ASSERT_OK(
+      SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(std::move(info)));
+
+  TF_ASSERT_OK_AND_ASSIGN(PjRtGpuClientCreationInfo * retrieved_info,
+                          GetPjRtGpuClientCreationInfo());
+
+  EXPECT_THAT(retrieved_info->allowed_devices, ElementsAre(123));
 }
 
 }  // namespace

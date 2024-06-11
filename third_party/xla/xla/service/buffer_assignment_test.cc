@@ -62,12 +62,12 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit InstructionListVisitor(const HloInstruction* root) : root_(root) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     // For each instruction, just push it on the list after walking the
     // operands.
     instructions_.push_back(hlo);
     VLOG(0) << "List instruction " << hlo->ToString();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
@@ -714,7 +714,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       color_map[value.defining_instruction()] = color;
       value.set_color(BufferValue::Color(color++));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -788,7 +788,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
         value.set_color(LogicalBuffer::Color(0));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -2847,7 +2847,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             .set_color(BufferValue::Color(color));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   BufferAssigner::PrivateStacks private_stacks;
@@ -2957,7 +2957,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             .set_color(BufferValue::Color(color));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   BufferAssigner::PrivateStacks private_stacks;
@@ -3040,6 +3040,53 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   EXPECT_EQ(get_slice("p0", {}).size(), 32);
   EXPECT_EQ(get_slice("dynamic-update-slice", {}).size(), 32);
+}
+
+TEST_F(BufferAssignmentTest, AsyncCustomCall) {
+  const char* hlo_text = R"(
+HloModule AsyncCustomCall, is_scheduled=true
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %neg_0 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[])
+                 custom-call-start(f32[4096]{0} %neg_0),
+                 custom_call_target="Foo"
+  %async-done = f32[4096]{0} custom-call-done(((f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
+  ROOT %neg_1 = f32[4096]{0} negate(f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
+  HloInstruction* async_done = FindInstruction(m.get(), "async-done");
+  EXPECT_FALSE(buffers->SharesTopLevelSlice(neg_0, async_done));
+}
+
+TEST_F(BufferAssignmentTest, AsyncCustomCallWithAliasing) {
+  const char* hlo_text = R"(
+HloModule AsyncCustomCall, is_scheduled=true
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %neg_0 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[])
+                 custom-call-start(f32[4096]{0} %neg_0),
+                 custom_call_target="Foo",
+                 output_to_operand_aliasing={{}: (0, {})}
+  %async-done = f32[4096]{0} custom-call-done(((f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
+  ROOT %neg_1 = f32[4096]{0} negate(f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
+  HloInstruction* async_done = FindInstruction(m.get(), "async-done");
+  EXPECT_TRUE(buffers->SharesTopLevelSlice(neg_0, async_done));
 }
 
 TEST_F(BufferAssignmentTest, BufferIsolation) {

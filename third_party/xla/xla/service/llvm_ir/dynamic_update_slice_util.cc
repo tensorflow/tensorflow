@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -100,7 +101,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // Emits a sequential loop if launch_dimensions is null.
 using IndexGenerator = std::function<absl::StatusOr<llvm::Value*>(int64_t)>;
 
-static Status EmitDynamicUpdateSliceInPlaceImpl(
+static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const IndexGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
@@ -135,7 +136,8 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
                         max_bound, start_multi_index[i]);
   }
 
-  auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
+  auto loop_body_emitter =
+      [&](const IrArray::Index& update_index) -> absl::Status {
     // Calculate output_index, where we'll write the value from update.  For
     // each dimension,
     //
@@ -154,7 +156,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (launch_dimensions != nullptr) {
@@ -165,10 +167,9 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
   return LoopEmitter(loop_body_emitter, update_shape, b).EmitLoop(name);
 }
 
-Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
-                                     const IrArray& output_array,
-                                     absl::string_view name,
-                                     llvm::IRBuilder<>* b) {
+absl::Status EmitDynamicUpdateSliceInPlace(
+    absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
+    absl::string_view name, llvm::IRBuilder<>* b) {
   VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
 
   // No need to use operand_arrays[0], the input array of the
@@ -196,7 +197,7 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
 // EmitParallelFusedDynamicUpdateSliceInPlace.
 //
 // Emits a sequential loop if launch_dimensions is null.
-static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
+static absl::Status EmitFusedDynamicUpdateSliceInPlaceImpl(
     const HloComputation* fusion,
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,
@@ -249,13 +250,12 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
         IrName(dynamic_update_slice), b));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
-                                          const IrArray& fusion_output_array,
-                                          FusedIrEmitter* fused_emitter,
-                                          llvm::IRBuilder<>* b) {
+absl::Status EmitFusedDynamicUpdateSliceInPlace(
+    HloInstruction* fusion, const IrArray& fusion_output_array,
+    FusedIrEmitter* fused_emitter, llvm::IRBuilder<>* b) {
   HloInstruction* dus = fusion->called_computations()[0]->root_instruction();
   CHECK_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
   std::vector<std::pair<const HloInstruction*, const IrArray>>
@@ -266,7 +266,7 @@ Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
       /*launch_dimensions=*/nullptr, b);
 }
 
-Status EmitParallelFusedDynamicUpdateSliceInPlace(
+absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
     const HloComputation* fusion,
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,

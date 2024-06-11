@@ -124,7 +124,7 @@ const HloInstructionSequence& HloSchedule::sequence(
   return sequences_.at(computation->unique_id());
 }
 
-Status HloSchedule::UpdateComputationSchedule(
+absl::Status HloSchedule::UpdateComputationSchedule(
     const HloComputation* computation) {
   // Map from unique ID to HloInstruction pointer for instructions in the
   // computation.
@@ -209,10 +209,10 @@ Status HloSchedule::UpdateComputationSchedule(
   }
 
   set_sequence(computation, std::move(new_sequence));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloSchedule::Update(
+absl::Status HloSchedule::Update(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // The schedule must contain a sequence for every non-fusion computation in
   // the module for the specified threads, but can have sequences for
@@ -268,7 +268,7 @@ Status HloSchedule::Update(
   }
 
   TF_RETURN_IF_ERROR(Verify());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_map<std::string, int64_t>
@@ -282,7 +282,7 @@ HloSchedule::num_sequences_by_execution_thread() const {
   return sequence_num_by_execution_threads;
 }
 
-Status HloSchedule::Verify() const {
+absl::Status HloSchedule::Verify() const {
   VLOG(2) << "VerifySchedule()";
   XLA_VLOG_LINES(2, ToString());
 
@@ -346,7 +346,7 @@ Status HloSchedule::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

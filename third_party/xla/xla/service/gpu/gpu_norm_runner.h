@@ -22,11 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
@@ -118,6 +118,22 @@ struct GpuNormConfig {
     return config;
   }
 
+  absl::StatusOr<se::dnn::NormOp::Config> AsDnnNormOpConfig() const {
+    TF_ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
+                        GetDNNNormKindFromCudnnNormKind(kind));
+    return se::dnn::NormOp::Config{norm_kind,
+                                   epsilon,
+                                   x_descriptor,
+                                   scale_descriptor,
+                                   y_or_dx_descriptor,
+                                   bias_descriptor,
+                                   dy_descriptor,
+                                   expectation_descriptor,
+                                   norm_factor_descriptor,
+                                   dscale_descriptor,
+                                   dbias_descriptor};
+  }
+
   double epsilon;
   CudnnNormKind kind;
   se::dnn::AlgorithmDesc algorithm;
@@ -168,7 +184,7 @@ absl::Status RunGpuNorm(const GpuNormConfig& conv_config,
                         const se::DeviceMemoryBase& y_or_dx_buffer,
                         std::optional<se::DeviceMemoryBase> bias_buffer,
                         std::optional<se::DeviceMemoryBase> dy_buffer,
-                        std::optional<se::DeviceMemoryBase> exepctation_buffer,
+                        std::optional<se::DeviceMemoryBase> expectation_buffer,
                         std::optional<se::DeviceMemoryBase> norm_factor_buffer,
                         std::optional<se::DeviceMemoryBase> dscale_buffer,
                         std::optional<se::DeviceMemoryBase> dbias_buffer,

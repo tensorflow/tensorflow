@@ -185,6 +185,23 @@ TEST_F(FloatConversionTest, F32ToS8) {
                             ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(FloatConversionTest, F32ToU8) {
+  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
+                                 iota = f32[1000] iota(), iota_dimension=0
+                                 c500 = f32[] constant(500)
+                                 c500_b = f32[1000] broadcast(c500), dimensions={}
+                                 sub = f32[1000] subtract(iota, c500_b)
+                                 ROOT c = u8[1000] convert(sub)
+                               })",
+                            ErrorSpec{1e-5, 1e-5}));
+
+  EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
+                                 n = f32[] constant(nan)
+                                 ROOT c = u8[] convert(n)
+                               })",
+                            ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(FloatConversionTest, BF16ToS16IsBroken) {
   EXPECT_TRUE(RunAndCompare(R"(ENTRY m {
                                  iota = u16[65536] iota(), iota_dimension=0

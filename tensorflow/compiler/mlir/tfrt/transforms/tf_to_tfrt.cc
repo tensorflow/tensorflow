@@ -738,11 +738,11 @@ class FallbackBatchFunctionOpConversion
 
 // Lower a tf.Const op that creates a string tensor to a native
 // corert.create_string_tensor op.
-class CoreRTConstDenseTensorOpConversion
+class FallbackConstDenseTensorOpConversion
     : public mlir::OpConversionPattern<mlir::TF::ConstOp> {
  public:
-  CoreRTConstDenseTensorOpConversion(mlir::MLIRContext *context,
-                                     CoreRTConverter *corert_converter)
+  FallbackConstDenseTensorOpConversion(mlir::MLIRContext *context,
+                                       CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<mlir::TF::ConstOp>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter) {}
 
@@ -756,8 +756,8 @@ class CoreRTConstDenseTensorOpConversion
     if (auto parsed_device_name = corert_converter_.ParseDeviceName(op))
       if (parsed_device_name->device_type != DEVICE_CPU) return failure();
 
-    auto new_op = rewriter.create<tfrt::corert::ConstDenseTensorOp>(
-        op.getLoc(), corert_converter_.tensor_handle_type(),
+    auto new_op = rewriter.create<tfrt::fallback_async::ConstDenseTensorOp>(
+        op.getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
         mlir::cast<DenseElementsAttr>(op.getValue()));
     rewriter.replaceOp(op, new_op->getResult(0));
     return success();
@@ -860,11 +860,11 @@ class TFRTFuncOpSignatureConversion
 
 // Lower a tf.Const op that creates a string tensor to a native
 // corert.create_string_tensor op.
-class CoreRTConstStringTensorOpConversion
+class FallbackConstStringTensorOpConversion
     : public mlir::OpConversionPattern<mlir::TF::ConstOp> {
  public:
-  CoreRTConstStringTensorOpConversion(mlir::MLIRContext *context,
-                                      CoreRTConverter *corert_converter)
+  FallbackConstStringTensorOpConversion(mlir::MLIRContext *context,
+                                        CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<mlir::TF::ConstOp>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter) {}
 
@@ -890,8 +890,8 @@ class CoreRTConstStringTensorOpConversion
     for (auto dim : shape)
       dims.push_back(rewriter.getIntegerAttr(i64_type, dim));
 
-    auto new_op = rewriter.create<tfrt::corert::ConstStringTensorOp>(
-        op.getLoc(), corert_converter_.tensor_handle_type(),
+    auto new_op = rewriter.create<tfrt::fallback_async::ConstStringTensorOp>(
+        op.getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
         rewriter.getArrayAttr(dims), rewriter.getArrayAttr(values));
 
     rewriter.replaceOp(op, new_op.getResult());
@@ -906,16 +906,11 @@ class CoreRTConstStringTensorOpConversion
 LogicalResult ConvertFunctionCallOperands(
     mlir::Operation *op, ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
-    mlir::ConversionPatternRewriter &rewriter, bool func_use_fallback_tensor) {
-  if (func_use_fallback_tensor) {
-    // TODO(b/182232457): Support other devices.
-    return tfrt_compiler::ConvertFallbackOperands(
-        op, tfrt_compiler::GetDefaultCpuDeviceName(), operands, new_operands,
-        rewriter);
-  } else {
-    return tfrt_compiler::ConvertCoreRTOperands(op, operands, new_operands,
-                                                rewriter);
-  }
+    mlir::ConversionPatternRewriter &rewriter) {
+  // TODO(b/182232457): Support other devices.
+  return tfrt_compiler::ConvertFallbackOperands(
+      op, tfrt_compiler::GetDefaultCpuDeviceName(), operands, new_operands,
+      rewriter);
 }
 
 // Convert TF call ops (eg. StatefulPartitionedCall) to tfrt.call.
@@ -924,12 +919,10 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
  public:
   TFRTCallOpConversion(mlir::MLIRContext *context,
                        mlir::TypeConverter *type_converter,
-                       CoreRTConverter *corert_converter,
-                       bool func_use_fallback_tensor)
+                       CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<CallOp>(context),
         type_converter_(*type_converter),
-        corert_converter_(*corert_converter),
-        func_use_fallback_tensor_(func_use_fallback_tensor) {}
+        corert_converter_(*corert_converter) {}
 
   LogicalResult matchAndRewrite(
       CallOp op, typename CallOp::Adaptor adaptor,
@@ -954,8 +947,7 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
     // operand is !tfrt_fallback.tf_tensor, and it is also used as fallback
     // tensor inside the callee function.
     if (mlir::failed(ConvertFunctionCallOperands(op, adaptor.getOperands(),
-                                                 &new_operands, rewriter,
-                                                 func_use_fallback_tensor_)))
+                                                 &new_operands, rewriter)))
       return failure();
 
     llvm::SmallVector<mlir::Type, 4> result_types;
@@ -983,7 +975,6 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
  private:
   mlir::TypeConverter &type_converter_;
   CoreRTConverter &corert_converter_;
-  bool func_use_fallback_tensor_;
 };
 
 // Convert func ReturnOp to tfrt.return.
@@ -994,11 +985,9 @@ class TFRTReturnOpConversion
     : public mlir::OpConversionPattern<mlir::func::ReturnOp> {
  public:
   TFRTReturnOpConversion(mlir::MLIRContext *context,
-                         CoreRTConverter *corert_converter,
-                         bool func_use_fallback_tensor)
+                         CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<mlir::func::ReturnOp>(context),
-        corert_converter_(*corert_converter),
-        func_use_fallback_tensor_(func_use_fallback_tensor) {}
+        corert_converter_(*corert_converter) {}
 
   LogicalResult matchAndRewrite(
       mlir::func::ReturnOp op, OpAdaptor adaptor,
@@ -1014,8 +1003,7 @@ class TFRTReturnOpConversion
     new_operands.push_back(
         corert_converter_.GetLocalSideEffectChain(op, &rewriter));
     if (mlir::failed(ConvertFunctionCallOperands(op, adaptor.getOperands(),
-                                                 &new_operands, rewriter,
-                                                 func_use_fallback_tensor_)))
+                                                 &new_operands, rewriter)))
       return failure();
 
     rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(op, new_operands);
@@ -1024,7 +1012,6 @@ class TFRTReturnOpConversion
 
  private:
   CoreRTConverter &corert_converter_;
-  bool func_use_fallback_tensor_;
 };
 
 // Convert tf.Case op to tfrt.Case.
@@ -1039,12 +1026,10 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
  public:
   TFRTCaseOpConversion(mlir::MLIRContext *context,
                        mlir::TypeConverter *type_converter,
-                       CoreRTConverter *corert_converter,
-                       bool func_use_fallback_tensor)
+                       CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<TF::CaseOp>(context),
         type_converter_(*type_converter),
-        corert_converter_(*corert_converter),
-        func_use_fallback_tensor_(func_use_fallback_tensor) {}
+        corert_converter_(*corert_converter) {}
 
   LogicalResult matchAndRewrite(
       TF::CaseOp op, OpAdaptor adaptor,
@@ -1061,9 +1046,9 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
     llvm::SmallVector<mlir::Value, 4> branch_operands;
     branch_operands.push_back(
         corert_converter_.GetLocalSideEffectChain(op, &rewriter));
-    if (mlir::failed(ConvertFunctionCallOperands(
-            op, adaptor.getOperands().drop_front(), &branch_operands, rewriter,
-            func_use_fallback_tensor_)))
+    if (mlir::failed(
+            ConvertFunctionCallOperands(op, adaptor.getOperands().drop_front(),
+                                        &branch_operands, rewriter)))
       return failure();
 
     mlir::Value index_operand = adaptor.getOperands()[0];
@@ -1097,7 +1082,6 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
  private:
   mlir::TypeConverter &type_converter_;
   CoreRTConverter &corert_converter_;
-  bool func_use_fallback_tensor_;
 };
 
 static mlir::Value GetPredicate(mlir::Operation *op, mlir::Value cond_operand,
@@ -1120,12 +1104,10 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
  public:
   TFRTCondOpConversion(mlir::MLIRContext *context,
                        mlir::TypeConverter *type_converter,
-                       CoreRTConverter *corert_converter,
-                       bool func_use_fallback_tensor)
+                       CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<TF::IfOp>(context),
         type_converter_(*type_converter),
-        corert_converter_(*corert_converter),
-        func_use_fallback_tensor_(func_use_fallback_tensor) {}
+        corert_converter_(*corert_converter) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfOp op, OpAdaptor adaptor,
@@ -1151,8 +1133,7 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
         corert_converter_.GetLocalSideEffectChain(op, &rewriter));
 
     if (mlir::failed(ConvertFunctionCallOperands(
-            op, adaptor.getOperands().drop_front(), &new_operands, rewriter,
-            func_use_fallback_tensor_)))
+            op, adaptor.getOperands().drop_front(), &new_operands, rewriter)))
       return failure();
 
     auto new_op = rewriter.create<tfrt::compiler::CondOp>(
@@ -1175,7 +1156,6 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
  private:
   mlir::TypeConverter &type_converter_;
   CoreRTConverter &corert_converter_;
-  bool func_use_fallback_tensor_;
 };
 
 // Convert TF WhileOp to tfrt.while. tfrt.while use a boolean condition and has
@@ -1220,14 +1200,12 @@ class TFRTWhileOpConversion
                         mlir::SymbolTable *symbol_table,
                         const tfrt_compiler::TensorArraySideEffectAnalysis
                             *tensor_array_side_effect_analysis,
-                        bool func_use_fallback_tensor,
                         bool enable_while_parallel_iterations)
       : mlir::OpConversionPattern<TF::WhileOp>(context),
         type_converter_(*type_converter),
         corert_converter_(*corert_converter),
         symbol_table_(*symbol_table),
         tensor_array_side_effect_analysis_(*tensor_array_side_effect_analysis),
-        func_use_fallback_tensor_(func_use_fallback_tensor),
         enable_while_parallel_iterations_(enable_while_parallel_iterations) {}
 
   mlir::LogicalResult matchAndRewrite(
@@ -1249,8 +1227,7 @@ class TFRTWhileOpConversion
     // specified in the option.
     llvm::SmallVector<mlir::Value, 4> new_operands;
     if (mlir::failed(ConvertFunctionCallOperands(op, adaptor.getOperands(),
-                                                 &new_operands, rewriter,
-                                                 func_use_fallback_tensor_)))
+                                                 &new_operands, rewriter)))
       return failure();
 
     // Create the predicate function that calls the original cond function and
@@ -1329,7 +1306,6 @@ class TFRTWhileOpConversion
   mlir::SymbolTable &symbol_table_;
   const tfrt_compiler::TensorArraySideEffectAnalysis
       &tensor_array_side_effect_analysis_;
-  bool func_use_fallback_tensor_;
   bool enable_while_parallel_iterations_;
 };
 
@@ -1519,9 +1495,8 @@ void PopulateTFToTFRTConversionPatterns(
     const tfrt_compiler::CostAnalysis *cost_analysis,
     const tfrt_compiler::TensorArraySideEffectAnalysis
         *tensor_array_side_effect_analysis,
-    bool func_use_fallback_tensor, bool enable_while_parallel_iterations,
-    bool tpu_lower_to_fallback, bool target_tpurt,
-    bool use_gpu_compile_and_execute_op) {
+    bool enable_while_parallel_iterations, bool tpu_lower_to_fallback,
+    bool target_tpurt, bool use_gpu_compile_and_execute_op) {
   // By default, we lower all TF ops to fallback ops.
   patterns->add<FallbackExecuteOpConversion>(
       context, corert_converter, fallback_converter, symbol_table,
@@ -1535,23 +1510,17 @@ void PopulateTFToTFRTConversionPatterns(
 
   // For control flow ops, we handle them according to the option.
   mlir::TypeConverter *func_type_converter;
-  if (func_use_fallback_tensor) {
-    func_type_converter = fallback_converter;
-  } else {
-    func_type_converter = corert_converter;
-  }
+  func_type_converter = fallback_converter;
   patterns->add<TFRTFuncOpSignatureConversion>(context, func_type_converter);
-  patterns->add<TFRTReturnOpConversion>(context, corert_converter,
-                                        func_use_fallback_tensor);
+  patterns->add<TFRTReturnOpConversion>(context, corert_converter);
   patterns->add<TFRTWhileOpConversion>(
       context, func_type_converter, corert_converter, symbol_table,
-      tensor_array_side_effect_analysis, func_use_fallback_tensor,
-      enable_while_parallel_iterations);
+      tensor_array_side_effect_analysis, enable_while_parallel_iterations);
   patterns->add<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                 TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
                 TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
                 TFRTCaseOpConversion, TFRTCondOpConversion>(
-      context, func_type_converter, corert_converter, func_use_fallback_tensor);
+      context, func_type_converter, corert_converter);
 
   // For tf.BatchFunction, we need a special fallback op to batch a BEF
   // function.
@@ -1563,8 +1532,9 @@ void PopulateTFToTFRTConversionPatterns(
 
   // Here we use specialized patterns for tf.Const on CPU as it is incorrect to
   // use ExecuteOp pattern to convert string tensor attribute.
-  patterns->add<CoreRTConstStringTensorOpConversion,
-                CoreRTConstDenseTensorOpConversion>(context, corert_converter);
+  patterns->add<FallbackConstStringTensorOpConversion,
+                FallbackConstDenseTensorOpConversion>(context,
+                                                      corert_converter);
 }
 
 // Lower TF dialect MLIR to TFRT dialect.
@@ -1599,7 +1569,6 @@ class TfToTfrtConversionPass
     tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
-    func_use_fallback_tensor_ = options.func_use_fallback_tensor;
     enable_while_parallel_iterations_ =
         options.enable_while_parallel_iterations;
     target_gpu_ = options.target_gpu;
@@ -1634,19 +1603,15 @@ class TfToTfrtConversionPass
     }
 
     mlir::TypeConverter *func_type_converter;
-    if (func_use_fallback_tensor_) {
-      func_type_converter = &fallback_converter;
-    } else {
-      func_type_converter = &corert_converter;
-    }
+    func_type_converter = &fallback_converter;
     SetUpTFToTFRTConversionLegality(&target, func_type_converter,
                                     corert_converter.chain_type());
 
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
         &symbol_table, &cost_analysis, &tensor_array_side_effect_analysis,
-        func_use_fallback_tensor_, enable_while_parallel_iterations_,
-        tpu_lower_to_fallback_, target_tpurt_, use_gpu_compile_and_execute_op_);
+        enable_while_parallel_iterations_, tpu_lower_to_fallback_,
+        target_tpurt_, use_gpu_compile_and_execute_op_);
 
     return mlir::applyPartialConversion(func, target, std::move(patterns));
   }
@@ -1856,13 +1821,6 @@ class TfToTfrtConversionPass
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
-      llvm::cl::init(false)};
-
-  Option<bool> func_use_fallback_tensor_{
-      *this, "func-use-fallback-tensor",
-      llvm::cl::desc(
-          "If true, use TF tensor as input/output types in func (and other "
-          "control flow) ops."),
       llvm::cl::init(false)};
 
   Option<bool> enable_while_parallel_iterations_{

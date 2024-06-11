@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(func.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{func-use-fallback-tensor=true tfrt-cost-threshold=1024 tfrt-merge-inter-dependent-streams=true})' %s | FileCheck %s --dump-input-filter=all
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(func.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{tfrt-cost-threshold=1024 tfrt-merge-inter-dependent-streams=true})' %s | FileCheck %s --dump-input-filter=all
 
 // CHECK-NOT: tf_saved_model.semantics
 // CHECK: tfrt.cost_threshold = 1024

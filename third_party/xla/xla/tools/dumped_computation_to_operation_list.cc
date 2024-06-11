@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -43,7 +44,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
  public:
   explicit OperationDumper(const std::string& path) : path_(path) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     std::string params = absl::StrJoin(
         hlo->operands(), ", ",
         [](std::string* out, const HloInstruction* operand) {
@@ -53,7 +54,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
     std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
                                  HloOpcodeString(hlo->opcode()), params,
                                  ShapeUtil::HumanString(hlo->shape()), path_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

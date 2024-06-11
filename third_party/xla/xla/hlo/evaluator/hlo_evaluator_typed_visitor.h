@@ -119,8 +119,8 @@ auto ToArithmeticSafeType(T t) {
 template <typename ReturnT, typename ElementwiseT = ReturnT>
 class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
  private:
-  ABSL_ATTRIBUTE_NOINLINE Status
-  UnsupportedTypeError(const HloInstruction* instruction) {
+  ABSL_ATTRIBUTE_NOINLINE absl::Status UnsupportedTypeError(
+      const HloInstruction* instruction) {
     return InvalidArgument(
         "Unsupported type for %s: %s", HloOpcodeString(instruction->opcode()),
         PrimitiveType_Name(instruction->shape().element_type()));
@@ -155,34 +155,34 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     };
   }
 
-  Status DefaultAction(const HloInstruction* hlo_instruction) override {
+  absl::Status DefaultAction(const HloInstruction* hlo_instruction) override {
     return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
                          HloOpcodeString(hlo_instruction->opcode()));
   }
 
   template <typename NativeT,
             typename std::enable_if_t<std::is_unsigned_v<NativeT>>* = nullptr>
-  Status HandleAbs(const HloInstruction* abs) {
+  absl::Status HandleAbs(const HloInstruction* abs) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
                         ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return elem_operand;
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
             typename std::enable_if_t<std::is_signed_v<NativeT>>* = nullptr>
-  Status HandleAbs(const HloInstruction* abs) {
+  absl::Status HandleAbs(const HloInstruction* abs) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
                         ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return std::abs(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
             typename std::enable_if_t<is_complex_v<NativeT>>* = nullptr>
-  Status HandleAbs(const HloInstruction* abs) {
+  absl::Status HandleAbs(const HloInstruction* abs) {
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(abs->operand(0));
     TF_ASSIGN_OR_RETURN(
@@ -192,10 +192,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
             operand_literal)));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleAbs(const HloInstruction* abs) override {
+  absl::Status HandleAbs(const HloInstruction* abs) override {
     // If the operand is of C64 type, the return type of abs will be F32.
     // However, ElementwiseT would still be the return type, F32, and thus
     // specifying the ElementwiseT explicitly as C64 is needed below.
@@ -207,19 +207,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return HandleAbs<ElementwiseT>(abs);
   }
 
-  Status HandleRound(const HloInstruction* round) override {
+  absl::Status HandleRound(const HloInstruction* round) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[round],
           ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
             return std::round(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(round);
   }
 
-  Status HandleRoundNearestEven(const HloInstruction* round) override {
+  absl::Status HandleRoundNearestEven(const HloInstruction* round) override {
     if constexpr (!is_complex_v<ReturnT>) {
       // Verify the current rounding direction.
       TF_RET_CHECK(fegetround() == FE_TONEAREST);
@@ -228,88 +228,88 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
             return std::nearbyint(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(round);
   }
 
-  Status HandleCeil(const HloInstruction* ceil) override {
+  absl::Status HandleCeil(const HloInstruction* ceil) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[ceil],
           ElementWiseUnaryOp(ceil, [](ElementwiseT elem_operand) {
             return std::ceil(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(ceil);
   }
 
-  Status HandleErf(const HloInstruction* erf) override {
+  absl::Status HandleErf(const HloInstruction* erf) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[erf],
           ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
             return std::erf(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(erf);
   }
 
-  Status HandleExp(const HloInstruction* exp) override {
+  absl::Status HandleExp(const HloInstruction* exp) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[exp],
                         ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
                           return std::exp(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleExpm1(const HloInstruction* expm1) override {
+  absl::Status HandleExpm1(const HloInstruction* expm1) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[expm1],
           ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
             return std::expm1(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(expm1);
   }
 
-  Status HandleFloor(const HloInstruction* floor) override {
+  absl::Status HandleFloor(const HloInstruction* floor) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[floor],
           ElementWiseUnaryOp(floor, [](ElementwiseT elem_operand) {
             return std::floor(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(floor);
   }
 
-  Status HandleLog(const HloInstruction* log) override {
+  absl::Status HandleLog(const HloInstruction* log) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[log],
                         ElementWiseUnaryOp(log, [](ElementwiseT elem_operand) {
                           return std::log(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleLog1p(const HloInstruction* log1p) override {
+  absl::Status HandleLog1p(const HloInstruction* log1p) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[log1p],
           ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
             return std::log1p(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(log1p);
   }
 
-  Status HandleNot(const HloInstruction* not_) override {
+  absl::Status HandleNot(const HloInstruction* not_) override {
     if constexpr (std::is_arithmetic_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[not_],
@@ -322,7 +322,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ~elem_operand;
             }
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(not_);
   }
@@ -331,42 +331,42 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       typename NativeT,
       typename std::enable_if_t<std::is_signed_v<NativeT> &&
                                 !std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleNegate(const HloInstruction* negate) {
+  absl::Status HandleNegate(const HloInstruction* negate) {
     using type = std::make_unsigned_t<NativeT>;
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[negate],
         ElementWiseUnaryOp(negate, [](ElementwiseT elem_operand) {
           return NativeT(-type(elem_operand));
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   !std::is_signed_v<NativeT> ||
                                   std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleNegate(const HloInstruction* negate) {
+  absl::Status HandleNegate(const HloInstruction* negate) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[negate],
         ElementWiseUnaryOp(
             negate, [](ElementwiseT elem_operand) { return -elem_operand; }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleNegate(const HloInstruction* negate) override {
+  absl::Status HandleNegate(const HloInstruction* negate) override {
     return HandleNegate<ReturnT>(negate);
   }
 
-  Status HandleLogistic(const HloInstruction* logistic) override {
+  absl::Status HandleLogistic(const HloInstruction* logistic) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[logistic],
         ElementWiseUnaryOp(logistic, [](ElementwiseT elem_operand) {
           return static_cast<ElementwiseT>(1) /
                  (static_cast<ElementwiseT>(1) + std::exp(-elem_operand));
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleSign(const HloInstruction* sign) override {
+  absl::Status HandleSign(const HloInstruction* sign) override {
     using NativeT = ElementwiseT;
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[sign],
@@ -386,17 +386,17 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return 0 == abs_val ? ElementwiseT(0) : elem_operand / abs_val;
           }
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleAtan2(const HloInstruction* atan2) override {
+  absl::Status HandleAtan2(const HloInstruction* atan2) override {
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[atan2],
                           ElementWiseBinaryOp(atan2, [](ElementwiseT lhs_elem,
                                                         ElementwiseT rhs_elem) {
                             return std::atan2(lhs_elem, rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     if constexpr (is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
@@ -406,20 +406,20 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             auto i = ElementwiseT(0.0, 1.0);
             return (-i) * (std::log((x + i * y) / std::sqrt(x * x + y * y)));
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(atan2);
   }
 
-  Status HandleTanh(const HloInstruction* tanh) override {
+  absl::Status HandleTanh(const HloInstruction* tanh) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[tanh],
                         ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {
                           return std::tanh(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleMultiply(const HloInstruction* multiply) override {
+  absl::Status HandleMultiply(const HloInstruction* multiply) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[multiply],
         ElementWiseBinaryOp(
@@ -427,10 +427,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
                                   ToArithmeticSafeType(rhs_elem));
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleSubtract(const HloInstruction* subtract) override {
+  absl::Status HandleSubtract(const HloInstruction* subtract) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[subtract],
         ElementWiseBinaryOp(
@@ -438,20 +438,20 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
                                   ToArithmeticSafeType(rhs_elem));
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleAdd(const HloInstruction* add) override {
+  absl::Status HandleAdd(const HloInstruction* add) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[add],
                         ElementWiseBinaryOp(add, [](ElementwiseT lhs_elem,
                                                     ElementwiseT rhs_elem) {
                           return ElementwiseT(ToArithmeticSafeType(lhs_elem) +
                                               ToArithmeticSafeType(rhs_elem));
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleDivide(const HloInstruction* divide) override {
+  absl::Status HandleDivide(const HloInstruction* divide) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[divide],
         ElementWiseBinaryOp(
@@ -475,10 +475,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               }
               return lhs_elem / rhs_elem;
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleMaximum(const HloInstruction* maximum) override {
+  absl::Status HandleMaximum(const HloInstruction* maximum) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[maximum],
@@ -493,12 +493,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             }
             return std::max(lhs, rhs);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(maximum);
   }
 
-  Status HandleMinimum(const HloInstruction* minimum) override {
+  absl::Status HandleMinimum(const HloInstruction* minimum) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[minimum],
@@ -513,12 +513,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             }
             return std::min(lhs, rhs);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(minimum);
   }
 
-  Status HandlePower(const HloInstruction* power) override {
+  absl::Status HandlePower(const HloInstruction* power) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[power],
         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
@@ -566,39 +566,39 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
           }
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleSqrt(const HloInstruction* sqrt) override {
+  absl::Status HandleSqrt(const HloInstruction* sqrt) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[sqrt],
                         ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
                           return std::sqrt(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleCbrt(const HloInstruction* cbrt) override {
+  absl::Status HandleCbrt(const HloInstruction* cbrt) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[cbrt],
           ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
             return std::cbrt(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(cbrt);
   }
 
-  Status HandleRsqrt(const HloInstruction* rsqrt) override {
+  absl::Status HandleRsqrt(const HloInstruction* rsqrt) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[rsqrt],
         ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
           return static_cast<ElementwiseT>(1) / std::sqrt(elem_operand);
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleRemainder(const HloInstruction* remainder) override {
+  absl::Status HandleRemainder(const HloInstruction* remainder) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[remainder],
@@ -621,12 +621,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                   return std::fmod(lhs_el, rhs_el);
                 }
               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(remainder);
   }
 
-  Status HandleAnd(const HloInstruction* and_inst) override {
+  absl::Status HandleAnd(const HloInstruction* and_inst) override {
     if constexpr (std::is_integral_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[and_inst],
@@ -634,24 +634,24 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                               [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
                                 return lhs_el & rhs_el;
                               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(and_inst);
   }
 
-  Status HandleOr(const HloInstruction* or_inst) override {
+  absl::Status HandleOr(const HloInstruction* or_inst) override {
     if constexpr (std::is_integral_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[or_inst],
                           ElementWiseBinaryOp(or_inst, [](ElementwiseT lhs_el,
                                                           ElementwiseT rhs_el) {
                             return lhs_el | rhs_el;
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(or_inst);
   }
 
-  Status HandleXor(const HloInstruction* xor_inst) override {
+  absl::Status HandleXor(const HloInstruction* xor_inst) override {
     if constexpr (std::is_integral_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[xor_inst],
@@ -659,12 +659,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                               [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
                                 return lhs_el ^ rhs_el;
                               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(xor_inst);
   }
 
-  Status HandleShiftLeft(const HloInstruction* shl) override {
+  absl::Status HandleShiftLeft(const HloInstruction* shl) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[shl],
@@ -674,12 +674,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                        ? 0
                                        : (lhs_elem << rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shl);
   }
 
-  Status HandleShiftRightArithmetic(const HloInstruction* shr) override {
+  absl::Status HandleShiftRightArithmetic(const HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       using SignedT = make_specialized_signed_t<ReturnT>;
@@ -694,12 +694,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                   return static_cast<ElementwiseT>(lhs_signed >> rhs_elem);
                 }
               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shr);
   }
 
-  Status HandleShiftRightLogical(const HloInstruction* shr) override {
+  absl::Status HandleShiftRightLogical(const HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       using UnsignedT = make_specialized_unsigned_t<ReturnT>;
@@ -714,12 +714,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                             return static_cast<ElementwiseT>(
                                 static_cast<UnsignedT>(lhs_elem) >> rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shr);
   }
 
-  Status HandleClamp(const HloInstruction* clamp) override {
+  absl::Status HandleClamp(const HloInstruction* clamp) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       auto clamp_op = [](ElementwiseT low, ElementwiseT value,
                          ElementwiseT high) {
@@ -740,12 +740,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           parent_->evaluated_[clamp],
           ElementwiseTernaryOp(clamp,
                                std::move(ConvertTernaryFunction(clamp_op))));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(clamp);
   }
 
-  Status HandleSelect(const HloInstruction* select) override {
+  absl::Status HandleSelect(const HloInstruction* select) override {
     CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
     CHECK(select->shape().IsArray());
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
@@ -757,12 +757,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         };
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
                         ElementwiseTernaryOp(select, std::move(select_op)));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleConvolutionWithLiterals(const HloInstruction* conv,
-                                       const Literal& lhs_literal,
-                                       const Literal& rhs_literal) {
+  absl::Status HandleConvolutionWithLiterals(const HloInstruction* conv,
+                                             const Literal& lhs_literal,
+                                             const Literal& rhs_literal) {
     const auto& window = conv->window();
     const Shape& result_shape = conv->shape();
     const Shape& lhs_shape = lhs_literal.shape();
@@ -958,10 +958,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleConvolution(const HloInstruction* conv) override {
+  absl::Status HandleConvolution(const HloInstruction* conv) override {
     auto lhs = conv->operand(0);
     auto rhs = conv->operand(1);
     const auto& window = conv->window();
@@ -1020,7 +1020,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         rhs_literal.Convert(result_shape.element_type()).value());
   }
 
-  Status HandleDot(const HloInstruction* dot) override {
+  absl::Status HandleDot(const HloInstruction* dot) override {
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
         parent_->use_fast_path_ &&
         ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
@@ -1032,7 +1032,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_same_v<NativeT, float>>* = nullptr>
-  Status HandleDot(const HloInstruction* dot) {
+  absl::Status HandleDot(const HloInstruction* dot) {
     const HloInstruction* lhs = dot->operand(0);
     const HloInstruction* rhs = dot->operand(1);
     CHECK(dot->shape().IsArray());
@@ -1092,18 +1092,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     result.PopulateR2FromArray2D(*result_array);
     parent_->evaluated_[dot] =
         std::move(result).Convert(dot->shape().element_type()).value();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   !std::is_same_v<NativeT, float>>* = nullptr>
-  Status HandleDot(const HloInstruction* dot) {
+  absl::Status HandleDot(const HloInstruction* dot) {
     return HandleDotSlowPath(dot);
   }
 
-  Status HandleDotSlowPathWithLiterals(const HloInstruction* dot,
-                                       const Literal& lhs_literal,
-                                       const Literal& rhs_literal) {
+  absl::Status HandleDotSlowPathWithLiterals(const HloInstruction* dot,
+                                             const Literal& lhs_literal,
+                                             const Literal& rhs_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
 
     const auto lhs_rank = lhs_literal.shape().rank();
@@ -1209,10 +1209,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         }));
 
     parent_->evaluated_[dot] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleDotSlowPath(const HloInstruction* dot) {
+  absl::Status HandleDotSlowPath(const HloInstruction* dot) {
     auto lhs = dot->operand(0);
     auto rhs = dot->operand(1);
     CHECK(dot->shape().IsArray());
@@ -1242,7 +1242,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         rhs_literal.Convert(dot->shape().element_type()).value());
   }
 
-  Status HandlePad(const HloInstruction* pad) override {
+  absl::Status HandlePad(const HloInstruction* pad) override {
     CHECK(pad->operand(0)->shape().IsArray());
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
@@ -1307,10 +1307,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                     step, func);
 
     parent_->evaluated_[pad] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleClz(const HloInstruction* clz) override {
+  absl::Status HandleClz(const HloInstruction* clz) override {
     // Enable CLZ only for integer types.
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
@@ -1321,12 +1321,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                       std::numeric_limits<ReturnT>::is_signed;
             return (unsigned_digits - 1) - Log2Floor<uint64_t>(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(clz);
   }
 
-  Status HandlePopulationCount(const HloInstruction* popcnt) override {
+  absl::Status HandlePopulationCount(const HloInstruction* popcnt) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       TF_ASSIGN_OR_RETURN(
@@ -1335,12 +1335,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand)
                 .count();
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(popcnt);
   }
 
-  Status HandleSin(const HloInstruction* sin) override {
+  absl::Status HandleSin(const HloInstruction* sin) override {
     if constexpr (std::is_floating_point_v<ElementwiseT> ||
                   is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
@@ -1348,12 +1348,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
             return std::sin(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(sin);
   }
 
-  Status HandleCos(const HloInstruction* cos) override {
+  absl::Status HandleCos(const HloInstruction* cos) override {
     if constexpr (std::is_floating_point_v<ElementwiseT> ||
                   is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
@@ -1361,26 +1361,26 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
             return std::cos(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(cos);
   }
 
-  Status HandleTan(const HloInstruction* tan) override {
+  absl::Status HandleTan(const HloInstruction* tan) override {
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[tan],
           ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
             return std::tan(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(tan);
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
-  Status HandleReducePrecision(const HloInstruction* reduce_precision) {
+  absl::Status HandleReducePrecision(const HloInstruction* reduce_precision) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[reduce_precision],
         ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
@@ -1474,22 +1474,22 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           }
           return reduced_result;
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
             typename std::enable_if_t<std::is_integral_v<NativeT> ||
                                       is_complex_v<NativeT>>* = nullptr>
-  Status HandleReducePrecision(const HloInstruction* reduce_precision) {
+  absl::Status HandleReducePrecision(const HloInstruction* reduce_precision) {
     return UnsupportedTypeError(reduce_precision);
   }
 
-  Status HandleReducePrecision(
+  absl::Status HandleReducePrecision(
       const HloInstruction* reduce_precision) override {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
-  Status HandleIota(const HloInstruction* instruction) override {
+  absl::Status HandleIota(const HloInstruction* instruction) override {
     auto* iota = Cast<HloIotaInstruction>(instruction);
     if constexpr (std::is_integral_v<ElementwiseT> ||
                   is_complex_v<ElementwiseT> ||
@@ -1501,12 +1501,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return true;
           });
       parent_->evaluated_[iota] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(iota);
   }
 
-  Status HandleRng(const HloInstruction* random) override {
+  absl::Status HandleRng(const HloInstruction* random) override {
     RandomDistribution distribution = random->random_distribution();
     const Shape& result_shape = random->shape();
     Literal result(result_shape);
@@ -1566,7 +1566,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                      " is not implemented.");
       }
       parent_->evaluated_[random] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     if constexpr (std::is_integral_v<ElementwiseT>) {
       switch (distribution) {
@@ -1599,7 +1599,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                      " is not implemented.");
       }
       parent_->evaluated_[random] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(random);
   }

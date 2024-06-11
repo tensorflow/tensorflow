@@ -10,7 +10,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -134,6 +134,7 @@ py_strict_library(
         ":pywrap_tensorflow",
         ":pywrap_tfe",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/python/autograph",
@@ -285,6 +286,7 @@ py_strict_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:_pywrap_sparse_core_layout",
         "//tensorflow/python/tpu:datasets",
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
@@ -611,8 +613,8 @@ py_strict_library(
     name = "global_test_configuration",
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
-           tf_enable_mlir_bridge(),
+    deps =
+        tf_enable_mlir_bridge(),
 )
 
 # `tree.compat` requires visibility exception to test against `nest_test`
@@ -765,9 +767,11 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/mlir/lite/python:converter_python_api",
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/compiler/tf2xla:tf2xla_opset",
         "//tensorflow/core:framework_internal_impl",
@@ -799,6 +803,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -880,7 +885,9 @@ filegroup(
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
+        "//tensorflow/compiler/mlir/lite/python:converter_python_api",  # converter
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",  # tensorflow_to_stablehlo
         "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
@@ -920,6 +927,7 @@ filegroup(
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",  # sparse_core_layouts
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader

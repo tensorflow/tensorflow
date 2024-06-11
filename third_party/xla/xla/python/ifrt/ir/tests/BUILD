@@ -1,5 +1,5 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,6 +22,7 @@ lit_test_suite(
             "verify_call_loaded_executable.mlir",
             "verify_disassemble.mlir",
             "verify_loaded_executable.mlir",
+            "verify_remap_arrays.mlir",
             "verify_reshard.mlir",
         ],
         include = [
@@ -35,7 +36,7 @@ lit_test_suite(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "ifrt-opt",
     srcs = ["ifrt-opt.cc"],
     deps = [
@@ -85,6 +86,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir:compiler",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/pjrt_ifrt:xla_ifrt",

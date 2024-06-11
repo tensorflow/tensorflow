@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/triton_support.h"
 
+#include <cstdint>
 #include <iterator>
 #include <variant>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -91,7 +93,8 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwise(
       element_type == PrimitiveType::BF16 ||
       element_type == PrimitiveType::F64) {
     absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
-                                        HloOpcode::kExpm1, HloOpcode::kLog,
+                                        HloOpcode::kExpm1, HloOpcode::kFloor,
+                                        HloOpcode::kCeil, HloOpcode::kLog,
                                         HloOpcode::kLog1p, HloOpcode::kRsqrt,
                                         HloOpcode::kSin, HloOpcode::kSqrt,
                                         HloOpcode::kCbrt, HloOpcode::kTan,
@@ -122,7 +125,7 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(
 
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(
     PrimitiveType element_type) {
-  return {HloOpcode::kSelect};
+  return {HloOpcode::kSelect, HloOpcode::kClamp};
 }
 
 bool IsTritonSupportedElementwise(HloOpcode opcode,
@@ -253,16 +256,6 @@ CodegenDecision CanTritonHandleGEMM(
     return "Multiple batch dimensions.";
   }
 
-  // Cases where lhs or rhs have no non-contracting dims are not handled.
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
-    return "No non-contracting dimensions.";
-  }
-
   return CodegenDecision{};
 }
 
@@ -313,6 +306,56 @@ CodegenDecision CanTritonHandleReduce(
   return "Reduction is not a row-reduction of a single operand.";
 }
 
+bool NoNonContractingDimension(const HloDotInstruction& dot) {
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  if (dim_numbers.lhs_batch_dimensions().size() +
+              dim_numbers.lhs_contracting_dimensions().size() ==
+          dot.operand(0)->shape().rank() ||
+      dim_numbers.rhs_batch_dimensions().size() +
+              dim_numbers.rhs_contracting_dimensions().size() ==
+          dot.operand(1)->shape().rank()) {
+    return true;
+  }
+  return false;
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+        break;  // supported
+      default:
+        return CodegenDecision(
+            "Dynamic slice is only supported with S8, S16, or S32 indices.");
+    }
+  }
+
+  // Similar to normal slice, we cannot slice a non-major-most dimension as
+  // that would introduce non-contiguous strides under tiling. The existing
+  // check against this in GetRequirementsIfSupportedOrder is not suitable for
+  // dynamic slices, so we instead check for this here.
+  const HloInstruction* input = instr.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions_size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+      return CodegenDecision(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+
+  // TODO(b/343143854): Check the subtleties of which dynamic slices are
+  // supported, for example that a fragmented dimension cannot be sliced.
+  return CodegenDecision{};
+}
+
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (instr.IsElementwise()) {
@@ -321,7 +364,12 @@ CodegenDecision IsTritonSupportedInstruction(
 
   switch (instr.opcode()) {
     case HloOpcode::kDot: {
-      return CanTritonHandleGEMM(*Cast<HloDotInstruction>(&instr), gpu_version);
+      auto* dot = Cast<HloDotInstruction>(&instr);
+      // Cases where lhs or rhs have no non-contracting dims are not handled.
+      if (NoNonContractingDimension(*dot)) {
+        return "No non-contracting dimensions.";
+      }
+      return CanTritonHandleGEMM(*dot, gpu_version);
     }
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
@@ -332,6 +380,10 @@ CodegenDecision IsTritonSupportedInstruction(
         return CodegenDecision{};
       }
       return "Only supports root tuples.";
+    }
+    case HloOpcode::kDynamicSlice: {
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     }
     case HloOpcode::kBitcast:
     case HloOpcode::kTranspose:

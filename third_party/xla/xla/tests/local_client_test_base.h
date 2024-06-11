@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/manifest_checking_test.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -50,7 +51,8 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   absl::StatusOr<se::OwningDeviceMemory> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
       int64_t memory_space) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
   int64_t allocation_count() const;

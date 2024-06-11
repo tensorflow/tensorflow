@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,16 +42,13 @@ namespace xla {
 namespace exhaustive_op_test {
 
 struct ErrorSpec {
-  float abs_err;
-  float rel_err;
-
+  double abs_err = 0;
+  double rel_err = 0;
   // If true, will consider -0 not near to +0 and vice versa.  Note that
   // +epsilon may still be considered close to -0, depending on the error
   // spec; this only covers the case when both `expected` and `actual` are
   // equal to 0.
   bool strict_signed_zeros = false;
-
-  ErrorSpec(float a, float r) : abs_err(a), rel_err(r) {}
 };
 
 // Representations of the reference function passed in by the user.
@@ -940,66 +938,108 @@ inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
 }
 
 template <PrimitiveType T, size_t N>
-inline ErrorSpec DefaultSpecGenerator(
-    typename ExhaustiveOpTestBase<T, N>::NativeT) {
-  LOG(FATAL) << "Unhandled Type";
-}
+ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestBase<T, N>::NativeT);
 
 template <PrimitiveType T, size_t N>
-inline ErrorSpec DefaultSpecGenerator(
-    typename ExhaustiveOpTestBase<T, N>::NativeT,
-    typename ExhaustiveOpTestBase<T, N>::NativeT) {
-  LOG(FATAL) << "Unhandled Type";
-}
+ErrorSpec DefaultSpecGenerator(typename ExhaustiveOpTestBase<T, N>::NativeT,
+                               typename ExhaustiveOpTestBase<T, N>::NativeT);
+
+// The following two constants set the default absolute and relative error
+// tolerance in units of the smallest normalized value and the relative accuracy
+// of the format, respectively. Notice that setting an absolute tolerance above
+// the value of the smallest normalized float means that we effectively ignore
+// relative errors in values at or below the subnormal boundary (e.g. for values
+// less than ~1e-38 for FP32).
+static constexpr float kDefaultAbsoluteToleranceSlackFactor = 2;
+static constexpr float kDefaultRelativeToleranceSlackFactor = 20;
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<C128, 1>(complex128) {
-  return ErrorSpec{0.0001, 0.0001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<C64, 1>(complex64) {
-  return ErrorSpec{0.0001, 0.0001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
+  double rtol = 40 * std::numeric_limits<float>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F64, 1>(double) {
-  return ErrorSpec{0.0001, 0.0001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F32, 1>(float) {
-  return ErrorSpec{0.0001, 0.0001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<float>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F16, 1>(Eigen::half) {
-  return ErrorSpec{0.001, 0.001};
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<Eigen::half>::min();
+  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<BF16, 1>(bfloat16) {
-  return ErrorSpec{0.002, 0.02};
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<bfloat16>::min();
+  // epsilon for BF16 is quite large, so a slack factor of 2 suffices.
+  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
-  return ErrorSpec{0.001, 0.001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<double>::min();
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<double>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F32, 2>(float, float) {
-  return ErrorSpec{0.001, 0.001};
+  double atol =
+      kDefaultAbsoluteToleranceSlackFactor * std::numeric_limits<float>::min();
+  double rtol = kDefaultRelativeToleranceSlackFactor *
+                std::numeric_limits<float>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<F16, 2>(Eigen::half, Eigen::half) {
-  return ErrorSpec{0.001, 0.001};
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<Eigen::half>::min();
+  // epsilon for FP16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 5 * std::numeric_limits<Eigen::half>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <>
 inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
-  return ErrorSpec{0.002, 0.02};
+  double atol = kDefaultAbsoluteToleranceSlackFactor *
+                std::numeric_limits<bfloat16>::min();
+  // epsilon for BF16 is quite large, so a slack factor of 5 suffices.
+  double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
+  return ErrorSpec{atol, rtol};
 }
 
 template <PrimitiveType T, size_t N>

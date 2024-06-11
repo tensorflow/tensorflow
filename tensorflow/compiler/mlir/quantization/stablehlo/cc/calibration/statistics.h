@@ -15,13 +15,23 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CALIBRATION_STATISTICS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CALIBRATION_STATISTICS_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 
 namespace stablehlo::quantization {
+
+// Reads the calibration statistics from the given directory.
+absl::StatusOr<absl::flat_hash_map<
+    std::string, tensorflow::calibrator::CalibrationStatistics>>
+ReadStatistics(absl::string_view calibration_data_dir);
 
 // Adds calibrated min / max values to CustomAggregator nodes in `graph_def`.
 // The min and max values will be added to the "min" and "max" attributes,
@@ -31,6 +41,9 @@ absl::Status AddCalibrationStatistics(
     mlir::ModuleOp module_op, absl::string_view calibration_data_dir,
     const stablehlo::quantization::CalibrationOptions& calibration_options,
     const tensorflow::quantization::PyFunctionLibrary& py_function_library);
+
+// Checks if the model required calibration.
+bool IsCalibrationRequired(mlir::ModuleOp module_op);
 
 }  // namespace stablehlo::quantization
 

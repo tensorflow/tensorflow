@@ -920,7 +920,6 @@ cc_library(
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_tree",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:status",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:statusor",
         "@local_xla//xla:xla_data_proto_cc",
@@ -932,6 +931,7 @@ cc_library(
         "@local_xla//xla/service:shaped_buffer",
         "@local_xla//xla/service:transfer_manager",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:event",
         "@local_xla//xla/stream_executor/tpu:tpu_node_context",
     ],
     alwayslink = True,
@@ -1479,6 +1479,21 @@ cc_library(
     name = "sparse_core_xla_flags_defaults",
     hdrs = ["sparse_core_xla_flags_defaults.h"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "_pywrap_sparse_core_layout_header_only",
+    srcs = [],
+    hdrs = ["sparse_core_layout.h"],
+    visibility = ["//tensorflow/python/tpu:__pkg__"],  # ONLY for `_pywrap_sparse_core_layout`.
+    deps = [
+        ":sparse_core_layout_proto_cc",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(

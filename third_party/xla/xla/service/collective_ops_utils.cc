@@ -610,19 +610,22 @@ bool IsCollective(const HloInstruction* instruction) {
   }
 }
 
-bool IsCollectiveWithChannelId(const HloInstruction* instruction) {
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
-    for (const auto* inner_inst : instruction->fused_instructions()) {
-      if (IsCollectiveWithChannelId(inner_inst)) {
-        return true;
+    for (auto* inner_inst : instruction->fused_instructions()) {
+      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
+        return inner_inst;
       }
     }
-    return false;
+    return nullptr;
   }
   if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
-    return false;
+    return nullptr;
   }
-  return IsCollective(instruction) && instruction->channel_id().has_value();
+  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
+    return instruction;
+  }
+  return nullptr;
 }
 
 bool IsSyncCollective(const HloInstruction* instr) {
@@ -631,6 +634,39 @@ bool IsSyncCollective(const HloInstruction* instr) {
     return false;
   }
   return backend_config->collective_backend_config().is_sync();
+}
+
+using SourceTargetPair = std::pair<int64_t, int64_t>;
+using SourceTargetPairs = std::vector<SourceTargetPair>;
+
+bool IsForwardCycle(const SourceTargetPairs& pairs) {
+  int64_t num_pairs = pairs.size();
+  const SourceTargetPair& last_pair = pairs[num_pairs - 1];
+  if (last_pair.first != num_pairs - 1 || last_pair.second != 0) {
+    return false;
+  }
+  for (int64_t i = 0; i < num_pairs - 1; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i + 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsBackwardCycle(const SourceTargetPairs& pairs) {
+  int64_t num_pairs = pairs.size();
+  const SourceTargetPair& first_pair = pairs[0];
+  if (first_pair.first != 0 || first_pair.second != num_pairs - 1) {
+    return false;
+  }
+  for (int64_t i = 1; i < num_pairs; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i - 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // end namespace xla

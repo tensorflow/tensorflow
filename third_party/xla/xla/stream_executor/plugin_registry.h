@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-class StreamExecutorInterface;
+class StreamExecutor;
 
 // Enumeration to list the supported types of plugins / support libraries.
 enum class PluginKind {
@@ -54,9 +54,9 @@ enum class PluginKind {
 // late-loading from distorting performance/benchmarks as much as possible.
 class PluginRegistry {
  public:
-  typedef blas::BlasSupport* (*BlasFactory)(StreamExecutorInterface*);
-  typedef dnn::DnnSupport* (*DnnFactory)(StreamExecutorInterface*);
-  typedef fft::FftSupport* (*FftFactory)(StreamExecutorInterface*);
+  typedef blas::BlasSupport* (*BlasFactory)(StreamExecutor*);
+  typedef dnn::DnnSupport* (*DnnFactory)(StreamExecutor*);
+  typedef fft::FftSupport* (*FftFactory)(StreamExecutor*);
 
   // Gets (and creates, if necessary) the singleton PluginRegistry instance.
   static PluginRegistry* Instance();

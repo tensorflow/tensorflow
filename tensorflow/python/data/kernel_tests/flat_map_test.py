@@ -498,9 +498,22 @@ class FlatMapGlobalShuffleTest(
     self.assertNotEqual(dataset_output, expected)
     self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testInputCardinalityTooLarge(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([[i] for i in range(101)])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "The cardinality of the input to FlatMapDataset is too large to support"
+        " global shuffling",
+    ):
+      dataset = global_shuffle_op._global_shuffle(dataset, seed=42)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
 
 class FlatMapGlobalShuffleCheckpointTest(
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
 
   @combinations.generate(
       combinations.times(

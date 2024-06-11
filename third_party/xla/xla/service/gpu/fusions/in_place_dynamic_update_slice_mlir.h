@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {

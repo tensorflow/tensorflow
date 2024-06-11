@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"
 
@@ -52,6 +51,8 @@ void WarnIfBadDriverJITVersion();
 class NVPTXCompiler : public GpuCompiler {
  public:
   NVPTXCompiler();
+
+  int32_t GetToolkitVersion() const override;
 
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,

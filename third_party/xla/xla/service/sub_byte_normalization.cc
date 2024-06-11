@@ -88,10 +88,10 @@ absl::StatusOr<bool> SubByteNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  FunctionVisitor visitor([&](HloInstruction* hlo) -> Status {
+  FunctionVisitor visitor([&](HloInstruction* hlo) -> absl::Status {
     auto* shape = hlo->mutable_shape();
     changed |= UpdateShape(shape, mode_);
-    return OkStatus();
+    return absl::OkStatus();
   });
   for (HloComputation* computation : module->computations()) {
     // We rewrite all computations instead of non-fusion computations, despite

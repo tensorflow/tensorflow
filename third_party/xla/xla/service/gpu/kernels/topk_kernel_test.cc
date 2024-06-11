@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"

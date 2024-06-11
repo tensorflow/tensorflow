@@ -32,7 +32,6 @@ namespace gpu {
 namespace {
 
 using ::testing::Combine;
-using ::testing::ConvertGenerator;
 using ::testing::HasSubstr;
 using ::testing::TestParamInfo;
 using ::testing::Values;
@@ -78,8 +77,9 @@ struct TestParams {
         sizes(std::get<5>(t)) {}
 };
 
-std::string TestParamsToString(const TestParamInfo<TestParams>& info) {
-  const TestParams& params = info.param;
+std::string TestParamsToString(
+    const TestParamInfo<TestParams::TupleType>& info) {
+  const TestParams params(info.param);
   return absl::StrFormat(
       "%s_with_input_%s_output_%s_from_cc_%d_%d_%s_c_%d_nc_%d",
       AlgorithmToString(params.algorithm),
@@ -94,9 +94,13 @@ std::string TestParamsToString(const TestParamInfo<TestParams>& info) {
 // TODO(tdanyluk): Consider checking somehow directly if the correct algorithms
 // are called / emitted. Currently the emitters should decline unsupported
 // algorithms, but maybe we could check this directly.
-
-class DotAlgorithmSupportTest : public HloTestBase,
-                                public WithParamInterface<TestParams> {
+//
+// We pass the tuple type instead of the struct to WithParamInterface, to avoid
+// the usage of ::testing::ConvertGenerator, which broke the build in some OSS
+// configurations.
+class DotAlgorithmSupportTest
+    : public HloTestBase,
+      public WithParamInterface<TestParams::TupleType> {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
@@ -118,7 +122,8 @@ class DotAlgorithmSupportTest : public HloTestBase,
 // A parametrized test that checks if an algorithm is supported, with the given
 // input and output storage types, from a given cuda capability.
 TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
-  const TestParams& params = GetParam();
+  const TestParams params(GetParam());
+
   const std::string hlo_text = absl::Substitute(
       R"(
     HloModule test
@@ -158,73 +163,67 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
 using PC = PrecisionConfig;
 using CC = se::CudaComputeCapability;
 
-INSTANTIATE_TEST_SUITE_P(F8E5M2Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(Combine(
-                             Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
-                                    PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
-                             Values(F8E5M2), Values(F8E5M2, F16, BF16, F32),
-                             Values(CC(8, 9)),
-                             Values(BackendRestriction::kNoRestriction),
-                             Values(Sizes{32, 32}, Sizes{16, 2}))),
-                         TestParamsToString);
+INSTANTIATE_TEST_SUITE_P(
+    F8E5M2Tests, DotAlgorithmSupportTest,
+    Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
+                   PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
+            Values(F8E5M2), Values(F8E5M2, F16, BF16, F32), Values(CC(8, 9)),
+            Values(BackendRestriction::kNoRestriction),
+            Values(Sizes{32, 32}, Sizes{16, 2})),
+    TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(F8E4M3FNTests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(Combine(
-                             Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
-                                    PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
-                             Values(F8E4M3FN), Values(F8E4M3FN, F16, BF16, F32),
-                             Values(CC(8, 9)),
-                             Values(BackendRestriction::kNoRestriction),
-                             Values(Sizes{32, 32}, Sizes{16, 2}))),
-                         TestParamsToString);
+INSTANTIATE_TEST_SUITE_P(
+    F8E4M3FNTests, DotAlgorithmSupportTest,
+    Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
+                   PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
+            Values(F8E4M3FN), Values(F8E4M3FN, F16, BF16, F32),
+            Values(CC(8, 9)), Values(BackendRestriction::kNoRestriction),
+            Values(Sizes{32, 32}, Sizes{16, 2})),
+    TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(Combine(
-                             Values(PC::ALG_DOT_F16_F16_F32), Values(F16),
-                             Values(F16, F32), Values(CC(0, 0)),
-                             Values(BackendRestriction::kNoRestriction),
-                             Values(Sizes{32, 32}, Sizes{16, 2}))),
+                         Combine(Values(PC::ALG_DOT_F16_F16_F32), Values(F16),
+                                 Values(F16, F32), Values(CC(0, 0)),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(Combine(
-                             Values(PC::ALG_DOT_BF16_BF16_F32), Values(BF16),
-                             Values(BF16, F32), Values(CC(8, 0)),
-                             Values(BackendRestriction::kNoRestriction),
-                             Values(Sizes{32, 32}, Sizes{16, 2}))),
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32),
+                                 Values(BF16), Values(BF16, F32),
+                                 Values(CC(8, 0)),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32XnTests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(
-                             Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
-                                            PC::ALG_DOT_BF16_BF16_F32_X6),
-                                     Values(F32), Values(F32), Values(CC(8, 0)),
-                                     Values(BackendRestriction::kTritonOnly),
-                                     Values(Sizes{32, 32}, Sizes{16, 2}))),
+
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
+                                        PC::ALG_DOT_BF16_BF16_F32_X6),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(BackendRestriction::kTritonOnly),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(
-                             Combine(Values(PC::ALG_DOT_TF32_TF32_F32),
-                                     Values(F32), Values(F32), Values(CC(8, 0)),
-                                     Values(BackendRestriction::kNoRestriction),
-                                     Values(Sizes{32, 32}, Sizes{16, 2}))),
+                         Combine(Values(PC::ALG_DOT_TF32_TF32_F32), Values(F32),
+                                 Values(F32), Values(CC(8, 0)),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotF32F32F32Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(
-                             Combine(Values(PC::ALG_DOT_F32_F32_F32),
-                                     Values(F32), Values(F32), Values(CC(0, 0)),
-                                     Values(BackendRestriction::kNoRestriction),
-                                     Values(Sizes{32, 32}, Sizes{16, 2}))),
+                         Combine(Values(PC::ALG_DOT_F32_F32_F32), Values(F32),
+                                 Values(F32), Values(CC(0, 0)),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotF64F64F64Tests, DotAlgorithmSupportTest,
-                         ConvertGenerator<TestParams::TupleType>(
-                             Combine(Values(PC::ALG_DOT_F64_F64_F64),
-                                     Values(F64), Values(F64), Values(CC(0, 0)),
-                                     Values(BackendRestriction::kNoRestriction),
-                                     Values(Sizes{32, 32}, Sizes{16, 2}))),
+                         Combine(Values(PC::ALG_DOT_F64_F64_F64), Values(F64),
+                                 Values(F64), Values(CC(0, 0)),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
 }  // namespace

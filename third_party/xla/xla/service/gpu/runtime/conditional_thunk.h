@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 

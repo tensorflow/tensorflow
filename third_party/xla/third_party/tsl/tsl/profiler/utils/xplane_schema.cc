@@ -54,6 +54,7 @@ const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
+const absl::string_view kHostOffloadOpLineName = "Host Offload Ops";
 const absl::string_view kCounterEventsLineName = "_counters_";
 
 const absl::string_view kDeviceVendorNvidia = "Nvidia";
@@ -360,6 +361,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
       {"launch_id", kMegaScaleLaunchId},
       {"loop_iteration", kMegaScaleLoopIteration},
       {"graph_protos", kMegaScaleGraphProtos},
+      {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
   });
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
   return *stat_type_map;

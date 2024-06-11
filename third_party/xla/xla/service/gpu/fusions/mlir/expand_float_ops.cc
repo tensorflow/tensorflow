@@ -542,7 +542,7 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
 };
 
 // Lowering for cmpf : f8 for float to pred conversions.
-struct RewriteF8UneCst : public mlir::OpRewritePattern<ma::CmpFOp> {
+struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
@@ -551,26 +551,34 @@ struct RewriteF8UneCst : public mlir::OpRewritePattern<ma::CmpFOp> {
     auto lhs = mlir::cast<FloatValue>(op.getLhs());
     auto rhs = mlir::cast<FloatValue>(op.getRhs());
 
-    llvm::APFloat rhs_cst(rhs.getType().getFloatSemantics());
-    if (lhs.getType().getWidth() != 8 ||
-        op.getPredicate() != ma::CmpFPredicate::UNE ||
-        !mlir::matchPattern(rhs, mlir::m_ConstantFloat(&rhs_cst))) {
-      return rewriter.notifyMatchFailure(
-          op, "not an 8 bit cmpf une with a constant");
+    if (lhs.getType().getWidth() != 8) {
+      return rewriter.notifyMatchFailure(op, "not an 8 bit cmpf");
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    Val int_value{b.create<ma::BitcastOp>(rewriter.getI8Type(), lhs), &b};
-    int64_t constant = rhs_cst.bitcastToAPInt().getZExtValue();
-    // If we're comparing to +-0, compare the absolute values.
-    if (rhs_cst.isZero() &&
-        (lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
-      int_value = int_value & 0x7f;
-      constant &= 0x7f;
+    // Skip the f32 conversion if we're comparing UNE.cst.
+    llvm::APFloat rhs_cst(rhs.getType().getFloatSemantics());
+    if (op.getPredicate() == ma::CmpFPredicate::UNE &&
+        mlir::matchPattern(rhs, mlir::m_ConstantFloat(&rhs_cst))) {
+      Val int_value{b.create<ma::BitcastOp>(rewriter.getI8Type(), lhs), &b};
+      int64_t constant = rhs_cst.bitcastToAPInt().getZExtValue();
+      // If we're comparing to +-0, compare the absolute values.
+      if (rhs_cst.isZero() &&
+          (lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
+        int_value = int_value & 0x7f;
+        constant &= 0x7f;
+      }
+      auto cst = b.create<ma::ConstantIntOp>(constant, rewriter.getI8Type());
+      rewriter.replaceOpWithNewOp<ma::CmpIOp>(op, ma::CmpIPredicate::ne,
+                                              int_value, cst);
+      return mlir::success();
     }
-    auto cst = b.create<ma::ConstantIntOp>(constant, rewriter.getI8Type());
-    rewriter.replaceOpWithNewOp<ma::CmpIOp>(op, ma::CmpIPredicate::ne,
-                                            int_value, cst);
+
+    auto lhs_ext = b.create<ma::ExtFOp>(b.getF32Type(), lhs);
+    auto rhs_ext = b.create<ma::ExtFOp>(b.getF32Type(), rhs);
+    rewriter.replaceOpWithNewOp<ma::CmpFOp>(op, op->getResultTypes(),
+                                            mlir::ValueRange{lhs_ext, rhs_ext},
+                                            op->getAttrs());
     return mlir::success();
   }
 };
@@ -617,6 +625,22 @@ struct RewriteIToFpPattern : public mlir::OpRewritePattern<Op> {
   }
 };
 
+template <typename Op>
+struct RewriteFpToIPattern : public mlir::OpRewritePattern<Op> {
+  using mlir::OpRewritePattern<Op>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getIn().getType().getIntOrFloatBitWidth() != 8) {
+      return rewriter.notifyMatchFailure(op, "not an f8 fptoi");
+    }
+    Value to_f32 = rewriter.create<ma::ExtFOp>(
+        op.getLoc(), rewriter.getF32Type(), op.getIn());
+    rewriter.replaceOpWithNewOp<Op>(op, op.getType(), to_f32);
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -628,8 +652,10 @@ class ExpandFloatOpsPass
     patterns.add<RewriteToCmpSelect<ma::MaximumFOp, ma::CmpFPredicate::OGE>>(
         &getContext(), /*include_f32=*/pre_ampere_);
     patterns.add<RewriteTruncFPattern, RewriteExtFPattern, RewriteAbsFPattern,
-                 RewriteF8UneCst, RewriteIToFpPattern<ma::SIToFPOp>,
-                 RewriteIToFpPattern<ma::UIToFPOp>>(&getContext());
+                 RewriteF8Cst, RewriteIToFpPattern<ma::SIToFPOp>,
+                 RewriteIToFpPattern<ma::UIToFPOp>,
+                 RewriteFpToIPattern<ma::FPToSIOp>,
+                 RewriteFpToIPattern<ma::FPToUIOp>>(&getContext());
     mlir::populatePolynomialApproximateTanhPattern(patterns);
     patterns.add<RewriteErf32Pattern>(&getContext());
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),

@@ -158,8 +158,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
   for (const auto& [root_index, hero] :
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     for (const auto& [hero_operand_index, hero_operand] :
-         llvm::enumerate(hero->operands())) {
-      if (hero_operand->shape().rank() == 0) {
+         llvm::enumerate(hero.GetOperands())) {
+      if (hero_operand.shape().rank() == 0) {
         continue;
       }
       // Compute thread ID -> hero operand indexing map.
@@ -170,11 +170,9 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         return std::nullopt;
       }
       // Compute indexing from output to inputs for logical layout.
-      HloInstructionAdaptor hero_operand_adaptor(*hero_operand,
-                                                 &fusion_adaptor);
       GroupedByOpIndexingMap instr_indexing_keyed_by_operands =
-          ComputeGroupedOutputToInputIndexing(
-              fusion_adaptor, hero_operand_adaptor, mlir_context);
+          ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
+                                              mlir_context);
       // For every operand compute thread ID -> physical layout of operand
       // indexing map.
       for (const HloInstruction* operand : operands) {
@@ -196,8 +194,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         IndexingMap operand_logical_to_linearized_physical_shape =
             operand_logical_to_physical_map *
             operand_physical_to_linearized_shape;
-        operand_logical_to_linearized_physical_shape.Simplify(
-            GetIndexingMapForInstruction);
+        operand_logical_to_linearized_physical_shape.Simplify();
 
         for (const IndexingMap& operand_indexing_map :
              operand_indexing_maps_it->second) {
@@ -213,8 +210,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
           IndexingMap thread_id_to_linearized_physical_input_map =
               *thread_id_to_hero_operand_map *
               logical_output_to_linearized_physical_input_map;
-          thread_id_to_linearized_physical_input_map.Simplify(
-              GetIndexingMapForInstruction);
+          thread_id_to_linearized_physical_input_map.Simplify();
           result[operand].insert(thread_id_to_linearized_physical_input_map);
         }
       }
@@ -250,7 +246,7 @@ void AssignValuesToRTVars(IndexingMap* indexing_map) {
                               indexing_map->GetDimVars(),
                               indexing_map->GetRangeVars(),
                               {}};
-  indexing_map->Simplify(GetIndexingMapForInstruction);
+  indexing_map->Simplify();
   indexing_map->RemoveUnusedSymbols();
 }
 
@@ -277,7 +273,7 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
                               indexing_map->GetDimVars(),
                               {indexing_map->GetRangeVars().back()},
                               {}};
-  indexing_map->Simplify(GetIndexingMapForInstruction);
+  indexing_map->Simplify();
   indexing_map->RemoveUnusedSymbols();
 }
 
@@ -476,7 +472,7 @@ std::vector<Interval> FindContiguousIntervals(
       // Case 1.3: |multiplier| != 1 and g(s) = s.
       if (partitioned_expr.func_of_s0 == range) {
         Interval range_interval = indexing_map.GetSymbolBound(0);
-        int64_t num_elems = range_interval.NumElements();
+        int64_t num_elems = range_interval.GetLoopTripCount();
         // In this case we get a single interval, because the ranges that every
         // thread is reading overlap.
         if (num_elems >= std::abs(multiplier.getValue())) {
@@ -509,7 +505,7 @@ std::vector<Interval> FindContiguousIntervals(
   }
   // Case 2.2: g(s) = s.
   Interval range_interval = indexing_map.GetSymbolBound(0);
-  return ExtendIntervals(intervals, range_interval.NumElements() - 1);
+  return ExtendIntervals(intervals, range_interval.GetLoopTripCount() - 1);
 }
 
 bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
@@ -539,7 +535,7 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
       /*rt_vars=*/{}};
   IndexingMap thread_x_to_input_sample =
       thread_x_first_32_elements * thread_x_to_linearized_input;
-  thread_x_to_input_sample.Simplify(GetIndexingMapForInstruction);
+  thread_x_to_input_sample.Simplify();
   thread_x_to_input_sample.RescaleSymbols();
   thread_x_to_input_sample.RemoveUnusedSymbols();
 

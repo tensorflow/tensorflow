@@ -6,12 +6,3 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
   %0:2 = xla_gpu.apply_indexing #map0 (%d0 in [0, 2])
   func.return %0#0, %0#1 : index, index
 }
-
-// -----
-
-#map0 = affine_map<(d0) -> (d0)>
-func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> index {
-  // expected-error @+1 {{indexing map is empty}}
-  %0 = xla_gpu.apply_indexing #map0 (%d0 in [100, 0])
-  func.return %0 : index
-}

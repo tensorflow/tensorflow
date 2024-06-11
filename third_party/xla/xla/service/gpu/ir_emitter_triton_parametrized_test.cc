@@ -132,7 +132,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
                              // Modify the case below to use k = 32 instead of
-                             // 16 once b/331362083 is fixed.
+                             // 16 once b/337839570 is fixed.
                              MixTypeParams{S8, F16, 80, 32, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},

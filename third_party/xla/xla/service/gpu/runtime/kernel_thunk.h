@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -81,8 +81,6 @@ class KernelThunk : public Thunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;

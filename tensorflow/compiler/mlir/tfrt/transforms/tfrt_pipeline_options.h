@@ -108,13 +108,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, gpurt.compile_and_execute is used for GPU"),
       llvm::cl::init(false)};
 
-  Option<bool> func_use_fallback_tensor{
-      *this, "func-use-fallback-tensor",
-      llvm::cl::desc(
-          "If true, use TF tensor as input/output types in func (and other "
-          "control flow) ops."),
-      llvm::cl::init(false)};
-
   Option<bool> enable_while_parallel_iterations{
       *this, "enable-while-parallel-iterations",
       llvm::cl::desc("If true, tf.While op will be parallelized. This is "
@@ -148,6 +141,12 @@ struct TfrtPipelineOptions
   Option<int64_t> min_num_batch_threads{
       *this, "tfrt-min-num-batch-threads",
       llvm::cl::desc("The minimum number of batch threads"), llvm::cl::init(1)};
+
+  Option<int64_t> min_max_enqueued_batches{
+      *this, "tfrt-min-max-enqueued-batches",
+      llvm::cl::desc(
+          "The minimum of the maximum number of outstanding enqueued batches"),
+      llvm::cl::init(1)};
 
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",

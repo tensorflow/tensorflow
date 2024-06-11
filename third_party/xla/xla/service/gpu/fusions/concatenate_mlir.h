@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -124,6 +124,11 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   // cuBLAS gemms represented in the HLO as custom call instructions.
   if (config.enabled_commands.contains(DebugOptions::CUBLAS) &&
       IsLegacyCublasMatmul(*hlo)) {
+    return true;
+  }
+
+  if (config.enabled_commands.contains(DebugOptions::CUBLASLT) &&
+      (IsCublasLtMatmul(*hlo) || IsCublasLtMatmulF8(*hlo))) {
     return true;
   }
 
@@ -692,7 +697,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {
-      DebugOptions::CUBLAS, DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL};
+      DebugOptions::CUBLAS, DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+      DebugOptions::COLLECTIVES};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {

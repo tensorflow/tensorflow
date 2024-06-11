@@ -20,8 +20,10 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/log/check.h"
+#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -44,8 +46,13 @@ namespace gpu {
 // tile to an N-dimensional tile. The input tile is assumed to have all offsets
 // equal to 0 and all strides equal to 1.
 //
-// It is represented with three affine maps as follows:
+// It is represented with "tile_map()", which is an IndexingMap of this form:
+// (size0, ..., size{n-1}) ->  (offset0, ..., offset{n-1},
+//                              size'0, ..., size'{n-1},
+//                              stride0, ..., stride{n-1})
 //
+// We can get three AffineMap projections of tile_map(), which are just
+// convenience methods to get the components that we need:
 // offset_map(): ()[size0, ..., size{M-1}] -> (offset0, ..., offset{N-1})
 // size_map():   ()[size0, ..., size{M-1}] -> (size'0, ..., size'{N-1})
 // stride_map(): ()[size0, ..., size{M-1}] -> (stride0, ..., stride{N-1})
@@ -120,13 +127,25 @@ namespace gpu {
 //   offset_map: (N+)^m x Z^k -> N^n
 // As a notation, we can call the last k parameters of offset_map "rt_vars".
 //
-// In the code we represent a symbolic tile with three affine maps:
+// In the code we represent a symbolic tile with "tile_map()", which is an
+// IndexingMap of this form:
+// (size0, ..., size{n-1})
+// [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
+//                                 size'0, ..., size'{n-1},
+//                                 stride0, ..., stride{n-1})
+//
+// We can get three AffineMap projections of tile_map(), which are just
+// convenience methods to get the components that we need:
 // offset_map(): ()[sizes..., rt_vars...] -> offsets'
 // size_map():   ()[sizes...] -> sizes'
 // stride_map(): ()[sizes...] -> strides'
 //
-// Other than this, the SymbolicTile object also contains a vector of RTVars
-// (rt_vars()) which describe how to evaluate the runtime value of rt_vars.
+// The size parameters of the projections may be arbitrarily constrained, in
+// order to ensure that applying the symbolic tile on an input tile yields a
+// valid tile. Such constraints are exposed through the constraints() method.
+// It may happen that constraints are unsatisfiable; in that case, the boolean
+// is_satisfiable() is set to false. This boolean should always be checked
+// before using the content of constraints().
 //
 // To correctly evaluate the RTVars for a given tile, we have to feed an
 // index from the original tile (a tile of the output tensor) to the RTVar's
@@ -141,6 +160,8 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(
       const IndexingMap& indexing_map);
 
+  using ConstraintMap = llvm::DenseMap<mlir::AffineExpr, Interval>;
+
   // For printing in tests.
   std::string RtVarsToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -149,10 +170,37 @@ class SymbolicTile {
 
   void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
-  mlir::AffineMap offset_map() const { return offset_map_; }
-  mlir::AffineMap size_map() const { return size_map_; }
-  mlir::AffineMap stride_map() const { return stride_map_; }
-  const std::vector<RTVar>& rt_vars() const { return rt_vars_; }
+  mlir::AffineMap offset_map() const;
+  mlir::AffineMap size_map() const;
+  mlir::AffineMap stride_map() const;
+
+  // Constraints on the `sizes` of the input tile. The variable names in this
+  // map correspond to the parameter names of `offset_map()`, `size_map()`, and
+  // `stride_map()`. Contents are irrelevant when `is_satisfiable()` is false.
+  const ConstraintMap& constraints() const {
+    CHECK(is_satisfiable_);
+    return constraints_;
+  }
+
+  // Whether the `SymbolicTile` constraints can be satisfied. When this is set
+  // to true, the domain of the `SymbolicTile` must be considered empty.
+  bool is_satisfiable() const { return is_satisfiable_; }
+
+  // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
+  // and strides.
+  //
+  // (size0, ..., size{n-1})
+  // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
+  //                                 size'0, ..., size'{n-1},
+  //                                 stride0, ..., stride{n-1})
+  //
+  //
+  // Its type is IndexingMap, but it's not a map of indices.
+  // This indexing map wraps the relevant domain constraints.
+  //
+  // Warning: The dimensions and symbols in tile_map do not match the dimensions
+  // and symbols in offset_map, size_map, and stride_map.
+  const IndexingMap& tile_map() const { return tile_map_; }
 
   // This allows GUnit to print the tile.
   template <typename Sink>
@@ -161,17 +209,20 @@ class SymbolicTile {
   }
 
  private:
-  mlir::AffineMap offset_map_;
-  mlir::AffineMap size_map_;
-  mlir::AffineMap stride_map_;
-  std::vector<RTVar> rt_vars_;
+  // See the comment of tile_map().
+  IndexingMap tile_map_;
 
-  SymbolicTile(mlir::AffineMap offset_map, mlir::AffineMap size_map,
-               mlir::AffineMap stride_map, std::vector<RTVar> rt_vars)
-      : offset_map_(offset_map),
-        size_map_(size_map),
-        stride_map_(stride_map),
-        rt_vars_(std::move(rt_vars)) {}
+  // See the comment of constraints().
+  ConstraintMap constraints_;
+
+  // See the comment of is_satisfiable().
+  bool is_satisfiable_ = true;
+
+  explicit SymbolicTile(IndexingMap tile_map, ConstraintMap constraints,
+                        bool is_satisfiable = true)
+      : tile_map_(std::move(tile_map)),
+        constraints_(std::move(constraints)),
+        is_satisfiable_(is_satisfiable) {}
 };
 
 }  // namespace gpu

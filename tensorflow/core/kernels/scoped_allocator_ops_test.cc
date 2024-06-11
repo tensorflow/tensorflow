@@ -87,7 +87,7 @@ void PrepOp(DataType dtype, int32_t id,
             Tensor** backing_tensor, Allocator* allocator,
             ScopedAllocatorMgr* sam, const string& op_name,
             std::vector<Tensor>* tensors,
-            gtl::InlinedVector<TensorValue, 4>* inputs,
+            absl::InlinedVector<TensorValue, 4>* inputs,
             const DataTypeVector& input_types) {
   ScopedAllocatorMgr::PopulateFields(id, fields_shapes, dtype, fields);
   // We don't simply allocate a tensor with shape as backing_tensor_shape,

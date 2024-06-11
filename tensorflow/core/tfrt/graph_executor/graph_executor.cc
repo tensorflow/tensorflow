@@ -168,6 +168,16 @@ tensorflow::Status RunMlrtFunction(
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
       fallback_request_state, request_context->resource_context(),
       request_context->cancellation_context().get()));
+  execution_context.AddUserErrorLogger(
+      [fallback_request_state](absl::Status status) {
+        if (fallback_request_state) {
+          LOG(ERROR) << "Model "
+                     << fallback_request_state->session_metadata().name()
+                     << " version "
+                     << fallback_request_state->session_metadata().version()
+                     << " has error: " << status;
+        }
+      });
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -766,8 +776,9 @@ GraphExecutor::ImportAndCompileClientGraph(
         std::move(bytecode_buffer), std::move(bytecode_executable));
   } else {
     tfrt::BefBuffer bef;
-    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
-        options_.compile_options, module.get(), &bef, model_context));
+    TF_RETURN_IF_ERROR(
+        tensorflow::ConvertTfMlirToBef(options_.compile_options, module.get(),
+                                       &bef, model_context, &fallback_state()));
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(runtime(), bef));
     executable_context = std::make_shared<ExecutableContext>(

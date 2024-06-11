@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/collective_combiner_utils.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -73,10 +73,10 @@ int64_t FindMostFrequentGatherDim(
 // Combines the elements of to_combine into a single AllGather op. All entries
 // in to_combine must be AllGather ops with exactly one operand and the same
 // preferred all_gather_dimension.
-Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
-                         bool combine_by_dim) {
+absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
+                               bool combine_by_dim) {
   if (to_combine.size() < 2) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " AllGather ops";
 
@@ -156,7 +156,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The group key encapsulates all of the properties which must match for it to
@@ -225,7 +225,7 @@ absl::StatusOr<bool> AllGatherCombiner::Run(
       return CombineKey(instruction, *domain_map, combine_by_dim_);
     };
     auto combine_fn =
-        [&](absl::Span<HloInstruction* const> to_combine) -> Status {
+        [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
       return CombineAllGathers(to_combine, combine_by_dim_);
     };
 

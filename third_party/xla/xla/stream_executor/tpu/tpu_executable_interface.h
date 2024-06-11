@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -69,7 +69,7 @@ class TpuExecutableInterface : public Executable {
       std::vector<ExecutionInput>* arguments, se::Stream* stream,
       se::Stream* transfer_stream = nullptr);
 
-  virtual Status LoadProgramAndEnqueueToStream(
+  virtual absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,

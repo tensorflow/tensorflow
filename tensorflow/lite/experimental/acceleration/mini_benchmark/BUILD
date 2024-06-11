@@ -858,9 +858,9 @@ cc_test(
     deps = [
         ":runner",
         ":status_codes",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ] + select({
@@ -988,6 +988,7 @@ cc_test(
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
@@ -996,7 +997,6 @@ cc_test(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -1012,6 +1012,10 @@ cc_test(
 cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
+    # Disable odr violation check because of a libc++ symbol (b/337114862).
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     deps = [
         ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",
@@ -1099,6 +1103,13 @@ cc_test(
 cc_test(
     name = "validator_runner_test",
     srcs = ["validator_runner_test.cc"],
+    # Shared libraries that are built and loaded into internal Google applications are generally
+    # unsupported. One consequence of this lack of support is that AddressSanitizer's ODR checking
+    # will produce spurious failures with an upcoming Crosstool change. The workaround for this is
+    # to disable the ODR checking on affected tests.
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     tags = [
         "no_mac",
         "no_windows",

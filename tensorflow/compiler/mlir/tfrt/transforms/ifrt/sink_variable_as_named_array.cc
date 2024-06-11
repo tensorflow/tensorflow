@@ -66,42 +66,12 @@ class SinkVariableAsNamedArrayPass
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder builder(&getContext());
 
-    absl::flat_hash_map<std::string, VariableConfig> variable_config_by_name;
-    llvm::SmallDenseMap<mlir::TF::IfrtCallOp, IfrtArgConfigList>
-        ifrt_call_argument_configs;
-
-    // First, we backtrack from IFRT call to collect variable tensors that needs
-    // to converted to loaded ifrt arrays and their associated information such
-    // as their name and defining ops.
-    std::vector<mlir::TF::IfrtCallOp> ifrt_call_ops;
-    module.walk([&ifrt_call_ops](mlir::TF::IfrtCallOp call) {
-      ifrt_call_ops.push_back(call);
-    });
-    for (const auto& call : ifrt_call_ops) {
-      if (mlir::failed(CollectVariablesUsedByDevice(
-              call, variable_config_by_name, ifrt_call_argument_configs))) {
-        return signalPassFailure();
-      }
-    }
-
-    // TODO(b/332906178): collapse the below with the
-    // CollectVariablesUsedByDevice above or just remove the
-    // CollectVariablesUsedByDevice.
-    //
     // Rewrite ReadVariableOp with IfrtLoadVariableOp
     llvm::SmallDenseMap<mlir::TF::ReadVariableOp, mlir::TF::IfrtLoadVariableOp>
         read_to_load;
 
     mlir::WalkResult walk_result =
         module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
-          mlir::FailureOr<std::string> variable_runtime_name =
-              GetVariableTensorName(read_variable_op);
-          if (mlir::failed(variable_runtime_name)) {
-            read_variable_op->emitError() << "Failed to get variable name.";
-            return mlir::WalkResult::interrupt();
-          }
-
-          builder.setInsertionPointAfter(read_variable_op);
           // TODO(b/319045348): consider use resource alias analysis for
           // this.
           auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(
@@ -113,24 +83,22 @@ class SinkVariableAsNamedArrayPass
             return mlir::WalkResult::interrupt();
           }
 
-          auto iter = variable_config_by_name.find(*variable_runtime_name);
-          mlir::StringAttr device_sharding_config_attr;
-          if (iter == variable_config_by_name.end()) {
-            device_sharding_config_attr = builder.getStringAttr("");
-          } else {
-            device_sharding_config_attr =
-                builder.getStringAttr(iter->second.device_sharding_config);
+          // Avoid lowering ReadVariableOp to IfrtLoadVariableOp if the
+          // assignment AssignVariableOp happens at the same module because
+          // IfrtLoadVariableOp assumes asynchronous assignment of the variable.
+          for (auto var_handle_user : var_handle->getUsers()) {
+            if (llvm::isa<mlir::TF::AssignVariableOp>(var_handle_user)) {
+              return mlir::WalkResult::advance();
+            }
           }
-
           std::vector<mlir::Type> result_types;
           result_types.push_back(mlir::RankedTensorType::get(
               {}, builder.getType<mlir::TF::StringType>()));
           result_types.push_back(read_variable_op.getResult().getType());
 
+          builder.setInsertionPointAfter(read_variable_op);
           auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
-              read_variable_op->getLoc(), result_types, var_handle.getResult(),
-              device_sharding_config_attr,
-              builder.getStringAttr(*variable_runtime_name));
+              read_variable_op->getLoc(), result_types, var_handle.getResult());
           read_to_load[read_variable_op] = load_variable_op;
 
           return mlir::WalkResult::advance();
@@ -143,223 +111,101 @@ class SinkVariableAsNamedArrayPass
     // Rewrite ifrt call: variable tensors are sunk as attribute.
     // The runtime guarantees the binding of corresponding loaded ifrt array
     // based on attributes.
-    for (auto& call : ifrt_call_ops) {
-      if (!call.getVariableArgIndicesAttr().empty()) {
-        call->emitError() << "Expect empty "
-                          << call.getVariableArgIndicesAttrName().str()
-                          << " attributes, but got "
-                          << call.getVariableArgIndicesAttr().size()
-                          << " elements";
-        return signalPassFailure();
-      }
-      if (call->getOpOperands().size() !=
-          ifrt_call_argument_configs[call].size()) {
-        call->emitError() << "IfrtCallOp got " << call->getOpOperands().size()
-                          << " operands, but expects "
-                          << ifrt_call_argument_configs[call].size();
-        return signalPassFailure();
-      }
-      llvm::SmallVector<int> variable_arg_indices;
-      llvm::SmallVector<mlir::Attribute> variable_arg_names;
-      llvm::SmallVector<mlir::Value> updated_args;
+    mlir::WalkResult ifrt_call_walk_result =
+        module.walk([&](mlir::TF::IfrtCallOp call) {
+          IfrtArgConfigList ifrt_call_argument_configs;
 
-      for (const auto& [arg_idx, arg] :
-           llvm::enumerate(ifrt_call_argument_configs[call])) {
-        if (arg.is_variable) {
-          variable_arg_names.push_back(
-              builder.getStringAttr(arg.variable_name));
-          variable_arg_indices.push_back(arg_idx);
-          // Variable use the key from IfrtLoadVariable.
-          updated_args.push_back(
-              read_to_load[arg.read_variable_op].getArrayKey());
-        } else {
-          // non variable
-          updated_args.push_back(call->getOperand(arg_idx));
-        }
-      }
+          if (mlir::failed(BuildIfrtCallArgumentConfig(
+                  call, ifrt_call_argument_configs))) {
+            return mlir::WalkResult::interrupt();
+          }
 
-      builder.setInsertionPointAfter(call);
-      auto updated_ifrt_call = builder.create<mlir::TF::IfrtCallOp>(
-          call->getLoc(), call.getResultTypes(), updated_args);
+          if (!call.getVariableArgIndicesAttr().empty()) {
+            call->emitError()
+                << "Expect empty " << call.getVariableArgIndicesAttrName().str()
+                << " attributes, but got "
+                << call.getVariableArgIndicesAttr().size() << " elements";
+            return mlir::WalkResult::interrupt();
+          }
+          if (call->getOpOperands().size() !=
+              ifrt_call_argument_configs.size()) {
+            call->emitError()
+                << "IfrtCallOp got " << call->getOpOperands().size()
+                << " operands, but expects "
+                << ifrt_call_argument_configs.size();
+            return mlir::WalkResult::interrupt();
+          }
 
-      updated_ifrt_call->setAttrs(call->getAttrs());
-      // Update variable_arg_indices attribute.
-      updated_ifrt_call.setVariableArgIndicesAttr(
-          builder.getI32ArrayAttr(variable_arg_indices));
+          llvm::SmallVector<int> variable_arg_indices;
+          llvm::SmallVector<mlir::Value> updated_args;
 
-      call.replaceAllUsesWith(updated_ifrt_call);
-      call.erase();
+          for (const auto& [arg_idx, arg] :
+               llvm::enumerate(ifrt_call_argument_configs)) {
+            if (arg.is_variable) {
+              variable_arg_indices.push_back(arg_idx);
+              // Variable use the key from IfrtLoadVariable.
+              updated_args.push_back(
+                  read_to_load[arg.read_variable_op].getArrayKey());
+            } else {
+              // non variable
+              updated_args.push_back(call->getOperand(arg_idx));
+            }
+          }
+
+          builder.setInsertionPointAfter(call);
+          auto updated_ifrt_call = builder.create<mlir::TF::IfrtCallOp>(
+              call->getLoc(), call.getResultTypes(), updated_args);
+
+          updated_ifrt_call->setAttrs(call->getAttrs());
+          // Update variable_arg_indices attribute.
+          updated_ifrt_call.setVariableArgIndicesAttr(
+              builder.getI32ArrayAttr(variable_arg_indices));
+
+          call.replaceAllUsesWith(updated_ifrt_call);
+          call.erase();
+          return mlir::WalkResult::advance();
+        });
+
+    if (ifrt_call_walk_result.wasInterrupted()) {
+      return signalPassFailure();
     }
 
     // Remove all ReadVariableOp after replacing the CPU usage of
     // ReadVariableOp.
-    module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
+    for (auto& [read_variable_op, load_variable_op] : read_to_load) {
       if (!read_variable_op->use_empty()) {
         // This variable tensor is used by CPU host.
-        read_to_load[read_variable_op].setUsedByHost(true);
+        load_variable_op.setUsedByHost(true);
 
         // Replace CPU use of ReadVariableOp
-        read_variable_op.replaceAllUsesWith(
-            read_to_load[read_variable_op].getTensorFuture());
+        read_variable_op.replaceAllUsesWith(load_variable_op.getTensorFuture());
       }
       read_variable_op.erase();
-    });
+    }
   }
 
  private:
-  struct VariableConfig {
-    // VariableDeviceShardingConfig text proto.
-    std::string device_sharding_config;
-    // All ReadVariableOps that returns this named variable.
-    std::vector<mlir::TF::ReadVariableOp> read_variable_op;
-  };
   struct IfrtArgConfig {
     bool is_variable;
-    std::string variable_name;
     mlir::TF::ReadVariableOp read_variable_op;
   };
   using IfrtArgConfigList = llvm::SmallVector<IfrtArgConfig>;
 
-  // Find defining ReadVariableOps and also build argument configuration map of
-  // a IfrtCallOp.
-  mlir::LogicalResult CollectVariablesUsedByDevice(
-      mlir::TF::IfrtCallOp call,
-      absl::flat_hash_map<std::string, VariableConfig>& variable_config_by_name,
-      llvm::SmallDenseMap<mlir::TF::IfrtCallOp, IfrtArgConfigList>&
-          ifrt_call_argument_configs) {
-    IfrtArgConfigList& args = ifrt_call_argument_configs[call];
-
-    tensorflow::tpu::TPUCompileMetadataProto metadata;
-
-    // TODO(b/319045348):  remove the usage kMetadataAttrName.
-    auto metadata_attr =
-        call->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
-    if (metadata_attr && !metadata_attr.empty()) {
-      if (!tensorflow::protobuf::TextFormat::ParseFromString(
-              metadata_attr.getValue().str(), &metadata)) {
-        return call.emitError()
-               << "Failed to parse TPUCompileMetadataProto from attr :"
-               << metadata_attr.getValue().str();
-      }
-    } else {
-      return call.emitError()
-             << "Failed to Get TPUCompileMetadataProto from attr";
-    }
-
+  // Build argument configuration map of a IfrtCallOp.
+  mlir::LogicalResult BuildIfrtCallArgumentConfig(mlir::TF::IfrtCallOp call,
+                                                  IfrtArgConfigList& args) {
     for (const auto& [arg_idx, input] : llvm::enumerate(call->getOperands())) {
       // Assuming the nested function calls are inlined.
       if (auto read_variable_op =
               GetDefiningOp<mlir::TF::ReadVariableOp>(input)) {
-        mlir::FailureOr<std::string> variable_tensor_name =
-            GetVariableTensorName(read_variable_op);
-
-        if (mlir::failed(variable_tensor_name)) {
-          return mlir::failure();
-        }
-
-        absl::StatusOr<std::string> device_sharding_config =
-            GetVariableShardingConfig(metadata, arg_idx);
-        if (!device_sharding_config.ok()) {
-          return call->emitError()
-                 << "Fail to get device sharding config for argument index "
-                 << arg_idx;
-        }
-        VariableConfig& variable_config =
-            variable_config_by_name[*variable_tensor_name];
-        if (!variable_config.read_variable_op.empty()) {
-          if (variable_config.device_sharding_config !=
-              *device_sharding_config) {
-            return call->emitError()
-                   << "A variable tensor has different sharding config: "
-                   << variable_config.device_sharding_config << " vs "
-                   << *device_sharding_config;
-          }
-        } else {
-          variable_config.device_sharding_config = *device_sharding_config;
-        }
-
-        variable_config.read_variable_op.push_back(read_variable_op);
-        args.push_back({.is_variable = true,
-                        .variable_name = *variable_tensor_name,
-                        .read_variable_op = read_variable_op});
+        args.push_back(
+            {.is_variable = true, .read_variable_op = read_variable_op});
       } else {
         args.push_back({.is_variable = false});
       }
     }
 
     return mlir::success();
-  }
-
-  // The returned variable tensor name is used both as an internal hash key,
-  // and as the binding name between the tensor and the array in the
-  // runtime.
-  std::string GetVariableTensorName(mlir::TF::VarHandleOp var_handle) {
-    return absl::StrCat(absl::string_view(var_handle.getContainer()), "__",
-                        absl::string_view(var_handle.getSharedName()));
-  }
-
-  mlir::FailureOr<std::string> GetVariableTensorName(
-      mlir::TF::ReadVariableOp read_variable_op) {
-    mlir::Value variable_definition = read_variable_op.getResource();
-    auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(variable_definition);
-
-    if (!var_handle) {
-      return read_variable_op->emitError("ReadVariableOp has no defining op.");
-    }
-
-    return GetVariableTensorName(var_handle);
-  }
-
-  absl::StatusOr<std::string> GetVariableShardingConfig(
-      const tensorflow::tpu::TPUCompileMetadataProto& metadata, int arg_idx) {
-    tensorflow::ifrt_serving::VariableDeviceShardingConfigProto
-        device_sharding_config;
-    std::vector<int> device_ids;
-
-    if (metadata.has_device_assignment()) {
-      absl::StatusOr<std::unique_ptr<xla::DeviceAssignment>> da =
-          xla::DeviceAssignment::Deserialize(metadata.device_assignment());
-
-      if (!da.ok()) {
-        return da.status();
-      }
-      if (metadata.num_replicas() != (*da)->replica_count() ||
-          metadata.num_cores_per_replica() != (*da)->computation_count()) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Device assignment has different replica count: ",
-            metadata.num_replicas(), " vs ", (*da)->replica_count(),
-            " or computation count: ", metadata.num_cores_per_replica(), " vs ",
-            (*da)->computation_count(), "."));
-      }
-
-      device_ids.reserve(metadata.num_replicas() *
-                         metadata.num_cores_per_replica());
-      for (int i = 0; i < (*da)->replica_count(); ++i) {
-        for (int j = 0; j < (*da)->computation_count(); ++j) {
-          device_ids.push_back((**da)(i, j));
-        }
-      }
-    } else {
-      // Default use first N devices.
-      device_ids.resize(metadata.num_replicas() *
-                        metadata.num_cores_per_replica());
-      std::iota(device_ids.begin(), device_ids.end(), 0);
-    }
-
-    device_sharding_config.mutable_device_ids()->Assign(device_ids.begin(),
-                                                        device_ids.end());
-
-    if (metadata.args_size() > 0) {
-      *device_sharding_config.mutable_sharding() =
-          metadata.args(arg_idx).sharding();
-    }
-
-    std::string proto_text;
-    tsl::protobuf::TextFormat::Printer printer;
-    printer.SetSingleLineMode(true);
-    printer.PrintToString(device_sharding_config, &proto_text);
-
-    return proto_text;
   }
 
   template <typename OpT>

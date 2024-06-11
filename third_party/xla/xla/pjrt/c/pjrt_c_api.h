@@ -44,6 +44,7 @@ typedef enum {
   PJRT_Extension_Type_Custom_Partitioner,
   PJRT_Extension_Type_Stream,
   PJRT_Extension_Type_Layouts,
+  PJRT_Extension_Type_FFI,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -78,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 51
+#define PJRT_API_MINOR 54
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -639,6 +640,10 @@ typedef enum {
   PJRT_Buffer_Type_U4,
 
   PJRT_Buffer_Type_TOKEN,
+
+  // 2-bit integer types
+  PJRT_Buffer_Type_S2,
+  PJRT_Buffer_Type_U2,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -1099,6 +1104,36 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_AddressableByDevices_Args, num_devices);
 // Returns the devices that can address this memory.
 typedef PJRT_Error* PJRT_Memory_AddressableByDevices(
     PJRT_Memory_AddressableByDevices_Args* args);
+
+// ------------------------------- Execute Context -----------------------------
+
+// An opaque context passed to an execution that may be used to supply
+// additional arguments to a derived class of PJRT_Executable. It is a caller
+// responsibility to ensure that the context is valid for the duration of the
+// execution.
+typedef struct PJRT_ExecuteContext PJRT_ExecuteContext;
+
+struct PJRT_ExecuteContext_Create_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_ExecuteContext* context;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteContext_Create_Args, context);
+
+// Creates an execute context.
+typedef PJRT_Error* PJRT_ExecuteContext_Create(
+    PJRT_ExecuteContext_Create_Args* args);
+
+struct PJRT_ExecuteContext_Destroy_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_ExecuteContext* context;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteContext_Destroy_Args, context);
+
+// Frees an execute context. `context` can be nullptr.
+typedef PJRT_Error* PJRT_ExecuteContext_Destroy(
+    PJRT_ExecuteContext_Destroy_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1650,6 +1685,8 @@ struct PJRT_Buffer_GetMemoryLayout_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_GetMemoryLayout_Args, layout);
 
+// DEPRECATED. Please use layout extension instead.
+// https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api_layouts_extension.h
 // Returns the memory layout of the data in this buffer.
 typedef PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     PJRT_Buffer_GetMemoryLayout_Args* args);
@@ -2206,6 +2243,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompiledMemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind_Id);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
 } PJRT_Api;
 
 enum {

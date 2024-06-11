@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"

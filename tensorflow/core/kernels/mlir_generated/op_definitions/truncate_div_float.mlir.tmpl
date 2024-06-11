@@ -57,7 +57,7 @@ func.func @TruncateDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>
         %cast = tensor.cast %35 : tensor<?xelem_type> to tensor<*xelem_type>
         scf.yield %cast : tensor<*xelem_type>
       } else {
-        %27:2 = chlo.minimum_broadcast_shapes %6, %7 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %27:2 = mhlo.minimum_broadcast_shapes %6, %7 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
         %28 = shape.rank %27#0 : tensor<?xindex> -> index
         %29 = shape.rank %27#1 : tensor<?xindex> -> index
         %30 = arith.cmpi sgt, %28, %29 : index

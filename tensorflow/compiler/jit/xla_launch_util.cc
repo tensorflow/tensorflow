@@ -390,10 +390,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
   std::shared_ptr<se::Event> definition_event;
   if (use_multiple_streams_ && stream) {
-    definition_event = std::make_shared<se::Event>(stream->parent());
-    if (!definition_event->Init()) {
-      return errors::Internal("Failed to initialize tensor definition event.");
-    }
+    TF_ASSIGN_OR_RETURN(definition_event, stream->parent()->CreateEvent());
     TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
   }
 
@@ -670,7 +667,8 @@ Status PreparePjRtExecutableArguments(
         std::unique_ptr<xla::PjRtBuffer> pjrt_buffer =
             std::make_unique<xla::PjRtStreamExecutorBuffer>(
                 device_shape, std::move(device_buffer), pjrt_client,
-                pjrt_device);
+                pjrt_device,
+                pjrt_device->default_memory_space().value_or(nullptr));
         owned_args->push_back(std::move(pjrt_buffer));
         args->push_back(owned_args->back().get());
       }

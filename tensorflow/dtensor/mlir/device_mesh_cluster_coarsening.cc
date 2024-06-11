@@ -20,24 +20,21 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/constants.h"
-#include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -62,12 +59,12 @@ mlir::LogicalResult ShouldMergeClusters(mlir::tf_device::ClusterOp cluster_a,
   auto mesh_a_or_status = ExtractDeviceMeshFromOp(cluster_a.getOperation());
   if (!mesh_a_or_status.ok())
     return cluster_a.emitOpError(
-        tsl::NullTerminatedMessage(mesh_a_or_status.status()));
+        absl::StatusMessageAsCStr(mesh_a_or_status.status()));
 
   auto mesh_b_or_status = ExtractDeviceMeshFromOp(cluster_b.getOperation());
   if (!mesh_b_or_status.ok())
     return cluster_b.emitOpError(
-        tsl::NullTerminatedMessage(mesh_b_or_status.status()));
+        absl::StatusMessageAsCStr(mesh_b_or_status.status()));
 
   auto mesh_a = mesh_a_or_status.value();
   auto mesh_b = mesh_b_or_status.value();

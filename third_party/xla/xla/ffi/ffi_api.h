@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_API_H_
 #define XLA_FFI_FFI_API_H_
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/service_executable_run_options.h"
-#include "xla/status.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla::ffi {
 
@@ -43,27 +46,60 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 struct CallOptions {
-  const ServiceExecutableRunOptions* run_options = nullptr;
+  int32_t device_ordinal = -1;
+
+  se::Stream* stream = nullptr;
+  se::DeviceMemoryAllocator* allocator = nullptr;
+
   const HloComputation* called_computation = nullptr;
+  const ExecutionContext* execution_context = nullptr;
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
-Status TakeStatus(XLA_FFI_Error* error);
+absl::Status TakeStatus(XLA_FFI_Error* error);
 
-Status Call(Ffi& handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(
+    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(
+    XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+
+namespace internal {
+// This is an internal workaround to override FFI execution context for FFI
+// calls executed in the current thread with `context` in tests that use legacy
+// xla::Client, xla::Service and xla::Backend APIs because it's not worth it to
+// add proper execution context support throughout all abstraction layers
+// (legacy client APIs should be eventually deleted instead). This workaround
+// should not be used outside of tests.
+class ScopedExecutionContext {
+ public:
+  explicit ScopedExecutionContext(const ExecutionContext* context);
+  ~ScopedExecutionContext();
+
+  ScopedExecutionContext(ScopedExecutionContext&&) = delete;
+  ScopedExecutionContext& operator=(ScopedExecutionContext&&) = delete;
+
+  // Returns an execution context that should be used for FFI calls based on the
+  // call options and the current thread's execution context.
+  static const ExecutionContext* GetCallExecutionContext(
+      const CallOptions& options);
+
+ private:
+  const ExecutionContext* recover_;
+};
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
 
 struct HandlerRegistration {
-  XLA_FFI_Handler* handler = nullptr;
-  XLA_FFI_Handler_Traits traits = 0;
+  XLA_FFI_Handler_Bundle bundle = {};
+  XLA_FFI_Handler_Traits traits = {};
 };
 
 bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);

@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 
 // This file implements logic for translating mixed IR to buffer form.
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "stablehlo/dialect/ChloOps.h"
 #include "transforms/rewriters.h"
 
 namespace mlir {
@@ -88,12 +88,12 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
 };
 
 struct BufferizeAndConvertMinimumBroadcastShapesOp
-    : public OpConversionPattern<chlo::MinimumBroadcastShapesOp> {
+    : public OpConversionPattern<mhlo::MinimumBroadcastShapesOp> {
   using OpConversionPattern<
-      chlo::MinimumBroadcastShapesOp>::OpConversionPattern;
+      mhlo::MinimumBroadcastShapesOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      chlo::MinimumBroadcastShapesOp broadcastShapesOp, OpAdaptor adaptor,
+      mhlo::MinimumBroadcastShapesOp broadcastShapesOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto loc = broadcastShapesOp.getLoc();
     ImplicitLocOpBuilder lb(loc, rewriter);

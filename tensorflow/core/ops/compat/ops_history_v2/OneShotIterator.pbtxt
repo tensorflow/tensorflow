@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "OneShotIterator"
   output_arg {
     name: "handle"

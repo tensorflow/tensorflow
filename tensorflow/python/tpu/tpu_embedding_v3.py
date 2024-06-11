@@ -18,6 +18,7 @@ import collections
 import copy
 import dataclasses
 import functools
+import hashlib
 import operator
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -47,9 +48,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.tpu import _pywrap_tpu_embedding
+from tensorflow.python.tpu import _pywrap_sparse_core_layout
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_embedding_v3_checkpoint_adapter
+from tensorflow.python.tpu import tpu_embedding_v3_utils
 from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import gen_xla_ops as xla_ops
 from tensorflow.python.trackable import base
@@ -75,7 +78,7 @@ QuantizationConfig = tpu_embedding_v2_utils.QuantizationConfig
 class SparseCoreEmbeddingConfig:
   """Config for sparsecore embedding."""
 
-  disable_table_stacking: bool = True
+  disable_table_stacking: bool = False
   max_ids_per_chip_per_sample: int = 64
   max_ids_per_table: Optional[Dict[str, int]] = None
   max_unique_ids_per_table: Optional[Dict[str, int]] = None
@@ -307,6 +310,20 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 )
 
 
+def _clone_feature_config(feature_config):
+  old_to_new_table = {}
+  new_features = []
+
+  for old_feature in nest.flatten(feature_config):
+    feature = copy.copy(old_feature)
+    if feature.table not in old_to_new_table:
+      old_to_new_table[feature.table] = copy.copy(feature.table)
+    feature.table = old_to_new_table[feature.table]
+    new_features.append(feature)
+
+  return nest.pack_sequence_as(feature_config, new_features)
+
+
 def _stack_tables_with_same_table_dim_and_optimizer(
     table_config: Sequence[TableConfig],
     flat_features: Sequence[Tuple[Any, FeatureConfig]],
@@ -323,133 +340,124 @@ def _stack_tables_with_same_table_dim_and_optimizer(
   if disable_table_stacking:
     logging.warn("Table stacking is disabled.")
 
+  stacker = _pywrap_sparse_core_layout.SparseCoreLayoutStacker(
+      num_partitions=num_partitions,
+      sparse_cores_per_partition=num_sc_per_partition,
+      disable_table_stacking=disable_table_stacking,
+  )
   s = TableStacking()
-  # Round the table sizes to be divisible by the number of SCs.
-  num_shards = num_partitions * num_sc_per_partition * 8
-
-  s.table_to_padding_columns = {}
-  s.table_to_padding_rows = {}
-
-  for table in table_config:
-    extra_rows = (
-        num_shards - (table.vocabulary_size % num_shards)
-    ) % num_shards
-    extra_cols = (8 - (table.dim % 8)) % 8
-    if extra_rows != 0:
-      if table.vocabulary_size < num_shards:
-        logging.warning(
-            "!!! Adding %d extra rows to a small table %s!!! Table had"
-            " %d rows before padding and %d rows after padding.",
-            extra_rows,
-            table.name,
-            table.vocabulary_size,
-            table.vocabulary_size + extra_rows,
-        )
-      else:
-        logging.warning(
-            "Adding %d extra rows to table %s to get %d rows.",
-            extra_rows,
-            table.name,
-            table.vocabulary_size + extra_rows,
-        )
-    if extra_cols != 0:
-      logging.warning(
-          "Adding %d extra columns to table %s to get %d columns.",
-          extra_cols,
-          table.name,
-          table.dim + extra_cols,
-      )
-    s.table_to_padding_columns[table.name] = extra_cols
-    s.table_to_padding_rows[table.name] = extra_rows
-    table.vocabulary_size += extra_rows
-    table.dim += extra_cols
-
-  table_names = []
-  table_widths = []
-  table_heights = []
-  table_num_samples = []
-  table_groups = []
-
-  table_data_to_group = {}
+  s.table_name_to_table = {table.name: table for table in table_config}
   table_to_num_samples = {table.name: 0 for table in table_config}
-  table_name_to_table = {}
   for _, feature in flat_features:
     table_to_num_samples[feature.table.name] += functools.reduce(
         operator.mul, feature.output_shape
     )
+    # First generate stacking for any tables our caller didn't stack for us.
+    # Note that we process the tables sorted by name so the ordering is
+    # deterministic.
+    sorted_tables = sorted(table_config, key=lambda t: t.name)
+    for table in sorted_tables:
+      if not table.layout:
+        # All tables in a stack have to have the same hyperparemeters; this key
+        # contains everything we care about. The key is an arbitrary string
+        # whose value is not particularly meaningful except that it has to be
+        # different if the tables cannot be stacked together.
+        #
+        # Note that later we rewrite the stack name based on the tables in that
+        # stack; this is just a temporary initial name.
+        #
+        # The key does not need to include the embedding width; that is handled
+        # separately.
+        key_tuple = (
+            # Optimizers don't have a repr but do support hash.
+            hash(table.optimizer),
+            # Quantization configs don't have a hash but do support repr.
+            repr(table.quantization_config),
+        )
+        key_str = hashlib.sha1(
+            repr(key_tuple).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
+        key = "_xxtpuv3internal_" + key_str
+        stacker.AddTable(
+            table_name=table.name,
+            table_height=table.vocabulary_size,
+            table_width=table.dim,
+            group=key,
+            output_samples=table_to_num_samples[table.name],
+        )
+    # First generate stacking for any tables our caller didn't stack for us.
+    # Note that we process the tables sorted by name so the ordering is
+    # deterministic.
+    # Put the layout information we just computed back into the tables, so we
+    # can treat tables whose layouts were given by the caller and tables whose
+    # layouts we computed the same.
+    for layout in stacker.GetLayouts().tables:
+      table = s.table_name_to_table[layout.table_name]
+      assert not table.layout  # It's a bug if it was already set.
+      table.layout = layout
 
-  for table in table_config:
-    table_name_to_table[table.name] = table
-    key = (
-        table.dim,
-        table.optimizer,
-        repr(table.quantization_config) if table.quantization_config else None,
+    # Collect all the layout information from all the tables, whether we just
+    # computed it above, or whether the caller passed it as part of the
+    # TableConfig:
+    tables_by_stack = collections.defaultdict(list)
+    for table in sorted_tables:
+      layout = table.layout
+      assert layout.table_name == table.name
+      s.table_to_layout[table.name] = layout
+      tables_by_stack[layout.stacked_table_name].append(table)
+
+    for stack_name, tables in tables_by_stack.items():
+      s.quantization_configs[stack_name] = tables[0].quantization_config
+      s.stacked_table_to_tables[stack_name] = tables
+
+      logging.vlog(1, "Stacked table name: %s", stack_name)
+      for table in tables:
+        layout = table.layout
+        logging.vlog(
+            1,
+            "  Table %s: offset %d, rotation %d",
+            table.name,
+            layout.sparse_core_shard_row_offset,
+            layout.sparse_core_shard_rotation,
+        )
+        s.table_to_stacked_table_offset[table.name] = (
+            stack_name,
+            layout.sparse_core_shard_row_offset
+            * num_partitions
+            * num_sc_per_partition,
+            layout.sparse_core_shard_rotation,
+        )
+        # Update dimensions in the table to the padded dimensions.
+        table.vocabulary_size = layout.unsharded_padded_shape[0]
+        table.dim = layout.unsharded_padded_shape[1]
+        s.table_to_padding_rows[table.name] = (
+            layout.unsharded_padded_shape[0] - layout.unsharded_shape[0]
+        )
+        s.table_to_padding_columns[table.name] = (
+            layout.unsharded_padded_shape[1] - layout.unsharded_shape[1]
+        )
+
+    logging.info(
+        "Number of tables after stacking is %d.",
+        len(s.stacked_table_to_tables),
     )
-    if key not in table_data_to_group:
-      table_data_to_group[key] = len(table_data_to_group)
-    table_groups.append(table_data_to_group[key])
-    table_names.append(table.name)
-    table_widths.append(table.dim)
-    table_heights.append(table.vocabulary_size)
-    table_num_samples.append(table_to_num_samples[table.name])
 
-  table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
-      table_heights,
-      table_widths,
-      table_num_samples,
-      table_groups,
-      table_names,
-      num_partitions,
-  )
-
-  table_stacks = [
-      [table_name_to_table[table_name] for table_name in stack_by_name]
-      for stack_by_name in table_stacks_by_name
-  ]
-
-  # Store the mapping between stacked table names to the actual tableConfigs.
-  s.stacked_table_to_tables = {}
-  # Store the mapping between table to name of the stacked table which
-  # contains the table and its offset.
-  s.table_to_stacked_table_offset = {}
-  # Save Quantization Config per stacked tables
-  s.quantization_configs = {}
-  for tables in table_stacks:
-    stacked_table_name = "_".join(map(lambda table: table.name, tables))
-    if stacked_table_name in s.stacked_table_to_tables:
-      raise ValueError(f"{stacked_table_name} already exists!")
-    s.stacked_table_to_tables[stacked_table_name] = tables
-    s.quantization_configs[stacked_table_name] = tables[0].quantization_config
-
-    current_offset = 0
-    current_index = 0
-    for table in tables:
-      s.table_to_stacked_table_offset[table.name] = (
-          stacked_table_name,
-          current_offset,
-          num_sc_per_partition * current_index,
+    s.table_to_sample_count = {
+        table_name: 0 for table_name in s.stacked_table_to_tables
+    }
+    for feature_path, feature in flat_features:
+      stacked_table_name = s.table_to_stacked_table_offset[feature.table.name][
+          0
+      ]
+      s.feature_to_sample_offset[feature_path] = s.table_to_sample_count[
+          stacked_table_name
+      ]
+      s.table_to_sample_count[stacked_table_name] += functools.reduce(
+          operator.mul, feature.output_shape
       )
-      current_offset += table.vocabulary_size
-      current_index += 1
 
-  logging.info(
-      "Number of tables after stacking is %d.",
-      len(s.stacked_table_to_tables),
-  )
-
-  s.feature_to_sample_offset = {}
-  s.table_to_sample_count = {
-      table_name: 0 for table_name in s.stacked_table_to_tables
-  }
-  for feature_path, feature in flat_features:
-    stacked_table_name = s.table_to_stacked_table_offset[feature.table.name][0]
-    s.feature_to_sample_offset[feature_path] = s.table_to_sample_count[
-        stacked_table_name
-    ]
-    s.table_to_sample_count[stacked_table_name] += functools.reduce(
-        operator.mul, feature.output_shape
-    )
-  return s
+    return s
 
 
 # TODO(b/233952762): Add tests of this version of the mid-level API.
@@ -492,7 +500,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     # We do a clone on the feature_config here as we will alter settings in it
     # and we don't want the user to see these. We can't just use clone here
     # as we need to maintain some object relationships.
-    super().__init__(self._clone_feature_config(feature_config), optimizer)
+    super().__init__(_clone_feature_config(feature_config), optimizer)
     self._strategy = distribute_lib.get_strategy()
     if not isinstance(
         self._strategy, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
@@ -501,6 +509,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           "TPUEmbeddingV2 should be created under TPUStrategy but found {}."
           .format(self._strategy)
       )
+
+    # TODO(pineapplejuice233): Remove this once weight decay is supported.
+    for table in self._table_config:
+      if (
+          table.optimizer.weight_decay_factor is not None
+          or table.optimizer.multiply_weight_decay_factor_by_learning_rate
+          is not None
+      ):
+        raise NotImplementedError(
+            "weight_decay_factor and"
+            " multiply_weight_decay_factor_by_learning_rate are not supported"
+            f" yet. But found in table {table.name} setting."
+        )
 
     self._num_sc_per_chip = (
         self._strategy.extended.tpu_hardware_feature.num_embedding_devices_per_chip
@@ -604,19 +625,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             ]
         )
 
-  def _clone_feature_config(self, feature_config):
-    old_to_new_table = {}
-    new_features = []
-
-    for old_feature in nest.flatten(feature_config):
-      feature = copy.copy(old_feature)
-      if feature.table not in old_to_new_table:
-        old_to_new_table[feature.table] = copy.copy(feature.table)
-      feature.table = old_to_new_table[feature.table]
-      new_features.append(feature)
-
-    return nest.pack_sequence_as(feature_config, new_features)
-
   @property
   def embedding_tables(
       self,
@@ -649,6 +657,17 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     }
 
     return table_shards
+
+  @property
+  def embedding_layouts(
+      self,
+  ) -> Dict[str, sparse_core_layout_pb2.SparseCoreTableLayout]:
+    """Returns how the tables are laid out in the variables.
+
+    The SparseCoreTableLayout describes how a table is stored in its internal
+    state. You need this only if you need to pull apart the internal state.
+    """
+    return self._s.table_to_layout
 
   @property
   def variables(
@@ -807,6 +826,28 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       )
     return variables
 
+  def _track_restore_info_for_cpu(self) -> None:
+    layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
+    layouts.tables.extend(self.embedding_layouts.values())
+    logging.info(
+        "Saving sparse core layouts for %s tables", len(layouts.tables)
+    )
+    with ops.device("/cpu:0"):
+      self._track_trackable(
+          tpu_embedding_v3_utils.SparseCoreLayoutsTrackable(
+              constant_op.constant(
+                  layouts.SerializeToString(), dtype=dtypes.string
+              )
+          ),
+          tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+      )
+
+  def _checkpoint_adapter(self, path):
+    # The TPUEmbedding may need to reshard checkpoint values during restore.
+    return tpu_embedding_v3_checkpoint_adapter.TpuEmbeddingV3CheckpointAdapter.create_from_checkpoint(
+        path
+    )
+
   def _maybe_build(self):
     if not self._built:
       # This can be called while tracing a function, so we wrap the
@@ -822,6 +863,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     if self._built:
       return
     self._variables = self._create_variables_and_slots()
+    self._track_restore_info_for_cpu()
     self._built = True
 
   def apply_gradients(
@@ -1077,16 +1119,16 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ) -> Tuple[Any, Any]:
     """Computes the max_ids/unique ids settings from the input features."""
-
+    copy_feature_config = _clone_feature_config(feature_config)
     table_config = []
-    for feature in nest.flatten(feature_config):
+    for feature in nest.flatten(copy_feature_config):
       table_config.append(feature.table)
 
     for table in table_config:
       if table.optimizer is None:
         table.optimizer = optimizer
 
-    flat_features = nest.flatten_with_joined_string_paths(feature_config)
+    flat_features = nest.flatten_with_joined_string_paths(copy_feature_config)
 
     s = _stack_tables_with_same_table_dim_and_optimizer(
         table_config,
@@ -1846,7 +1888,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 # this file is OSSed.
 def extract_variable_info(
     kwargs: Any,
-) -> Tuple[str, Tuple[int, ...], dtypes.DType, Callable[[], Any]]:
+) -> Tuple[
+    str, Tuple[int, ...], dtypes.DType, Callable[[], Any], Optional[int]
+]:
   """Extracts the variable creation attributes from the kwargs.
 
   Args:
@@ -1854,8 +1898,13 @@ def extract_variable_info(
       scope.
 
   Returns:
-    A tuple of variable name, shape, dtype, initialization function.
+    A tuple of variable name, shape, dtype, initialization function,
+    restore_uid.
   """
+
+  def get_restore_uid(initial_value: Callable[..., Any]) -> int | None:
+    return getattr(initial_value, "restore_uid", None)
+
   if isinstance(kwargs["initial_value"], functools.partial) and (
       "shape" in kwargs["initial_value"].keywords
       or kwargs["initial_value"].args
@@ -1870,6 +1919,7 @@ def extract_variable_info(
         shape,
         kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
         kwargs["initial_value"].func,
+        get_restore_uid(kwargs["initial_value"].func),
     )
   elif (
       "shape" not in kwargs
@@ -1891,6 +1941,7 @@ def extract_variable_info(
         kwargs["shape"],
         kwargs["dtype"],
         kwargs["initial_value"],
+        get_restore_uid(kwargs["initial_value"]),
     )
 
 
@@ -1944,7 +1995,9 @@ def make_sharded_variable_creator(
           "shard_info must be in arguments of the init function."
       )
 
-    name, shape, dtype, unwrapped_initial_value = extract_variable_info(kwargs)
+    name, shape, dtype, unwrapped_initial_value, restore_uid = (
+        extract_variable_info(kwargs)
+    )
 
     shape = ops.tensor_shape.TensorShape(shape)
     num_devices = num_replicas * num_cores_per_replica
@@ -1988,6 +2041,9 @@ def make_sharded_variable_creator(
     result = TPUEmbeddingShardedVariable(
         strategy, variables, tf_variables.VariableAggregation.NONE, None
     )
+    if restore_uid is not None:
+      result._maybe_initialize_trackable()  # pylint: disable=protected-access
+      result._update_uid = restore_uid  # pylint: disable=protected-access
     return result
 
   return _create_sharded_variable

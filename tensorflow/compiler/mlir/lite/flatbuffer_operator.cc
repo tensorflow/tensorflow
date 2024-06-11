@@ -46,6 +46,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -54,8 +56,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tsl/platform/status.h"
 
 namespace {

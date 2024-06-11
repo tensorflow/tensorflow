@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {

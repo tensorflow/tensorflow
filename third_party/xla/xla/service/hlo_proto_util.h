@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status.h"
 
 namespace xla {
 

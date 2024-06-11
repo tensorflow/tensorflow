@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/status/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 
 namespace tsl {
 namespace profiler {

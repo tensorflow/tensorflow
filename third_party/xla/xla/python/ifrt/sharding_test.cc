@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 class SingleDeviceShardingTest : public test_util::ShardingTest {};
@@ -48,6 +50,59 @@ class OpaqueShardingTest : public test_util::ShardingTest {};
 class ConcreteShardingTest : public test_util::ShardingTest {};
 class ConcreteEvenShardingTest : public test_util::ShardingTest {};
 class ShardingParamShardingTest : public test_util::ShardingTest {};
+
+TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0});
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  EXPECT_TRUE(sharding->IsFullyReplicated());
+}
+
+TEST_P(SingleDeviceShardingTest, GetShardShape) {
+  auto device_list = GetDevices({0});
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
+              IsOkAndHolds(Shape({10, 20})));
+}
+
+TEST_P(SingleDeviceShardingTest, HasSamePartitioning) {
+  auto device_list0 = GetDevices({0});
+  std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
+      device_list0.devices().front(), MemoryKind());
+
+  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
+  {
+    auto device_list1 = GetDevices({1});
+    std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
+        device_list1.devices().front(), MemoryKind());
+    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
+  }
+}
+
+TEST_P(SingleDeviceShardingTest, WithDeviceAssignment) {
+  auto device_list0 = GetDevices({0});
+  std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
+      device_list0.devices().front(), MemoryKind());
+  {
+    auto device_list1 = GetDevices({1});
+    std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
+        device_list1.devices().front(), MemoryKind());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto new_sharding,
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt));
+    EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    auto device_list1 = GetDevices({0, 1});
+    EXPECT_THAT(sharding0->WithDeviceAssignment(device_list1,
+                                                /*memory_kind=*/std::nullopt),
+                StatusIs(tsl::error::INVALID_ARGUMENT,
+                         HasSubstr("SingleDeviceSharding can only have one "
+                                   "device, but was asked to have 2 devices")));
+  }
+}
 
 TEST_P(SingleDeviceShardingTest, IndexDomains) {
   auto device_list = GetDevices({0});
@@ -70,10 +125,8 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
 
     ASSERT_THAT(disassembled, SizeIs(1));
     const auto& [result_shape, result_sharding] = disassembled[0];
-    ASSERT_EQ(shape, result_shape);
-    ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
-    EXPECT_THAT(result_sharding->devices().devices(),
-                ElementsAreArray(device_list.devices()));
+    EXPECT_EQ(shape, result_shape);
+    EXPECT_EQ(*result_sharding, *sharding);
   }
   {  // Disassemble dynamic shape.
     TF_ASSERT_OK_AND_ASSIGN(
@@ -85,10 +138,67 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
 
     ASSERT_THAT(disassembled, SizeIs(1));
     const auto& [result_shape, result_sharding] = disassembled[0];
-    ASSERT_EQ(dynamic_shape, result_shape);
-    ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
-    EXPECT_THAT(result_sharding->devices().devices(),
-                ElementsAreArray(device_list.devices()));
+    EXPECT_EQ(dynamic_shape, result_shape);
+    EXPECT_EQ(*result_sharding, *sharding);
+  }
+}
+
+TEST_P(OpaqueShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding =
+      OpaqueSharding::Create(device_list, MemoryKind());
+  EXPECT_FALSE(sharding->IsFullyReplicated());
+}
+
+TEST_P(OpaqueShardingTest, GetShardShape) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding =
+      OpaqueSharding::Create(device_list, MemoryKind());
+  EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("OpaqueSharding does not have shard shape")));
+}
+
+TEST_P(OpaqueShardingTest, HasSamePartitioning) {
+  auto device_list0 = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding0 =
+      OpaqueSharding::Create(device_list0, MemoryKind());
+
+  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        OpaqueSharding::Create(device_list0, MemoryKind());
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+}
+
+TEST_P(OpaqueShardingTest, WithDeviceAssignment) {
+  auto device_list0 = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding0 =
+      OpaqueSharding::Create(device_list0, MemoryKind());
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        OpaqueSharding::Create(device_list0, MemoryKind());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto new_sharding,
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt));
+    // For OpaqueSharding, we cannot use an equality test.
+    ASSERT_TRUE(llvm::isa<OpaqueSharding>(*new_sharding));
+    EXPECT_THAT(new_sharding->devices().devices(),
+                ElementsAreArray(device_list1.devices()));
+  }
+  {
+    auto device_list1 = GetDevices({0, 1, 2, 3});
+    EXPECT_THAT(
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt),
+        StatusIs(tsl::error::INVALID_ARGUMENT,
+                 HasSubstr("OpaqueSharding should have the same number of "
+                           "devices as the current sharding, but was asked to "
+                           "have 4 devices")));
   }
 }
 
@@ -125,6 +235,122 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
           HasSubstr("OpaqueSharding does not have index domain information")));
 }
 
+TEST_P(ConcreteShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
+  EXPECT_FALSE(sharding->IsFullyReplicated());
+}
+
+TEST_P(ConcreteShardingTest, GetShardShape) {
+  auto device_list = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
+  EXPECT_THAT(
+      sharding->GetShardShape(Shape({30})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("ConcreteSharding does not have a fixed shard shape")));
+}
+
+TEST_P(ConcreteShardingTest, HasSamePartitioning) {
+  auto device_list0 = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes0;
+  shard_shapes0.reserve(2);
+  shard_shapes0.push_back(Shape({10}));
+  shard_shapes0.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding0 = ConcreteSharding::Create(
+      device_list0, MemoryKind(), Shape({30}), shard_shapes0);
+
+  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::vector<Shape> shard_shapes1;
+    shard_shapes1.reserve(2);
+    shard_shapes1.push_back(Shape({10}));
+    shard_shapes1.push_back(Shape({20}));
+    std::shared_ptr<const Sharding> sharding1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), shard_shapes1);
+    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different number of shards.
+  {
+    auto device_list1 = GetDevices({2, 3, 4});
+    std::vector<Shape> shard_shapes1;
+    shard_shapes1.reserve(3);
+    shard_shapes1.push_back(Shape({10}));
+    shard_shapes1.push_back(Shape({20}));
+    shard_shapes1.push_back(Shape({30}));
+    std::shared_ptr<const Sharding> sharding1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({60}), shard_shapes1);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Difference shape.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::vector<Shape> shard_shapes1;
+    shard_shapes1.reserve(2);
+    shard_shapes1.push_back(Shape({10}));
+    shard_shapes1.push_back(Shape({20}));
+    std::shared_ptr<const Sharding> sharding1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({40}), shard_shapes1);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different shard shapes.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::vector<Shape> shard_shapes1;
+    shard_shapes1.reserve(2);
+    shard_shapes1.push_back(Shape({10000}));
+    shard_shapes1.push_back(Shape({20}));
+    std::shared_ptr<const Sharding> sharding1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), shard_shapes1);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+}
+
+TEST_P(ConcreteShardingTest, WithDeviceAssignment) {
+  auto device_list0 = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes0;
+  shard_shapes0.reserve(2);
+  shard_shapes0.push_back(Shape({10}));
+  shard_shapes0.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding0 = ConcreteSharding::Create(
+      device_list0, MemoryKind(), Shape({30}), shard_shapes0);
+  {
+    auto device_list1 = GetDevices({0, 1});
+    std::vector<Shape> shard_shapes1;
+    shard_shapes1.reserve(2);
+    shard_shapes1.push_back(Shape({10}));
+    shard_shapes1.push_back(Shape({20}));
+    std::shared_ptr<const Sharding> sharding1 = ConcreteSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), shard_shapes1);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto new_sharding,
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt));
+    EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    auto device_list1 = GetDevices({0, 1, 2, 3});
+    EXPECT_THAT(
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt),
+        StatusIs(tsl::error::INVALID_ARGUMENT,
+                 HasSubstr("ConcreteSharding should have the same number of "
+                           "devices as the current sharding, but was asked to "
+                           "have 4 devices")));
+  }
+}
+
 TEST_P(ConcreteShardingTest, Disassemble) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
@@ -140,9 +366,8 @@ TEST_P(ConcreteShardingTest, Disassemble) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, shard_shapes[i]);
-    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
-    EXPECT_THAT(sharding->devices().devices(),
-                ElementsAre(device_list.devices()[i]));
+    EXPECT_EQ(*sharding,
+              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
   }
 }
 
@@ -170,9 +395,8 @@ TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
   for (int i = 0; i < disassembled.size(); ++i) {
     const auto& [dynamic_shape, sharding] = disassembled[i];
     EXPECT_EQ(dynamic_shape, shard_dynamic_shapes[i]);
-    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
-    EXPECT_THAT(sharding->devices().devices(),
-                ElementsAre(device_list.devices()[i]));
+    EXPECT_EQ(*sharding,
+              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
   }
 }
 
@@ -205,10 +429,120 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
                                  "domain information")));
 }
 
+TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  {
+    // Fully replicated.
+    std::shared_ptr<const Sharding> sharding =
+        ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+        device_list, MemoryKind(), Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+}
+
+TEST_P(ConcreteEvenShardingTest, GetShardShape) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/true);
+  EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(Shape({15})));
+  EXPECT_THAT(
+      sharding->GetShardShape(Shape({45})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("ConcreteEvenSharding has a shard shape for shape [30], "
+                    "but was asked to get a shard shape for shape [45]")));
+}
+
+TEST_P(ConcreteEvenShardingTest, HasSamePartitioning) {
+  auto device_list0 = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding0 =
+      ConcreteEvenSharding::Create(device_list0, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/true);
+
+  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different number of shards.
+  {
+    auto device_list1 = GetDevices({2, 3, 4});
+    std::shared_ptr<const Sharding> sharding1 =
+        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Difference shape.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({45}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different shard shape.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                     Shape({10}), /*is_fully_replicated=*/true);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different is_fully_replicated.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 = ConcreteEvenSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+}
+
+TEST_P(ConcreteEvenShardingTest, WithDeviceAssignment) {
+  auto device_list0 = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding0 =
+      ConcreteEvenSharding::Create(device_list0, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/true);
+  {
+    auto device_list1 = GetDevices({2, 3});
+    std::shared_ptr<const Sharding> sharding1 =
+        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto new_sharding,
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt));
+    EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    auto device_list1 = GetDevices({0, 1, 2, 3});
+    EXPECT_THAT(
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("ConcreteEvenSharding should have the same number of "
+                      "devices as the current sharding, but was asked to "
+                      "have 4 devices")));
+  }
+}
+
 TEST_P(ConcreteEvenShardingTest, Disassemble) {
   auto device_list = GetDevices({0, 1});
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           sharding->Disassemble(Shape({30})));
@@ -216,16 +550,16 @@ TEST_P(ConcreteEvenShardingTest, Disassemble) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({15}));
-    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
-    EXPECT_THAT(sharding->devices().devices(),
-                ElementsAre(device_list.devices()[i]));
+    EXPECT_EQ(*sharding,
+              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
   }
 }
 
 TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
   auto device_list = GetDevices({0, 1});
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(sharding->Disassemble(Shape({40})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
@@ -235,8 +569,9 @@ TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
 TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(
       sharding->IndexDomains(Shape({30})),
@@ -252,9 +587,128 @@ TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
 
   EXPECT_THAT(ShardingParamSharding::Create(param, device_list, MemoryKind()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
+              StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("Device counts don't match. From "
                                  "ShardingParam 6 vs from DeviceList 2")));
+}
+
+TEST_P(ShardingParamShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  {
+    // Fully replicated.
+    ShardingParam param{/*dim_shards=*/{1, 1},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_TRUE(param_sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    ShardingParam param{/*dim_shards=*/{1, 6},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_FALSE(param_sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    ShardingParam param{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_FALSE(param_sharding->IsFullyReplicated());
+  }
+}
+
+TEST_P(ShardingParamShardingTest, GetShardShape) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> sharding,
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
+  EXPECT_THAT(sharding->GetShardShape(Shape({6, 6})),
+              IsOkAndHolds(Shape({3, 2})));
+  EXPECT_THAT(sharding->GetShardShape(Shape({6, 6, 6})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("Numbers of dimensions don't match. From "
+                                 "Shape 3 vs from ShardingParam 2")));
+}
+
+TEST_P(ShardingParamShardingTest, HasSamePartitioning) {
+  auto device_list0 = GetDevices({0, 1, 2, 3, 4, 5});
+  ShardingParam param0{/*dim_shards=*/{2, 3},
+                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> sharding0,
+      ShardingParamSharding::Create(param0, device_list0, MemoryKind()));
+
+  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
+  {
+    auto device_list1 = GetDevices({3, 4, 5, 0, 1, 2});
+    ShardingParam param1{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> sharding1,
+        ShardingParamSharding::Create(param1, device_list1, MemoryKind()));
+    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different number of shards.
+  {
+    auto device_list1 = GetDevices({3, 4, 5});
+    ShardingParam param1{/*dim_shards=*/{3, 1},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{1, 3}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> sharding1,
+        ShardingParamSharding::Create(param1, device_list1, MemoryKind()));
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different sharding param.
+  {
+    auto device_list1 = GetDevices({3, 4, 5, 0, 1, 2});
+    ShardingParam param1{/*dim_shards=*/{3, 2},
+                         {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> sharding1,
+        ShardingParamSharding::Create(param1, device_list1, MemoryKind()));
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+}
+
+TEST_P(ShardingParamShardingTest, WithDeviceAssignment) {
+  auto device_list0 = GetDevices({0, 1, 2, 3, 4, 5});
+  ShardingParam param0{/*dim_shards=*/{2, 3},
+                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const Sharding> sharding0,
+      ShardingParamSharding::Create(param0, device_list0, MemoryKind()));
+  {
+    auto device_list1 = GetDevices({3, 4, 5, 0, 1, 2});
+    ShardingParam param1{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> sharding1,
+        ShardingParamSharding::Create(param1, device_list1, MemoryKind()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto new_sharding,
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt));
+    EXPECT_EQ(*new_sharding, *sharding1);
+  }
+  {
+    auto device_list1 = GetDevices({0, 1, 2});
+    EXPECT_THAT(
+        sharding0->WithDeviceAssignment(device_list1,
+                                        /*memory_kind=*/std::nullopt),
+        StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("ShardingParamSharding should have the same number of "
+                      "devices as the current sharding, but was asked to "
+                      "have 3 devices")));
+  }
 }
 
 TEST_P(ShardingParamShardingTest, Disassemble) {
@@ -271,9 +725,8 @@ TEST_P(ShardingParamShardingTest, Disassemble) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({3, 2}));
-    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
-    EXPECT_THAT(sharding->devices().devices(),
-                ElementsAre(device_list.devices()[i]));
+    EXPECT_EQ(*sharding,
+              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
   }
 }
 
@@ -285,11 +738,10 @@ TEST_P(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  EXPECT_THAT(
-      param_sharding->Disassemble(Shape({6, 6, 6})),
-      StatusIs(tsl::error::FAILED_PRECONDITION,
-               HasSubstr(
-                   "Ranks don't match. From Shape 3 vs from ShardingParam 2")));
+  EXPECT_THAT(param_sharding->Disassemble(Shape({6, 6, 6})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("Numbers of dimensions don't match. From "
+                                 "Shape 3 vs from ShardingParam 2")));
 }
 
 TEST_P(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
@@ -303,7 +755,7 @@ TEST_P(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
   EXPECT_THAT(
       param_sharding->Disassemble(Shape({7, 6})),
       StatusIs(
-          tsl::error::FAILED_PRECONDITION,
+          tsl::error::INVALID_ARGUMENT,
           HasSubstr("Uneven shard is not supported. dim: 7, dim_shards: 2")));
 }
 

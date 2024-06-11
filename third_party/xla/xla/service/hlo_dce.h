@@ -18,12 +18,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -66,7 +66,7 @@ class HloDCE : public HloModulePass {
   // computations and checks if any of the subcomputations become dead after the
   // removal. Returns whether all dead computations were successfully removed
   // from the module.
-  Status RecursivelyRemoveDeadComputation(
+  absl::Status RecursivelyRemoveDeadComputation(
       HloModule* module, HloComputation* computation,
       absl::flat_hash_map<HloComputation*, int>& live_call_counts);
 

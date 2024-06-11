@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -1803,10 +1802,10 @@ AliasSet BuildAliasSet(const HloModule* module,
   return alias_set;
 }
 
-Status CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                  const StrategyGroups& strategy_groups,
-                                  const HloInstructionSequence& sequence,
-                                  bool crash_on_error) {
+absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                        const StrategyGroups& strategy_groups,
+                                        const HloInstructionSequence& sequence,
+                                        bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {
@@ -1859,7 +1858,7 @@ Status CheckAliasSetCompatibility(const AliasSet& alias_set,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,

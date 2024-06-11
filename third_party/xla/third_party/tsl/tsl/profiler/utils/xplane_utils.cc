@@ -224,6 +224,16 @@ const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
   return (i != -1) ? &plane.lines(i) : nullptr;
 }
+std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id) {
+  std::vector<int> indices = FindAll(
+      plane.lines(), [id](const XLine* line) { return line->id() == id; });
+  std::vector<const XLine*> lines;
+  lines.reserve(indices.size());
+  for (int index : indices) {
+    lines.push_back(&plane.lines(index));
+  }
+  return lines;
+}
 
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
   int i = Find(plane.lines(),

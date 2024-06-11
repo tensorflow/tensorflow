@@ -19,11 +19,12 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
+#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 
@@ -62,7 +63,7 @@ XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
       XlaOp x, TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
                                  lower_diagonal_xla, rhs_xla));
 
-  ASSERT_EQ(x.builder()->first_error(), OkStatus());
+  ASSERT_EQ(x.builder()->first_error(), absl::OkStatus());
   ASSERT_TRUE(x.valid());
 
   std::vector<int64_t> expected_shape{1, 3, 4};

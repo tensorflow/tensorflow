@@ -40,6 +40,9 @@ typedef std::unordered_map<string, std::vector<InferredShape>> GraphShapeInfo;
 // Infer shapes for all Tensors in a graph, and save them in a map.  The vector
 // for a Node contains the information about each of its outputs.
 // TODO(phawkins): this code does not infer accurate shapes for cyclic graphs.
+// `arg_shapes`: user given map from the `index` to shapes of this
+// node, where `index` is the `index` attribute of `_Arg` op or `_index`
+// attribute of `Placeholder` op.
 Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
                    const tensorflow::FunctionLibraryDefinition* fnlib_def,
                    GraphShapeInfo* shape_info);

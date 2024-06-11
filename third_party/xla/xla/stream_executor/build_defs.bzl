@@ -92,3 +92,6 @@ def cuda_only_cc_library(name, tags = [], **kwargs):
         restricted_to = kwargs.get("restricted_to"),
         target_compatible_with = kwargs.get("target_compatible_with"),
     )
+
+def stream_executor_build_defs_bzl_deps():
+    return []

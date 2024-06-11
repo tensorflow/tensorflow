@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "256ab4034e93bdeea2e1216cd8361a85bd4ee4884a89bf5e4e142abcdc796805",
-        strip_prefix = "XNNPACK-50037f8072731a2cc30a961b96e199ad691887e4",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/50037f8072731a2cc30a961b96e199ad691887e4.zip"),
+        sha256 = "dac478307dd076e3fa7b9e66348df9365606b4fd52208ca1abdfbf2974ef8501",
+        strip_prefix = "XNNPACK-b66e1d7bf428c61e8d454e3f90c50b88d688c3f5",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b66e1d7bf428c61e8d454e3f90c50b88d688c3f5.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -181,9 +181,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "1bb309af98fe9aad81b6a14fd52acbd6566aacfd322fc5803f9a1b77fc681a27",
-        strip_prefix = "cudnn-frontend-1.2.1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.2.1.zip"),
+        sha256 = "5727ed189a17fe888f1729ba09b2afd8df3e71192a27e9fa87e14a60f7b9d367",
+        strip_prefix = "cudnn-frontend-1.3.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.3.0.zip"),
     )
 
     tf_http_archive(
@@ -205,9 +205,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "e291fa4702f4bcfa6c8c23cb5b6599f0fefa8f23bc08edb9e15ddc5254ab7843",
-        strip_prefix = "oneDNN-3.3.4",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.3.4.tar.gz"),
+        sha256 = "5131ac559a13daa6e2784d20ab24e4607e55aa6da973518086326a647d389425",
+        strip_prefix = "oneDNN-3.4.2",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.4.2.tar.gz"),
     )
 
     tf_http_archive(

@@ -143,6 +143,12 @@ struct TfrtCompileOptions {
   // of resources.
   int64_t min_num_batch_threads = 1;
 
+  // The minimum of the maximum number of enqueued batches. This number provides
+  // a lower bound on top of what is specified in the model. If the number of
+  // max_enqueued_batches is too small, it can lead to under utilization of
+  // resources.
+  int64_t min_max_enqueued_batches = 1;
+
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;

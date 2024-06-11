@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/triton_support.h"
 #include "xla/service/instruction_fusion.h"
@@ -840,6 +841,29 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
               fragment->sliced_count());
         }
       }
+    } else if (hlo.opcode() == HloOpcode::kDynamicSlice) {
+      // All operands after idx 0 are scalar indices. As such, we do not want
+      // to explicitly define dim orders.
+      if (dst != &hlo && hlo.operand_index(dst) >= 1) {
+        continue;
+      }
+      const auto dynamic_slice = Cast<HloDynamicSliceInstruction>(&hlo);
+      dst_logical.resize(src_logical.size());
+      for (int dim = 0; dim < src_logical.size(); ++dim) {
+        dst_logical[dim] = src_logical[dim];
+        if (dynamic_slice->slice_sizes(dim) != dst->shape().dimensions(dim)) {
+          if (dst_logical[dim].size() > 1) {
+            return FusionDecision("Slicing of fragmented dimension.");
+          }
+          auto fragment = dst_logical[dim].front();
+          fragment->set_count(dst->shape().dimensions(dim));
+
+          // As we do not know which section of the tensor we keep, we retain
+          // the whole part.
+          fragment->set_slice(fragment->slice_start(),
+                              dst->shape().dimensions(dim));
+        }
+      }
     } else {
       return FusionDecision("Function called on a wrong instruction.");
     }
@@ -889,9 +913,10 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
   if (hlo.opcode() != HloOpcode::kParameter &&
       direction == TransformDirection::kOutputToInput &&
       absl::c_any_of(hlo.users(), [](const HloInstruction* user) {
-        return user->opcode() == HloOpcode::kConcatenate;
+        return (user->opcode() == HloOpcode::kConcatenate ||
+                user->opcode() == HloOpcode::kDynamicSlice);
       })) {
-    return "No fusion into concatenations";
+    return "No fusion into concatenations or dynamic slice.";
   }
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(&hlo)) {
@@ -941,6 +966,24 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     if (direction != TransformDirection::kOutputToInput) {
       return "Unsupported slice direction.";
     }
+
+    return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
+                                                  properties);
+  } else if (hlo.opcode() == HloOpcode::kDynamicSlice &&
+             direction == TransformDirection::kOutputToInput) {
+    // We handle the dynamic slice within EmitTensorPointer, which is only
+    // used for GEMM fusions.
+    if (!std::holds_alternative<DotProperties>(properties)) {
+      return "Dynamic slices for now are only supported in GEMM fusions.";
+    }
+
+    if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
+            *Cast<HloDynamicSliceInstruction>(&hlo));
+        !decision.CanFuse()) {
+      // CodegenDecision is actually the same type as FusionDecision.
+      return decision;
+    }
+
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kReshape) {

@@ -45,7 +45,7 @@ class TfHostCallback {
       absl::string_view entry_function_name,
       absl::Span<const DtypeAndShape> operand_type_and_shapes,
       absl::Span<const DtypeAndShape> result_type_and_shapes,
-      tensorflow::StaticDeviceMgr* device_mgr);
+      tensorflow::DeviceMgr* device_mgr);
 
   // The host callback function takes two pointer arrays, each element of which
   // points to allocated host buffer in host layout according to corresponding

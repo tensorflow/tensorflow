@@ -174,12 +174,12 @@ class AsyncValueRef {
 
   template <typename F>
   auto Map(F&& f) {
-    return AsPtr().template Map(std::forward<F>(f));
+    return AsPtr().template Map<F>(std::forward<F>(f));
   }
 
   template <typename F>
   auto Map(AsyncValue::Executor& executor, F&& f) {
-    return AsPtr().template Map(executor, std::forward<F>(f));
+    return AsPtr().template Map<F>(executor, std::forward<F>(f));
   }
 
   template <typename R, typename F>

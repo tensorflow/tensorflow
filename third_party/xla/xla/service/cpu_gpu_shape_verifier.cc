@@ -22,15 +22,15 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
 namespace {
-Status VerifyS4U4Usage(HloInstruction* instruction) {
+absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
     case HloOpcode::kConstant:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
@@ -53,16 +53,16 @@ Status VerifyS4U4Usage(HloInstruction* instruction) {
                       shape.element_type()),
                   instruction->ToString()));
             }
-            return OkStatus();
+            return absl::OkStatus();
           }));
       break;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
+absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
         if (shape.has_layout()) {
@@ -79,7 +79,7 @@ Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
                 hlo->ToString()));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   TF_RETURN_IF_ERROR(VerifyS4U4Usage(hlo));

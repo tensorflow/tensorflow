@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/filecheck.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -50,7 +51,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
     bool match_optimized_ir, bool run_optimization_passes) {
   SetIrHook(match_optimized_ir);
-  Status status =
+  absl::Status status =
       CompileToExecutable(std::move(hlo_module), run_optimization_passes)
           .status();
   ResetIrHook();
@@ -77,7 +78,7 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const std::string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  Status status =
+  absl::Status status =
       CompileToAotCompilationResult(std::move(hlo_module), options).status();
   ResetIrHook();
   TF_ASSERT_OK(status);
@@ -91,9 +92,9 @@ LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
-Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
+absl::Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpToString(&module);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

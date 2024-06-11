@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -662,8 +661,9 @@ HloModule softmax
 max_computation {
   arg_0 = $0[] parameter(0)
   arg_1 = $0[] parameter(1)
-  floor_0 = $0[] floor(arg_0)
-  ROOT maximum = $0[] maximum(floor_0, arg_1)
+  if_0 = pred[] is-finite(arg_0)
+  c = $0[] convert(if_0)
+  ROOT maximum = $0[] maximum(c, arg_1)
 }
 
 ENTRY main {
@@ -923,11 +923,12 @@ max_computation {
 
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  floor_0 = $0[127,125] floor(param_0)
+  if_0 = pred[127,125] is-finite(param_0)
+  c = $0[127,125] convert(if_0)
   constant_neg_inf = $0[] constant(-inf)
-  reduce = $0[127]{0} reduce(floor_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reduce = $0[127]{0} reduce(c, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = $0[127,125]{1,0} subtract(floor_0, broadcast)
+  ROOT subtract = $0[127,125]{1,0} subtract(c, broadcast)
 }
 )";
   const std::string hlo_string =
@@ -941,7 +942,7 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Floor(m::Parameter()))));
+              GmockMatch(m::Fusion(m::IsFinite(m::Parameter()))));
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
@@ -1136,8 +1137,34 @@ ENTRY main {
           .Run(module.get()),
       tsl::testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
+}
+
+TEST_F(SoftmaxRewriterTritonTest, RewriterBailsOutOnNonCudaGpu) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = bf16[127,125]{1,0} parameter(0)
+  param_0_f32 = f32[127,125]{1,0} convert(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0_f32, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0_f32, broadcast)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+
+  EXPECT_THAT(
+      SoftmaxRewriterTriton(se::RocmComputeCapability{}).Run(module.get()),
+      tsl::testing::StatusIs(
+          tsl::error::FAILED_PRECONDITION,
+          ::testing::StrEq("Triton support is only enabled for CUDA GPUs.")));
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseConvertWithC64DataType) {

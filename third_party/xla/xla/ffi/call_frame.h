@@ -58,10 +58,12 @@ class CallFrameBuilder {
   CallFrameBuilder(CallFrameBuilder&&);
   CallFrameBuilder& operator=(CallFrameBuilder&&);
 
-  using Scalar =
-      std::variant<bool, int8_t, int16_t, int32_t, int64_t, float, double>;
+  using Scalar = std::variant<bool, int8_t, int16_t, int32_t, int64_t, uint8_t,
+                              uint16_t, uint32_t, uint64_t, float, double>;
   using Array = std::variant<std::vector<int8_t>, std::vector<int16_t>,
                              std::vector<int32_t>, std::vector<int64_t>,
+                             std::vector<uint8_t>, std::vector<uint16_t>,
+                             std::vector<uint32_t>, std::vector<uint64_t>,
                              std::vector<float>, std::vector<double>>;
 
   // Declare implementation detail structs for call frame builder storage.
@@ -131,8 +133,9 @@ class CallFrame {
   ~CallFrame();
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
-  XLA_FFI_CallFrame Build(const XLA_FFI_Api* api,
-                          XLA_FFI_ExecutionContext* ctx);
+  XLA_FFI_CallFrame Build(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
  private:
   friend class CallFrameBuilder;

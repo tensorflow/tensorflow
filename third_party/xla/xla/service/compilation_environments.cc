@@ -185,7 +185,7 @@ void CompilationEnvironments::RegisterProcessNewEnvFn(
                   << descriptor->full_name() << "' has already been registered";
 }
 
-Status CompilationEnvironments::AddEnv(
+absl::Status CompilationEnvironments::AddEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
   if (!env) {
     return tsl::errors::InvalidArgument(
@@ -239,7 +239,7 @@ void CompilationEnvironments::EnvAdded(std::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
 }
 
-Status CompilationEnvironments::AddEnvImpl(
+absl::Status CompilationEnvironments::AddEnvImpl(
     const tsl::protobuf::Descriptor& descriptor,
     std::unique_ptr<tsl::protobuf::Message> env) {
   // Check if we already have an environment of env's type
@@ -275,7 +275,7 @@ Status CompilationEnvironments::AddEnvImpl(
   // Actually add the env
   environments_.insert({&descriptor, std::move(processed_env)});
   EnvAdded(descriptor.full_name());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

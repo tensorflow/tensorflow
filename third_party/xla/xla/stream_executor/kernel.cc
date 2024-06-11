@@ -16,20 +16,12 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/demangle.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -52,13 +44,6 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 //===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
-
-absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
-    StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-  TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
-  TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
-  return kernel;
-}
 
 void Kernel::set_name(absl::string_view name) {
   name_ = std::string(name);

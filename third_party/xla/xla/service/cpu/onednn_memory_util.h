@@ -119,7 +119,8 @@ class MemrefInfo {
   MemrefInfoPOD* pod_;
 };
 
-StatusOr<dnnl::memory::desc> TransposeLastTwoDims(const dnnl::memory::desc& md);
+absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
+    const dnnl::memory::desc& md);
 #define TRANSPOSE_LAST_TWO_DIMS_IF(pred, mem_desc)        \
   if (pred) {                                             \
     auto trans_mem_desc = TransposeLastTwoDims(mem_desc); \

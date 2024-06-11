@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -53,7 +52,7 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
   return platform_id_;
 }
 
-Status GenericTransferManager::WriteSingleTupleIndexTable(
+absl::Status GenericTransferManager::WriteSingleTupleIndexTable(
     se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
     const Shape& shape, se::DeviceMemoryBase* region) {
   TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
@@ -70,24 +69,24 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
       stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
         /* holds reference to element_pointers in closure */
       }));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GenericTransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
-    MutableBorrowingLiteral literal, std::function<void(Status)> done,
+    MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
     const TransferMetadata* transfer_metadata) {
   VLOG(2) << "transferring literal from device ordinal "
           << stream->parent()->device_ordinal()
           << "; device buffer: " << device_buffer;
 
-  Status status = [&]() -> Status {
+  absl::Status status = [&]() -> absl::Status {
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
                  device_buffer.device_ordinal());
 
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         device_buffer.on_device_shape(),
-        [&](const Shape& subshape, const ShapeIndex& index) -> Status {
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (subshape.IsArray()) {
             if (PackSubbyteTypes() &&
                 primitive_util::IsSubByteNonPredType(subshape.element_type())) {
@@ -113,9 +112,9 @@ void GenericTransferManager::TransferLiteralFromDevice(
                   /*destination=*/literal.untyped_data(index)));
             }
           }
-          return OkStatus();
+          return absl::OkStatus();
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }();
 
   if (!status.ok()) {
@@ -132,7 +131,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
       tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
     auto status = stream->DoHostCallback([done = std::move(done), stream] {
-      done(stream->ok() ? OkStatus()
+      done(stream->ok() ? absl::OkStatus()
                         : Internal("`TransferLiteralFromDevice` failed"));
     });
     if (!status.ok()) {
@@ -143,7 +142,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
   }
 }
 
-Status GenericTransferManager::TransferLiteralToDeviceAsync(
+absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
     const ShapedBuffer& device_buffer,
     const TransferMetadata* /*transfer_metadata*/) {
@@ -161,7 +160,8 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
 
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
-      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
+      [&](const Shape& device_subshape,
+          const ShapeIndex& index) -> absl::Status {
         if (device_subshape.IsArray()) {
           int64_t size = GetByteSizeRequirement(device_subshape);
           se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
@@ -201,28 +201,28 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
                 [keep_alive = std::move(relaid_out)] {}));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
-Status GenericTransferManager::TransferLiteralToInfeed(
+absl::Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
   return Unimplemented("Generic transfer to Infeed");
 }
 
-Status GenericTransferManager::TransferLiteralFromOutfeed(
+absl::Status GenericTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return Unimplemented("Generic transfer from Outfeed");
 }
 
-Status GenericTransferManager::ResetDevices(
+absl::Status GenericTransferManager::ResetDevices(
     absl::Span<se::StreamExecutor* const>
     /*executors*/) {
   return Unimplemented(
       "Device reset is not yet supported on this platform (b/30481585)");
 }
 
-Status GenericTransferManager::TransferBufferFromDevice(
+absl::Status GenericTransferManager::TransferBufferFromDevice(
     se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
     void* destination) {
   if (source.size() < size) {
@@ -234,7 +234,7 @@ Status GenericTransferManager::TransferBufferFromDevice(
   return stream->Memcpy(destination, source, size);
 }
 
-Status GenericTransferManager::TransferBufferToDevice(
+absl::Status GenericTransferManager::TransferBufferToDevice(
     se::Stream* stream, int64_t size, const void* source,
     se::DeviceMemoryBase* destination) {
   if (destination->size() < size) {
@@ -246,7 +246,7 @@ Status GenericTransferManager::TransferBufferToDevice(
   return stream->Memcpy(destination, source, size);
 }
 
-Status GenericTransferManager::TransferIntNArrayFromDevice(
+absl::Status GenericTransferManager::TransferIntNArrayFromDevice(
     se::Stream* stream, const se::DeviceMemoryBase& source,
     PrimitiveType element_type, int64_t num_elements, void* destination) {
   int bit_width = primitive_util::BitWidth(element_type);
@@ -262,10 +262,10 @@ Status GenericTransferManager::TransferIntNArrayFromDevice(
             bit_width, *packed_dst_data,
             absl::MakeSpan(static_cast<char*>(destination), num_elements));
       }));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GenericTransferManager::TransferIntNArrayToDevice(
+absl::Status GenericTransferManager::TransferIntNArrayToDevice(
     se::Stream* stream, PrimitiveType element_type, int64_t num_elements,
     const void* source, se::DeviceMemoryBase* destination) {
   int bit_width = primitive_util::BitWidth(element_type);

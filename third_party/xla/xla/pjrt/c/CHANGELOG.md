@@ -1,5 +1,15 @@
 # PJRT C API changelog
 
+## 0.54
+* Deprecated PJRT_Buffer_GetMemoryLayout.
+
+## 0.53
+* Added ``PJRT_FFI_Extension` extension to support passing user data to FFI
+  handlers on compatible PJRT backends.
+
+## 0.52
+* Added ``PJRT_ExecuteContext`` struct corresponding to ``xla::ExecuteContext``.
+
 ## 0.51
 * Added ``PJRT_Extension_Type::PJRT_Extension_Type_Layouts``.
 

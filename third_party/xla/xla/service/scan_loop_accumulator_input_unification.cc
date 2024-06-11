@@ -45,69 +45,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Check if `instr` is a dynamic index instruction, i.e., dynamic-slice or
-// dynamic-update-slice with the given first operand that operates on the entire
-// shape of the instruction. To satisfy this:
-// 1. All start indices must be constant zero except only a single dimension.
-// 2. The start index of that dimension should be equal to the enclosing loop
-// induction variable.
-// 3. And, the size of that dimension must match the loop trip count.
-bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
-                                               HloInstruction* first_operand,
-                                               HloOpcode opcode,
-                                               const WhileLoopConfig& config) {
-  // Based on the instruction type, start indices start from index 1 or 2 of the
-  // operands.
-  int64_t start_indices_offset;
-  if (instr->opcode() == HloOpcode::kDynamicSlice) {
-    start_indices_offset = 1;
-  } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    start_indices_offset = 2;
-  } else {
-    return false;
-  }
-  HloInstruction* operand = instr->mutable_operand(0);
-  if (operand != first_operand) {
-    return false;
-  }
-
-  int64_t dynamic_index = -1;
-  for (int64_t start_index = start_indices_offset;
-       start_index < instr->operand_count(); ++start_index) {
-    HloInstruction* index = instr->mutable_operand(start_index);
-    // All constants must be zero in order to slice the entire shape.
-    if (Match(index, match::ConstantScalar())) {
-      std::optional<int64_t> offset =
-          LiteralUtil::LiteralAsScalarInt64(index->literal());
-      if (offset.value() != 0) {
-        return false;
-      }
-    }
-
-    // Check that the slice offset is the loop induction variable.
-    if (Match(index, match::GetTupleElement(match::Parameter(),
-                                            config.induction_var_idx))) {
-      // In order to cover the whole shape only a single non-constant index is
-      // allowed.
-      if (dynamic_index != -1) {
-        return false;
-      }
-      dynamic_index = start_index - start_indices_offset;
-    }
-  }
-
-  if (dynamic_index == -1) {
-    return false;
-  }
-
-  // The shape's broadcast_dim must be exactly equal to the loop trip count.
-  if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
-    return false;
-  }
-
-  return true;
-}
-
 // This function checks whether the operand of the loop at the given index is
 // read-only.
 bool LoopIndexIsReadOnly(const HloAliasAnalysis& alias_analysis,
@@ -159,7 +96,8 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
       }
       HloInstruction* gte_user = gte->users().at(0);
       if (MatchShapeCoveringDynamicIndexInstruction(
-              gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)) {
+              gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
+              .has_value()) {
         // The accumulator should be written at the same index
         if (computation->root_instruction()->mutable_operand(param_idx) ==
             gte_user) {
@@ -251,8 +189,8 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
     HloInstruction* gte_user = input_gte_inner->users().at(0);
     // Check if the input_gte_inner is a shape covering read-only instruction
     if (MatchShapeCoveringDynamicIndexInstruction(
-            gte_user, input_gte_inner, HloOpcode::kDynamicUpdateSlice,
-            config)) {
+            gte_user, input_gte_inner, HloOpcode::kDynamicUpdateSlice, config)
+            .has_value()) {
       acc_input_pairs.emplace_back(acc, input_gte_inner);
     }
   }
@@ -325,7 +263,7 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
   // accumulators and inputs that are by definition updated and read fully via
   // dynamic-update-slice and dynamic-sliced within a loop.
   std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops =
-      GetUnrollableLoops(module, execution_threads);
+      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads);
 
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.

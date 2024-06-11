@@ -56,10 +56,10 @@ struct ExampleStatistics {
   // case, this vector has the same length as the number of classes, where each
   // value corresponds to one class.
   // Use InlinedVector to avoid heap allocation for small number of classes.
-  gtl::InlinedVector<double, 1> wx;
+  absl::InlinedVector<double, 1> wx;
 
   // Logits for each class, using the previous weights.
-  gtl::InlinedVector<double, 1> prev_wx;
+  absl::InlinedVector<double, 1> prev_wx;
 
   // Sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).

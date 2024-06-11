@@ -15,9 +15,9 @@
 """Tests for `tf.data.Dataset.weighted_flat_map()`."""
 
 from typing import Callable
+import unittest
 
 from absl.testing import parameterized
-
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import global_shuffle_op
@@ -92,6 +92,7 @@ class WeightedFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.getDatasetOutput(dataset, requires_initialization=True)
 
 
+@unittest.skip("TODO(b/325112575): Fix incompatibility with batch dataset")
 class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   """Tests for global shuffling of tf.data datasets."""
 
@@ -163,7 +164,24 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Verifies that there are 10 elements from dataset3
     self.assertTrue(set(sorted_output[10:]).issubset(set(range(20, 30))))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffledWithBatch(self):
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10, 20)
+    dataset1 = dataset1.batch(2, drop_remainder=True)
+    dataset2 = dataset2.batch(2, drop_remainder=True)
+    dataset = weighted_flat_map_op._weighted_flat_map(
+        [dataset1, dataset2], np.asarray([0.5, 0.5])
+    )
+    shuffled_dataset = global_shuffle_op._global_shuffle(dataset, seed=42)
+    shuffled_output = self.getDatasetOutput(
+        shuffled_dataset, requires_initialization=True
+    )
+    output = self.getDatasetOutput(dataset, requires_initialization=True)
+    self.assertLen(shuffled_output, len(output))
 
+
+@unittest.skip("TODO(b/325112575): Fix incompatibility with batch dataset")
 class WeightedFlatMapGlobalShuffleCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 

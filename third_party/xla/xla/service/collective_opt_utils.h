@@ -40,7 +40,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1,
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
-    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>);
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
+    bool allow_intervening_bitcast = false);
 
 // Check whether AG(ICI) and its single user DS(ICI) can be canceled out.
 bool AllGatherDynamicSliceCancellation(
@@ -59,7 +60,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool is_constrain_layout = false, bool use_global_device_ids = false,
-    bool is_cross_module = false);
+    bool is_cross_module = false, bool allow_intervening_bitcast = false);
 
 }  // namespace xla
 

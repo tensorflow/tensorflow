@@ -18,10 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -64,28 +66,14 @@ bool GetI32VectorFromDenseI64CompositeAttr(
   return DenseI64AttrToI32Vector(attr, out_vec);
 }
 
-bool IsSupportedNchwUpsampleBlinear(
-    Value input, Value output, const DenseIntElementsAttr& output_size_attr) {
-  auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
-  auto output_shape = mlir::cast<ShapedType>(output.getType()).getShape();
-
-  // Only support 4D tensor.
-  if (input_shape.size() != 4 || output_shape.size() != 4) {
-    return false;
+std::optional<bool> GetBoolFromCompositeAttr(
+    const DictionaryAttr& composite_attrs, llvm::StringRef attr_name) {
+  auto attr = composite_attrs.get(attr_name);
+  if (!attr) return std::nullopt;
+  if (auto bool_attr = mlir::dyn_cast_or_null<BoolAttr>(attr)) {
+    return bool_attr.getValue();
   }
-
-  // Only expects the first two dimensions of input and output to be the same as
-  // in NCHW.
-  if (input_shape[0] != output_shape[0] || input_shape[1] != output_shape[1]) {
-    return false;
-  }
-
-  // Supplied output size should be 2D.
-  if (output_size_attr.getNumElements() != 2) {
-    return false;
-  }
-  auto output_size = output_size_attr.getValues<int64_t>();
-  return output_size[0] == output_shape[2] && output_size[1] == output_shape[3];
+  return std::nullopt;
 }
 
 ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {

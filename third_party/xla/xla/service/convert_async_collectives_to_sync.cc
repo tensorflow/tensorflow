@@ -106,7 +106,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   return sync_instruction;
 }
 
-/*static*/ Status
+/*static*/ absl::Status
 ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     HloComputation* computation,
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
@@ -141,7 +141,7 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     }
   }
   module->schedule().set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(

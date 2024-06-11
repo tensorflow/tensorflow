@@ -19,15 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/util.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
-Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
-                             absl::Span<const int64_t> window_dimensions,
-                             absl::Span<const int64_t> window_strides) {
+absl::Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
+                                   absl::Span<const int64_t> window_dimensions,
+                                   absl::Span<const int64_t> window_strides) {
   bool ok = input_dimensions.size() == window_dimensions.size() &&
             input_dimensions.size() == window_strides.size();
   if (!ok) {
@@ -47,7 +48,7 @@ Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
                              i, window_strides[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<std::pair<int64_t, int64_t>> MakePadding(

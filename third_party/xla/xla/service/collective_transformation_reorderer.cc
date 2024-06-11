@@ -240,8 +240,7 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // First, find all reshapes and all-reduces that are eligible for this
   // transformation.
-  absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
-      all_reduce_to_transformations;
+  HloInstructionMap<std::vector<HloInstruction*>> all_reduce_to_transformations;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* instruction :

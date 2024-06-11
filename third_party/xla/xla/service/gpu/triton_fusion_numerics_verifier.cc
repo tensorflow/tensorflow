@@ -53,8 +53,6 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
 // Returns the input instruction as a fusion instruction, if it represents a
 // Triton fusion. Otherwise, returns nullptr.
-//
-// TODO(b/326274248): Visit all Triton fusions. Now it's Softmax only.
 absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     const HloInstruction* hlo) {
   if (hlo->opcode() != HloOpcode::kFusion) {
@@ -65,7 +63,8 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
                       fusion->backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
-  if (backend_config.kind() == kTritonSoftmaxFusionKind) {
+  if (backend_config.kind() == kTritonFusionKind ||
+      backend_config.kind() == kTritonSoftmaxFusionKind) {
     return fusion;
   }
   return nullptr;

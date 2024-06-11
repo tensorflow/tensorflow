@@ -17,11 +17,11 @@ limitations under the License.
 #include <utility>
 
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
-DeviceMemoryHandle::DeviceMemoryHandle(StreamExecutorInterface *executor,
+DeviceMemoryHandle::DeviceMemoryHandle(StreamExecutor *executor,
                                        DeviceMemoryBase memory)
     : memory_(std::move(memory)), executor_(executor) {}
 

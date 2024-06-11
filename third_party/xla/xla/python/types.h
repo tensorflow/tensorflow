@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/layout.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/python/nb_numpy.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -64,11 +64,15 @@ absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
 
 struct NumpyScalarTypes {
   nanobind::object np_bool;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_int2;
   nanobind::object np_int4;
   nanobind::object np_int8;
   nanobind::object np_int16;
   nanobind::object np_int32;
   nanobind::object np_int64;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_uint2;
   nanobind::object np_uint4;
   nanobind::object np_uint8;
   nanobind::object np_uint16;

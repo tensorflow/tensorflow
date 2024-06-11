@@ -15,13 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -56,15 +65,11 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
 
-  auto* cuda_cc =
-      std::get_if<se::CudaComputeCapability>(&params.stream->parent()
-                                                  ->GetDeviceDescription()
-                                                  .gpu_compute_capability());
-  int64_t max_workspace = cuda_cc == nullptr ? GemmConfig::kDefaultWorkspace
-                          : cuda_cc->IsAtLeastHopper()
-                              ? GemmConfig::kHopperWorkspace
-                              : GemmConfig::kDefaultWorkspace;
-  TF_ASSIGN_OR_RETURN(auto algorithm, GetMatmulAlgorithm(plan, max_workspace));
+  TF_ASSIGN_OR_RETURN(
+      auto algorithm,
+      GetMatmulAlgorithm(plan, workspace_buffer_.has_value()
+                                   ? workspace_buffer_.value().size()
+                                   : 0));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;

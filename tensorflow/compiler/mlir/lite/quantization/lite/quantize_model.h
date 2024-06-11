@@ -20,9 +20,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 namespace lite {
@@ -45,17 +46,19 @@ namespace lite {
 // of double, and call TOCO's quantization routines to maintain bit-exactness of
 // the values with the TOCO quantizer.
 TfLiteStatus QuantizeModel(
-    absl::string_view model_buffer, const tflite::TensorType& input_type,
-    const tflite::TensorType& output_type,
-    const tflite::TensorType& inference_type,
-    const std::unordered_set<std::string>& operator_names,
-    bool disable_per_channel, bool fully_quantize, std::string& output_buffer,
-    tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
+    absl::string_view model_buffer, const tflite::TensorType &input_type,
+    const tflite::TensorType &output_type,
+    const tflite::TensorType &inference_type,
+    const std::unordered_set<std::string> &operator_names,
+    bool disable_per_channel, bool fully_quantize, std::string &output_buffer,
+    tflite::ErrorReporter *error_reporter, bool verify_numeric = false,
     bool whole_model_verify = false, bool legacy_float_scale = true,
-    const absl::flat_hash_set<std::string>& denylisted_ops = {},
-    const absl::flat_hash_set<std::string>& denylisted_nodes = {},
+    const absl::flat_hash_set<std::string> &denylisted_ops = {},
+    const absl::flat_hash_set<std::string> &denylisted_nodes = {},
     bool enable_variable_quantization = false,
-    bool disable_per_channel_for_dense_layers = false);
+    bool disable_per_channel_for_dense_layers = false,
+    const std::optional<const tensorflow::converter::DebugOptions>
+        &debug_options = std::nullopt);
 
 }  // namespace lite
 }  // namespace mlir

@@ -281,6 +281,112 @@ TEST_P(FormattedTileAssignmentTest, TransposeIotaTileWithDegernateDims) {
       ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15));
 }
 
+TEST_P(FormattedTileAssignmentTest,
+       TransposeIotaTileSplittingCanonicalizedReshapeDims) {
+  TileAssignment tile({8, 2, 16}, {16, 16}, {1, 0});
+  if (ShouldConvertToV1()) {
+    tile = TileAssignment(tile.shared_array());
+  }
+  TileAssignment xposed = tile.Transpose({0, 2, 1});
+  EXPECT_NE(xposed, tile);
+  EXPECT_EQ(xposed, TileAssignment({8, 16, 2}, {16, 8, 2}, {1, 0, 2}));
+  EXPECT_EQ(xposed.num_dimensions(), 3);
+  EXPECT_EQ(xposed.dim(0), 8);
+  EXPECT_EQ(xposed.dim(1), 16);
+  EXPECT_EQ(xposed.dim(2), 2);
+  EXPECT_EQ(xposed(0, 0, 0), 0);
+  EXPECT_EQ(xposed({2, 7, 1}), 117);
+  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
+  EXPECT_TRUE(xposed.UsesDevice(0));
+  EXPECT_TRUE(xposed.UsesDevice(255));
+  EXPECT_FALSE(xposed.UsesDevice(256));
+  EXPECT_THAT(
+      ToVectorUsingEach(xposed),
+      ElementsAre(
+          0, 1, 16, 17, 32, 33, 48, 49, 64, 65, 80, 81, 96, 97, 112, 113, 128,
+          129, 144, 145, 160, 161, 176, 177, 192, 193, 208, 209, 224, 225, 240,
+          241, 2, 3, 18, 19, 34, 35, 50, 51, 66, 67, 82, 83, 98, 99, 114, 115,
+          130, 131, 146, 147, 162, 163, 178, 179, 194, 195, 210, 211, 226, 227,
+          242, 243, 4, 5, 20, 21, 36, 37, 52, 53, 68, 69, 84, 85, 100, 101, 116,
+          117, 132, 133, 148, 149, 164, 165, 180, 181, 196, 197, 212, 213, 228,
+          229, 244, 245, 6, 7, 22, 23, 38, 39, 54, 55, 70, 71, 86, 87, 102, 103,
+          118, 119, 134, 135, 150, 151, 166, 167, 182, 183, 198, 199, 214, 215,
+          230, 231, 246, 247, 8, 9, 24, 25, 40, 41, 56, 57, 72, 73, 88, 89, 104,
+          105, 120, 121, 136, 137, 152, 153, 168, 169, 184, 185, 200, 201, 216,
+          217, 232, 233, 248, 249, 10, 11, 26, 27, 42, 43, 58, 59, 74, 75, 90,
+          91, 106, 107, 122, 123, 138, 139, 154, 155, 170, 171, 186, 187, 202,
+          203, 218, 219, 234, 235, 250, 251, 12, 13, 28, 29, 44, 45, 60, 61, 76,
+          77, 92, 93, 108, 109, 124, 125, 140, 141, 156, 157, 172, 173, 188,
+          189, 204, 205, 220, 221, 236, 237, 252, 253, 14, 15, 30, 31, 46, 47,
+          62, 63, 78, 79, 94, 95, 110, 111, 126, 127, 142, 143, 158, 159, 174,
+          175, 190, 191, 206, 207, 222, 223, 238, 239, 254, 255));
+}
+
+TEST_P(FormattedTileAssignmentTest,
+       TransposeIotaTileSplittingBothCanonicalizedReshapeDimsAndTileDims) {
+  TileAssignment tile({14, 3, 5}, {6, 5, 7}, {2, 0, 1});
+  if (ShouldConvertToV1()) {
+    tile = TileAssignment(tile.shared_array());
+  }
+  TileAssignment xposed = tile.Transpose({1, 0, 2});
+  EXPECT_NE(xposed, tile);
+  EXPECT_EQ(xposed, TileAssignment({3, 14, 5}, {2, 3, 5, 7}, {1, 3, 0, 2}));
+  EXPECT_EQ(xposed.num_dimensions(), 3);
+  EXPECT_EQ(xposed.dim(0), 3);
+  EXPECT_EQ(xposed.dim(1), 14);
+  EXPECT_EQ(xposed.dim(2), 5);
+  EXPECT_EQ(xposed(0, 0, 0), 0);
+  EXPECT_EQ(xposed({2, 11, 3}), 201);
+  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
+  EXPECT_TRUE(xposed.UsesDevice(0));
+  EXPECT_TRUE(xposed.UsesDevice(209));
+  EXPECT_FALSE(xposed.UsesDevice(210));
+  EXPECT_THAT(
+      ToVectorUsingEach(xposed),
+      ElementsAre(
+          0, 7, 14, 21, 28, 105, 112, 119, 126, 133, 1, 8, 15, 22, 29, 106, 113,
+          120, 127, 134, 2, 9, 16, 23, 30, 107, 114, 121, 128, 135, 3, 10, 17,
+          24, 31, 108, 115, 122, 129, 136, 4, 11, 18, 25, 32, 109, 116, 123,
+          130, 137, 5, 12, 19, 26, 33, 110, 117, 124, 131, 138, 6, 13, 20, 27,
+          34, 111, 118, 125, 132, 139, 35, 42, 49, 56, 63, 140, 147, 154, 161,
+          168, 36, 43, 50, 57, 64, 141, 148, 155, 162, 169, 37, 44, 51, 58, 65,
+          142, 149, 156, 163, 170, 38, 45, 52, 59, 66, 143, 150, 157, 164, 171,
+          39, 46, 53, 60, 67, 144, 151, 158, 165, 172, 40, 47, 54, 61, 68, 145,
+          152, 159, 166, 173, 41, 48, 55, 62, 69, 146, 153, 160, 167, 174, 70,
+          77, 84, 91, 98, 175, 182, 189, 196, 203, 71, 78, 85, 92, 99, 176, 183,
+          190, 197, 204, 72, 79, 86, 93, 100, 177, 184, 191, 198, 205, 73, 80,
+          87, 94, 101, 178, 185, 192, 199, 206, 74, 81, 88, 95, 102, 179, 186,
+          193, 200, 207, 75, 82, 89, 96, 103, 180, 187, 194, 201, 208, 76, 83,
+          90, 97, 104, 181, 188, 195, 202, 209));
+}
+
+TEST_P(FormattedTileAssignmentTest,
+       TransposeIotaTileGroupingCanonicalizedReshapeDims) {
+  TileAssignment tile({1, 4, 16}, {4, 4, 4}, {1, 0, 2});
+  if (ShouldConvertToV1()) {
+    tile = TileAssignment(tile.shared_array());
+  }
+  TileAssignment xposed = tile.Transpose({2, 0, 1});
+  EXPECT_NE(xposed, tile);
+  EXPECT_EQ(xposed, TileAssignment({16, 1, 4}, {4, 4, 4}, {0, 2, 1}));
+  EXPECT_EQ(xposed.num_dimensions(), 3);
+  EXPECT_EQ(xposed.dim(0), 16);
+  EXPECT_EQ(xposed.dim(1), 1);
+  EXPECT_EQ(xposed.dim(2), 4);
+  EXPECT_EQ(xposed(0, 0, 0), 0);
+  EXPECT_EQ(xposed({7, 0, 3}), 31);
+  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
+  EXPECT_TRUE(xposed.UsesDevice(0));
+  EXPECT_TRUE(xposed.UsesDevice(63));
+  EXPECT_FALSE(xposed.UsesDevice(64));
+  EXPECT_THAT(ToVectorUsingEach(xposed),
+              ElementsAre(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15,
+                          16, 20, 24, 28, 17, 21, 25, 29, 18, 22, 26, 30, 19,
+                          23, 27, 31, 32, 36, 40, 44, 33, 37, 41, 45, 34, 38,
+                          42, 46, 35, 39, 43, 47, 48, 52, 56, 60, 49, 53, 57,
+                          61, 50, 54, 58, 62, 51, 55, 59, 63));
+}
+
 TEST_P(FormattedTileAssignmentTest, TransposeNoopIotaTile) {
   TileAssignment tile({4, 4}, {4, 4}, {1, 0});
   if (ShouldConvertToV1()) {

@@ -46,6 +46,12 @@ bool GpuStream::Init() {
       .ok();
 }
 
+Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.stream = gpu_stream_;
+  return handle;
+}
+
 void GpuStream::Destroy() {
   if (completed_event_ != nullptr) {
     absl::Status status =
@@ -64,7 +70,7 @@ bool GpuStream::IsIdle() const {
 
 GpuStream* AsGpuStream(Stream* stream) {
   DCHECK(stream != nullptr);
-  return static_cast<GpuStream*>(stream->implementation());
+  return static_cast<GpuStream*>(stream);
 }
 
 GpuStreamHandle AsGpuStreamValue(Stream* stream) {

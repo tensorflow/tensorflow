@@ -52,6 +52,7 @@ def wrapped_experimental_mlir_quantize(
     denylisted_nodes,
     enable_variable_quantization,
     disable_per_channel_for_dense_layers,
+    debug_options_str,
 ):
   """Wraps experimental mlir quantize model."""
   return _pywrap_toco_api.ExperimentalMlirQuantizeModel(
@@ -67,6 +68,7 @@ def wrapped_experimental_mlir_quantize(
       denylisted_nodes,
       enable_variable_quantization,
       disable_per_channel_for_dense_layers,
+      debug_options_str,
   )
 
 

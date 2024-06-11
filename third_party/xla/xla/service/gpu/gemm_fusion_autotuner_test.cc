@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -150,6 +152,8 @@ class StatelessAutotunerTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
+  int32_t GetToolkitVersion() const { return CUDA_VERSION; }
+
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::SetUp();
@@ -193,7 +197,7 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
         AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
                                     backend().memory_allocator()},
                        opts},
-        &thread_pool);
+        GetToolkitVersion(), &thread_pool);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
@@ -233,10 +237,11 @@ class GemmFusionAutotunerTestWithMorePreciseReduction
 absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability& compute_capability,
-    const DebugOptions& debug_options) {
+    const int32_t toolkit_version, const DebugOptions& debug_options) {
   DevicelessConfig test_config{/*model_str=*/"", compute_capability};
   AutotuneConfig autotune_config{test_config, debug_options};
-  GemmFusionAutotunerImpl autotuner(autotune_config, debug_options, nullptr);
+  GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
+                                    debug_options, nullptr);
   return autotuner.GenerateTritonConfigs(dot);
 }
 
@@ -256,7 +261,7 @@ ENTRY e {
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest()));
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
@@ -278,7 +283,7 @@ ENTRY e {
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest()));
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k >= 4; }));
@@ -300,7 +305,7 @@ ENTRY e {
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest()));
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
   EXPECT_FALSE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k > 1; }));
@@ -428,7 +433,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
+// TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -457,15 +463,25 @@ ENTRY %e {
                                         /*thread_pool=*/nullptr,
                                         /*layout_canonicalization_callback=*/{},
                                         /*is_autotuning_compilation=*/true}),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat(
-              "Compilation result discarded due to register spilling")));
+      ::testing::AnyOf(
+          tsl::testing::StatusIs(
+              tsl::error::CANCELLED,
+              absl::StrFormat(
+                  "Compilation result discarded due to register spilling")),
+          // Hopper can't spill registers since wgmma instructions are
+          // asynchronous, instead it just runs out of them.
+          tsl::testing::StatusIs(
+              tsl::error::RESOURCE_EXHAUSTED,
+              absl::StrFormat("Register allocation failed"))));
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
+// TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest,
        DoNotFilterOutAutotuningKernelSpillingRegisters) {
+  if (GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Hopper and newer runs out of registers for such HLOs";
+  }
   const std::string kHloText = R"(
 HloModule m
 
@@ -505,7 +521,7 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
 TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -655,7 +671,7 @@ ENTRY e {
                                           ->GetDeviceDescription()
                                           .cuda_compute_capability()},
                      opts},
-      &thread_pool);
+      GetToolkitVersion(), &thread_pool);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
@@ -741,7 +757,7 @@ ENTRY e {
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest()));
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
   EXPECT_TRUE(std::all_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k == 1; }));
@@ -772,7 +788,7 @@ ENTRY wais {
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, debug_options));
+          compute_capability, GetToolkitVersion(), debug_options));
   for (const auto& config : configs) {
     int metadata_size = config.block_m * config.block_k / 16;
     EXPECT_LE(config.num_warps * WarpSize(), metadata_size);

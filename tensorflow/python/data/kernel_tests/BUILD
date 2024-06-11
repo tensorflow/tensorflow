@@ -1360,6 +1360,7 @@ tf_py_strict_test(
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",

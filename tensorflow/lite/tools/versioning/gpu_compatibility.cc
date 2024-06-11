@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
@@ -434,6 +436,46 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
 }
 
+absl::Status CheckAddMulBroadcastCompatibility(
+    const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1) {
+  if (input0.dims.size() > 1 && input1.dims.size() > 1 &&
+      input0.dims.size() != input1.dims.size()) {
+    const std::vector<int32_t>*longer_dims, *shorter_dims;
+    if (input0.dims.size() >= input1.dims.size()) {
+      longer_dims = &input0.dims;
+      shorter_dims = &input1.dims;
+    } else {
+      longer_dims = &input1.dims;
+      shorter_dims = &input0.dims;
+    }
+    bool is_broadcastable = false;
+
+    if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
+        longer_dims->at(0) == 1) {
+      // Broadcasting 3D to 4D with batch 1 works.
+      is_broadcastable = true;
+    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+               longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
+               shorter_dims->at(1) == 1) {
+      // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
+      is_broadcastable = true;
+    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+               longer_dims->at(0) == shorter_dims->at(0) &&
+               longer_dims->at(3) == shorter_dims->at(1)) {
+      // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
+      is_broadcastable = true;
+    }
+
+    if (!is_broadcastable) {
+      return absl::UnimplementedError(
+          absl::StrCat("Doesn't support broadcasting - input0: [",
+                       absl::StrJoin(input0.dims, ","), "], input1: [",
+                       absl::StrJoin(input1.dims, ","), "]"));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 // Logics here used to be in TFLiteOperationParser:IsSupported()
@@ -445,6 +487,12 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinAdd: {
       if (op_sig.inputs.size() != 2) {
         return absl::UnimplementedError("ADD requires two input tensors.");
+      }
+      const auto& input0 = op_sig.inputs.at(0);
+      const auto& input1 = op_sig.inputs.at(1);
+      auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+      if (!broadcastable.ok()) {
+        return broadcastable;
       }
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
@@ -469,29 +517,41 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
-    case kTfLiteBuiltinCast:
+    case kTfLiteBuiltinCast: {
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
-      if (op_sig.inputs.at(0).type == kTfLiteBool &&
-          (op_sig.outputs.at(0).type == kTfLiteFloat16 ||
-           op_sig.outputs.at(0).type == kTfLiteFloat32)) {
+      bool input_type_is_supported = false;
+      bool output_type_is_supported = false;
+      if (op_sig.inputs.at(0).type == kTfLiteBool ||
+          op_sig.inputs.at(0).type == kTfLiteFloat32 ||
+          op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteInt32 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        input_type_is_supported = true;
+      }
+      if (op_sig.outputs.at(0).type == kTfLiteBool ||
+          op_sig.outputs.at(0).type == kTfLiteFloat32 ||
+          op_sig.outputs.at(0).type == kTfLiteInt8 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt8 ||
+          op_sig.outputs.at(0).type == kTfLiteInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteInt32 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt32) {
+        output_type_is_supported = true;
+      }
+
+      if (input_type_is_supported && output_type_is_supported) {
         return absl::OkStatus();
-      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat16 ||
-                  op_sig.inputs.at(0).type == kTfLiteFloat32) &&
-                 op_sig.outputs.at(0).type == kTfLiteBool) {
-        return absl::OkStatus();
-      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat32 ||
-                  op_sig.inputs.at(0).type == kTfLiteInt32) &&
-                 (op_sig.outputs.at(0).type == kTfLiteFloat32 ||
-                  op_sig.outputs.at(0).type == kTfLiteInt32)) {
-        return absl::OkStatus();
-      } else {
+      }
         return absl::UnimplementedError(absl::StrCat(
             "Not supported Cast case. Input type: ",
             TfLiteTypeGetName(op_sig.inputs.at(0).type), " and output type: ",
             TfLiteTypeGetName(op_sig.outputs.at(0).type)));
-      }
+    }
 
     case kTfLiteBuiltinConcatenation: {
       const TfLiteConcatenationParams* tf_options;
@@ -551,6 +611,18 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
+    case kTfLiteBuiltinDynamicUpdateSlice: {
+      if (op_sig.inputs.size() != 3) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice requires 3 inputs.");
+      }
+      OpSignatureTensorSpec array_to_update = op_sig.inputs[0];
+      if (array_to_update.dims.size() != 4) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only supports 4D array_to_update.");
+      }
+      return absl::OkStatus();
+    }
     case kTfLiteBuiltinFullyConnected: {
       const TfLiteFullyConnectedParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));
@@ -689,6 +761,13 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
           return absl::UnimplementedError(
               "MUL requires one tensor that not less than second in all "
               "dimensions.");
+        }
+      } else {
+        const auto& input0 = op_sig.inputs.at(0);
+        const auto& input1 = op_sig.inputs.at(1);
+        auto broadcastable = CheckAddMulBroadcastCompatibility(input0, input1);
+        if (!broadcastable.ok()) {
+          return broadcastable;
         }
       }
       const TfLiteMulParams* tf_options;

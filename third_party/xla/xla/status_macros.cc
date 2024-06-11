@@ -18,11 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/types.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -36,7 +38,7 @@ ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
 
 // Log the error at the given severity, optionally with a stack trace.
 // If log_severity is NUM_SEVERITIES, nothing is logged.
-static void LogError(const Status& status, const char* filename, int line,
+static void LogError(const absl::Status& status, const char* filename, int line,
                      int log_severity, bool should_log_stack_trace) {
   if (ABSL_PREDICT_TRUE(log_severity != tsl::NUM_SEVERITIES)) {
     std::string stack_trace;
@@ -64,20 +66,21 @@ static void LogError(const Status& status, const char* filename, int line,
   }
 }
 
-// Make a Status with a code, error message and payload,
+// Make a absl::Status with a code, error message and payload,
 // and also send it to LOG(<log_severity>) using the given filename
 // and line (unless should_log is false, or log_severity is
 // NUM_SEVERITIES).  If should_log_stack_trace is true, the stack
 // trace is included in the log message (ignored if should_log is
 // false).
-static Status MakeError(const char* filename, int line, absl::StatusCode code,
-                        const std::string& message, bool should_log,
-                        int log_severity, bool should_log_stack_trace) {
+static absl::Status MakeError(const char* filename, int line,
+                              absl::StatusCode code, const std::string& message,
+                              bool should_log, int log_severity,
+                              bool should_log_stack_trace) {
   if (ABSL_PREDICT_FALSE(code == absl::StatusCode::kOk)) {
     LOG(ERROR) << "Cannot create error with status OK";
     code = absl::StatusCode::kUnknown;
   }
-  const Status status = Status(code, message);
+  const absl::Status status = absl::Status(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }
@@ -106,7 +109,7 @@ MakeErrorStream::Impl::Impl(const char* file, int line, tsl::error::Code code,
       should_log_stack_trace_(false),
       make_error_stream_with_output_wrapper_(error_stream) {}
 
-MakeErrorStream::Impl::Impl(const Status& status,
+MakeErrorStream::Impl::Impl(const absl::Status& status,
                             PriorMessageHandling prior_message_handling,
                             const char* file, int line,
                             MakeErrorStream* error_stream)
@@ -131,20 +134,20 @@ MakeErrorStream::Impl::~Impl() {
   // Note: error messages refer to the public MakeErrorStream class.
 
   if (!is_done_) {
-    LOG(ERROR) << "MakeErrorStream destructed without getting Status: " << file_
-               << ":" << line_ << " " << stream_.str();
+    LOG(ERROR) << "MakeErrorStream destructed without getting absl::Status: "
+               << file_ << ":" << line_ << " " << stream_.str();
   }
 }
 
-Status MakeErrorStream::Impl::GetStatus() {
+absl::Status MakeErrorStream::Impl::GetStatus() {
   // Note: error messages refer to the public MakeErrorStream class.
 
-  // Getting a Status object out more than once is not harmful, but
+  // Getting a absl::Status object out more than once is not harmful, but
   // it doesn't match the expected pattern, where the stream is constructed
-  // as a temporary, loaded with a message, and then casted to Status.
+  // as a temporary, loaded with a message, and then casted to absl::Status.
   if (is_done_) {
-    LOG(ERROR) << "MakeErrorStream got Status more than once: " << file_ << ":"
-               << line_ << " " << stream_.str();
+    LOG(ERROR) << "MakeErrorStream got absl::Status more than once: " << file_
+               << ":" << line_ << " " << stream_.str();
   }
 
   is_done_ = true;
@@ -167,8 +170,8 @@ Status MakeErrorStream::Impl::GetStatus() {
 
 void MakeErrorStream::Impl::CheckNotDone() const {
   if (is_done_) {
-    LOG(ERROR) << "MakeErrorStream shift called after getting Status: " << file_
-               << ":" << line_ << " " << stream_.str();
+    LOG(ERROR) << "MakeErrorStream shift called after getting absl::Status: "
+               << file_ << ":" << line_ << " " << stream_.str();
   }
 }
 

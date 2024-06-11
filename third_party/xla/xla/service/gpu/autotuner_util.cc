@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
@@ -120,9 +119,13 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.results()) {
-    autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
-        result.result();
+  for (const AutotuneResults::Entry& result : results.results()) {
+    if (auto [it, inserted] = autotune_cache.emplace(
+            AutotuneCacheKey(result.device(), result.hlo()), result.result());
+        !inserted) {
+      return absl::InternalError(absl::StrCat(
+          "Duplicate autotuning result for ", it->first.ToString()));
+    }
   }
   return absl::OkStatus();
 }
@@ -130,6 +133,11 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
 /*static*/ void AutotunerUtil::ClearAutotuneResults() {
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache.clear();
+}
+
+/*static*/ bool AutotunerUtil::ResultCacheIsEmpty() {
+  absl::MutexLock lock(&autotune_cache_mu);
+  return autotune_cache.empty();
 }
 
 /* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
@@ -330,32 +338,6 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
       /*redzone_size=*/config.should_check_correctness()
           ? opts.xla_gpu_redzone_padding_bytes()
           : 0);
-}
-
-/*static*/ absl::StatusOr<std::string>
-AutotunerUtil::SerializeAutotuneResultsForModule(
-    const HloModule& module, const AutotuneConfig& autotune_config,
-    bool as_textproto) {
-  AutotuneResults results =
-      SerializeAutotuneResultsForModule(module, autotune_config);
-  return AutotuneResultsToString(results, as_textproto);
-}
-
-/*static*/ AutotuneResults AutotunerUtil::SerializeAutotuneResultsForModule(
-    const HloModule& module, const AutotuneConfig& autotune_config) {
-  AutotuneResults results;
-  results.set_version(kVersion);
-
-  for (const HloInstruction* instr :
-       module.entry_computation()->instructions()) {
-    AutotuneCacheKey k(autotune_config.GetModelStr(), *instr);
-    if (const AutotuneResult* res = TryFindInCache(k)) {
-      SerializeAutotuneEntry(&results, k, res);
-    }
-  }
-
-  SortAutotuneResults(&results);
-  return results;
 }
 
 }  // namespace gpu

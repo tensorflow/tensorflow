@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_mgr",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_proto_cc",

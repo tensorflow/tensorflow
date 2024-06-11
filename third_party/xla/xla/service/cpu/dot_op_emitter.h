@@ -16,20 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 #define XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
-#include "absl/strings/string_view.h"
+#include <cstdint>
+#include <optional>
+
+#include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/llvm_loop.h"
-#include "xla/types.h"
-#include "tsl/platform/status.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
+
 // Returns true if the two operands and the output of `dot_instr` must have row
 // major layout.
 bool DotOperandsAndResultMustHaveRowMajorLayout(
@@ -57,16 +57,14 @@ std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
 // dimensions as the result, and the result is computed as `addend_array` +
 // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
 // for Matrix-vector products.
-Status EmitDotOperation(const HloInstruction& dot,
-                        const llvm_ir::IrArray& target_array,
-                        const llvm_ir::IrArray& lhs_array,
-                        const llvm_ir::IrArray& rhs_array,
-                        const llvm_ir::IrArray* addend_array,
-                        llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b, mlir::MLIRContext* mlir_context,
-                        const HloModuleConfig& hlo_module_config,
-                        const TargetMachineFeatures& target_machine_features);
-}  // namespace cpu
-}  // namespace xla
+absl::Status EmitDotOperation(
+    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray* addend_array,
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features);
+
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_DOT_OP_EMITTER_H_

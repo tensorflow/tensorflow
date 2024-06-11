@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
@@ -133,7 +133,8 @@ ParallelTaskAssignment::ParallelTaskAssignment(
   // Run cost analysis on 'module'.
   auto cost_analysis = std::make_unique<HloCostAnalysis>(shape_size);
   HloComputation* computation = module->entry_computation();
-  Status status = computation->root_instruction()->Accept(cost_analysis.get());
+  absl::Status status =
+      computation->root_instruction()->Accept(cost_analysis.get());
   if (status.ok()) {
     // Set default cost model based on 'cost_analysis'.
     cost_model_ = std::make_unique<DefaultCostModel>(

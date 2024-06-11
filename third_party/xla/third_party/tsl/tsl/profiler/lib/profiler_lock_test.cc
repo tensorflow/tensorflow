@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tsl/platform/statusor.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

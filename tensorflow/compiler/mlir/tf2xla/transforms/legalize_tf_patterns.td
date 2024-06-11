@@ -627,10 +627,6 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
             (addBenefit 2)>;
 }
 
-// Lowering tf.Reshape with dynamic shape
-def : Pat<(TF_ReshapeOp:$res MHLO_Tensor:$arg, $shape),
-          (CHLO_DynamicReshapeOp $arg, $shape)>;
-
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (MHLO_SignOp $x)>;
 

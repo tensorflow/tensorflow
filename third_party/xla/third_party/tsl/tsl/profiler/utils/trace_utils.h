@@ -50,6 +50,7 @@ constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 4;
 constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 5;
 constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 6;
 constexpr int kThreadIdSource = kThreadIdDerivedMin + 7;
+constexpr int kThreadIdHostOffloadOp = kThreadIdDerivedMin + 8;
 constexpr int kThreadIdDerivedMax = kThreadIdSource;
 
 static inline bool IsDerivedThreadId(int thread_id) {

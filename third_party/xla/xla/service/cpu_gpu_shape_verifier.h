@@ -29,7 +29,7 @@ class CpuGpuShapeVerifier : public ShapeVerifier {
   explicit CpuGpuShapeVerifier(const HloVerifierOpts& opts)
       : ShapeVerifier(opts) {}
 
-  Status Preprocess(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
 };
 
 // A verifier metadata class that uses the CpuGpuShapeVerifier.

@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 namespace xla {

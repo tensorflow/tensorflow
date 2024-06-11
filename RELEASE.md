@@ -1,3 +1,67 @@
+# Release 2.18.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.lite`
+    * `Dequantize` op supports `TensorType_INT4`.
+        * This change includes per-channel dequantization.
+
+## Keras
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.17.0
 
 ## TensorFlow
@@ -31,6 +95,11 @@
       been added to TF binary distributions (Python wheels).
 * Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
   `DebuggerConfig` of StableHLO Quantizer.
+* Add TensorFlow to StableHLO converter to TensorFlow pip package.
+* TensorRT support: this is the last release supporting TensorRT. It will be
+removed in the next release.
+* NumPy 2.0 support: TensorFlow is going to support NumPy 2.0 in the next
+release. It may break some edge cases of TensorFlow API usage.
 
 ## Keras
 
@@ -87,6 +156,9 @@
     * The Python TF Lite Interpreter bindings now have an option
       `experimental_default_delegate_latest_features` to enable all default
       delegate features.
+    * Flatbuffer version update:
+        * `GetTemporaryPointer()` bug fixed.
+    * Add int64 data type support for dynamic update slice's indice tensor. 
 
 * `tf.data`
     * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written

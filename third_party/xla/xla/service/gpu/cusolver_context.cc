@@ -28,7 +28,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #endif
 #include "xla/primitive_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -143,7 +142,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-// Converts a cuSolver absl::Status to a Status.
+// Converts a cuSolver absl::Status to a absl::Status.
 absl::Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:

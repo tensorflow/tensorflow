@@ -16,23 +16,27 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
@@ -56,9 +60,12 @@ class DistributedRuntimeCoordinationServiceClient
   KeyValueDirGet(std::string_view key) override;
   absl::Status KeyValueSet(std::string_view key,
                            std::string_view value) override;
+  absl::Status KeyValueSet(std::string_view key, std::string_view value,
+                           bool allow_overwrite) override;
   absl::Status KeyValueDelete(std::string_view key) override;
-  absl::Status WaitAtBarrier(std::string barrier_id,
-                             absl::Duration timeout) override;
+  absl::Status WaitAtBarrier(
+      std::string barrier_id, absl::Duration timeout,
+      std::optional<absl::Span<const int32_t>> process_ids) override;
   absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
@@ -85,16 +92,16 @@ DistributedRuntimeCoordinationServiceClient::
       absl::ToInt64Milliseconds(options.shutdown_timeout));
   config.set_agent_destruction_without_shutdown(
       !options.shutdown_on_destruction);
-  auto error_fn =
-      [timeout_fn = options.missed_heartbeat_callback](const Status& status) {
-        LOG(ERROR) << "Coordination service agent in error status: " << status;
-        timeout_fn(status, /*coordinator_reported_failure=*/true);
-      };
+  auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
+                      const absl::Status& status) {
+    LOG(ERROR) << "Coordination service agent in error status: " << status;
+    timeout_fn(status, /*coordinator_reported_failure=*/true);
+  };
 
   std::unique_ptr<tsl::CoordinationClient> leader_client;
   leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
   coord_agent_ = tsl::CreateCoordinationServiceAgent();
-  const Status status =
+  const absl::Status status =
       coord_agent_->Initialize(options.env, "jax_worker", options.node_id,
                                config, std::move(leader_client), error_fn);
   if (!status.ok()) {
@@ -112,7 +119,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
       absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
 
-  Status s = coord_agent_->Connect();
+  absl::Status s = coord_agent_->Connect();
   if (s.ok()) {
     absl::Duration barrier_timeout = deadline - absl::Now();
     // Note: `init_timeout` in client options may be set to 0 so that the
@@ -132,7 +139,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
 
 absl::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   LOG(INFO) << "Distributed task shutdown initiated.";
-  Status s = coord_agent_->Shutdown();
+  absl::Status s = coord_agent_->Shutdown();
   LOG(INFO) << "Distributed task shutdown result: " << s;
   return s;
 }
@@ -146,10 +153,7 @@ DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     std::string_view key) {
-  // TODO(hanyangtay): Migrate to string_view for both client and coordination
-  // agent APIs.
-  TF_ASSIGN_OR_RETURN(const auto results,
-                      coord_agent_->GetKeyValueDir(std::string(key)));
+  TF_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
   kvs.reserve(results.size());
@@ -169,12 +173,28 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
 
 absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
     std::string_view key, std::string_view value) {
-  return coord_agent_->InsertKeyValue(key, value);
+  return KeyValueSet(key, value, /*allow_overwrite=*/false);
+}
+
+absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
+    std::string_view key, std::string_view value, bool allow_overwrite) {
+  return coord_agent_->InsertKeyValue(key, value, allow_overwrite);
 }
 
 absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
-    std::string barrier_id, absl::Duration timeout) {
-  return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+    std::string barrier_id, absl::Duration timeout,
+    std::optional<absl::Span<const int32_t>> process_ids) {
+  std::vector<tensorflow::CoordinatedTask> tasks;
+  if (process_ids.has_value()) {
+    tasks.reserve(process_ids->size());
+    for (int32_t process_id : process_ids.value()) {
+      tensorflow::CoordinatedTask task;
+      task.set_job_name("jax_worker");
+      task.set_task_id(process_id);
+      tasks.push_back(std::move(task));
+    }
+  }
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
 absl::StatusOr<tsl::CoordinationServiceAgent*>

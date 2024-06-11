@@ -100,8 +100,7 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
       op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
-      remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_));
   EXPECT_EQ(op_id, remote_handle.op_id());
   EXPECT_EQ(output_num, remote_handle.output_num());
   EXPECT_EQ(remote_device_->name(), remote_handle.device());
@@ -165,8 +164,7 @@ TEST_F(RemoteMgrTest, ErrorSourcesShouldExist) {
   RemoteTensorHandle remote_handle;
   remote_mgr.AddOperationOutput(handle, op_id, output_num);
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
-      remote_device_->name()));
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_));
   auto remote_handle_internal = RemoteTensorHandleInternal(remote_handle);
   TF_ASSERT_OK(remote_mgr.DeleteTensorHandle(remote_handle_internal));
 

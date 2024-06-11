@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/client_library.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -28,12 +29,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
-                                                         LocalClient* client) {
+absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
+    const Shape& shape, LocalClient* client) {
   std::vector<stream_executor::DeviceMemoryBase> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
-      [&](const Shape& subshape, const ShapeIndex&) -> Status {
+      [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory device_memory,
             client->backend().memory_allocator()->Allocate(
@@ -41,7 +42,7 @@ StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
         device_buffers.push_back(device_memory.Release());
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
       client->backend().memory_allocator(), /*device_ordinal=*/0,

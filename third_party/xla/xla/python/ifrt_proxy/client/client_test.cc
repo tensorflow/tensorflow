@@ -175,10 +175,9 @@ TEST_F(ClientTest, Init) {
 TEST_F(ClientTest, GetDefaultDeviceAssignmentSuccess) {
   IfrtResponse response;
   xla::DeviceAssignment assignment(1, 3);
-  ASSERT_THAT(assignment.Serialize(
-                  response.mutable_get_default_device_assignment_response()
-                      ->mutable_device_assignment()),
-              IsOk());
+  assignment.Serialize(
+      response.mutable_get_default_device_assignment_response()
+          ->mutable_device_assignment());
 
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(

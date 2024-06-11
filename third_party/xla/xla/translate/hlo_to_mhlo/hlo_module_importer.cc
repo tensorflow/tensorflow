@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -36,8 +37,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/translate/hlo_to_mhlo/module_config_importer.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -99,7 +100,7 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 }
 }  // namespace
 
-Status HloModuleImporter::Import(const HloModule& hlo_module) {
+absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
   module.setName(hlo_module.name());
   module->setAttr(
@@ -111,6 +112,7 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
       "mhlo.is_dynamic",
       mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
   ImportFrontendAttributes(hlo_module, module);
+  ImportHloModuleConfig(hlo_module.config(), module);
   module->setAttr("mhlo.use_auto_spmd_partitioning",
                   mlir::BoolAttr::get(builder_.getContext(),
                                       hlo_module.use_auto_spmd_partitioning()));
@@ -154,10 +156,10 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
                            flatten_computation_args_result_)
                            .status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
+absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
   DebugOptions debug_options;
   TF_ASSIGN_OR_RETURN(
       auto module_config,

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/memset_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -125,6 +127,20 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
       thunk.deterministic());
 }
 
+static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
+  if (!thunk.workspace().has_value()) {
+    return absl::InternalError(
+        "Gemm thunk does not contain a workspace buffer");
+  }
+  return std::make_unique<CublasLtCmd>(
+      thunk.execution_stream_id(), thunk.config(), thunk.epilogue(),
+      thunk.algorithm_idx(), thunk.a_buffer(), thunk.b_buffer(),
+      thunk.c_buffer(), thunk.d_buffer(), thunk.bias_buffer(),
+      thunk.aux_buffer(), thunk.a_scale_buffer(), thunk.b_scale_buffer(),
+      thunk.c_scale_buffer(), thunk.d_scale_buffer(), thunk.d_amax_buffer(),
+      thunk.workspace().value());
+}
+
 static absl::StatusOr<Command> Convert(
     const ConditionalThunk& thunk,
     CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
@@ -190,6 +206,11 @@ static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
                                     thunk.arguments(), thunk.graph());
 }
 
+static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
+  return std::make_unique<BarrierCmd>(thunk.stream_id(),
+                                      thunk.wait_for_stream_id());
+}
+
 //===----------------------------------------------------------------------===//
 static absl::StatusOr<Command> CopyMetadata(absl::StatusOr<Command> cmd,
                                             const Thunk& thunk) {
@@ -236,6 +257,8 @@ static absl::Status AppendCommands(
       return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kGemm:
       return append(Convert<GemmThunk>(thunk));
+    case Thunk::Kind::kCublasLtMatmul:
+      return append(Convert<CublasLtMatmulThunk>(thunk));
     case Thunk::Kind::kMemset32BitValue:
       return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kMemzero:
@@ -267,10 +290,8 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kNcclReduceScatterDone:
       return append(Convert<NcclCollectiveDoneThunk>(thunk));
 
-    // Currently all collective operations recorded on the tracing stream and do
-    // not need to have a separate done command.
     case Thunk::Kind::kWaitForStreams:
-      return absl::OkStatus();
+      return append(Convert<WaitForStreamsThunk>(thunk));
 
     default:
       return Internal("Unsupported thunk kind: %s",

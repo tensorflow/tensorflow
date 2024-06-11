@@ -72,15 +72,14 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto fusion = dynamic_cast<ConcatenateFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
   constexpr auto kIndexing = R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (th_x + bl_x * 128) mod 400)
+    (bl_x * 128 + th_x) mod 400)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]

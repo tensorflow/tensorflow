@@ -90,3 +90,41 @@ module @donate_to_reshard_and_call_error {
     return %arg0 : tensor<2xi32>
   }
 }
+
+// -----
+
+!array = !ifrt.array<tensor<2xi32>,
+                     #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+module @program_arg_not_donated_to_remap_error {
+  func.func @main(%arg0: !array {ifrt.donated}, %arg1: !array) -> (!array)
+      attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.RemapArrays' op input has not been donated to the program.}}
+    %0 = ifrt.RemapArrays(%arg0, %arg1)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true} : (!array, !array) -> !array
+    return %0 : !array
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+module @donate_to_reshard_and_call_error {
+  func.func @main(%arg0: !array {ifrt.donated}) -> (!array)
+        attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @identity(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    // expected-error @+1 {{'ifrt.RemapArrays' op input #1 already donated.}}
+    %1 = ifrt.RemapArrays(%0, %arg0)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true} : (!array, !array) -> !array
+    return %1 : !array
+  }
+
+  func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    return %arg0 : tensor<2xi32>
+  }
+}

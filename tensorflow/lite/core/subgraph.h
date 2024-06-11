@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -132,16 +133,18 @@ class Subgraph {
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr,
-      TfLiteSparsity* sparsity = nullptr) {
+      TfLiteSparsity* sparsity = nullptr,
+      size_t buffer_identifier = kTfLiteNoBufferIdentifier) {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
-                                       allocation, sparsity);
+                                       allocation, sparsity, buffer_identifier);
   }
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t ndims,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
       size_t bytes, const Allocation* allocation = nullptr,
-      TfLiteSparsity* sparsity = nullptr);
+      TfLiteSparsity* sparsity = nullptr,
+      size_t buffer_identifier = kTfLiteNoBufferIdentifier);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
@@ -588,6 +591,10 @@ class Subgraph {
 
   // Returns true if the subgraph has been fully delegated.
   bool IsFullyDelegated() const;
+
+  const std::unordered_map<size_t, size_t>& GetTensorBufferIdentifiers() {
+    return tensor_buffer_identifiers_;
+  }
 
  private:
 #ifndef DOXYGEN_SKIP
@@ -1153,6 +1160,10 @@ class Subgraph {
   /// The allocator used for holding memory of the model. Note that this will
   /// be null if the client provides a tflite::Model directly.
   const Allocation* allocation_ = nullptr;
+
+  // Maps tensor constant buffers used in the subgraph to a model-wide
+  // identifiers.
+  std::unordered_map<size_t, size_t> tensor_buffer_identifiers_;
 };
 
 }  // namespace tflite

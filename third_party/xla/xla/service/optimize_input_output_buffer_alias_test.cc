@@ -21,10 +21,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
@@ -241,6 +241,21 @@ TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferInput) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {d3f32_};
   Shape output = d1f32_;
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
+// Shapes are the same, but are in different memory spaces.
+TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentMemorySpaces) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
+  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+  for (int i = 0; i < output.tuple_shapes_size(); ++i) {
+    output.mutable_tuple_shapes(i)->mutable_layout()->set_memory_space(
+        Layout::kHostMemorySpace);
+  }
   bool changed = BuildAliasConfig(input, output);
   EXPECT_FALSE(changed);
   EXPECT_EQ(AliasCount(), 0);

@@ -358,7 +358,7 @@ absl::Status CreateClientOnce(
             /*allocator=*/std::move(info->allocator),
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
-            /*gpu_run_options=*/std::move(gpu_run_options));
+            /*gpu_run_options=*/std::move(gpu_run_options), kv_store);
     VLOG(2) << "PJRT GPU client with remote devices created.";
     status = SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));
@@ -1188,7 +1188,6 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
   }
   return absl::OkStatus();
 }
-
 
 Status EagerContextDistributedManager::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {

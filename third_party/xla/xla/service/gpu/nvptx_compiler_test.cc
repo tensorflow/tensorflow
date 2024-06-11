@@ -26,13 +26,17 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/hlo_ordering.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -68,7 +72,7 @@ class NVPTXCompilerTest : public HloTestBase {
         ScheduleGpuModule(module, pointer_size, gpu_device_info).status());
 
     auto buffer_size_bytes_function =
-        [this](const BufferValue& buffer_value) -> int64_t {
+        [](const BufferValue& buffer_value) -> int64_t {
       return GetSizeOfShape(buffer_value.shape(), pointer_size);
     };
 

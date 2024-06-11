@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -131,7 +130,7 @@ absl::Status EmitElementForInputFusibleSlices(
             src_multidim[dim],
             index.GetConstantWithIndexType(slice->slice_starts(dim)));
       }
-      llvm_ir::IrArray src_ir_array = outputs[i];
+      const llvm_ir::IrArray& src_ir_array = outputs[i];
       llvm_ir::IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
                                               index.GetType());
       src_ir_array.EmitWriteArrayElement(slice_dst_index, input_ir_values[i],

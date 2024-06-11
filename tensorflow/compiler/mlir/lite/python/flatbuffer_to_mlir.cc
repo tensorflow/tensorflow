@@ -18,25 +18,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/InitLLVM.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 

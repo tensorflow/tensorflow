@@ -1,6 +1,14 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -43,8 +51,8 @@ cc_library(
         ":host_executor",
         ":host_platform_id",
         "//xla/stream_executor",
+        "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -63,7 +71,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
-        "//xla/stream_executor:stream_interface",
+        "//xla/stream_executor:stream_common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
@@ -89,10 +97,18 @@ cc_library(
         ":host_kernel_c_api",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -102,10 +118,23 @@ xla_cc_test(
     deps = [
         ":host_kernel",
         ":host_kernel_c_api",
+        ":host_platform",
+        ":jit_host_kernel_function",
+        ":ptr_host_kernel_function",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel_factory",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -119,17 +148,25 @@ cc_library(
         "host_executor.h",
     ],
     deps = [
+        ":host_kernel",
         ":host_stream",
         "//xla/stream_executor",
-        "//xla/stream_executor:event_interface",
-        "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:host_memory_allocation",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:stream_executor_common",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/profile_utils:profile_utils_cpu_utils",
     ],
     alwayslink = True,
@@ -147,7 +184,74 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
+)
+
+cc_library(
+    name = "ptr_host_kernel_function",
+    srcs = ["ptr_host_kernel_function.cc"],
+    hdrs = ["ptr_host_kernel_function.h"],
+    deps = [
+        ":host_executor",
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,  # static kernel function loader registration
+)
+
+cc_library(
+    name = "jit_host_kernel_function",
+    srcs = ["jit_host_kernel_function.cc"],
+    hdrs = ["jit_host_kernel_function.h"],
+    deps = [
+        ":host_executor",
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/platform",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMAsmParser",
+        "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",
+        "@llvm-project//llvm:AArch64CodeGen",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCAsmParser",
+        "@llvm-project//llvm:PowerPCCodeGen",
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",
+        "@llvm-project//llvm:SystemZCodeGen",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",
+        "@llvm-project//llvm:X86CodeGen",
+    ]),
+    alwayslink = 1,  # static kernel function loader registration
 )

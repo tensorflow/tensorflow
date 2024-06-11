@@ -23,11 +23,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -190,14 +190,14 @@ class HloSchedule {
   // remain in the same order in the updated schedule. Instructions which exist
   // in the module but not in the given schedule will be placed as early as
   // possible in the updated schedule.
-  Status Update(
+  absl::Status Update(
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Verifies that the given schedule is valid for the given module.
   // Specifically, the schedule contains exactly the instructions in the
   // non-fusion computations in the module and every dependency in the module is
   // satisfied in the schedule.
-  Status Verify() const;
+  absl::Status Verify() const;
 
   std::string ToString() const;
 
@@ -207,7 +207,7 @@ class HloSchedule {
 
  private:
   // Updates the instruction sequence for the given computation.
-  Status UpdateComputationSchedule(const HloComputation* computation);
+  absl::Status UpdateComputationSchedule(const HloComputation* computation);
 
   const HloModule* module_;
 

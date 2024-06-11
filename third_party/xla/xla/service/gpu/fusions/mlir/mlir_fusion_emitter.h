@@ -16,13 +16,11 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_MLIR_FUSION_EMITTER_H_
 
 #include <functional>
-#include <memory>
 #include <string>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -33,8 +31,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -64,7 +63,8 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
       mlir::MLIRContext& context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment) const;
+      const BufferAssignment* buffer_assignment,
+      mlir::interpreter::MlirCompilationTrace* trace = nullptr) const;
 
  protected:
   // Returns the set of instructions that will be isolated in the partitioned,
@@ -98,12 +98,15 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // the symbol 0 as the outermost loop. The indices of the map's dimensions and
   // symbols are passed to the lambda separately. The return values of the
   // function are the updated outputs.
+  // For the meaning of `vectorize`, see the documentation of `EmitLoopNest` in
+  // elemental_hlo_to_mlir.h.
   llvm::SmallVector<mlir::Value> EmitThreadLoopNest(
       mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
       const IndexingMap& indexing_map,
       const std::function<llvm::SmallVector<mlir::Value>(
           mlir::ValueRange outputs, mlir::ValueRange dim_values,
-          mlir::ValueRange symbol_values)>& create_body) const;
+          mlir::ValueRange symbol_values)>& create_body,
+      bool vectorize = false) const;
 
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
@@ -117,6 +120,9 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
                         const HloFusionInstruction& fusion) const;
+  absl::Status RunPassPipeline(
+      mlir::ModuleOp module, mlir::PassManager& pm,
+      mlir::interpreter::MlirCompilationTrace* trace) const;
 };
 
 }  // namespace gpu

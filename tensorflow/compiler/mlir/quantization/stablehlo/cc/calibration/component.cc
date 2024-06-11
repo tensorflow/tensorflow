@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/die_if_null.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -51,32 +53,52 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
+namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
 using ::stablehlo::quantization::DisableDebugging;
+using ::stablehlo::quantization::IsCalibrationRequired;
 using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::ReadStatistics;
 using ::stablehlo::quantization::RepresentativeDatasetConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
+using ::stablehlo::quantization::io::ListDirectory;
 using ::tensorflow::AssetFileDef;
 using ::tensorflow::SignatureDef;
+using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::RunPasses;
+using CalibrationStatisticsFlatMap =
+    absl::flat_hash_map<std::string, CalibrationStatistics>;
 
-absl::Status RunCalibrationPasses(mlir::ModuleOp module_op, MLIRContext& ctx,
-                                  absl::string_view calibration_data_dir) {
+}  // namespace
+
+absl::Status RunCalibrationPasses(
+    mlir::ModuleOp module_op, MLIRContext& ctx,
+    absl::string_view calibration_data_dir,
+    const bool force_regenerate_calibration_data) {
   // Disable DumpTensor ops when running calibration.
   DisableDebugging(module_op);
+
+  std::vector<std::string> skipping_aggregator_ops;
+  if (!force_regenerate_calibration_data) {
+    TF_ASSIGN_OR_RETURN(const CalibrationStatisticsFlatMap statistics_map,
+                        ReadStatistics(calibration_data_dir));
+    absl::c_for_each(statistics_map, [&](const auto& iter) {
+      return skipping_aggregator_ops.push_back(iter.first);
+    });
+  }
 
   return RunPasses(
       /*name=*/
       CalibrationComponent::kName,
       /*add_passes_func=*/
-      [calibration_data_dir](PassManager& pm) {
-        pm.addPass(
-            CreateInsertCalibrationStatisticsSaverPass(calibration_data_dir));
+      [calibration_data_dir, &skipping_aggregator_ops](PassManager& pm) {
+        pm.addPass(CreateInsertCalibrationStatisticsSaverPass(
+            calibration_data_dir, skipping_aggregator_ops));
       },
       ctx, module_op);
 }
@@ -97,8 +119,9 @@ CalibrationComponent::CalibrationComponent(
       signature_def_map_(std::move(signature_def_map)),
       signature_keys_(std::move(signature_keys)) {}
 
-absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
+absl::Status CalibrationComponent::ExportToSavedModel(
     ModuleOp module_op, absl::string_view calibration_data_dir,
+    const bool force_regenerate_calibration_data,
     const absl::string_view dst_saved_model_path) {
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
@@ -106,8 +129,13 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
   // be reflected in the original values.
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
 
-  TF_RETURN_IF_ERROR(
-      RunCalibrationPasses(*cloned_module_ref, *ctx_, calibration_data_dir));
+  TF_RETURN_IF_ERROR(RunCalibrationPasses(*cloned_module_ref, *ctx_,
+                                          calibration_data_dir,
+                                          force_regenerate_calibration_data));
+
+  const bool is_calibration_required =
+      IsCalibrationRequired(*cloned_module_ref);
+  if (!is_calibration_required) return absl::OkStatus();
 
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
@@ -128,13 +156,13 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
                                       src_saved_model_path_, tags_,
                                       signature_def_map_);
 
-  return exported_model;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ModuleOp> CalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
-  // Exports the pre-calibrated model to SavedModel.
-  TF_ASSIGN_OR_RETURN(const std::string precalibrated_saved_model_dir,
+  // Export the calibration model to SavedModel.
+  TF_ASSIGN_OR_RETURN(const std::string calibration_saved_model_dir,
                       CreateTmpDir());
 
   std::string calibration_data_dir =
@@ -143,29 +171,32 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
     TF_ASSIGN_OR_RETURN(calibration_data_dir, CreateTmpDir());
   }
 
-  TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
-                      ExportToSavedModel(module_op, calibration_data_dir,
-                                         precalibrated_saved_model_dir));
+  TF_RETURN_IF_ERROR(ExportToSavedModel(
+      module_op, calibration_data_dir,
+      config.calibration_options().force_regenerate_calibration_data(),
+      calibration_saved_model_dir));
 
-  // Translates `RepresentativeDatasetConfig`s to signature key ->
-  // `RepresentativeDatasetFile` mapping.
-  const auto dataset_configs =
-      config.calibration_options().representative_datasets();
-  const std::vector<RepresentativeDatasetConfig> dataset_config_vector(
-      dataset_configs.begin(), dataset_configs.end());
-  TF_ASSIGN_OR_RETURN(
-      const auto representative_dataset_file_map,
-      CreateRepresentativeDatasetFileMap(dataset_config_vector));
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> calibration_saved_model_files,
+                      ListDirectory(calibration_saved_model_dir));
+  if (!calibration_saved_model_files.empty()) {
+    // Translate `RepresentativeDatasetConfig`s to signature key ->
+    // `RepresentativeDatasetFile` mapping.
+    const auto dataset_configs =
+        config.calibration_options().representative_datasets();
+    const std::vector<RepresentativeDatasetConfig> dataset_config_vector(
+        dataset_configs.begin(), dataset_configs.end());
+    TF_ASSIGN_OR_RETURN(
+        const auto representative_dataset_file_map,
+        CreateRepresentativeDatasetFileMap(dataset_config_vector));
 
-  // Runs calibration on the exported model. The statistics will be stored in a
-  // separate singleton object `CalibratorSingleton` and are directly added to
-  // `exported_model` without re-importing it.
-  if (py_function_lib_->RunCalibration(
-          precalibrated_saved_model_dir, signature_keys_, tags_,
-          /*force_graph_mode_calibration=*/true,
-          representative_dataset_file_map) == std::nullopt) {
-    return absl::InternalError(
-        "CalibrationComponent error: Failed to run calibration.");
+    // Run calibration on the exported model.
+    if (py_function_lib_->RunCalibration(
+            calibration_saved_model_dir, signature_keys_, tags_,
+            /*force_graph_mode_calibration=*/true,
+            representative_dataset_file_map) == std::nullopt) {
+      return absl::InternalError(
+          "CalibrationComponent error: Failed to run calibration.");
+    }
   }
 
   if (absl::Status status = AddCalibrationStatistics(

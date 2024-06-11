@@ -25,29 +25,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/host_callback.h"
 
 namespace xla {
 namespace ifrt {
-
-struct XlaProgram : llvm::RTTIExtends<XlaProgram, Program> {
-  XlaProgram() = default;
-  explicit XlaProgram(mlir::ModuleOp module) : mlir_module(module) {}
-  XlaProgram(std::unique_ptr<mlir::MLIRContext> context,
-             mlir::OwningOpRef<mlir::ModuleOp> module)
-      : mlir_module(*module),
-        mlir_context(std::move(context)),
-        owning_mlir_module(std::move(module)) {}
-
-  mlir::ModuleOp mlir_module;
-
-  static char ID;  // NOLINT
-
- private:
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
-  mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
-};
 
 // Wraps compilation options for an XLA computation.
 //

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -48,14 +49,18 @@ limitations under the License.
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
+Tiling ComputeTransposeTiling(const se::DeviceDescription& gpu_device_info,
+                              const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
 
@@ -76,6 +81,20 @@ Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   tile_sizes[permutation[2]] = WarpSize() / kNumRows;
   absl::InlinedVector<int64_t, 4> num_threads{1, 1, WarpSize()};
   num_threads[permutation[2]] = kNumRows;
+
+  auto capability = gpu_device_info.gpu_compute_capability();
+  std::visit(
+      [&](const auto& capability) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                     stream_executor::RocmComputeCapability>) {
+          // kNumRows = 8 works well on MI300 with wavefront size 64.
+          if (capability.gfx9_mi300()) {
+            tile_sizes[permutation[2]] = gpu_device_info.threads_per_warp() / 8;
+            num_threads[permutation[2]] = 8;
+          }
+        }
+      },
+      capability);
 
   return Tiling(input_dims, tile_sizes, num_threads);
 }
@@ -106,12 +125,15 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 }  // namespace
 
-TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
+TransposeFusion::TransposeFusion(const se::DeviceDescription& gpu_device_info,
+                                 const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
+      tiling_(
+          ComputeTransposeTiling(gpu_device_info, analysis.tiled_transpose())) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
+            root.instruction(), hero.instruction())) {
       permutation_ = transpose->permutation;
       break;
     }
@@ -148,18 +170,20 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
     const auto& hero = analysis_.fusion_hero(output_idx).instruction();
-    auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
+    auto transpose_descr =
+        GetDescriptionForTiledTransposeEmitter(root.instruction(), hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
           &hero, std::vector<std::pair<int64_t, const HloInstruction*>>{
-                     {output_idx, root}}));
+                     {output_idx, &root.instruction()}}));
       if (iterator_inserted.second) {
         transposes.push_back(*transpose_descr);
       } else {
-        iterator_inserted.first->second.push_back({output_idx, root});
+        iterator_inserted.first->second.push_back(
+            {output_idx, &root.instruction()});
       }
     } else {
-      extra_outputs.push_back({output_idx, root});
+      extra_outputs.push_back({output_idx, &root.instruction()});
     }
   }
 
@@ -286,10 +310,16 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  const auto& root = analysis_.fusion_root(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
-    // Non-transpose roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    // The shape of non-transpose roots are bitcast compatible with the input
+    // shape of transpose heroes.
+    auto map = ComposeIndexingMaps(
+        GetIndexingMapForTiling(tiling_, ctx),
+        GetBitcastMap(
+            tiling_.GetXlaShape(),
+            analysis_.fusion_roots()[root_index].instruction().shape(), ctx));
+    map.Simplify();
+    return map;
   }
 
   // The block offsets are permuted, but the thread offsets remain the same.
@@ -306,7 +336,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
           tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
           permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
-  map.Simplify(GetIndexingMapForInstruction);
+  map.Simplify();
   return map;
 }
 
@@ -314,11 +344,21 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    auto map = ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, ctx),
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+             .indexing_maps[hero_operand_index]
+             .begin());
+    map.Simplify();
+    return map;
+  }
 
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
-  map.Simplify(GetIndexingMapForInstruction);
+  map.Simplify();
   return map;
 }
 

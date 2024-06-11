@@ -382,8 +382,9 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
   static_assert(!std::is_same_v<T, absl::Status>,
                 "Use PjRtFuture<> specialization for stateless futures");
 
-  static_assert(!internal::IsStatusOr<T>::value,
-                "PjRtFuture<T> already has an implicit StatusOr<T> semantics");
+  static_assert(
+      !internal::IsStatusOr<T>::value,
+      "PjRtFuture<T> already has an implicit absl::StatusOr<T> semantics");
 
  public:
   class Promise : public Base::Promise {

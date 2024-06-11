@@ -27,7 +27,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -428,19 +426,8 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
   // for non-default layouts, and will return wrong results if a non-default
   // layout is passed to a computation expecting default layouts. Remove this
   // special case when non-default layouts are better supported by JAX.
-  absl::StatusOr<Layout> default_layout_from_client =
-      device->client()->GetDefaultLayout(element_type, dimensions);
-  Layout default_layout;
-  if (default_layout_from_client.ok()) {
-    default_layout = *default_layout_from_client;
-  } else if (absl::IsUnimplemented(default_layout_from_client.status())) {
-    // TODO(skyewm): consider remove the fallback path when GetDefaultLayout is
-    // unimplemented.
-    Shape host_shape = ShapeUtil::MakeShape(element_type, dimensions);
-    default_layout = LayoutUtil::GetWithDefaultLayout(host_shape).layout();
-  } else {
-    return default_layout_from_client.status();
-  }
+  TF_ASSIGN_OR_RETURN(Layout default_layout, device->client()->GetDefaultLayout(
+                                                 element_type, dimensions));
   if (shape.layout() != default_layout) {
     return Unimplemented(
         "from_dlpack got array with non-default layout with minor-to-major "

@@ -101,8 +101,6 @@ cc_library(
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
-        "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -118,6 +116,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -151,5 +151,21 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_query_test",
+    srcs = [
+        "hlo_query_test.cc",
+    ],
+    deps = [
+        ":hlo_query",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

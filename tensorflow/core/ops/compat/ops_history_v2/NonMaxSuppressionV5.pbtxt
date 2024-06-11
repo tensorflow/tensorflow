@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "NonMaxSuppressionV5"
   input_arg {
     name: "boxes"

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/lib/io/zlib_compression_options.h"
@@ -227,8 +227,9 @@ class DataProducer {
   std::queue<std::function<std::string()>> produce_funcs_;
 };
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                DataProducer& data_producer, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      DataProducer& data_producer,
+                                      bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
@@ -248,8 +249,8 @@ static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
   }
 }
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                absl::string_view data, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      absl::string_view data, bool compressed) {
   if (!compressed) {
     return tsl::WriteStringToFile(env, fname, data);
   }
@@ -665,7 +666,7 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     return;
   }
   const std::string path = tsl::io::JoinPath(dir, filename);
-  Status status;
+  absl::Status status;
   if (opts.dump_as_text) {
     if (text_formatter) {
       auto written_proto = text_formatter(env, proto);

@@ -60,8 +60,7 @@ class DirectPluginOpKernelConstruction : public PluginOpKernelConstruction {
 
 class DirectPluginOpKernelContext : public PluginOpKernelContext {
  public:
-  explicit DirectPluginOpKernelContext(void* ctx)
-      : ctx_(reinterpret_cast<OpKernelContext*>(ctx)) {}
+  explicit DirectPluginOpKernelContext(OpKernelContext* ctx) : ctx_(ctx) {}
 
   std::string_view GetResourceMgrDefaultContainerName() override;
 
@@ -85,9 +84,9 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   int NumInputs() const override { return ctx_->num_inputs(); }
 
-  Status GetInput(int index, Tensor* tensor) const override;
+  absl::Status GetInput(int index, const Tensor** tensor) const override;
 
-  Status GetInput(const char* name, const Tensor** tensor) override;
+  absl::Status GetInput(const char* name, const Tensor** tensor) const override;
 
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;

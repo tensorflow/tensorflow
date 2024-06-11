@@ -546,13 +546,8 @@ cc_library(
     name = "gpu_util_hdrs",
     hdrs = [
         "gpu_utils.h",
-        # See the exports_files declaration for a description of why this
-        # silliness is here.
-        #
-        # TODO(b/202546057) get rid of this once fused_conv is moved out of
-        # contrib.
-        "@local_xla//xla/stream_executor:lazy_op_runner.h",
     ],
+    deps = ["@local_xla//xla/stream_executor:lazy_op_runner"],
 )
 
 cc_library(
@@ -829,6 +824,7 @@ cc_library(
     hdrs = ["fused_eigen_output_kernels.h"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
@@ -891,6 +887,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+    "//tensorflow/core/util:bad_indices_policy",
     "@eigen_archive//:eigen3",
 ]
 
@@ -2133,6 +2130,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5138,7 +5136,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reduce_op",
     prefix = "sparse_reduce_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
@@ -6499,6 +6497,8 @@ filegroup(
         "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",
+        "//tensorflow/core/util:bad_indices_policy.cc",
+        "//tensorflow/core/util:bad_indices_policy.h",
     ],
 )
 
@@ -6631,6 +6631,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
         "//tensorflow/core/kernels/linalg:qr_op_impl.h",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels_headers",
+        "//tensorflow/core/util:bad_indices_policy.h",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -7029,6 +7030,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "//tensorflow/core/util:bad_indices_policy.h",
     "@local_tsl//tsl/framework/convolution:eigen_convolution_helpers.h",
     "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
@@ -7113,6 +7115,9 @@ filegroup(
         "conv_3d.h",
         "conv_ops_3d.cc",
         "conv_ops_gpu.h",
+        # Transitive dependencies of the ops with attributes "bad_indices_policy".
+        "//tensorflow/core/util:bad_indices_policy.cc",
+        "//tensorflow/core/util:bad_indices_policy.h",
     ],
     visibility = ["//visibility:public"],
 )

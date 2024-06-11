@@ -90,7 +90,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -2656,8 +2655,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
   }
 
   if (xla_device_assignment != nullptr) {
-    TF_RETURN_IF_ERROR(
-        xla_device_assignment->Serialize(proto.mutable_device_assignment()));
+    xla_device_assignment->Serialize(proto.mutable_device_assignment());
   }
 
   const int num_args = arg_types.size();

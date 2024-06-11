@@ -19,6 +19,7 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -82,7 +83,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -94,7 +94,6 @@ namespace xla {
 namespace spmd {
 
 namespace {
-constexpr double kOverbudgetCoeff = 1e6;
 constexpr double kSaltiplier = 0.0;  // This value (0.0) disables salting.
 }  // namespace
 
@@ -1972,13 +1971,22 @@ AutoShardingSolverResult CallSolver(
   request.mutable_s_hint()->Add(s_hint.begin(), s_hint.end());
   request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
       solver_timeout_in_seconds);
-  request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
+  // Only apply soft memory constraints if the overbudget coeff is nonnegative.
+  if (option.memory_overbudget_coeff >= 0.0) {
+    request.mutable_overbudget_coeff()->set_coeff(
+        option.memory_overbudget_coeff);
+  }
   request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);
   request.set_deterministic_mode(deterministic_mode);
   request.set_request_name(std::string(request_name));
   request.set_enable_memory_edge_costs(option.model_resharding_memory_costs);
+  // If we're removing user shardings, we are probably doing internal testing /
+  // debugging where additional output from the solver might be helpful.
+  request.set_enable_output(
+      option.preserve_shardings ==
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings);
   if (max_cost) {
     request.mutable_max_cost()->set_coeff(*max_cost);
   }
@@ -2320,7 +2328,7 @@ void SetHloSharding(
   }
 }
 
-Status SetHloShardingPostProcessing(
+absl::Status SetHloShardingPostProcessing(
     const HloInstructionSequence& sequence,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
@@ -3280,7 +3288,7 @@ absl::Status GenerateReduceScatter(
             .output_sharding);
     TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replace_with));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AnnotateShardingWithSimpleHeuristic(
@@ -3400,11 +3408,11 @@ void AnnotateShardingWithSimpleHeuristic(
 
 // Filter strategies according to the option.force_batch_dim_to_mesh_dim.
 // This can be used to forcibly generate data-parallel strategies.
-Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                      std::unique_ptr<StrategyGroup>& strategy_group,
-                      const ClusterEnvironment& cluster_env,
-                      const InstructionBatchDimMap& batch_map,
-                      const AutoShardingOption& option) {
+absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
+                            std::unique_ptr<StrategyGroup>& strategy_group,
+                            const ClusterEnvironment& cluster_env,
+                            const InstructionBatchDimMap& batch_map,
+                            const AutoShardingOption& option) {
   int mesh_dim = option.force_batch_dim_to_mesh_dim;
   int batch_dim = batch_map.at(GetBatchDimMapKey(ins));
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
@@ -3438,7 +3446,7 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
       << ins->ToString() << " does not have any valid strategies";
   strategy_group->strategies = std::move(new_strategies);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return the output sharding of the reduce-scatter variant of a given strategy.
@@ -3731,10 +3739,11 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
   return std::make_pair(preserve_shardings, module_is_changed);
 }
 
-Status AutoShardingImplementation::CanonicalizeLayouts(HloModule* module) {
+absl::Status AutoShardingImplementation::CanonicalizeLayouts(
+    HloModule* module) {
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
@@ -3753,7 +3762,7 @@ Status AutoShardingImplementation::CanonicalizeLayouts(HloModule* module) {
   }
   *module->mutable_config().mutable_entry_computation_layout() =
       entry_computation_layout;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the set of instructions that lie outside any manually partitioned
@@ -4032,7 +4041,11 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
           << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
           << " GB";
       option_.memory_budget_per_device =
-          memory_lower_bound * option_.memory_budget_ratio;
+          memory_lower_bound * std::abs(option_.memory_budget_ratio);
+      // TODO(b/341299984): Document this flag syntax, or automate the behavior.
+      if (option_.memory_budget_ratio < 0) {
+        option_.memory_overbudget_coeff = -1.0;  // Disables the soft constraint
+      }
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /
@@ -4070,7 +4083,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                              option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set =
         spmd::BuildAliasSet(module, input_output_alias_config, strategy_map);
-    if (Status alias_set_status = CheckAliasSetCompatibility(
+    if (absl::Status alias_set_status = CheckAliasSetCompatibility(
             alias_set, strategy_groups, sequence,
             /* crash_at_error */ !option_.try_multiple_mesh_shapes);
         !alias_set_status.ok()) {
@@ -4261,6 +4274,18 @@ bool ModuleHasUserShardings(const HloModule* module) {
   return has_shardings;
 }
 
+bool ModuleIsManuallyPartitioned(const HloModule* module) {
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (spmd::IsSPMDFullToShardShapeCustomCall(instruction) ||
+          spmd::IsSPMDShardToFullShapeCustomCall(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool IsSmallTensor(const HloInstruction* ins,
                    const AutoShardingOption& option) {
   return spmd::GetInstructionSize(ins->shape()) <=
@@ -4361,8 +4386,9 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
+  bool module_is_manually_partitioned = ModuleIsManuallyPartitioned(module);
   std::vector<std::vector<int64_t>> mesh_shapes;
-  if (option_.try_multiple_mesh_shapes) {
+  if (option_.try_multiple_mesh_shapes || module_is_manually_partitioned) {
     bool asymmetrical_mesh_dims = false;
     for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
       if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
@@ -4381,6 +4407,11 @@ absl::StatusOr<bool> AutoSharding::Run(
   } else {
     mesh_shapes.push_back(option_.device_mesh_shape);
   }
+
+  CHECK(option_.try_multiple_mesh_shapes || mesh_shapes.size() == 1)
+      << "Auto-sharding cannot infer a single appropriate mesh shape for this "
+         "HLO, and AutoShardingption::try_multiple_mesh_shapes is set to "
+         "false. Please re-run with the option set to true.";
 
   if (module->entry_computation()->num_parameters() > 0) {
     HloInstruction* parameter_instruction =
@@ -4485,8 +4516,7 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   absl::StatusOr<bool> module_is_changed;
   if (skip_auto_sharding) {
-    LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
-    module_is_changed = false;
+    module_is_changed = false;  // The auto-sharding solver timed out.
   } else {
     std::string trying_to_find;
     if (option_.try_multiple_mesh_shapes) {
@@ -4566,6 +4596,10 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+
+  if (skip_auto_sharding) {
+    LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
+  }
 
   return module_is_changed;
 }

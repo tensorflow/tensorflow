@@ -16,10 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/runtime/fused_mha_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_fused_mha_runner.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -63,6 +74,13 @@ std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
              ? std::optional<se::DeviceMemoryBase>{buffer_allocations
                                                        .GetDeviceAddress(slice)}
              : std::nullopt;
+}
+
+absl::Status FusedMHAThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHARunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHAOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
 }
 
 absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -141,6 +159,13 @@ FusedMHABackwardThunk::GetOrCreateRunner(
              .first;
   }
   return *it->second;
+}
+
+absl::Status FusedMHABackwardThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHABackwardRunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHABackwardOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
 }
 
 absl::Status FusedMHABackwardThunk::ExecuteOnStream(

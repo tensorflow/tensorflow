@@ -33,18 +33,18 @@ namespace {
 TfLiteOperator* CreateDelegateKernelRegistration(
     SimpleOpaqueDelegateInterface* delegate) {
   TfLiteOperator* kernel_registration =
-      TfLiteOperatorCreate(kTfLiteBuiltinDelegate, delegate->Name(),
-                           /*version=*/1);
+      TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate, delegate->Name(),
+                                   /*version=*/1, /*user_data=*/nullptr);
 
-  TfLiteOperatorSetFree(
+  TfLiteOperatorSetFreeWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context, void* buffer) -> void {
+      [](void* user_data, TfLiteOpaqueContext* context, void* buffer) -> void {
         delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
       });
 
-  TfLiteOperatorSetInit(
+  TfLiteOperatorSetInitWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
@@ -60,18 +60,18 @@ TfLiteOperator* CreateDelegateKernelRegistration(
         }
         return delegate_kernel.release();
       });
-  TfLiteOperatorSetPrepare(
+  TfLiteOperatorSetPrepareWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
         return delegate_kernel->Prepare(context, opaque_node);
       });
-  TfLiteOperatorSetInvoke(
+  TfLiteOperatorSetInvokeWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(

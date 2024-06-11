@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -89,6 +90,9 @@ class HloFusionInstructionAdaptor {
   // matches the order of the tuple elements of the tuple root of the fusion
   // computation. We do not deduplicate fusion roots.
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
+  virtual absl::InlinedVector<const HloInstruction*, 2> GetParameters()
+      const = 0;
+  virtual const HloInstruction& FusionInstruction() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
   virtual std::string ToString() const = 0;
@@ -101,6 +105,7 @@ class HloFusionAdaptor {
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
   bool ContainsInstruction(const HloInstruction* instruction) const;
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const;
+  absl::InlinedVector<const HloInstruction*, 2> GetParameters() const;
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;
   std::string ToString() const;
@@ -183,11 +188,6 @@ std::optional<const HloInstruction*> HloFindIf(
     absl::Span<const HloInstruction* const> roots,
     const std::function<bool(const HloInstruction* node)>& visit,
     bool visit_operands = true);
-
-// Visit the producers of all parameters that are needed by the fusion.
-void FindFusionArguments(
-    const HloFusionAdaptor& fusion,
-    const std::function<void(HloInstructionAdaptor producer)>& visit);
 
 // Find a use chain from `parent` to `root`. Empty if no chain exists.
 // `[parent]` if `parent` is `root`.

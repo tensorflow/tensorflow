@@ -20,20 +20,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
 
 namespace {
 
-Status ValidateResultShape(const Shape& client_shape,
-                           const Shape& result_shape) {
+absl::Status ValidateResultShape(const Shape& client_shape,
+                                 const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -42,7 +42,7 @@ Status ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

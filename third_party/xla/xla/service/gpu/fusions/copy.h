@@ -15,13 +15,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_COPY_H_
 #define XLA_SERVICE_GPU_FUSIONS_COPY_H_
 
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
 namespace xla {
@@ -31,26 +32,17 @@ namespace gpu {
 // implemented using `memcpy`s.
 class MemcpyFusion : public FusionInterface {
  public:
-  MemcpyFusion(std::vector<BufferAllocation::Slice> src_buffers,
-               std::vector<BufferAllocation::Slice> dst_buffers,
-               std::vector<mlir::Value> srcs, std::vector<mlir::Value> dsts)
-      : src_buffers_(std::move(src_buffers)),
-        dst_buffers_(std::move(dst_buffers)),
-        srcs_(std::move(srcs)),
-        dsts_(std::move(dsts)) {}
+  MemcpyFusion(const HloFusionAnalysis& analysis,
+               const BufferAssignment* buffer_assignment)
+      : analysis_(analysis), buffer_assignment_(buffer_assignment) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  private:
-  std::vector<BufferAllocation::Slice> src_buffers_;
-  std::vector<BufferAllocation::Slice> dst_buffers_;
-
-  // These are only used by the LMHLO code path and are empty if emitting from
-  // HLO.
-  std::vector<mlir::Value> srcs_;
-  std::vector<mlir::Value> dsts_;
+  const HloFusionAnalysis& analysis_;
+  const BufferAssignment* buffer_assignment_;
 };
 
 }  // namespace gpu

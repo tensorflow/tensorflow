@@ -453,7 +453,7 @@ bool Batch<TaskType>::empty() const TF_NO_THREAD_SAFETY_ANALYSIS {
   // TODO(b/160249203): Remove tracer after evaluating a change to reduce
   // lock contention and cpu usage (which is observed in profiler and
   // very data-driven).
-  tensorflow::profiler::TraceMe tracer("BatchTask::empty");
+  tsl::profiler::TraceMe tracer("BatchTask::empty");
   return empty_.load();
 }
 

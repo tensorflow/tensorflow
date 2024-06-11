@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UniformDequantize"
   input_arg {
     name: "input"

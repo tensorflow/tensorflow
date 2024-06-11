@@ -31,14 +31,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
@@ -246,6 +247,9 @@ std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
 
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx) {
+  if (Cast<HloDotInstruction>(&dot)->sparse_operands()) {
+    return false;
+  }
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
   TF_RET_CHECK(dot.operand_count() > operand_idx);
 

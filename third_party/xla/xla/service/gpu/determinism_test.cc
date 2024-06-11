@@ -38,7 +38,7 @@ namespace gpu {
 class DeterminismTest : public GpuCodegenTest {
  public:
   DeterminismTest() : debug_options_(HloTestBase::GetDebugOptionsForTest()) {
-    debug_options_.set_xla_gpu_deterministic_ops(true);
+    debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
     // Randomize timer durations to better test autotuning does not introduce
     // nondeterminism.
     se::gpu::GpuTimer::ReturnRandomDurationsForTesting();
@@ -109,7 +109,7 @@ ENTRY e {
   AssertDeterminism(kHloText);
 }
 
-TEST_F(DeterminismTest, TritonDot) {
+TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
 #if GOOGLE_CUDA
   auto comp = backend()
                   .default_stream_executor()
@@ -130,9 +130,45 @@ ENTRY e {
   ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  debug_options_.set_xla_gpu_triton_gemm_any(true);
-  MatchOptimizedHlo(kHloText, R"(; CHECK: __triton_gemm)");
+  // Disable autotuning.
+  debug_options_.set_xla_gpu_deterministic_ops(true);
+  // Check that triton is used but without autotuning (default config).
+  AutotunerUtil::ClearAutotuneResults();
+  MatchOptimizedHlo(kHloText, R"(
+    CHECK: __triton_gemm
+    CHECK: {"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}
+  )");
   AssertDeterminism(kHloText, /*num_runs=*/3);
+}
+
+TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
+#if GOOGLE_CUDA
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (!comp.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Triton not used on pre-Volta GPUs";
+  }
+#elif TENSORFLOW_USE_ROCM
+  GTEST_SKIP() << "Triton Gemm rewriter is not yet supported on ROCM";
+#endif  // TENSORFLOW_USE_ROCM
+
+  debug_options_.set_xla_gpu_cublas_fallback(false);
+  ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
+  AutotunerUtil::ClearAutotuneResults();
+  // The default config is not used when autotuning is on.
+  MatchOptimizedHlo(R"(
+ENTRY e {
+  p0 = bf16[128,128] parameter(0)
+  p0_convert = f32[128,128] convert(p0)
+  p1 = f32[128,128] parameter(1)
+  ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})",
+                    R"(
+    CHECK: __triton_gemm
+    CHECK-NOT: {"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}
+  )");
 }
 
 TEST_F(DeterminismTest, Conv) {

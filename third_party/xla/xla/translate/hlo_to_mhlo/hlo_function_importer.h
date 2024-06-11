@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -66,10 +66,10 @@ class HloFunctionImporter {
   // Imports the given hlo computation to the specified region.
   //
   // Flattens the tuple-typed region argument(s) and return value(s).
-  static Status ImportAsRegion(const HloComputation& computation,
-                               mlir::SymbolTable& symbol_table,
-                               mlir::Region* region, mlir::Builder* builder,
-                               bool flatten_computation_args_result = false);
+  static absl::Status ImportAsRegion(
+      const HloComputation& computation, mlir::SymbolTable& symbol_table,
+      mlir::Region* region, mlir::Builder* builder,
+      bool flatten_computation_args_result = false);
 
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
@@ -170,13 +170,13 @@ class HloFunctionImporter {
       const HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
-  Status ImportAsRegion(const HloComputation& computation,
-                        mlir::Region* region);
+  absl::Status ImportAsRegion(const HloComputation& computation,
+                              mlir::Region* region);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
-  Status ImportInstructions(const HloComputation& computation,
-                            mlir::Block* block);
+  absl::Status ImportInstructions(const HloComputation& computation,
+                                  mlir::Block* block);
   absl::StatusOr<mlir::Value> ImportInstructionsImpl(
       const HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
@@ -204,7 +204,7 @@ class HloFunctionImporter {
 
   // Converts an XLA shape/layout to the corresponding MLIR layout, in
   // flattened_attr, while flattening the tuple layout.
-  Status ConvertShapeToMlirLayout(
+  absl::Status ConvertShapeToMlirLayout(
       const Shape& shape,
       llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr);
 
@@ -213,8 +213,9 @@ class HloFunctionImporter {
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
-  Status GetMlirTypes(absl::Span<const HloInstruction* const> instructions,
-                      llvm::SmallVectorImpl<mlir::Type>* types);
+  absl::Status GetMlirTypes(
+      absl::Span<const HloInstruction* const> instructions,
+      llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
   absl::StatusOr<mlir::Value> GetMlirValue(const HloInstruction* instruction);
@@ -272,7 +273,7 @@ class HloFunctionImporter {
       llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
       const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
       mlir::Type result_type, mlir::OpBuilder* func_builder,
-      std::string func_name, std::function<Status(SyncOp)> mutate_op);
+      std::string func_name, std::function<absl::Status(SyncOp)> mutate_op);
 
   // Imports an old-style async done op
   absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(

@@ -16,15 +16,12 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
+#include <cstdint>
 #include <deque>
-#include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -83,11 +80,11 @@ class TraceMeRecorder {
   // Starts recording of TraceMe().
   // Only traces <= level will be recorded.
   // Level must be >= 0. If level is 0, no traces will be recorded.
-  static bool Start(int level) { return Get()->StartRecording(level); }
+  static bool Start(int level);
 
   // Stops recording and returns events recorded since Start().
   // Events passed to Record after Stop has started will be dropped.
-  static Events Stop() { return Get()->StopRecording(); }
+  static Events Stop();
 
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
@@ -104,40 +101,15 @@ class TraceMeRecorder {
   static int64_t NewActivityId();
 
  private:
-  class ThreadLocalRecorder;
-  class ThreadLocalRecorderWrapper;
-
-  // Returns singleton.
-  static TraceMeRecorder* Get();
-
-  TraceMeRecorder() = default;
-
-  TraceMeRecorder(const TraceMeRecorder&) = delete;
-  void operator=(const TraceMeRecorder&) = delete;
-
-  void RegisterThread(uint32 tid, std::shared_ptr<ThreadLocalRecorder> thread);
-  void UnregisterThread(uint32 tid);
-
-  bool StartRecording(int level);
-  Events StopRecording();
+  TraceMeRecorder() = delete;
+  ~TraceMeRecorder() = delete;
 
   // Clears events from all active threads that were added due to Record
-  // racing with StopRecording.
-  void Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // racing with Stop.
+  static void Clear();
 
   // Gathers events from all active threads, and clears their buffers.
-  TF_MUST_USE_RESULT Events Consume() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  mutex mutex_;
-  // A ThreadLocalRecorder stores trace events. Ownership is shared with
-  // ThreadLocalRecorderWrapper, which is allocated in thread_local storage.
-  // ThreadLocalRecorderWrapper creates the ThreadLocalRecorder and registers it
-  // with TraceMeRecorder on the first TraceMe executed on a thread while
-  // tracing is active. If the thread is destroyed during tracing, the
-  // ThreadLocalRecorder is marked inactive but remains alive until tracing
-  // stops so the events can be retrieved.
-  absl::flat_hash_map<uint32, std::shared_ptr<ThreadLocalRecorder>> threads_
-      TF_GUARDED_BY(mutex_);
+  static TF_MUST_USE_RESULT Events Consume();
 };
 
 }  // namespace profiler

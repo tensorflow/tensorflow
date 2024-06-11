@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -54,10 +55,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/buffer_comparator.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -89,8 +86,6 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
   }
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 class GemmAutotuner {
   const AutotuneConfig& autotune_config_;
   RedzoneBuffers rz_buffers_;
@@ -113,7 +108,8 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(stream_, autotune_config_.GetStream());
     const DebugOptions& debug_options =
         gemm->GetModule()->config().debug_options();
-    deterministic_ops_ = debug_options.xla_gpu_deterministic_ops();
+    deterministic_ops_ = debug_options.xla_gpu_deterministic_ops() ||
+                         debug_options.xla_gpu_exclude_nondeterministic_ops();
     solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
@@ -370,8 +366,6 @@ class GemmAutotuner {
     return AutotuneResult{};
   }  // GetBestAlgorithm
 };  // GemmAutotuner
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.

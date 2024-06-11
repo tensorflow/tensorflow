@@ -71,9 +71,9 @@ using absl::StrCat;
 using absl::StrFormat;
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
-Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
-                       se::Stream* stream, TransferManager* transfer_manager,
-                       HloSnapshot* module) {
+absl::Status RecordArguments(
+    const absl::Span<const ShapedBuffer* const> arguments, se::Stream* stream,
+    TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
@@ -81,18 +81,19 @@ Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal.ToProto();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
-Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
-                    TransferManager* transfer_manager, HloSnapshot* module) {
+absl::Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
+                          TransferManager* transfer_manager,
+                          HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
       Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -159,18 +160,18 @@ Service::Service(const ServiceOptions& options,
   }
 }
 
-Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
-                                    CreateChannelHandleResponse* result) {
+absl::Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
+                                          CreateChannelHandleResponse* result) {
   TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
                       channel_tracker_.NewChannel(arg->channel_type()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::Unregister(const UnregisterRequest* arg,
-                           UnregisterResponse* result) {
-  Status status;
+absl::Status Service::Unregister(const UnregisterRequest* arg,
+                                 UnregisterResponse* result) {
+  absl::Status status;
   for (auto& data : arg->data()) {
-    Status unregister_status = allocation_tracker_.Unregister(data);
+    absl::Status unregister_status = allocation_tracker_.Unregister(data);
     if (!unregister_status.ok() && status.ok()) {
       status = unregister_status;
     }
@@ -179,8 +180,8 @@ Status Service::Unregister(const UnregisterRequest* arg,
 }
 
 // Deconstructs a previously-allocated global handle.
-Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
-                                 DeconstructTupleResponse* result) {
+absl::Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
+                                       DeconstructTupleResponse* result) {
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDataHandle> elements,
       allocation_tracker_.DeconstructTuple(arg->tuple_handle()));
@@ -188,11 +189,11 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   for (auto& element : elements) {
     *result->add_element_handles() = element;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) {
+absl::Status Service::ValidateResultShape(const Shape& client_shape,
+                                          const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -201,7 +202,7 @@ Status Service::ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
@@ -421,7 +422,7 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Wait for all executions to complete.
   for (int64_t i = 0, end = streams.size(); i < end; ++i) {
-    Status block_status = streams[i]->BlockHostUntilDone();
+    absl::Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return Internal("failed to complete execution for stream %d: %s", i,
                       block_status.message());
@@ -530,8 +531,8 @@ Service::GetArguments(
   return replicated_arguments;
 }
 
-Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
-                                     ExecuteParallelResponse* result) {
+absl::Status Service::ExecuteGraphParallel(
+    const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result) {
   VLOG(1) << "running execute-graph-parallel request";
 
   std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
@@ -655,7 +656,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
-  Status execution_status = OkStatus();
+  absl::Status execution_status = absl::OkStatus();
 
   if (executable_ptrs.size() == 1) {
     absl::StatusOr<GlobalDataHandle> output_or_status =
@@ -711,11 +712,11 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                 GetDeviceHandlesResponse* result) {
+absl::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                       GetDeviceHandlesResponse* result) {
   const int64_t available_device_count = execute_backend_->device_count();
   const int64_t replica_count = options_.number_of_replicas();
   if (replica_count <= 0) {
@@ -735,7 +736,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
     *result->add_device_handles() = device_handle;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
@@ -794,7 +795,8 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   return executable;
 }
 
-Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
+absl::Status Service::Compile(const CompileRequest* arg,
+                              CompileResponse* result) {
   VLOG(1) << "running compile request";
   if (!arg->has_computation()) {
     return InvalidArgument("computations may not be empty");
@@ -832,10 +834,11 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
   *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
 
   VLOG(1) << "successfully completed 'compile' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
+absl::Status Service::Execute(const ExecuteRequest* arg,
+                              ExecuteResponse* result) {
   VLOG(1) << "running execute request";
   if (!arg->has_handle()) {
     return InvalidArgument("execution handle should not be empty");
@@ -902,11 +905,11 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::TransferToClient(const TransferToClientRequest* arg,
-                                 TransferToClientResponse* result) {
+absl::Status Service::TransferToClient(const TransferToClientRequest* arg,
+                                       TransferToClientResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
 
@@ -945,11 +948,11 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     *result->mutable_literal() =
         result_literal.Relayout(return_shape).ToProto();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::TransferToServer(const TransferToServerRequest* arg,
-                                 TransferToServerResponse* result) {
+absl::Status Service::TransferToServer(const TransferToServerRequest* arg,
+                                       TransferToServerResponse* result) {
   TF_ASSIGN_OR_RETURN(Literal literal,
                       Literal::CreateFromProto(arg->literal()));
   const Shape& shape = literal.shape();
@@ -988,11 +991,11 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
                           StrCat("TransferToServer literal of shape ",
                                  ShapeUtil::HumanString(shape))));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
-                                 TransferToInfeedResponse* result) {
+absl::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
+                                       TransferToInfeedResponse* result) {
   const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
@@ -1020,8 +1023,8 @@ Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
                                                                        literal);
 }
 
-Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                                    TransferFromOutfeedResponse* result) {
+absl::Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
+                                          TransferFromOutfeedResponse* result) {
   const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
@@ -1047,16 +1050,16 @@ Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
           executor, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::ResetDevice(const ResetDeviceRequest* arg,
-                            ResetDeviceResponse* result) {
+absl::Status Service::ResetDevice(const ResetDeviceRequest* arg,
+                                  ResetDeviceResponse* result) {
   return execute_backend_->ResetDevices();
 }
 
-Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
-                                     ComputeConstantResponse* result) {
+absl::Status Service::ComputeConstantGraph(
+    const ComputeConstantGraphRequest* arg, ComputeConstantResponse* result) {
   if (!arg->has_computation()) {
     return InvalidArgument("computations may not be empty");
   }
@@ -1114,17 +1117,18 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   }
   *result->mutable_literal() = result_literal.ToProto();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
+absl::Status Service::GetShape(const GetShapeRequest* arg,
+                               GetShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
   *result->mutable_shape() = buffer->on_device_shape().ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Service::GetComputationGraphStats(
+absl::Status Service::GetComputationGraphStats(
     const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
   if (!arg->has_computation()) {
     return InvalidArgument("Computations may not be empty.");
@@ -1153,7 +1157,7 @@ Status Service::GetComputationGraphStats(
   stats.set_flop_count(analysis.flop_count());
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DeviceHandle Service::SingleComputationDeviceHandle() const {

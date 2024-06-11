@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -132,13 +132,13 @@ class PjRtCApiDevice : public PjRtDevice {
   int local_hardware_id() const override;
   PjRtLocalHardwareId local_hardware_id_typed() const override;
 
-  Status TransferToInfeed(const LiteralSlice& literal) override {
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(
         "PJRT C API does not support TransferToInfeed. Please report an issue "
         "at https://github.com/google/jax/issues if you need this feature.");
   }
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented(
         "PJRT C API does not support TransferFromOutfeed. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "
@@ -149,7 +149,7 @@ class PjRtCApiDevice : public PjRtDevice {
     return memory_spaces_;
   }
 
-  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
@@ -166,7 +166,7 @@ class PjRtCApiDevice : public PjRtDevice {
     return description_;
   }
 
-  StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
@@ -185,11 +185,11 @@ class PjRtCApiCompiler : public PjRtCompiler {
  public:
   explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
@@ -231,7 +231,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
-  StatusOr<Layout> GetDefaultLayout(
+  absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override {
     return Unimplemented("PJRT C API does not support GetDefaultLayout");
@@ -267,12 +267,12 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> devices() const override;
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
-  StatusOr<PjRtDevice*> LookupDevice(
+  absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
-  StatusOr<PjRtDevice*> LookupAddressableDevice(
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
-  StatusOr<PjRtDevice*> LookupAddressableDevice(
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
@@ -290,10 +290,10 @@ class PjRtCApiClient : public PjRtClient {
     return PjRtRuntimeType::kTfrt;
   }
 
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override {
     return Unimplemented(
         "PJRT C API does not support GetHloCostAnalysis. Please report an "
@@ -301,21 +301,21 @@ class PjRtCApiClient : public PjRtClient {
         "feature.");
   }
 
-  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
-                                    absl::Span<const int64_t> dims) override;
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
   // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer. Please report "
@@ -323,10 +323,10 @@ class PjRtCApiClient : public PjRtClient {
         "feature.");
   }
 
-  StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+  absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override {
     return Unimplemented(
@@ -344,28 +344,28 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device, const Layout* device_layout) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {
     return Unimplemented(
         "PJRT C API does not support BufferFromHostLiteral. Please report an "
@@ -373,14 +373,15 @@ class PjRtCApiClient : public PjRtClient {
         "feature.");
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
-  StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer) override;
+  absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
+      PjRtBuffer* buffer) override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override {
@@ -390,7 +391,7 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
@@ -400,28 +401,28 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  StatusOr<ChannelHandle> CreateChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
     return Unimplemented(
         "PJRT C API does not support CreateChannelHandle. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "
         "feature.");
   }
 
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return Unimplemented(
         "PJRT C API does not support CreateDeviceToHostChannelHandle. Please "
         "report an issue at https://github.com/google/jax/issues if you need "
         "this feature.");
   }
 
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
     return Unimplemented(
         "PJRT C API does not support CreateHostToDeviceChannelHandle. Please "
         "report an issue at https://github.com/google/jax/issues if you need "
         "this feature.");
   }
 
-  Status Defragment() override {
+  absl::Status Defragment() override {
     return Unimplemented(
         "PJRT C API does not support Defragment. Please report an issue at "
         "https://github.com/google/jax/issues if you need this feature.");
@@ -454,7 +455,7 @@ class PjRtCApiClient : public PjRtClient {
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
@@ -477,7 +478,7 @@ class PjRtCApiClient : public PjRtClient {
   // There may be an error fetching the topology desc via the C API
   // (e.g. unimplemented). Save the error during client init so we can return it
   // from GetTopologyDescription().
-  StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
+  absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
 
   const std::string platform_version_;
   const std::string platform_name_;
@@ -506,9 +507,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const bool> is_dynamic_dimension() const override;
 
-  StatusOr<std::vector<int64_t>> logical_dimensions() override;
+  absl::StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
-  StatusOr<Shape> logical_on_device_shape() override {
+  absl::StatusOr<Shape> logical_on_device_shape() override {
     LOG(FATAL) << "PjRtBuffer::on_logical_device_shape() not implemented in "
                   "PJRT C API";
   }
@@ -519,7 +520,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PjRtClient* client() const override { return client_; }
 
-  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
@@ -527,7 +528,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override;
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
                              int64_t transfer_size) override {
@@ -538,18 +539,18 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   void Delete() override;
 
-  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
-      bool wait_for_operations_to_complete) override {
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
     return Unimplemented(
         "PJRT C API does not support ReleaseDeviceMemoryOwnership");
   }
 
   bool IsDeleted() override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
@@ -612,7 +613,7 @@ class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {
   }
   ~PjRtCApiExternalReference() override;
 
-  Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override;
+  absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override;
 
  private:
   PjRtCApiClient* client_;
@@ -629,37 +630,37 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
-  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override;
+
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
-
-  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());
   }
 
-  StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
     LOG(FATAL) << "PjRtExecutable::GetOutputShapes() not implemented in PJRT C "
                   "API. Please use PjRtExecutable::GetOutputElementTypes() or "
                   "PjRtExecutable::GetOutputDimensions().";
   }
 
-  StatusOr<std::vector<std::vector<PrimitiveType>>> GetOutputElementTypes()
-      const override;
+  absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
+  GetOutputElementTypes() const override;
 
-  StatusOr<std::vector<std::vector<DimensionVector>>> GetOutputDimensions()
-      const override;
+  absl::StatusOr<std::vector<std::vector<DimensionVector>>>
+  GetOutputDimensions() const override;
 
-  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const override;
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override;
 
   const PJRT_Api* pjrt_c_api() const { return c_api_; }
   PJRT_Executable* c_executable() const { return executable_.get(); }
 
-  StatusOr<std::string> SerializeExecutable() const override;
+  absl::StatusOr<std::string> SerializeExecutable() const override;
 
-  StatusOr<std::string> FingerprintExecutable() const override;
+  absl::StatusOr<std::string> FingerprintExecutable() const override;
 
  private:
   const PJRT_Api* c_api_;
@@ -680,8 +681,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     return executable_->SizeOfGeneratedCodeInBytes();
   }
 
-  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
-      const override {
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override {
     return executable_->GetCostAnalysis();
   }
 
@@ -699,48 +700,48 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     return addressable_devices_;
   }
 
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
   }
 
-  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return executable_->GetCompiledMemoryStats();
   }
 
-  StatusOr<std::vector<Shape>> GetOutputShapes() const override {
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
     LOG(FATAL)
         << "PjRtLoadedExecutable::GetOutputShapes() not implemented in PJRT C "
            "API. Please use PjRtLoadedExecutable::GetOutputElementTypes() or "
            "PjRtLoadedExecutable::GetOutputDimensions().";
   }
 
-  StatusOr<std::vector<std::vector<PrimitiveType>>> GetOutputElementTypes()
-      const override {
+  absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
+  GetOutputElementTypes() const override {
     return executable_->GetOutputElementTypes();
   }
 
-  StatusOr<std::vector<std::vector<DimensionVector>>> GetOutputDimensions()
-      const override {
+  absl::StatusOr<std::vector<std::vector<DimensionVector>>>
+  GetOutputDimensions() const override {
     return executable_->GetOutputDimensions();
   }
 
-  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const override {
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
     return executable_->GetOutputMemoryKinds();
   }
 
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
@@ -748,7 +749,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   void Delete() override;
   bool IsDeleted() override;
 
-  StatusOr<std::string> SerializeExecutable() const override {
+  absl::StatusOr<std::string> SerializeExecutable() const override {
     return executable_->SerializeExecutable();
   }
 
@@ -771,7 +772,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
-  StatusOr<std::string> FingerprintExecutable() const override;
+  absl::StatusOr<std::string> FingerprintExecutable() const override;
 
  private:
   // Groups data needed to support send/recv execution callbacks.
@@ -798,10 +799,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       SendRecvCallbackData& send_recv_callback_data,
       std::vector<int64_t>& non_donatable_input_indices_storage);
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future);
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,
+                          PjRtDevice* device, const ExecuteOptions& options,
+                          std::optional<PjRtFuture<>>& returned_future,
+                          bool fill_future);
 
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_LoadedExecutable, ::pjrt::PJRT_LoadedExecutableDeleter>
@@ -825,7 +827,7 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
   const PJRT_Api* c_api_;
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
@@ -838,7 +840,7 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
 // registered with standard way (xla_bridge.register_plugin).
 // TODO(b/322357665): Delete this method after TPU plugin changes to use the
 // standard registration.
-StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 

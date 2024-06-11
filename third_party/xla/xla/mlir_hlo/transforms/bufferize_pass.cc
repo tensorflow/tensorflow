@@ -69,7 +69,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "stablehlo/dialect/ChloOps.h"
 #include "transforms/passes.h"
 #include "transforms/rewriters.h"
 
@@ -177,7 +176,10 @@ struct ComputeOpAndFuncBufferizePass
                            math::MathDialect, memref::MemRefDialect,
                            tensor::TensorDialect, vector::VectorDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
-    target.addIllegalDialect<mhlo::MhloDialect>();
+    auto isLegalMhloOp = [&](Operation* op) {
+      return isa<mhlo::MinimumBroadcastShapesOp>(op);
+    };
+    target.addDynamicallyLegalDialect<mhlo::MhloDialect>(isLegalMhloOp);
 
     CustomBufferizeTypeConverter converter;
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
@@ -321,7 +323,7 @@ struct FinalBufferizePass
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
-                        tensor::RankOp, chlo::MinimumBroadcastShapesOp,
+                        tensor::RankOp, mhlo::MinimumBroadcastShapesOp,
                         bufferization::ToTensorOp, bufferization::ToMemrefOp,
                         tensor::ExpandShapeOp, tensor::CollapseShapeOp>();
     CustomBufferizeTypeConverter converter;

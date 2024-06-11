@@ -77,9 +77,10 @@ using ReduceScatterKey =
 // Combines the elements of to_combine into a single ReduceScatter op. All
 // entries in to_combine must be ReduceScatter ops with exactly one operand
 // and the same reduction operation.
-Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
+absl::Status CombineReduceScatters(
+    absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " reduce-scatter ops";
 
@@ -167,7 +168,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

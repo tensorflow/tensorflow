@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/topology.h"
 
 namespace xla {
 namespace ifrt {
@@ -55,6 +56,10 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // TODO(hyeontaek): Move executable loading to `Client`.
   virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       std::unique_ptr<Program> program,
+      std::unique_ptr<CompileOptions> options) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<Executable>> Compile(
+      std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) = 0;
 
   // Deserializes a serialized executable as produced by

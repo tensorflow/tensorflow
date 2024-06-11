@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LogicalNot"
   input_arg {
     name: "x"

@@ -430,7 +430,7 @@ void CopySparseBufferToTensor(tf::DataType dtype, size_t offset,
   }
 }
 
-inline void CopyToBuffer(tf::gtl::ArraySlice<tstring> vec, char* tensor_buffer,
+inline void CopyToBuffer(absl::Span<const tstring> vec, char* tensor_buffer,
                          int num_examples, int batch_size,
                          int elements_per_stride) {
   int i = 0, k = 0;
@@ -454,7 +454,7 @@ inline void CopyToBuffer(tf::gtl::ArraySlice<tstring> vec, char* tensor_buffer,
 
 Status FastParseExampleLite(
     const FastParseExampleConfig& config, const TfLiteTensor* serialized,
-    tf::gtl::ArraySlice<tstring> example_names, bool* quick_filter,
+    absl::Span<const tstring> example_names, bool* quick_filter,
     int quick_filter_size, const std::unique_ptr<ConfigIndex>& config_index,
     int config_index_size, SeededHasher* hasher, TfLiteResult* result,
     std::map<absl::string_view, int>& stats, TfLiteContext* context) {
@@ -633,7 +633,7 @@ Status FastParseExampleLite(
         memcpy(tensor_buffer + sizeof(int32_t) * (i + 1), &offset_i,
                sizeof(int32_t));
       }
-      tf::gtl::ArraySlice<tstring> slice(vec.data(), vec.size());
+      absl::Span<const tstring> slice(vec.data(), vec.size());
       CopyToBuffer(slice, tensor_buffer + start, count, batch_size,
                    elements_per_stride);
     }

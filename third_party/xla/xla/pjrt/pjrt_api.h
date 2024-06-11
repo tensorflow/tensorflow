@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_API_H_
 #define XLA_PJRT_PJRT_API_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace pjrt {

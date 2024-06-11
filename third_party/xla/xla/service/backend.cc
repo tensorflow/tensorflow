@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -211,7 +212,7 @@ absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
           executor_b->GetDeviceDescription().name());
 }
 
-Status Backend::ResetDevices() {
+absl::Status Backend::ResetDevices() {
   return transfer_manager_->ResetDevices(stream_executors_);
 }
 

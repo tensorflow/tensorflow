@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_replication_analysis.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -673,7 +673,7 @@ WhileInitContext CreateNewWhileInit(
 // When moving reduce-scatter outside the while body, change the associated
 // accumulation buffers to use the shape of the operand of the reduce-scatter
 // (i.e., the pre-scatter shape).
-Status ChangeAccumulatorShapesInLoopBodies(
+absl::Status ChangeAccumulatorShapesInLoopBodies(
     HloInstruction* old_while_instruction,
     const HloInstructionMap<std::vector<AccumulationContext>>&
         all_reduce_to_accumulations) {
@@ -781,7 +781,7 @@ Status ChangeAccumulatorShapesInLoopBodies(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates all the sinked all-reduce instructions in the while instruction's
@@ -893,7 +893,7 @@ HloInstruction* CreateNewWhileResult(
 // The all-reduce outputs are then added to the original accumulation buffers.
 // Creates a tuple that groups the while loop output and the accumulated
 // buffers and replaces all uses of the old while with this new tuple.
-Status AddSinkedAllReducesAndReplaceWhile(
+absl::Status AddSinkedAllReducesAndReplaceWhile(
     HloInstruction* while_instruction,
     const HloInstructionMap<std::vector<AccumulationContext>>&
         all_reduce_to_accumulations) {
@@ -927,7 +927,7 @@ Status AddSinkedAllReducesAndReplaceWhile(
       CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
   TF_RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
       while_instruction, new_while_result));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

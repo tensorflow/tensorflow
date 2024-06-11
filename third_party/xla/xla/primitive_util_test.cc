@@ -18,12 +18,10 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
-#include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/types.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

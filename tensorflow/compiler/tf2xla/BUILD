@@ -499,6 +499,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_compile_util",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/utils:array_container_utils",

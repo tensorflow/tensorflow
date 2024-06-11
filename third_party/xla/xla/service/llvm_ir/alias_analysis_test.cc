@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -23,9 +24,20 @@ namespace cpu {
 namespace {
 class AliasAnalysisTest : public CpuCodegenTest {};
 
-void FakeCustomCallTarget(float* out, float** in, XlaCustomCallStatus*) {}
+static absl::Status FakeCustomCallTarget(ffi::AnyBuffer,
+                                         ffi::Result<ffi::AnyBuffer>) {
+  return absl::OkStatus();
+}
 
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
+XLA_FFI_DEFINE_HANDLER(kFakeCustomCallTarget, FakeCustomCallTarget,
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::AnyBuffer>()  // in
+                           .Ret<ffi::AnyBuffer>()  // out
+);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$FakeCustomCallTarget", "Host",
+                         kFakeCustomCallTarget);
 
 TEST_F(AliasAnalysisTest, EmbeddedComputationParamsMayAliasTemps) {
   const char* hlo_string = R"(
@@ -40,7 +52,7 @@ body {
 condition {
   const.100 = f32[] constant(100)
   condition.state = f32[] parameter(0)
-  addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget", api_version=API_VERSION_STATUS_RETURNING
+  addend = f32[] custom-call(condition.state), custom_call_target="__xla_test$$FakeCustomCallTarget", api_version=API_VERSION_TYPED_FFI
   add = f32[] add(addend, condition.state)
   ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }

@@ -106,8 +106,8 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 //   return (v, tau, beta)
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
-Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
-             const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
+absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
+                   const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
@@ -169,7 +169,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
   *v = e_k + Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

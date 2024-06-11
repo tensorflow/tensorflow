@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -163,7 +164,9 @@ TEST_F(ComputationPartitionerTest, Epilogue) {
       {fused_computation->GetInstructionWithName("log"),
        fused_computation->GetInstructionWithName("sign")},
       /*index_ranges=*/{1, 42},
-      {mlir::AffineMap::get(1, 0, mlir::getAffineDimExpr(0, &mlir_context_))}};
+      {CreateIdentityMap(
+          fused_computation->root_instruction()->shape().tuple_shapes(0),
+          &mlir_context_)}};
   PartitionedComputations fusion(fused_computation, &mlir_context_, {epilogue});
 
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&mlir_context_),

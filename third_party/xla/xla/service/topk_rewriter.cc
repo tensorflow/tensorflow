@@ -460,21 +460,21 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   explicit TopkDecomposerVisitor(HloPredicate should_decompose)
       : should_decompose_(should_decompose) {}
 
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     if (should_decompose_ && !should_decompose_(inst)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloCustomCallInstruction* call = DynCast<HloCustomCallInstruction>(inst);
     if (call == nullptr || call->custom_call_target() != "TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloComputation* comparator = call->to_apply();
     return DecomposeTopK(call, comparator);
   }
 
-  Status HandleTopK(HloInstruction* topk) override {
+  absl::Status HandleTopK(HloInstruction* topk) override {
     if (should_decompose_ && !should_decompose_(topk)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_ASSIGN_OR_RETURN(HloComputation * comparator,
                         CreateVariadicComparator(topk));
@@ -506,8 +506,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     return comparator;
   }
 
-  Status DecomposeTopK(HloInstruction* call,
-                       HloComputation* variadic_comparator) {
+  absl::Status DecomposeTopK(HloInstruction* call,
+                             HloComputation* variadic_comparator) {
     HloComputation* comp = call->parent();
     HloInstruction* input = call->mutable_operand(0);
     Shape iota_shape = input->shape();
@@ -548,7 +548,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
                     {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));
       sort->set_metadata(call->metadata());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

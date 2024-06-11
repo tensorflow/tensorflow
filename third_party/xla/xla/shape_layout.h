@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -41,7 +41,7 @@ class ShapeLayout {
   // Assigns the layouts in this ShapeLayout to the Layout fields of the given
   // shape. 'to_shape' and the shape of the ShapeLayout object must be
   // compatible.
-  Status AssignLayoutToShape(Shape* to_shape) const;
+  absl::Status AssignLayoutToShape(Shape* to_shape) const;
 
   // Returns true if the Layouts in this ShapeLayout match the layouts in the
   // given shape. Returns false otherwise. If the given shape is not compatible
@@ -54,7 +54,7 @@ class ShapeLayout {
 
   // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
   // must be compatible with the ShapeLayout's shape.
-  Status CopyLayoutFromShape(const Shape& other_shape);
+  absl::Status CopyLayoutFromShape(const Shape& other_shape);
 
   // Clears (Layout::Clear) all the Layouts stored in this object.
   void Clear();

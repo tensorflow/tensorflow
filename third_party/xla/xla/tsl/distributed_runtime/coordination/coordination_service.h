@@ -16,19 +16,22 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tsl {
@@ -51,7 +54,7 @@ class Env;
 // execution in a cluster of multiple tasks.
 //
 // When enabled, the service keeps track of cluster configurations and the state
-// of cluster members. TF runtime and libraries can use it to orchastrate
+// of cluster members. TF runtime and libraries can use it to orchestrate
 // cluster initialization, check the healthiness of tasks, and propagate error
 // messages to the cluster.
 //
@@ -71,12 +74,12 @@ class CoordinationServiceInterface {
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
-      std::function<void(const absl::StatusOr<std::string>&)>;
+      std::function<void(const absl::StatusOr<std::string_view>&)>;
 
   virtual ~CoordinationServiceInterface() = default;
 
   static void RegisterCoordinationService(
-      const std::string& service_type_name,
+      std::string_view service_type_name,
       CoordinationServiceFactory factory_fn) {
     auto factories = GetCoordinationServiceFactories();
     factories->emplace(service_type_name, factory_fn);
@@ -114,6 +117,7 @@ class CoordinationServiceInterface {
 
   // Register a task to the service.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - Aborted: (1) task is in error state, or (2) task is in connected state
   //       with a different incarnation, indicating that it restarted.
@@ -133,6 +137,7 @@ class CoordinationServiceInterface {
   // specified in the config, blocks until all tasks reach the barrier before
   // disconnecting together.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
   virtual void ShutdownTaskAsync(const tensorflow::CoordinatedTask& task,
@@ -140,12 +145,14 @@ class CoordinationServiceInterface {
 
   // Disconnects task from the service and cleans up its internal error state.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
   virtual absl::Status ResetTask(const tensorflow::CoordinatedTask& task) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
+  //   - Internal: Service has shut down.
   virtual absl::Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
                                        uint64_t incarnation) = 0;
 
@@ -160,29 +167,31 @@ class CoordinationServiceInterface {
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
   // The key-values are not persisted and will be lost if the leader fails.
-  virtual absl::Status InsertKeyValue(const std::string& key,
-                                      const std::string& value) = 0;
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value) = 0;
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value,
+                                      bool allow_overwrite) = 0;
 
   // Get a configuration key-value from the coordination service. The `done`
   // callback is invoked when the key-value becomes available.
-  virtual void GetKeyValueAsync(const std::string& key,
+  virtual void GetKeyValueAsync(std::string_view key,
                                 StatusOrValueCallback done) = 0;
 
   // Get a configuration key-value from the coordination service. If the key
   // does not exist, return NotFound error.
-  virtual absl::StatusOr<std::string> TryGetKeyValue(
-      const std::string& key) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
   // Gets all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory. This is not a blocking call. Agent does not need to be
   // connected to utilize the distributed key-value store.
   virtual std::vector<tensorflow::KeyValueEntry> GetKeyValueDir(
-      absl::string_view directory_key) = 0;
+      std::string_view directory_key) = 0;
 
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual absl::Status DeleteKeyValue(const std::string& key) = 0;
+  virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -215,7 +224,7 @@ class CoordinationServiceInterface {
   //       list of participating tasks.
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
   virtual void BarrierAsync(
-      const std::string& barrier_id, absl::Duration timeout,
+      std::string_view barrier_id, absl::Duration timeout,
       const tensorflow::CoordinatedTask& task,
       const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
       StatusCallback done) = 0;
@@ -226,8 +235,7 @@ class CoordinationServiceInterface {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   virtual absl::Status CancelBarrier(
-      const std::string& barrier_id,
-      const tensorflow::CoordinatedTask& task) = 0;
+      std::string_view barrier_id, const tensorflow::CoordinatedTask& task) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

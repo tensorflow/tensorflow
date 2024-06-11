@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -63,8 +63,8 @@ limitations under the License.
 namespace xla {
 
 namespace {
-StatusOr<Shape> GetShardedShape(const Shape& shape,
-                                const OpSharding& sharding) {
+absl::StatusOr<Shape> GetShardedShape(const Shape& shape,
+                                      const OpSharding& sharding) {
   TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                       HloSharding::FromProto(sharding));
   if (shape.IsTuple()) {
@@ -82,7 +82,7 @@ StatusOr<Shape> GetShardedShape(const Shape& shape,
   }
 }
 
-StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
+absl::StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
   const Shape unsharded_shape(instr.shape());
   Shape sharded_shape;
   if (instr.has_sharding()) {
@@ -96,7 +96,7 @@ StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
 }
 
 // Returns sharded (argument shapes, result shape) without layouts.
-StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
+absl::StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
     const XlaComputation& computation, const ProgramShape& program_shape) {
   std::vector<Shape> arg_shapes;
   arg_shapes.resize(program_shape.parameters_size());
@@ -135,7 +135,7 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 }
 }  // namespace
 
-Status ParseDeviceAssignmentCompileOptions(
+absl::Status ParseDeviceAssignmentCompileOptions(
     bool compile_portable_executable, ExecutableBuildOptions* build_options,
     std::function<StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
@@ -173,13 +173,13 @@ Status ParseDeviceAssignmentCompileOptions(
     *device_assignment =
         std::make_shared<DeviceAssignment>(build_options->device_assignment());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper method that takes an ArrayAttr of DictionaryAttrs for each arg or
 // result of a function, and looks for "mhlo.layout_mode". `all_attrs` can be
 // nullptr. `num_values` is the number of arguments or results.
-static StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
+static absl::StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
     mlir::ArrayAttr all_attrs, size_t num_values) {
   if (all_attrs == nullptr) {
     return std::vector<LayoutMode>(num_values);
@@ -210,7 +210,8 @@ static StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
 
 // TODO(b/329428415): Make this generic enough to be used by the GPU and TPU
 // compilers.
-StatusOr<MemorySpaceColor> GetMemorySpaceColor(const std::string& memory_kind) {
+absl::StatusOr<MemorySpaceColor> GetMemorySpaceColor(
+    const std::string& memory_kind) {
   // TODO(yashkatariya,zce): Unpinned_host is not valid for compiler. Only
   // pinned_host matters. So should there be a different lowering for
   // unpinned_host?
@@ -259,8 +260,9 @@ static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
 // Helper function for getting default LayoutModes for tupled arguments or
 // outputs. Returns nullopt if the arguments/outputs are not tupled. Raises an
 // error if layout modes are requested on tupled values.
-static StatusOr<std::optional<std::vector<LayoutMode>>> GetTupleLayoutModes(
-    mlir::ArrayRef<mlir::Type> types, mlir::ArrayAttr all_attrs) {
+static absl::StatusOr<std::optional<std::vector<LayoutMode>>>
+GetTupleLayoutModes(mlir::ArrayRef<mlir::Type> types,
+                    mlir::ArrayAttr all_attrs) {
   if (types.size() != 1 || !llvm::isa<mlir::TupleType>(types[0])) {
     return std::nullopt;
   }
@@ -307,7 +309,8 @@ GetTupleMemoryKinds(mlir::ArrayRef<mlir::Type> types,
       xla::Layout::kDefaultMemorySpace);
 }
 
-StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {
+absl::StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+    mlir::ModuleOp module) {
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (main == nullptr) {
     return InvalidArgument(
@@ -323,7 +326,8 @@ StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {
   return MlirAttrsToLayoutModes(main.getAllArgAttrs(), main.getNumArguments());
 }
 
-StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module) {
+absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+    mlir::ModuleOp module) {
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (main == nullptr) {
     return InvalidArgument(
@@ -385,8 +389,8 @@ static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
                        });
 }
 
-Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation) {
+absl::Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
+                                           XlaComputation& xla_computation) {
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
                       GetArgLayoutModes(module));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
@@ -399,7 +403,7 @@ Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
                               ->mutable_map();
   frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
   frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static std::string GetFrontendAttrForMemorySpace(
@@ -411,8 +415,8 @@ static std::string GetFrontendAttrForMemorySpace(
       });
 }
 
-Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation) {
+absl::Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
+                                           XlaComputation& xla_computation) {
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
                       GetArgMemoryKinds(module));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
@@ -427,10 +431,10 @@ Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
       GetFrontendAttrForMemorySpace(arg_memory_spaces);
   frontend_attrs["out_memory_spaces"] =
       GetFrontendAttrForMemorySpace(out_memory_spaces);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
+static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
     absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_modes =
@@ -443,7 +447,7 @@ static StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
   return result;
 }
 
-static StatusOr<std::vector<LayoutMode>> GetLayoutModes(
+static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModes(
     const XlaComputation& computation, absl::string_view frontend_attr_name,
     size_t num_values) {
   const auto& frontend_attrs = computation.proto().frontend_attributes().map();
@@ -455,8 +459,8 @@ static StatusOr<std::vector<LayoutMode>> GetLayoutModes(
   return GetLayoutModesFromFrontendAttr(iter->second);
 }
 
-static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKindsFromFrontendAttr(
-    absl::string_view attr) {
+static absl::StatusOr<std::vector<MemorySpaceColor>>
+GetMemoryKindsFromFrontendAttr(absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_memory_spaces =
       absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
@@ -471,7 +475,7 @@ static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKindsFromFrontendAttr(
   return result;
 }
 
-static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKinds(
+static absl::StatusOr<std::vector<MemorySpaceColor>> GetMemoryKinds(
     const XlaComputation& computation, absl::string_view frontend_attr_name,
     size_t num_values) {
   const auto& frontend_attrs = computation.proto().frontend_attributes().map();
@@ -484,7 +488,7 @@ static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKinds(
   return GetMemoryKindsFromFrontendAttr(iter->second);
 }
 
-StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+absl::StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
@@ -495,7 +499,7 @@ StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
   return GetLayoutModes(computation, "arg_layout_modes", num_args);
 }
 
-StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
+absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
@@ -506,7 +510,7 @@ StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
   return GetMemoryKinds(computation, "arg_memory_spaces", num_args);
 }
 
-StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
@@ -516,7 +520,7 @@ StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
   return GetLayoutModes(computation, "out_layout_modes", num_outputs);
 }
 
-StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
+absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
@@ -526,7 +530,7 @@ StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
 }
 
-static StatusOr<Shape> LayoutModeToXlaShape(
+static absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
     const Shape& sharded_shape,
     std::function<StatusOr<Shape>(Shape)>
@@ -565,7 +569,7 @@ static StatusOr<Shape> LayoutModeToXlaShape(
   return result;
 }
 
-StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
+absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     const XlaComputation& computation, std::vector<LayoutMode> arg_layout_modes,
     std::vector<LayoutMode> out_layout_modes,
     const std::vector<MemorySpaceColor>& arg_memory_spaces,
@@ -673,7 +677,7 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
                                               std::move(out_layout)};
 }
 
-StatusOr<std::pair<std::vector<Shape>, std::vector<const Shape*>>>
+absl::StatusOr<std::pair<std::vector<Shape>, std::vector<const Shape*>>>
 LayoutModesToXla(const XlaComputation& computation,
                  std::vector<LayoutMode> arg_layout_modes,
                  std::vector<LayoutMode> out_layout_modes,
@@ -704,7 +708,7 @@ LayoutModesToXla(const XlaComputation& computation,
       std::move(arg_layouts), std::move(arg_layout_pointers)};
 }
 
-Status DetermineArgumentLayoutsFromCompileOptions(
+absl::Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
     std::function<StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
@@ -742,7 +746,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
                 choose_compact_layout_for_shape_function(sharded_subshape));
             *subshape->mutable_layout() = layout.layout();
           }
-          return OkStatus();
+          return absl::OkStatus();
         });
   };
   TF_ASSIGN_OR_RETURN(auto sharded_shapes,
@@ -764,10 +768,10 @@ Status DetermineArgumentLayoutsFromCompileOptions(
   }
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options->set_result_layout(result_layout);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& module, bool tuple_inputs) {
   HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
@@ -817,7 +821,7 @@ StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           }
           parameters_to_donate.push_back(this_parameter);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   absl::c_sort(parameters_to_donate);
   return parameters_to_donate;
@@ -858,7 +862,7 @@ bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
   return true;
 }
 
-StatusOr<Shape> MakeShapeWithTrivialByteStrides(
+absl::StatusOr<Shape> MakeShapeWithTrivialByteStrides(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> byte_strides) {
   TF_RET_CHECK(dimensions.size() == byte_strides.size());
@@ -894,7 +898,7 @@ StatusOr<Shape> MakeShapeWithTrivialByteStrides(
                                              minor_to_major);
 }
 
-Status TestBufferDonationClashes(
+absl::Status TestBufferDonationClashes(
     void* opaque_key,
     absl::flat_hash_map<const void*, std::pair<bool, int>>& donation_clashes,
     bool is_donated, int arg_idx, int replica, int partition) {

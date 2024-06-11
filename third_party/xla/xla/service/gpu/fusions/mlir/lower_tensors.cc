@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -19,12 +20,12 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -40,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -54,6 +57,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -78,11 +82,42 @@ using mlir::TypedValue;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
-using mlir::arith::AtomicRMWKind;
 
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+
+Value GetDestinationBuffer(Value dest) {
+  while (dest.getDefiningOp()) {
+    int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
+    if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
+      dest = insert.getDest();
+    } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
+      // Pick one of the branches, they're required to yield the same buffers.
+      dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
+          result_number);
+    } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
+      dest = scf_for.getInitArgs()[result_number];
+    } else if (dest.getDefiningOp<mlir::UnrealizedConversionCastOp>() ||
+               dest.getDefiningOp<AllocateSharedOp>()) {
+      break;
+    } else if (auto transfer_write =
+                   dest.getDefiningOp<mlir::vector::TransferWriteOp>()) {
+      dest = transfer_write.getSource();
+    } else {
+      dest.getDefiningOp()->emitOpError("unsupported dest type");
+      return nullptr;
+    }
+  }
+  return dest;
+}
+
+template <typename Op>
+bool IsSupportedTransfer(Op op) {
+  return !absl::c_linear_search(op.getInBoundsValues(), false) &&
+         op.getVectorType().getRank() == 1 && !op.getMask() &&
+         op.getPermutationMap().isMinorIdentity();
+}
 
 struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -142,15 +177,15 @@ Value GetLinearIndex(TypedValue<mlir::RankedTensorType> tensor,
     *byte_shape.mutable_layout() = LayoutUtil::MakeLayout(llvm::to_vector(
         mlir::cast<mlir::DenseElementsAttr>(encoding).getValues<int64_t>()));
   }
-  auto linearize_map = mlir::getAffineConstantExpr(0, rewriter.getContext());
-  for (auto [dim, stride] :
-       llvm::enumerate(*ShapeUtil::ByteStrides(byte_shape))) {
-    linearize_map = linearize_map +
-                    mlir::getAffineDimExpr(dim, rewriter.getContext()) * stride;
-  }
-
-  Value index = rewriter.create<mlir::affine::AffineApplyOp>(
-      tensor.getLoc(), linearize_map, indices);
+  auto linear_shape =
+      ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
+  auto linearize_map =
+      GetBitcastMap(byte_shape, linear_shape, tensor.getContext());
+  mlir::SmallVector<Value> result;
+  rewriter.createOrFold<ApplyIndexingOp>(result, tensor.getLoc(), indices,
+                                         ValueRange{}, linearize_map);
+  CHECK_EQ(result.size(), 1);
+  auto index = result.front();
   auto index_ty = rewriter.getIntegerType(
       mlir::DataLayout::closest(rewriter.getInsertionBlock()->getParentOp())
           .getTypeSizeInBits(index.getType()));
@@ -230,29 +265,80 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
+// Swaps pairs of values in the vector: [0, 1, 2, 3] -> [1, 0, 3, 2].
+Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
+  // There is a `vector.extract_strided_slice` op that would be useful here, but
+  // it actually requires the strides to be 1.
+  auto ty = mlir::cast<mlir::VectorType>(vector.getType());
+  int size = ty.getNumElements();
+  Value result = vector;
+  for (int i = 0; i < size; i += 2) {
+    auto v0 = b.create<mlir::vector::ExtractOp>(vector, i);
+    auto v1 = b.create<mlir::vector::ExtractOp>(vector, i + 1);
+    result = b.create<mlir::vector::InsertOp>(v1, result, i);
+    result = b.create<mlir::vector::InsertOp>(v0, result, i + 1);
+  }
+  return result;
+}
+
+struct RewriteTransferRead
+    : mlir::OpRewritePattern<mlir::vector::TransferReadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::vector::TransferReadOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    assert(IsSupportedTransfer(op));
+
+    auto source = mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(
+        op.getSource());
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto linear_index = GetLinearIndex(source, op.getIndices(), rewriter);
+
+    mlir::VectorType vector_type = op.getVectorType();
+    if (vector_type.getElementType().isInteger(1)) {
+      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
+    }
+    mlir::Type gep_element_type = vector_type.getElementType();
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      gep_element_type = b.getI8Type();
+    }
+    auto gep = CreateGep(source, linear_index, rewriter, gep_element_type);
+
+    mlir::LLVMTypeConverter converter(b.getContext());
+    auto llvm_vector_type = converter.convertType(vector_type);
+    auto loaded =
+        b.create<mlir::LLVM::LoadOp>(llvm_vector_type, gep).getResult();
+
+    if (source.getType().getElementType().isInteger(1)) {
+      Value zero = b.create<mlir::arith::ConstantOp>(
+          mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
+      loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
+    } else if (source.getType().getElementType().isInteger(4)) {
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      loaded = PermutePairsInVector(loaded, b);
+    }
+
+    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+        op, op.getType(), loaded);
+    return success();
+  }
+};
+
 struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
       mlir::PatternRewriter& rewriter) const override {
-    Value dest = op.getDest();
-    while (dest.getDefiningOp()) {
-      int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
-      if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
-        dest = insert.getDest();
-      } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
-        // Pick one of the branches, they're required to yield the same buffers.
-        dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
-            result_number);
-      } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
-        dest = scf_for.getInitArgs()[result_number];
-      } else if (dest.getDefiningOp<mlir::UnrealizedConversionCastOp>() ||
-                 dest.getDefiningOp<AllocateSharedOp>()) {
-        break;
-      } else {
-        return op.emitOpError("unsupported dest type");
-      }
+    Value dest = GetDestinationBuffer(op.getDest());
+    if (!dest) {
+      return failure();
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -302,6 +388,50 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
   }
 };
 
+struct RewriteTransferWrite
+    : mlir::OpRewritePattern<mlir::vector::TransferWriteOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::vector::TransferWriteOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    assert(IsSupportedTransfer(op));
+    Value dest = GetDestinationBuffer(op.getSource());
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
+    auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
+    auto element_type = tensor_dest.getType().getElementType();
+
+    mlir::Value vector_value = op.getVector();
+    if (op.getVectorType().getElementType().isInteger(1)) {
+      vector_value = b.create<arith::ExtUIOp>(
+          op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
+          vector_value);
+    }
+    if (op.getVectorType().getElementType().isInteger(4)) {
+      linear_index = b.create<arith::ShRUIOp>(
+          linear_index,
+          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+      element_type = rewriter.getI8Type();
+      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
+      // elements.
+      vector_value = PermutePairsInVector(vector_value, b);
+    }
+    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
+
+    mlir::LLVMTypeConverter converter(getContext());
+    auto llvm_type = converter.convertType(vector_value.getType());
+    vector_value =
+        b.create<mlir::UnrealizedConversionCastOp>(llvm_type, vector_value)
+            .getResult(0);
+    b.create<mlir::LLVM::StoreOp>(vector_value, gep);
+
+    rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
+    return success();
+  }
+};
+
 struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -334,6 +464,13 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
                                     mlir::ModuleOp module, bool is_constant,
                                     int addr_space,
                                     mlir::ImplicitLocOpBuilder& b) {
+  if (auto elements = mlir::dyn_cast_or_null<mlir::DenseElementsAttr>(value)) {
+    // The lowering to LLVM only works for 1d tensors or those with trailing
+    // unit dimensions.
+    value = elements.reshape(mlir::RankedTensorType::get(
+        {elements.getNumElements()}, elements.getElementType()));
+  }
+
   Type element_type = shaped_ty.getElementType();
   // Needed to support complex element type.
   mlir::LLVMTypeConverter converter(b.getContext());
@@ -387,6 +524,9 @@ struct RewriteNonScalarConstants
   mlir::LogicalResult matchAndRewrite(
       mlir::arith::ConstantOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::VectorType>(op.getType())) {
+      return rewriter.notifyMatchFailure(op, "the op is a vector constant");
+    }
     auto shaped_ty = mlir::dyn_cast<mlir::ShapedType>(op.getValue().getType());
     // We only need to rewrite non-scalar constants.
     if (!shaped_ty || shaped_ty.getNumElements() < 2) {
@@ -425,11 +565,63 @@ struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
   }
 };
 
+// TODO(jreiffers): Generalize this to support index switches with some used
+// results and upstream it as a canonicalization pattern.
+struct RemoveUnusedIndexSwitchResults
+    : mlir::OpRewritePattern<scf::IndexSwitchOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      scf::IndexSwitchOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op->getNumResults() == 0 || !op->use_empty()) {
+      return rewriter.notifyMatchFailure(op, "the op has users");
+    }
+
+    auto new_op = rewriter.create<scf::IndexSwitchOp>(
+        op.getLoc(), mlir::TypeRange{}, op.getArg(), op.getCases(),
+        op.getNumCases());
+    for (int i = 0; i < op->getNumRegions(); ++i) {
+      auto& old_region = op->getRegion(i);
+      auto& new_region = new_op->getRegion(i);
+      rewriter.mergeBlocks(&old_region.getBlocks().front(),
+                           &new_region.emplaceBlock());
+      auto yield_op = new_region.getBlocks().front().getTerminator();
+      rewriter.modifyOpInPlace(yield_op, [&]() { yield_op->setOperands({}); });
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 bool IsAtomicIntegral(Type element_type) {
+  if (!element_type.isInteger()) {
+    return false;
+  }
   unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
-  return element_type.isInteger() &&
-         (element_bitwidth == 32 || element_bitwidth == 64);
+  return element_bitwidth == 32 || element_bitwidth == 64;
 }
+
+Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
+  if (value.getType().isIntOrFloat() && ty.isIntOrFloat()) {
+    return b.create<ml::BitcastOp>(ty, value);
+  }
+
+  mlir::LLVMTypeConverter converter(b.getContext());
+  // If either type is a complex, we need to go through an alloca, since no
+  // direct bitcast from a struct to an int is possible.
+  Type llvm_input_ty = converter.convertType(value.getType());
+  Type llvm_result_ty = converter.convertType(ty);
+  Type ptr_ty = mlir::LLVM::LLVMPointerType::get(b.getContext());
+
+  Value llvm_value =
+      b.create<mlir::UnrealizedConversionCastOp>(llvm_input_ty, value)
+          .getResult(0);
+  Value alloca = b.create<ml::AllocaOp>(
+      ptr_ty, llvm_input_ty, b.create<ml::ConstantOp>(b.getI32Type(), 1));
+  b.create<ml::StoreOp>(llvm_value, alloca);
+  auto result = b.create<ml::LoadOp>(llvm_result_ty, alloca).getResult();
+  return b.create<mlir::UnrealizedConversionCastOp>(ty, result).getResult(0);
+};
 
 class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
  public:
@@ -723,7 +915,13 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
 
     // Use 32-bit atomic type for small input types.
     Type result_ty = op.getResult().getType().getElementType();
-    unsigned int result_size = result_ty.getIntOrFloatBitWidth();
+    int result_size;
+    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(result_ty)) {
+      result_size = complex_ty.getElementType().getIntOrFloatBitWidth() * 2;
+    } else {
+      result_size = result_ty.getIntOrFloatBitWidth();
+    }
+
     bool small_type = result_size < 32;
     Type atomic_ty =
         mlir::IntegerType::get(op.getContext(), small_type ? 32 : result_size);
@@ -766,18 +964,19 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     Value initial = rewriter.create<ml::LoadOp>(loc, atomic_ty, addr);
     rewriter.create<scf::WhileOp>(
         loc, TypeRange{atomic_ty}, ValueRange{initial},
-        [&](mlir::OpBuilder& b, Location loc, ValueRange values) {
+        [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {
+          mlir::ImplicitLocOpBuilder b(loc, builder);
           Value old_value = values[0];
 
           // Convert atomic value to input value.
           Value input_value;
           if (small_type) {
-            Value short_value = b.create<ml::TruncOp>(
-                loc, b.getIntegerType(result_size),
-                b.create<ml::LShrOp>(loc, old_value, shift));
-            input_value = b.create<ml::BitcastOp>(loc, result_ty, short_value);
+            Value short_value =
+                b.create<ml::TruncOp>(b.getIntegerType(result_size),
+                                      b.create<ml::LShrOp>(old_value, shift));
+            input_value = b.create<ml::BitcastOp>(result_ty, short_value);
           } else {
-            input_value = b.create<ml::BitcastOp>(loc, result_ty, old_value);
+            input_value = CreateBitcast(b, old_value, result_ty);
           }
 
           // Perform computation on the loaded input value.
@@ -790,15 +989,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
           // Convert resulting value to atomic value.
           Value new_value;
           if (small_type) {
-            Value cast_value = rewriter.create<ml::ZExtOp>(
-                loc, atomic_ty,
-                rewriter.create<ml::BitcastOp>(
-                    loc, rewriter.getIntegerType(result_size), result));
-            new_value = rewriter.create<ml::OrOp>(
-                loc, rewriter.create<ml::AndOp>(loc, old_value, mask),
-                rewriter.create<ml::ShlOp>(loc, cast_value, shift));
+            Value cast_value = b.create<ml::ZExtOp>(
+                atomic_ty, b.create<ml::BitcastOp>(
+                               rewriter.getIntegerType(result_size), result));
+            new_value =
+                b.create<ml::OrOp>(b.create<ml::AndOp>(old_value, mask),
+                                   b.create<ml::ShlOp>(cast_value, shift));
           } else {
-            new_value = b.create<ml::BitcastOp>(loc, atomic_ty, result);
+            new_value = CreateBitcast(b, result, atomic_ty);
           }
 
           // Try saving the result atomically, retry if failed.
@@ -806,12 +1004,11 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
               loc, addr, old_value, new_value,
               /*success_ordering=*/ml::AtomicOrdering::seq_cst,
               /*failure_ordering=*/ml::AtomicOrdering::seq_cst);
-          Value next = b.create<ml::ExtractValueOp>(loc, cmpxchg, 0);
-          Value ok = b.create<ml::ExtractValueOp>(loc, cmpxchg, 1);
-          Value low_bit =
-              b.create<ml::ConstantOp>(loc, b.getOneAttr(b.getI1Type()));
-          Value not_ok = b.create<ml::XOrOp>(loc, ok, low_bit);
-          b.create<scf::ConditionOp>(loc, not_ok, ValueRange{next});
+          Value next = b.create<ml::ExtractValueOp>(cmpxchg, 0);
+          Value ok = b.create<ml::ExtractValueOp>(cmpxchg, 1);
+          Value low_bit = b.create<ml::ConstantOp>(b.getOneAttr(b.getI1Type()));
+          Value not_ok = b.create<ml::XOrOp>(ok, low_bit);
+          b.create<scf::ConditionOp>(not_ok, ValueRange{next});
         },
         [&](mlir::OpBuilder& b, Location loc, ValueRange values) {
           b.create<scf::YieldOp>(loc, values);
@@ -833,20 +1030,23 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     tensor_patterns.add<RewriteAtomicRMW>(mlir_context, is_amd_gpu_, gpu_arch_);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteNonScalarConstants,
-             RewriteSyncThreads, RewriteTensorExtract, RewriteTensorInsert>(
-            mlir_context);
+             RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
+             RewriteTensorInsert, RewriteTransferWrite>(mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
             getOperation(), std::move(tensor_patterns)))) {
       signalPassFailure();
+      return;
     }
 
     mlir::RewritePatternSet function_patterns(mlir_context);
-    function_patterns.add<RewriteFunctionSignatures, RewriteCall>(mlir_context);
+    function_patterns.add<RewriteFunctionSignatures, RewriteCall,
+                          RemoveUnusedIndexSwitchResults>(mlir_context);
     scf::ForOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     scf::IfOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
             getOperation(), std::move(function_patterns)))) {
       signalPassFailure();
+      return;
     }
 
     getOperation()->walk([this](mlir::LLVM::LoadOp load) {
@@ -855,8 +1055,10 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
         addr = gep.getBase();
       }
       if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||
-          addr.getDefiningOp<mlir::LLVM::AddressOfOp>()) {
-        // Shared memory or global constant - no need to annotate anything.
+          addr.getDefiningOp<mlir::LLVM::AddressOfOp>() ||
+          addr.getDefiningOp<mlir::LLVM::AllocaOp>()) {
+        // Shared memory, global constant or temporary - no need to annotate
+        // anything.
         return;
       }
       if (auto base = mlir::dyn_cast<mlir::BlockArgument>(addr)) {

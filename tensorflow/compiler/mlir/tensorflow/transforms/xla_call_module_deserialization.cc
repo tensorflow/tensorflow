@@ -62,8 +62,8 @@ constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
 
 // Deserialize the StableHLO module embedded in XlaCallModuleOp's module
 // attribute.
-tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
-                                                          XlaCallModuleOp op) {
+absl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
+                                                           XlaCallModuleOp op) {
   std::vector<std::string> disabled_checks;
   for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
     disabled_checks.push_back(attr.getValue().str());

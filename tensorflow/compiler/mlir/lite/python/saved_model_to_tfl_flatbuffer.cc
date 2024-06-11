@@ -21,12 +21,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -43,9 +46,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {

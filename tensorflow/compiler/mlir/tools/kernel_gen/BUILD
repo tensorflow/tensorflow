@@ -159,6 +159,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo:all_passes",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",

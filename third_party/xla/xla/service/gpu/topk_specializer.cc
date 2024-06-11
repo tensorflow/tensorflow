@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +43,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
@@ -110,16 +108,6 @@ absl::StatusOr<bool> TopkSpecializer::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return SpecializeTopkVisitor().RunOnModule(module, execution_threads);
 }
-
-#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-absl::StatusOr<bool> TopkSpecializer::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return false;
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace gpu
 }  // namespace xla

@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_timer_kernel.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -60,8 +61,10 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   // multiple GpuTimer objects.
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (TypedKernel<DeviceMemory<GpuSemaphoreState>, GpuSemaphoreState>::Create(
-          executor, "DelayKernel", reinterpret_cast<void*>(DelayKernel))));
+      (TypedKernelFactory<DeviceMemory<GpuSemaphoreState>,
+                          GpuSemaphoreState>::Create(executor, "DelayKernel",
+                                                     reinterpret_cast<void*>(
+                                                         DelayKernel))));
   // Launch a delay kernel into this stream, which will spin until
   // GetElapsedDuration() is called, the timer is destroyed, or the timeout
   // in the kernel is reached.

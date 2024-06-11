@@ -414,6 +414,15 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 // Async ops
 //===----------------------------------------------------------------------===//
 
+// Follow async operation use-def chain to find the start of the async chain.
+AsyncStartOp findAsyncChainStart(Operation* op) {
+  Operation* start = op;
+  while (start != nullptr && !isa<AsyncStartOp>(start)) {
+    start = start->getOperand(0).getDefiningOp();
+  }
+  return dyn_cast_or_null<AsyncStartOp>(start);
+}
+
 Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
                          bool expectsTuple = false) {
   if (!expectsTuple && types.size() == 1 && !isa<TupleType>(types[0]))
@@ -492,26 +501,22 @@ LogicalResult AsyncStartOp::verify() {
 }
 
 LogicalResult AsyncUpdateOp::verify() {
+  if (!isa<AsyncStartOp, AsyncUpdateOp>(getOperand().getDefiningOp())) {
+    return emitOpError()
+           << "operand must be defined by async-start or async-update op";
+  }
+
+  AsyncStartOp startOp = findAsyncChainStart(*this);
+  if (!startOp) {
+    return emitOpError() << "can't find a start of async chain";
+  }
+
   ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
   func::FuncOp callee =
-      module.lookupSymbol<func::FuncOp>(getCalledComputation());
-  if (!callee) {
-    return emitOpError() << "can't find function: " << getCalledComputation();
-  }
-  FunctionType calleeType = callee.getFunctionType();
-
-  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
-  if (!calleeThreadName)
-    return emitOpError() << "callee must have execution_thread attribute.";
-  if (calleeThreadName != getExecutionThread()) {
-    return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ". Got: \""
-                         << getExecutionThread() << "\", but expected "
-                         << calleeThreadName << ".";
-  }
+      module.lookupSymbol<func::FuncOp>(startOp.getCalledComputation());
 
   auto bundleType = cast<AsyncBundleType>(getResult().getType());
-  return verifyAsyncBundleType(this, bundleType, calleeType);
+  return verifyAsyncBundleType(this, bundleType, callee.getFunctionType());
 }
 
 LogicalResult AsyncUpdateOp::inferReturnTypes(
@@ -525,26 +530,22 @@ LogicalResult AsyncUpdateOp::inferReturnTypes(
 }
 
 LogicalResult AsyncDoneOp::verify() {
+  if (!isa<AsyncStartOp, AsyncUpdateOp>(getOperand().getDefiningOp())) {
+    return emitOpError()
+           << "operand must be defined by async-start or async-update op";
+  }
+
+  AsyncStartOp startOp = findAsyncChainStart(*this);
+  if (!startOp) {
+    return emitOpError() << "can't find a start of async chain";
+  }
+
   ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
   func::FuncOp callee =
-      module.lookupSymbol<func::FuncOp>(getCalledComputation());
-  if (!callee) {
-    return emitOpError() << "can't find function: " << getCalledComputation();
-  }
-  FunctionType calleeType = callee.getFunctionType();
-
-  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
-  if (!calleeThreadName)
-    return emitOpError() << "callee must have execution_thread attribute.";
-  if (calleeThreadName != getExecutionThread()) {
-    return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ". Got: \""
-                         << getExecutionThread() << "\", but expected "
-                         << calleeThreadName << ".";
-  }
+      module.lookupSymbol<func::FuncOp>(startOp.getCalledComputation());
 
   auto bundleType = cast<AsyncBundleType>(getBundle().getType());
-  return verifyAsyncBundleType(this, bundleType, calleeType);
+  return verifyAsyncBundleType(this, bundleType, callee.getFunctionType());
 }
 
 LogicalResult AsyncDoneOp::inferReturnTypes(
@@ -552,9 +553,16 @@ LogicalResult AsyncDoneOp::inferReturnTypes(
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   AsyncDoneOp::Adaptor adaptor(operands, attributes, properties, regions);
+
+  AsyncStartOp startOp = findAsyncChainStart(operands[0].getDefiningOp());
+  if (!startOp) {
+    return adaptor.getBundle().getDefiningOp()->emitOpError()
+           << "can't find a start of async chain";
+  }
+
   ModuleOp module =
       adaptor.getBundle().getDefiningOp()->getParentOfType<ModuleOp>();
-  auto calledComputation = adaptor.getCalledComputationAttr();
+  auto calledComputation = startOp.getCalledComputation();
   func::FuncOp callee = module.lookupSymbol<func::FuncOp>(calledComputation);
   if (!callee) {
     return adaptor.getBundle().getDefiningOp()->emitOpError()
@@ -1163,12 +1171,15 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
   };
   SmallVector<Value, 4> shapeValues;
   auto getSliceDim = [&sliceSizes](int64_t index) -> Value {
-    return sliceSizes[index];
+    llvm::errs() << "ABOUT TO FAIL\n";
+    auto ret = sliceSizes[index];
+    llvm::errs() << "DID NOT FAIL\n";
+    return ret;
   };
   hlo::reifyGatherDimSizes(resultRank, getStartIndicesDim, getSliceDim,
                            op->getDimensionNumbers().getOffsetDims(),
                            op->getDimensionNumbers().getCollapsedSliceDims(),
-                           op->getDimensionNumbers().getStartIndexMap(),
+                           op->getDimensionNumbers().getOperandBatchingDims(),
                            op->getDimensionNumbers().getIndexVectorDim(),
                            shapeValues);
 
@@ -1199,6 +1210,8 @@ LogicalResult GatherOp::inferReturnTypeComponents(
       location, adaptor.getOperand(), adaptor.getStartIndices(),
       adaptor.getDimensionNumbers().getOffsetDims(),
       adaptor.getDimensionNumbers().getCollapsedSliceDims(),
+      adaptor.getDimensionNumbers().getOperandBatchingDims(),
+      adaptor.getDimensionNumbers().getStartIndicesBatchingDims(),
       adaptor.getDimensionNumbers().getStartIndexMap(),
       adaptor.getDimensionNumbers().getIndexVectorDim(),
       llvm::to_vector(adaptor.getSliceSizes().getValues<int64_t>()),
@@ -1258,6 +1271,8 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
       location, adaptor.getOperand(), adaptor.getStartIndices(),
       adaptor.getSliceSizes(), adaptor.getDimensionNumbers().getOffsetDims(),
       adaptor.getDimensionNumbers().getCollapsedSliceDims(),
+      adaptor.getDimensionNumbers().getOperandBatchingDims(),
+      adaptor.getDimensionNumbers().getStartIndicesBatchingDims(),
       adaptor.getDimensionNumbers().getStartIndexMap(),
       adaptor.getDimensionNumbers().getIndexVectorDim(), inferredReturnShapes);
 }
@@ -5363,8 +5378,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
 }
 
 // transpose(transpose(X)) => transpose(X)
-static LogicalResult eliminateRedundantTranspse(TransposeOp op,
-                                                PatternRewriter& rewriter) {
+static LogicalResult eliminateRedundantTranspose(TransposeOp op,
+                                                 PatternRewriter& rewriter) {
   auto tranposeOperand = op.getOperand().getDefiningOp<TransposeOp>();
   if (!tranposeOperand) {
     return failure();
@@ -5438,7 +5453,7 @@ static LogicalResult simplifyTranspose(TransposeOp op,
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
-  results.add(eliminateRedundantTranspse);
+  results.add(eliminateRedundantTranspose);
   results.add(eliminateBroadcastInDimTranspose);
   results.add(simplifyTranspose);
 }
@@ -5746,6 +5761,8 @@ LogicalResult ScatterOp::verify() {
       getLoc(), getInputs(), getScatterIndices(), getUpdates(),
       getScatterDimensionNumbers().getUpdateWindowDims(),
       getScatterDimensionNumbers().getInsertedWindowDims(),
+      getScatterDimensionNumbers().getInputBatchingDims(),
+      getScatterDimensionNumbers().getScatterIndicesBatchingDims(),
       getScatterDimensionNumbers().getScatterDimsToOperandDims(),
       getScatterDimensionNumbers().getIndexVectorDim(), getUpdateComputation());
 }
@@ -6066,6 +6083,24 @@ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
                                        inferredReturnShapes);
 }
 
+//===----------------------------------------------------------------------===//
+// MinimumBroadcastShapesOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MinimumBroadcastShapesOp::verify() {
+  // Check that the number of operands matches the number of outputs.
+  unsigned resultShapesCount = getResults().size();
+  unsigned operandShapesCount = getShapes().size();
+  if (operandShapesCount != resultShapesCount)
+    return emitOpError() << "number of operand shapes (" << operandShapesCount
+                         << ") does not match number of result shapes ("
+                         << resultShapesCount << ")";
+  if (operandShapesCount < 2)
+    return emitOpError() << "number of operand shapes (" << operandShapesCount
+                         << ") should be >= 2";
+  return success();
+}
+
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
@@ -6303,6 +6338,9 @@ void ScatterDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printStruct(printer, "scatter",
               std::make_pair("update_window_dims", getUpdateWindowDims()),
               std::make_pair("inserted_window_dims", getInsertedWindowDims()),
+              std::make_pair("input_batching_dims", getInputBatchingDims()),
+              std::make_pair("scatter_indices_batching_dims",
+                             getScatterIndicesBatchingDims()),
               std::make_pair("scatter_dims_to_operand_dims",
                              getScatterDimsToOperandDims()),
               std::make_pair("index_vector_dim", getIndexVectorDim()));
@@ -6311,15 +6349,20 @@ Attribute ScatterDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   SmallVector<int64_t> updateWindowDims;
   SmallVector<int64_t> insertedWindowDims;
+  SmallVector<int64_t> inputBatchingDims;
+  SmallVector<int64_t> scatterIndicesBatchingDims;
   SmallVector<int64_t> scatterDimsToOperandDims;
   int64_t indexVectorDim = 0;
 
   if (failed(parseStruct(
           parser,
-          {"update_window_dims", "inserted_window_dims",
-           "scatter_dims_to_operand_dims", "index_vector_dim"},
+          {"update_window_dims", "inserted_window_dims", "input_batching_dims",
+           "scatter_indices_batching_dims", "scatter_dims_to_operand_dims",
+           "index_vector_dim"},
           {[&]() { return parseDims(parser, updateWindowDims); },
            [&]() { return parseDims(parser, insertedWindowDims); },
+           [&]() { return parseDims(parser, inputBatchingDims); },
+           [&]() { return parseDims(parser, scatterIndicesBatchingDims); },
            [&]() { return parseDims(parser, scatterDimsToOperandDims); },
            [&]() { return parser.parseInteger(indexVectorDim); }}))) {
     parser.emitError(parser.getCurrentLocation())
@@ -6329,13 +6372,17 @@ Attribute ScatterDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
 
   return ScatterDimensionNumbersAttr::get(
       parser.getContext(), updateWindowDims, insertedWindowDims,
-      scatterDimsToOperandDims, indexVectorDim);
+      inputBatchingDims, scatterIndicesBatchingDims, scatterDimsToOperandDims,
+      indexVectorDim);
 }
 
 // Custom printer and parser for GatherDimensionNumbersAttr.
 void GatherDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printStruct(printer, "gather", std::make_pair("offset_dims", getOffsetDims()),
               std::make_pair("collapsed_slice_dims", getCollapsedSliceDims()),
+              std::make_pair("operand_batching_dims", getOperandBatchingDims()),
+              std::make_pair("start_indices_batching_dims",
+                             getStartIndicesBatchingDims()),
               std::make_pair("start_index_map", getStartIndexMap()),
               std::make_pair("index_vector_dim", getIndexVectorDim()));
 }
@@ -6345,15 +6392,20 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
 
   SmallVector<int64_t> offsetDims;
   SmallVector<int64_t> collapsedSliceDims;
+  SmallVector<int64_t> operandBatchingDims;
+  SmallVector<int64_t> startIndicesBatchingDims;
   SmallVector<int64_t> startIndexMap;
   int64_t indexVectorDim = 0;
 
   if (failed(parseStruct(
           parser,
-          {"offset_dims", "collapsed_slice_dims", "start_index_map",
+          {"offset_dims", "collapsed_slice_dims", "operand_batching_dims",
+           "start_indices_batching_dims", "start_index_map",
            "index_vector_dim"},
           {[&]() { return parseDims(parser, offsetDims); },
            [&]() { return parseDims(parser, collapsedSliceDims); },
+           [&]() { return parseDims(parser, operandBatchingDims); },
+           [&]() { return parseDims(parser, startIndicesBatchingDims); },
            [&]() { return parseDims(parser, startIndexMap); },
            [&]() { return parser.parseInteger(indexVectorDim); }}))) {
     parser.emitError(parser.getCurrentLocation())
@@ -6361,9 +6413,9 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
     return {};
   }
 
-  return GatherDimensionNumbersAttr::get(parser.getContext(), offsetDims,
-                                         collapsedSliceDims, startIndexMap,
-                                         indexVectorDim);
+  return GatherDimensionNumbersAttr::get(
+      parser.getContext(), offsetDims, collapsedSliceDims, operandBatchingDims,
+      startIndicesBatchingDims, startIndexMap, indexVectorDim);
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.

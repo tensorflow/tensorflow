@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/literal.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -84,7 +84,7 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
   return device_to_logical_id;
 }
 
-Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
+void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {
@@ -94,7 +94,6 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return OkStatus();
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>

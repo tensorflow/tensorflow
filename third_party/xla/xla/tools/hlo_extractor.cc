@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/status.h"
@@ -94,12 +94,12 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     }
   }
 
-  Status HandleParameter(const HloInstruction* parameter) override {
+  absl::Status HandleParameter(const HloInstruction* parameter) override {
     // Entry parameters need renumbering.
     return ReplaceWithParameter(parameter);
   }
 
-  Status DefaultAction(const HloInstruction* hlo) override {
+  absl::Status DefaultAction(const HloInstruction* hlo) override {
     // Replace the following two types of instructions with parameters/constants
     // (1) the instructions at the boundary with (2) the instructions that are
     // not selected by the hlo_selector.
@@ -151,10 +151,10 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       clone_context_.MapComputation(hlo->parent(), new_computation);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status FinishVisit(const HloInstruction* /*root*/) override {
+  absl::Status FinishVisit(const HloInstruction* /*root*/) override {
     // Create the entry computation for the extracted module.
     auto new_entry_computation = module_->AddEntryComputation(
         old_computations_to_builders_.at(root_instruction_->parent())->Build());
@@ -179,7 +179,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       module_->SetAndUniquifyInstrName(instruction, instruction->name());
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   HloModule* module() { return module_.get(); }
@@ -188,7 +188,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
 
  private:
   // Replace the `hlo` with Constant of the same shape.
-  Status ReplaceWithConstant(const HloInstruction* hlo) {
+  absl::Status ReplaceWithConstant(const HloInstruction* hlo) {
     absl::StatusOr<Literal> literal_status = MakeFakeLiteral(hlo->shape());
     TF_CHECK_OK(literal_status.status());
     auto new_const =
@@ -198,11 +198,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(it != old_computations_to_builders_.end());
     auto builder = it->second.get();
     builder->AddInstruction(std::move(new_const));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace the `hlo` with Parameter of the same shape.
-  Status ReplaceWithParameter(const HloInstruction* hlo) {
+  absl::Status ReplaceWithParameter(const HloInstruction* hlo) {
     CHECK(parameter_numbers_.contains(hlo->parent()));
     auto new_parameter = HloInstruction::CreateParameter(
         parameter_numbers_.at(hlo->parent())++, hlo->shape(), hlo->name());
@@ -210,7 +210,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(old_computations_to_builders_.contains(hlo->parent()));
     auto builder = old_computations_to_builders_[hlo->parent()].get();
     builder->AddInstruction(std::move(new_parameter));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Helper to create constant instruction (that return a constant tensor) of
@@ -268,8 +268,8 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   // Replace with `hlo` with a broadcasted constant of the same shape. The
   // constant could be either a zero or a random number, depending on
   // `replace_type`.
-  Status ReplaceWithConstantBroadcast(const HloInstruction* hlo,
-                                      ReplaceType replace_type) {
+  absl::Status ReplaceWithConstantBroadcast(const HloInstruction* hlo,
+                                            ReplaceType replace_type) {
     CHECK(replace_type == ReplaceType::kReplaceZeroBroadcast ||
           replace_type == ReplaceType::kReplaceRandomBroadcast);
     CHECK(old_computations_to_builders_.contains(hlo->parent()));
@@ -277,7 +277,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     HloInstruction* zero_broadcast =
         ReplaceWithConstantBroadcastHelper(hlo->shape(), builder, replace_type);
     clone_context_.MapInstruction(hlo, zero_broadcast);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const HloInstruction* root_instruction_;

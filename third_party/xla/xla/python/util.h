@@ -16,18 +16,15 @@ limitations under the License.
 #ifndef XLA_PYTHON_UTIL_H_
 #define XLA_PYTHON_UTIL_H_
 
-#include <memory>
-#include <vector>
-
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/status.h"
 
 namespace xla {
 
 // Requests if given buffers are ready, awaits for results and returns OK if
 // all of the buffers are ready or the last non-ok status.
-Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays);
+absl::Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays);
 
 }  // namespace xla
 

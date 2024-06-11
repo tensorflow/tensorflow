@@ -16,6 +16,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
+    "xla_internal",
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -137,6 +138,29 @@ xla_cc_binary(
 )
 
 build_test(
+    name = "hlo_module_metadata_processor_build_test",
+    targets = [
+        ":hlo_module_metadata_processor",
+    ],
+)
+
+xla_cc_binary(
+    name = "hlo_module_metadata_processor",
+    srcs = ["hlo_module_metadata_processor.cc"],
+    deps = [
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+build_test(
     name = "show_text_literal_build_test",
     targets = [
         ":show_text_literal",
@@ -206,6 +230,7 @@ xla_cc_binary(
         "//xla/service",
         "//xla/service:hlo_proto_cc",
         "//xla/service:interpreter_plugin",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -259,7 +284,6 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:compilation_environments",
@@ -269,6 +293,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -393,7 +418,6 @@ xla_cc_binary(
         "//xla/client:local_client",
         "//xla/service:compiler",
         "//xla/service:cpu_plugin",
-        "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner",
         "//xla/service:local_service",
@@ -411,7 +435,10 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]),
+    ]) + xla_internal(
+        ["service:hlo_graph_dumper_google"],
+        otherwise = ["//xla/service:hlo_graph_dumper"],
+    ),
 )
 
 xla_cc_test(
@@ -502,7 +529,6 @@ cc_library(
     srcs = ["hlo_decomposer.cc"],
     hdrs = ["hlo_decomposer.h"],
     deps = [
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:compilation_environments",
@@ -510,6 +536,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -528,7 +555,6 @@ cc_library(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_comparison",
-        "//xla:status",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -540,6 +566,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -560,6 +587,7 @@ xla_cc_binary(
         ":run_hlo_module_lib",
         "//xla:debug_options_flags",
         "//xla/service:cpu_plugin",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
@@ -587,7 +615,15 @@ xla_cc_test(
         ":run_hlo_module",
     ],
     deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "@com_google_absl//absl/log",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -603,7 +639,6 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
@@ -614,6 +649,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
@@ -671,7 +707,6 @@ xla_cc_binary(
         ":hlo_decomposer_lib",
         ":hlo_module_loader",
         "//xla:debug_options_flags",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/util:command_line_flags",
@@ -697,7 +732,6 @@ tsl_gpu_library(
         ":hlo_module_loader",
         "//xla:debug_options_flags",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla/client:xla_computation",
@@ -716,6 +750,7 @@ tsl_gpu_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

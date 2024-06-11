@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
 HostMemoryAllocation::HostMemoryAllocation(void* ptr, uint64_t size,
-                                           StreamExecutorInterface* executor)
+                                           StreamExecutor* executor)
     : ptr_(ptr), size_(size), executor_(executor) {}
 
 HostMemoryAllocation::~HostMemoryAllocation() {

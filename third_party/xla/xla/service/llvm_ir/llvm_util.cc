@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -215,6 +215,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
+    case S2:
+    case U2:
+      return llvm::Type::getIntNTy(module->getContext(), 2);
     case S4:
     case U4:
       return llvm::Type::getIntNTy(module->getContext(), 4);
@@ -709,15 +712,15 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const std::string& directory_name,
-                                         const std::string& file_name,
-                                         const std::string& text) {
+static absl::Status CreateAndWriteStringToFile(
+    const std::string& directory_name, const std::string& file_name,
+    const std::string& text) {
   std::unique_ptr<tsl::WritableFile> f;
   TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
   TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

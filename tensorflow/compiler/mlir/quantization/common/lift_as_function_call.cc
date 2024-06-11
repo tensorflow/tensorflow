@@ -21,6 +21,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -269,7 +270,7 @@ LogicalResult SetAttributeMap(MLIRContext& context,
     if (const auto string_attr =
             mlir::dyn_cast_or_null<StringAttr>(attribute.getValue());
         string_attr != nullptr &&
-        string_attr.getValue().equals(kNullAttributeValue)) {
+        string_attr.getValue() == kNullAttributeValue) {
       continue;
     }
 
@@ -522,6 +523,16 @@ bool IsWeightOnlyQuantizableOp(const Operation& op) {
            quantization_method->has_weight_only_ptq();
   }
   return false;
+}
+
+SmallVector<func::FuncOp> GetSortedFunctions(ModuleOp module_op) {
+  auto iterator_range = module_op.getOps<func::FuncOp>();
+  SmallVector<func::FuncOp> func_ops(iterator_range.begin(),
+                                     iterator_range.end());
+  absl::c_sort(func_ops, [](func::FuncOp op1, func::FuncOp op2) {
+    return op1.getName() < op2.getName();
+  });
+  return func_ops;
 }
 
 }  // namespace mlir::quant

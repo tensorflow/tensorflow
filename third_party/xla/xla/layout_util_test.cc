@@ -615,5 +615,19 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
 
+TEST_F(LayoutUtilTest, GetPhysicalShapeFromLogicalShapeNoLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  EXPECT_EQ(LayoutUtil::GetPhysicalShapeFromLogicalShape(shape), shape);
+}
+
+TEST_F(LayoutUtilTest, GetPhysicalShapeFromLogicalShapeLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {100, 200, 150});
+  *expected_shape.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  EXPECT_EQ(LayoutUtil::GetPhysicalShapeFromLogicalShape(shape),
+            expected_shape);
+}
+
 }  // namespace
 }  // namespace xla

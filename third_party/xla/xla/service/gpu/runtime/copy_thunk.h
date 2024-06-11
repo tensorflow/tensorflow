@@ -17,10 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/event.h"
@@ -45,8 +50,6 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
-
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;
@@ -68,17 +71,19 @@ class CopyThunk : public Thunk {
    public:
     // Add a new copy-start completion event.
     absl::Status Emplace(se::StreamExecutor* executor,
-                         const HloInstruction* instr, se::Event&& event);
+                         const HloInstruction* instr,
+                         std::unique_ptr<se::Event> event);
 
     // Retrieve a completion event started by copy-start instruction
     // `instr`, and remove the event from the collection.
-    absl::StatusOr<se::Event> Extract(se::StreamExecutor* executor,
-                                      const HloInstruction* instr);
+    absl::StatusOr<std::unique_ptr<se::Event>> Extract(
+        se::StreamExecutor* executor, const HloInstruction* instr);
 
    private:
     using Key = std::pair<se::StreamExecutor*, const HloInstruction*>;
     absl::Mutex mutex_;
-    absl::flat_hash_map<Key, se::Event> events_ ABSL_GUARDED_BY(mutex_);
+    absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
+        ABSL_GUARDED_BY(mutex_);
   };
   CopyThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
             const BufferAllocation::Slice& destination_buffer,

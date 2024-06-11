@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -99,9 +98,12 @@ ENTRY main {
   se::StreamExecutor* stream_exec = executors[0];
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   DebugOptions opts;
   AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
@@ -125,9 +127,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -174,9 +179,12 @@ ENTRY main {
 
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
 
   DebugOptions opts;
@@ -208,9 +216,12 @@ ENTRY main {
       stream_exec->GetDeviceDescription().cuda_compute_capability()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(deviceless_cfg), m.get()))

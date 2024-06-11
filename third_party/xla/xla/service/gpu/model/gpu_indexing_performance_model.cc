@@ -113,10 +113,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   auto root_shape = roots.front().shape();
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(ShapeUtil::ElementsInRecursive(root_shape),
-                                     fusion_analysis, *device_info_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
-  int64_t num_threads = launch_dimensions.launch_bound();
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   // Compute indexing from root to each instruction in the fusion and fusion
@@ -168,18 +166,24 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
 
   int64_t bytes_written = GetShapeSizeRecursive(root_shape);
 
-  absl::Duration compute_time = ComputeTime(*device_info_, flops, num_threads);
+  absl::Duration compute_time =
+      ComputeTime(*device_info_, flops, num_blocks,
+                  launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, memory_access_time,
       GpuPerformanceModelOptions::PriorityFusion());
 
-  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
-             read_time, write_time, exec_time);
+  EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
+                                      read_time, write_time, compute_time,
+                                      exec_time};
+  VLOG(3) << "Runtime data for HLO fusion: " << fusion_adaptor.ToString()
+          << "\n"
+          << launch_dimensions.ToString() << "\n"
+          << runtime_data.ToString();
 
-  return EstimateRunTimeData{flops,      bytes_written, num_threads, read_time,
-                             write_time, compute_time,  exec_time};
+  return runtime_data;
 }
 
 EstimateRunTimeData
@@ -187,7 +191,13 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
     const HloInstruction* producer) {
   // Stand-alone bitcast is always no-op during runtime.
   if (producer->opcode() == HloOpcode::kBitcast) {
-    return {0, 0, 0, absl::ZeroDuration(), absl::ZeroDuration()};
+    return EstimateRunTimeData{/*flops=*/0,
+                               /*bytes_read=*/0,
+                               /*bytes_written=*/0,
+                               /*read_time=*/absl::ZeroDuration(),
+                               /*write_time=*/absl::ZeroDuration(),
+                               /*compute_time=*/absl::ZeroDuration(),
+                               /*exec_time=*/absl::ZeroDuration()};
   }
 
   auto fusion_analysis = AnalyzeFusion(*producer, *device_info_);

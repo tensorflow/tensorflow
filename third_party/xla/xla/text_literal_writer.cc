@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ Status TextLiteralWriter::WriteToPath(const Literal& literal,
-                                                   absl::string_view path) {
+/* static */ absl::Status TextLiteralWriter::WriteToPath(
+    const Literal& literal, absl::string_view path) {
   std::unique_ptr<tsl::WritableFile> f;
   auto s = tsl::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
@@ -42,7 +42,7 @@ namespace xla {
     return s;
   }
 
-  Status status;
+  absl::Status status;
   tsl::WritableFile* f_ptr = f.get();
   literal.EachCellAsString([f_ptr, &status](absl::Span<const int64_t> indices,
                                             const std::string& value) {

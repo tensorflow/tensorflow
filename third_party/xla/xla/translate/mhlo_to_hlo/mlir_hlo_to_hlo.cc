@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
@@ -81,13 +83,14 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
+#include "xla/translate/mhlo_to_hlo/module_config_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/types.h"
@@ -522,6 +525,10 @@ static xla::ComparisonDirection Convert_comparison_direction(
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::GatherDimensionNumbersAttr input) {
+  assert(input.getOperandBatchingDims().empty() &&
+         input.getStartIndicesBatchingDims().empty() &&
+         "batching dimensions aren't supported in xla::GatherDimensionNumbers");
+
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -545,6 +552,11 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
     mlir::mhlo::ScatterDimensionNumbersAttr input) {
+  assert(
+      input.getInputBatchingDims().empty() &&
+      input.getScatterIndicesBatchingDims().empty() &&
+      "batching dimensions aren't supported in xla::ScatterDimensionNumbers");
+
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();
@@ -701,12 +713,9 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(mlir::ModuleOp module,
                               xla::XlaBuilder& module_builder,
-                              bool use_tuple_args, bool return_tuple,
                               MlirToHloConversionOptions options)
       : module_(module),
         module_builder_(module_builder),
-        use_tuple_args_(use_tuple_args),
-        return_tuple_(return_tuple),
         options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
@@ -810,15 +819,10 @@ class ConvertToHloModule {
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
 
-  // Whether the entry function should take a single tuple as input.
-  bool use_tuple_args_;
-
-  // Whether to always return a tuple.
-  bool return_tuple_;
-
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
 
+  // Conversion options
   MlirToHloConversionOptions options_;
 };
 
@@ -923,16 +927,6 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
   // TODO: b/328526226 - Implement MHLO export for CompositeOp.
-  return failure();
-}
-
-LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
-  // This op should've been removed during PrepareForExport.
-  return failure();
-}
-
-LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
-  // This op should've been removed during PrepareForExport.
   return failure();
 }
 
@@ -1172,19 +1166,7 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   for (auto* user : op.getResult().getUsers()) {
-    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncStart's return value must have "
-                  "the same called_computation";
-      }
-    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncStart's return value must have "
-                  "the same called_computation";
-      }
-    } else {
+    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncStart's return value must be "
                               << "async_update or async_done";
     }
@@ -1319,19 +1301,7 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   }
 
   for (auto* user : op.getResult().getUsers()) {
-    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncUpdate's return value must have "
-                  "the same group_id and called_computation";
-      }
-    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncUpdate's return value must have "
-                  "the same group_id and called_computation";
-      }
-    } else {
+    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncUpdate's return value must be "
                               << "async_update or async_done";
     }
@@ -1343,14 +1313,8 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getBundle(), value_map, &operand, op)))
     return failure();
 
-  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-      FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
-  xla::XlaComputation& computation =
-      ctx.converter->GetLoweredComputation(callee);
   value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-      ctx.builder, operand, op.getExecutionThread().str(),
-      computation.proto().computations(0).id(),
-      xla::TypeToShape(result.getType()));
+      ctx.builder, operand, xla::TypeToShape(result.getType()));
   return success();
 }
 
@@ -1371,8 +1335,23 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getBundle(), value_map, &operand, op)))
     return failure();
 
-  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-      FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+  // Find the AsyncStartOp that starts the async chain.
+  Operation* start = op;
+  while (start != nullptr && !isa<AsyncStartOp>(start)) {
+    start = start->getOperand(0).getDefiningOp();
+    if (start == nullptr || !isa<AsyncStartOp, AsyncUpdateOp>(start)) {
+      return op.emitError() << "Defining op of AsyncDone's operand must be "
+                            << "async_start or async_update";
+    }
+  }
+
+  if (!isa<AsyncStartOp>(start)) {
+    return op.emitError() << "Could not find async chain start";
+  }
+
+  mlir::func::FuncOp callee =
+      ctx.converter->LookUpSymbol(FlatSymbolRefAttr::get(
+          op->getContext(), cast<AsyncStartOp>(start).getCalledComputation()));
 
   auto all_gather_op =
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
@@ -1435,8 +1414,6 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
     return success();
   }
 
-  xla::XlaComputation& computation =
-      ctx.converter->GetLoweredComputation(callee);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : op.getResults().getType()) {
     subshapes.push_back(xla::TypeToShape(item));
@@ -1444,8 +1421,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   xla::XlaOp exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-      ctx.builder, operand, op.getExecutionThread().str(),
-      computation.proto().computations(0).id(), data_shape);
+      ctx.builder, operand, data_shape);
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = exportedOp;
   } else {
@@ -2834,6 +2810,11 @@ LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
+  // This op is only used by KernelGen and is not meant to be lowered to HLO.
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
@@ -3191,7 +3172,8 @@ LogicalResult ConvertToHloModule::Lower(
     unsigned num_return_values = inst->getNumOperands();
     std::optional<xla::OpSharding> ret_tuple_sharding =
         CreateTupleSharding(ret_shardings);
-    if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
+    if ((options_.return_tuple && is_entry_function) ||
+        num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
         unsigned index = ret.getOperandNumber();
@@ -3306,7 +3288,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       auto buffer_donor =
           f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
       if (buffer_donor) {
-        if (use_tuple_args_) {
+        if (options_.use_tuple_args) {
           builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
         } else {
           builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
@@ -3316,7 +3298,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
       xla::ShapeIndex output_index;
-      if ((return_tuple_ && entry_function) || f.getNumResults() != 1) {
+      if ((options_.return_tuple && entry_function) || f.getNumResults() != 1) {
         output_index = {aliasing_output.getInt()};
       } else {
         if (aliasing_output.getInt() != 0) {
@@ -3325,7 +3307,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
         }
         output_index = {};
       }
-      if (use_tuple_args_) {
+      if (options_.use_tuple_args) {
         builder.SetUpAlias(output_index, /*param_number=*/0,
                            /*param_index=*/{i});
       } else {
@@ -3440,6 +3422,18 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
   return success();
 }
 
+namespace {
+
+// Creates an `OpMetadata` with the debug name from the `value`'s
+// `mlir::Location`.
+xla::OpMetadata GetOpNameMetadataFromLocation(Value value) {
+  xla::OpMetadata m;
+  m.set_op_name(mhlo::GetDebugNameFromLocation(value.getLoc()));
+  return m;
+}
+
+}  // namespace
+
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
     bool ensure_single_arg,
@@ -3454,7 +3448,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
-  if (is_entry_function && use_tuple_args_) {
+  if (is_entry_function && options_.use_tuple_args) {
     llvm::SmallVector<xla::Shape, 4> arg_shapes;
     std::vector<bool> leaf_replication;
     if (failed(SetEntryTupleShapesAndLeafReplication(
@@ -3467,6 +3461,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       return failure();
 
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
+    // TODO(bartchr): we are saving location information on single params
+    // but not tuple params. Do the same for tuple params. To do so, either
+    // fuse all the `mlir::Location`s or join the operation name strings with
+    // ";" (which is essentially the same).
     auto tuple =
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
     builder->ClearSharding();
@@ -3503,6 +3501,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             builder, arg_shardings.empty()
                          ? std::nullopt
                          : CreateTupleSharding(arg_shardings));
+        // TODO(bartchr): we are saving location information on single params
+        // but not tuple params. Do the same for tuple params. To do so, either
+        // fuse all the `mlir::Location`s or join the operation name strings
+        // with ";" (which is essentially the same).
         auto tuple = xla::Parameter(builder, 0,
                                     xla::ShapeUtil::MakeTupleShape(arg_shapes),
                                     "arg_tuple");
@@ -3522,15 +3524,21 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           }
         }
       } else if (args_size == 1) {
+        // Save the location information as a name. For example JAX will set the
+        // name of the function argument. Want to preserve these for debugging.
         if (implicit_operands) {
-          lowering[(*implicit_operands)[0]] =
-              xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
+          mlir::Value arg = (*implicit_operands)[0];
+          xla::XlaScopedOpMetadataAssignment op_metadata(
+              builder, GetOpNameMetadataFromLocation(arg));
+          lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         } else {
+          mlir::BlockArgument arg = block->getArgument(0);
+          xla::XlaScopedOpMetadataAssignment op_metadata(
+              builder, GetOpNameMetadataFromLocation(arg));
           xla::XlaScopedShardingAssignment scoped_sharding(
               builder,
               arg_shardings.empty() ? std::nullopt : arg_shardings.front());
-          lowering[block->getArgument(0)] =
-              xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
+          lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         }
       } else {
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
@@ -3550,6 +3558,11 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           // functions with no tuple args.
           builder->SetFrontendAttributes(*fe_attrs[num]);
         }
+        // Save the location information as a name. For example JAX will set the
+        // name of the function argument of these. Want to preserve these for
+        // debugging.
+        xla::XlaScopedOpMetadataAssignment op_metadata(
+            builder, GetOpNameMetadataFromLocation(arg));
         if (entry_args_same_across_replicas.empty()) {
           lowering[arg] =
               xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
@@ -3602,7 +3615,6 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
   bool hasShapeOps = false;
   module.walk([&](Operation* op) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
-    hasShapeOps |= isa<mhlo::ComputeReshapeShapeOp, mhlo::CstrReshapableOp>(op);
     return hasShapeOps ? WalkResult::interrupt() : WalkResult::advance();
   });
   mlir::PassManager pm(module.getContext());
@@ -3623,8 +3635,7 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
 }  // namespace
 
 absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
-                                 xla::HloProto* hlo_proto, bool use_tuple_args,
-                                 bool return_tuple,
+                                 xla::HloProto* hlo_proto,
                                  MlirToHloConversionOptions options) {
   // To support the ongoing migration of XLA's compiler interface from MHLO
   // to StableHLO, we've inserted this fallback to provide support for backends
@@ -3633,26 +3644,16 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // supports not just MHLO, but also CHLO and StableHLO, but we will
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
-  // TODO(b/263811577): Remove this functionality once we have reasonable
-  // confidence that everyone has migrated from calling ConvertMlirHloToHlo
-  // directly.
-  bool hasStablehloOps = false;
-  module.walk([&](Operation* op) {
-    hasStablehloOps |= isa<stablehlo::StablehloDialect>(op->getDialect());
-    return hasStablehloOps ? WalkResult::interrupt() : WalkResult::advance();
-  });
-  if (hasStablehloOps) {
-    mlir::PassManager pm(module->getContext());
-    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    if (failed(pm.run(module)))
-      return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
+  mlir::PassManager pm(module->getContext());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  if (failed(pm.run(module))) {
+    return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
   }
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
-  ConvertToHloModule converter(module, module_builder, use_tuple_args,
-                               return_tuple, options);
+  ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
@@ -3698,15 +3699,33 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
+    mlir::ModuleOp module, MlirToHloConversionOptions options) {
+  xla::HloProto hlo_proto;
+  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+
+  // Create default config.
+  const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
+  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          module_proto, xla::GetDebugOptionsFromFlags()));
+
+  // Modify config with values stored in MLIR module attributes
+  mhlo::ExportHloModuleConfig(config, module);
+
+  return xla::HloModule::CreateFromProto(module_proto, config);
+}
+
 absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
   TF_RETURN_IF_ERROR(PrepareForExport(module));
-  ConvertToHloModule converter(module, builder,
-                               /*use_tuple_args=*/false, /*return_tuple=*/false,
-                               options);
+  // No tuple support in Builder converter API.
+  options.return_tuple = false;
+  options.use_tuple_args = false;
+  ConvertToHloModule converter(module, builder, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
   // xla_params should only include non-constant parameters the block arguments
@@ -3741,6 +3760,15 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   }
 
   return absl::OkStatus();
+}
+
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 ::xla::HloProto* hlo_proto,
+                                 bool use_tuple_args, bool return_tuple,
+                                 MlirToHloConversionOptions options) {
+  options.use_tuple_args = use_tuple_args;
+  options.return_tuple = return_tuple;
+  return ConvertMlirHloToHlo(module, hlo_proto, options);
 }
 
 }  // namespace mlir

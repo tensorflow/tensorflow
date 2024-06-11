@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/status.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"

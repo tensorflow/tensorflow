@@ -108,6 +108,12 @@ def Ifrt_ShardingAttrInterface : Ifrt_AttrInterface<"IfrtShardingAttrInterface">
       /*retTy=*/"int",
       /*methodName=*/"NumDevices",
       /*args=*/(ins)
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the memory kind.",
+      /*retTy=*/"::xla::ifrt::MemoryKind",
+      /*methodName=*/"MemoryKind",
+      /*args=*/(ins)
     >
   ];
 }

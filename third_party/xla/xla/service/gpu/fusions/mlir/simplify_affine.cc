@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -41,7 +42,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -70,32 +70,125 @@ namespace arith = mlir::arith;
 #define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
-Value EvaluateExpression(ImplicitLocOpBuilder& b, AffineExpr expr,
-                         unsigned dim_count, ValueRange operands) {
+int Distance(ImplicitLocOpBuilder& builder, Value a) {
+  auto* block = builder.getInsertionBlock();
+  auto* parent = a.getParentBlock();
+  int distance = 0;
+  while (block && block != parent) {
+    ++distance;
+    block = block->getParentOp()->getBlock();
+  }
+  return distance;
+}
+
+void CollectArgs(AffineExpr expr, AffineExprKind kind,
+                 llvm::SmallVector<AffineExpr>& ret) {
   if (auto bin_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
-    auto lhs = EvaluateExpression(b, bin_op.getLHS(), dim_count, operands);
-    auto rhs = EvaluateExpression(b, bin_op.getRHS(), dim_count, operands);
+    if (bin_op.getKind() == kind) {
+      CollectArgs(bin_op.getLHS(), kind, ret);
+      CollectArgs(bin_op.getRHS(), kind, ret);
+      return;
+    }
+  }
+  ret.push_back(expr);
+}
+
+struct ExpressionEvaluator {
+  ExpressionEvaluator(ImplicitLocOpBuilder& builder, unsigned dim_count,
+                      ValueRange operands)
+      : builder(builder), operands(operands) {
+    for (int i = 0; i < dim_count; ++i) {
+      dim_distances.push_back(Distance(builder, operands[i]));
+    }
+    for (int i = dim_count; i < operands.size(); ++i) {
+      sym_distances.push_back(Distance(builder, operands[i]));
+    }
+  }
+
+  // Returns the distance (in basic blocks) from the insertion point to the
+  // values used in the given expression.
+  int ExprDistance(AffineExpr e, int depth = 0) {
+    if (auto dim = mlir::dyn_cast<AffineDimExpr>(e)) {
+      return dim_distances[dim.getPosition()];
+    }
+    if (auto sym = mlir::dyn_cast<AffineSymbolExpr>(e)) {
+      return sym_distances[sym.getPosition()];
+    }
+    if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(e)) {
+      return std::min(ExprDistance(binop.getLHS(), depth + 1),
+                      ExprDistance(binop.getRHS(), depth + 1));
+    }
+    if (depth == 0) {
+      // Top-level constant. Always add these last.
+      return std::numeric_limits<int>::min();
+    }
+    // Nested constant. Ignore these for distances.
+    return std::numeric_limits<int>::max();
+  }
+
+  Value EvaluateExpression(AffineExpr expr);
+
+  template <typename Op>
+  Value EvaluateAddMul(AffineExpr expr);
+
+  ImplicitLocOpBuilder& builder;
+  ValueRange operands;
+  SmallVector<int> dim_distances;
+  SmallVector<int> sym_distances;
+};
+
+template <typename Op>
+Value ExpressionEvaluator::EvaluateAddMul(AffineExpr expr) {
+  llvm::SmallVector<AffineExpr> args;
+  CollectArgs(expr, expr.getKind(), args);
+  // Sort the args so that the ones that are closest to the insertion point
+  // are evaluated last - this improves LICM.
+  llvm::stable_sort(args, [&](AffineExpr a, AffineExpr b) {
+    int dist_a = ExprDistance(a);
+    int dist_b = ExprDistance(b);
+    return dist_a > dist_b;
+  });
+
+  Value result = nullptr;
+  for (auto arg : args) {
+    Value arg_evaluated = EvaluateExpression(arg);
+    if (result) {
+      result = builder.create<Op>(result, arg_evaluated);
+    } else {
+      result = arg_evaluated;
+    }
+  }
+
+  return result;
+}
+
+Value ExpressionEvaluator::EvaluateExpression(AffineExpr expr) {
+  if (auto bin_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
     switch (expr.getKind()) {
       case AffineExprKind::Add:
-        return b.create<arith::AddIOp>(lhs, rhs);
+        return EvaluateAddMul<arith::AddIOp>(expr);
       case AffineExprKind::Mul:
-        return b.create<arith::MulIOp>(lhs, rhs);
+        return EvaluateAddMul<arith::MulIOp>(expr);
       case AffineExprKind::Mod:
-        return b.create<arith::RemUIOp>(lhs, rhs);
+        return builder.create<arith::RemUIOp>(
+            EvaluateExpression(bin_op.getLHS()),
+            EvaluateExpression(bin_op.getRHS()));
       case AffineExprKind::FloorDiv:
-        return b.create<arith::DivUIOp>(lhs, rhs);
+        return builder.create<arith::DivUIOp>(
+            EvaluateExpression(bin_op.getLHS()),
+            EvaluateExpression(bin_op.getRHS()));
       default:
         ABSL_UNREACHABLE();
     }
   }
   switch (expr.getKind()) {
     case AffineExprKind::Constant:
-      return b.create<arith::ConstantIndexOp>(
+      return builder.create<arith::ConstantIndexOp>(
           mlir::cast<AffineConstantExpr>(expr).getValue());
     case AffineExprKind::DimId:
       return operands[mlir::cast<AffineDimExpr>(expr).getPosition()];
     case AffineExprKind::SymbolId:
-      return operands[dim_count +
+      return operands[dim_distances.size() +
                       mlir::cast<AffineSymbolExpr>(expr).getPosition()];
     default:
       ABSL_UNREACHABLE();
@@ -147,7 +240,7 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
     IndexingMap indexing_map(affine_map, std::move(dim_ranges),
                              std::move(symbol_ranges),
                              /*rt_vars=*/{});
-    indexing_map.Simplify(GetIndexingMapForInstruction);
+    indexing_map.Simplify();
     auto result_expr = indexing_map.GetAffineMap().getResult(0);
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -157,8 +250,9 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
                                          "unable to lower the affine apply");
     }
     b.setInsertionPoint(op);
-    auto result = EvaluateExpression(
-        b, result_expr, indexing_map.GetDimensionCount(), op->getOperands());
+    auto result = ExpressionEvaluator(b, indexing_map.GetDimensionCount(),
+                                      op->getOperands())
+                      .EvaluateExpression(result_expr);
     rewriter.replaceOp(op, result);
     return mlir::success();
   }
@@ -170,7 +264,7 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp op,
                                 PatternRewriter& rewriter) const override {
     auto indexing_map = op.getIndexingMap();
-    indexing_map.Simplify(GetIndexingMapForInstruction);
+    indexing_map.Simplify();
     auto affine_map = indexing_map.GetAffineMap();
     int64_t dim_count = indexing_map.GetDimensionCount();
     auto operands = op->getOperands();
@@ -181,13 +275,17 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
     b.setInsertionPoint(op);
     SmallVector<Value, 4> results;
     results.reserve(affine_map.getNumResults());
-    for (AffineExpr result_expr : affine_map.getResults()) {
+    for (unsigned i = 0; i < affine_map.getNumResults(); ++i) {
+      AffineExpr result_expr = affine_map.getResult(i);
       // If the expression cannot be lowered, we convert it to affine.apply,
       // since it supports more expression types.
-      results.push_back(
-          IsLoweringSupported(result_expr, range_evaluator)
-              ? EvaluateExpression(b, result_expr, dim_count, operands)
-              : b.create<AffineApplyOp>(affine_map, operands));
+      if (IsLoweringSupported(result_expr, range_evaluator)) {
+        results.push_back(ExpressionEvaluator(b, dim_count, operands)
+                              .EvaluateExpression(result_expr));
+      } else {
+        results.push_back(
+            b.create<AffineApplyOp>(affine_map.getSubMap({i}), operands));
+      }
     }
     rewriter.replaceOp(op, results);
     return mlir::success();
@@ -223,7 +321,13 @@ std::optional<Interval> GetRange(mlir::Value value) {
     return {{values[0].getSExtValue(), values[1].getSExtValue()}};
   };
 
-  if (value.getDefiningOp()) {
+  if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
+    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
+        apply.getIndexingMap().GetAffineMap().getResult(
+            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+  } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
+    return {{cst.value(), cst.value()}};
+  } else if (value.getDefiningOp()) {
     return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
   }
 

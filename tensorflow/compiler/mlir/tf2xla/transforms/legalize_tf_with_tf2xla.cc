@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/tf2xla_rewriter.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"

@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -58,25 +58,26 @@ class GenericTransferManager : public TransferManager {
 
   void TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
       const TransferMetadata* transfer_metadata) override;
 
-  Status TransferLiteralToDeviceAsync(
+  absl::Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata) override;
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal) override;
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal) override;
 
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal) override;
+  absl::Status TransferLiteralFromOutfeed(
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) override;
 
-  Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
+  absl::Status ResetDevices(
+      absl::Span<se::StreamExecutor* const> executors) override;
 
   int64_t GetByteSizeRequirement(const Shape& shape) const override;
 
-  Status WriteSingleTupleIndexTable(
+  absl::Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
@@ -87,39 +88,35 @@ class GenericTransferManager : public TransferManager {
   // 'destination' buffer.
   //
   // size is the size to transfer to destination in bytes.
-  virtual Status TransferBufferFromDevice(se::Stream* stream,
-                                          const se::DeviceMemoryBase& source,
-                                          int64_t size, void* destination);
+  virtual absl::Status TransferBufferFromDevice(
+      se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
+      void* destination);
 
   // Transfer a memory block of the given size from 'source' buffer to the given
   // destination of the device.
   //
   // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
-                                        const void* source,
-                                        se::DeviceMemoryBase* destination);
+  virtual absl::Status TransferBufferToDevice(
+      se::Stream* stream, int64_t size, const void* source,
+      se::DeviceMemoryBase* destination);
 
   // Transfers a buffer of packed int4 values from the device to the host, then
   // unpacks them on the host. 'source' is a buffer with (num_elements+1)/2
   // bytes where each byte stores two int4 values. 'destination' is a buffer
   // with num_elements bytes, where a single int4 value will be written to each
   // byte in the lower 4 bits.
-  virtual Status TransferIntNArrayFromDevice(se::Stream* stream,
-                                             const se::DeviceMemoryBase& source,
-                                             PrimitiveType element_type,
-                                             int64_t num_elements,
-                                             void* destination);
+  virtual absl::Status TransferIntNArrayFromDevice(
+      se::Stream* stream, const se::DeviceMemoryBase& source,
+      PrimitiveType element_type, int64_t num_elements, void* destination);
 
   // Packs an array of int4 values then transfers the packed buffer from the
   // host to the device. 'source' is a buffer with num_elements bytes, where the
   // lower 4 bits of each byte stores an int4 value. 'destination' is a buffer
   // with (num_elements+1)/2 bytes, where two int4 values will be written into
   // each byte.
-  virtual Status TransferIntNArrayToDevice(se::Stream* stream,
-                                           PrimitiveType element_type,
-                                           int64_t num_elements,
-                                           const void* source,
-                                           se::DeviceMemoryBase* destination);
+  virtual absl::Status TransferIntNArrayToDevice(
+      se::Stream* stream, PrimitiveType element_type, int64_t num_elements,
+      const void* source, se::DeviceMemoryBase* destination);
 
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;

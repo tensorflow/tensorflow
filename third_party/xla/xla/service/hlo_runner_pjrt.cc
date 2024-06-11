@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -73,7 +73,7 @@ absl::Status SanityCheckParameterLayouts(
         "parameters (found 1 tuple out of %d arguments)",
         layouts.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> MustFlattenInputTuple(

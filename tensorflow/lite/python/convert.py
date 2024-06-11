@@ -24,11 +24,11 @@ import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.lite.python import wrap_converter
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
-from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
@@ -231,6 +231,7 @@ def mlir_quantize(
     denylisted_nodes=None,
     enable_variable_quantization=False,
     disable_per_channel_for_dense_layers=False,
+    debug_options_str="",
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -259,12 +260,14 @@ def mlir_quantize(
     disable_per_channel_for_dense_layers: Bool indicating whether to do
       per-channel or per-tensor quantization in Fully Connected layers. Default
       value is False meaning per-channel quantization is enabled.
+    debug_options_str: Serialized proto describing TFLite converter debug
+      options, see `debug/debug_options.proto`.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(
+  return wrap_converter.wrapped_experimental_mlir_quantize(
       input_data_str,
       disable_per_channel,
       fully_quantize,
@@ -277,6 +280,7 @@ def mlir_quantize(
       denylisted_nodes,
       enable_variable_quantization,
       disable_per_channel_for_dense_layers,
+      debug_options_str,
   )
 
 
@@ -290,7 +294,7 @@ def mlir_sparsify(input_data_str):
   Returns:
     Sparsified model in serialized form (e.g. a TFLITE model).
   """
-  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+  return wrap_converter.wrapped_experimental_mlir_sparsify(input_data_str)
 
 
 def register_custom_opdefs(custom_opdefs_list):
@@ -303,7 +307,7 @@ def register_custom_opdefs(custom_opdefs_list):
   Returns:
     True if the registration is successfully completed.
   """
-  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
+  return wrap_converter.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
 def convert(
@@ -338,7 +342,7 @@ def convert(
   # pipeline surfaces errors instead, and can be safely run in-process.
   if enable_mlir_converter or not _deprecated_conversion_binary:
     try:
-      return wrap_toco.wrapped_toco_convert(
+      return wrap_converter.wrapped_convert(
           model_flags.SerializeToString(),
           conversion_flags.SerializeToString(),
           input_data_str,

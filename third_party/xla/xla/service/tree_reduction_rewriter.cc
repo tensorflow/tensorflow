@@ -41,7 +41,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   explicit ReductionRewriterVisitor(int64_t reduce_window_size)
       : reduce_window_size_(reduce_window_size) {}
 
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     HloInstruction *reduced_op = hlo->mutable_operand(0);
     HloInstruction *initial_value = hlo->mutable_operand(1);
     const Shape &input_shape = reduced_op->shape();
@@ -51,7 +51,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       // TODO(b/210786051): Implement tree reduction rewrite for variadic
       // reductions on CPU as well.
       VLOG(1) << "Skipping rewrite for variadic reduction";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // All of the reduced dimensions is smaller than the window size,
@@ -62,7 +62,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
                  "smaller than "
               << reduce_window_size_;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::vector<int64_t> window_dimensions;

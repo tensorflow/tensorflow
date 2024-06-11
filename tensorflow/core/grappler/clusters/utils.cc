@@ -135,7 +135,7 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
                        properties.memoryClockRate * 2);
 
   (*device.mutable_environment())["architecture"] =
-      strings::StrCat("gfx", properties.gcnArch);
+      strings::StrCat("gfx", properties.gcnArchName);
 #endif
 
   return device;

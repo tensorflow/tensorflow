@@ -208,7 +208,9 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   simple_patterns::populateWithGenerated(patterns);
   fusion_patterns::populateWithGenerated(patterns);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module_op.getOps<func::FuncOp>()) {
+
+  // Iterate over the sorted list of functions to keep order deterministic.
+  for (func::FuncOp func : GetSortedFunctions(module_op)) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError()
           << "quant-stablehlo-lift-quantizable-spots-as-functions failed.";

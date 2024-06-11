@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -262,6 +261,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
     case xla::PrimitiveType::TOKEN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN;
+    case xla::PrimitiveType::S2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S2;
     case xla::PrimitiveType::S4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S4;
     case xla::PrimitiveType::S8:
@@ -272,6 +273,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U2;
     case xla::PrimitiveType::U4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U4;
     case xla::PrimitiveType::U8:
@@ -317,6 +320,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::PRED;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN:
       return xla::PrimitiveType::TOKEN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S2:
+      return xla::PrimitiveType::S2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
       return xla::PrimitiveType::S4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S8:
@@ -327,6 +332,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U2:
+      return xla::PrimitiveType::U2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
       return xla::PrimitiveType::U4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U8:
@@ -420,7 +427,7 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 
 xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
                                            const PJRT_Api* c_api) {
-  using absl::Status, xla::PjRtFuture;
+  using xla::PjRtFuture;
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;
@@ -596,7 +603,7 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
   c_value.name_size = kXlaVersion.size();
   c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
   // TODO(b/327203806): figure out where to keep the xla_version.
-  c_value.int64_value = 1;
+  c_value.int64_value = 2;
   c_value.value_size = 1;
   static const std::vector<PJRT_NamedValue>* c_values =
       new std::vector<PJRT_NamedValue>({c_value});

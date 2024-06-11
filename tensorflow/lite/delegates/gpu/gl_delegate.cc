@@ -276,13 +276,6 @@ class Delegate {
   }
 
   absl::Status Invoke(TfLiteContext* context) {
-    const EGLContext egl_context_at_delegate_init = env_->context().context();
-    const EGLContext egl_context_at_delegate_invoke = eglGetCurrentContext();
-    if (egl_context_at_delegate_init != egl_context_at_delegate_invoke) {
-      return absl::FailedPreconditionError(
-          "Delegate should run on the same thread where it was initialized.");
-    }
-
     // Push input data from a tensor to GPU.
     for (ValueId id : inputs_) {
       const ValueRef& ref = tensors_[id];

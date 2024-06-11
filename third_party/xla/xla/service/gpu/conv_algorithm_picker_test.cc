@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -60,8 +61,12 @@ ENTRY main {
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
 
+  const se::GpuComputeCapability& cc = backend()
+                                           .default_stream_executor()
+                                           ->GetDeviceDescription()
+                                           .gpu_compute_capability();
   bool changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(cc), m.get()));
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
@@ -85,7 +90,7 @@ ENTRY main {
   // should have the new scratch bytes.
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(cc), m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));

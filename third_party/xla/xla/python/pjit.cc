@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -583,6 +584,7 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
       nb::object out_and_fastpath_data;
       nb::tuple out_tuple;
       VLOG(2) << "Cache miss for " << call_signature.DebugString();
+      bool remove_cache = false;
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
@@ -593,6 +595,10 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
         out_tuple = nb::cast<nb::tuple>(out_and_fastpath_data);
 
         PopulateCacheEntry(*cache_entry, out_tuple);
+
+        if (out_tuple.size() > 2 && out_tuple[2].is_valid()) {
+          remove_cache = nb::cast<bool>(out_tuple[2]);
+        }
       } catch (const std::exception& e) {
         VLOG(2) << "cache miss fail: " << e.what();
         cache_entry->fall_back_to_python = true;
@@ -600,6 +606,10 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
         throw;
       }
       cache_entry->compilation_complete.Notify();
+
+      if (remove_cache) {
+        executables_->Remove(call_signature);
+      }
 
       // We have already computed the result in the miss path so we can return
       // it. We are even *required* to do so if there are donated arguments,
@@ -737,7 +747,7 @@ absl::Status PjitFunction::ComputeCallSignature(
 
 void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
                                       const nb::tuple& out_and_fastpath_data) {
-  DCHECK_EQ(out_and_fastpath_data.size(), 2);
+  DCHECK_GE(out_and_fastpath_data.size(), 2);
 
   if (out_and_fastpath_data[1].is_none()) {
     VLOG(2) << "fastpath_data is none";
@@ -885,8 +895,10 @@ void PjitFunction_tp_dealloc(PyObject* self) {
   PyObject_ClearWeakRefs(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
   o->fun.~PjitFunction();
   tp->tp_free(self);
@@ -902,8 +914,10 @@ int PjitFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
   Py_VISIT(Py_TYPE(self));
 #if PY_VERSION_HEX < 0x030C0000
   Py_VISIT(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_VisitManagedDict(self, visit, arg);
+#else
+  PyObject_VisitManagedDict(self, visit, arg);
 #endif  // PY_VERSION_HEX < 0x030C0000
   Py_VISIT(o->fun.cache_miss().ptr());
   Py_VISIT(o->fun.shard_arg_fallback().ptr());
@@ -917,8 +931,10 @@ int PjitFunction_tp_clear(PyObject* self) {
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
   o->fun.ClearPythonReferences();
   return 0;
@@ -1061,7 +1077,14 @@ void BuildPjitSubmodule(nb::module_& m) {
   std::string name =
       absl::StrCat(nb::cast<std::string>(m.attr("__name__")), ".PjitFunction");
   PyType_Spec PjitFunction_spec = {
+#if PY_VERSION_HEX < 0x030B0000
+      // Work around for https://github.com/python/cpython/issues/89478
+      // CPython 3.10 and earlier assume that the .name value remains alive
+      // forever.
+      /*.name=*/strdup(name.c_str()),
+#else
       /*.name=*/name.c_str(),
+#endif  // PY_VERSION_HEX < 0x030B0000
       /*.basicsize=*/static_cast<int>(sizeof(PjitFunctionObject)),
       /*.itemsize=*/0,
 #if PY_VERSION_HEX < 0x030C0000

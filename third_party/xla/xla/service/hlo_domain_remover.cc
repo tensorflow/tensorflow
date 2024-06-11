@@ -36,13 +36,13 @@ class HloDomainRemover::RunContext {
  private:
   // Verifies the consistency of the domain, and normalizes the instructions
   // within it.
-  Status VerifyAndNormalizeDomain(const DomainMetadata::Domain& domain);
+  absl::Status VerifyAndNormalizeDomain(const DomainMetadata::Domain& domain);
 
   HloModule* module_;
   HloDomainRemover* remover_;
 };
 
-Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
+absl::Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     const DomainMetadata::Domain& domain) {
   TF_ASSIGN_OR_RETURN(const DomainMetadata* ref_metadata,
                       HloDomainVerifier::VerifyDomain(domain));
@@ -55,7 +55,7 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     VLOG(2) << "Applying domain-less normalization";
     TF_RETURN_IF_ERROR(remover_->normalizer_(domain, nullptr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloDomainRemover::RunContext::Run(

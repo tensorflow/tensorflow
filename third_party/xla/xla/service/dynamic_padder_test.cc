@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
@@ -78,7 +78,7 @@ OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
   return OpDynamismSupport::kNoSupport;
 }
 
-Status CustomCallDynamicDimensionInference(
+absl::Status CustomCallDynamicDimensionInference(
     HloInstruction* hlo, DynamicDimensionInference* inferencer) {
   if (hlo->custom_call_target() == "OpWithDynamicLowering") {
     if (hlo->shape().IsTuple()) {
@@ -94,7 +94,7 @@ Status CustomCallDynamicDimensionInference(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class DynamicPadderTest : public HloTestBase {
@@ -689,7 +689,7 @@ ENTRY main {
   };
   auto custom_call_handler = [](HloInstruction* hlo,
                                 DynamicDimensionInference* inference) {
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_ASSERT_OK(
       RunPadder(

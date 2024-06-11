@@ -28,7 +28,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"

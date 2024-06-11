@@ -451,7 +451,7 @@ GetGeneralTPUExecutionDeviceAssignment(
   }
 
   xla::DeviceAssignmentProto device_assignment_proto;
-  TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+  device_assignment.Serialize(&device_assignment_proto);
 
   return std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>(
       std::move(devices_and_hosts), std::move(device_assignment_proto));

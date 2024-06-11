@@ -340,7 +340,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
-      return data_service_client_.Initialize(ctx->allocator(/*attrs=*/{}));
+      return data_service_client_.Initialize(ctx->accelerator_device_info(),
+                                             ctx->allocator(/*attrs=*/{}));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -413,7 +414,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       double GetTargetProcessingTimeNsec() const override {
         if (ctx_.model() == nullptr) {
-          LOG(WARNING) << "tf.data Model is null in DataServiceIteratorContext";
+          VLOG(1) << "tf.data Model is null in DataServiceIteratorContext";
           return 0.0;
         }
 

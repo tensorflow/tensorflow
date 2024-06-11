@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
@@ -93,7 +94,8 @@ static XlaOp DoWithUpcastToF32(XlaOp operand,
 
 // TODO(jlebar): Use this function in more places in this file to restrict the
 // domain of other functions.
-static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
+static absl::Status EnsureOperandIsRealFp(absl::string_view op_name,
+                                          XlaOp operand) {
   auto& b = *operand.builder();
   TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
   auto elem_ty = shape.element_type();
@@ -102,7 +104,7 @@ static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
         "Operands to %s must be real-valued floating-point, but got %s",
         op_name, PrimitiveType_Name(elem_ty));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp IsPosInf(XlaOp operand) {

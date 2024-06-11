@@ -462,7 +462,22 @@ def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape),
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "">),
+      (TF_TensorScatterAddOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;
+
+def LowerScatterNdOpDefaultBadIndicesPolicy :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "DEFAULT">),
+      (TF_TensorScatterAddOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;
+
+
+def LowerScatterNdOpIgnoreBadIndices :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape, ConstantStrAttr<StrAttr, "IGNORE">),
       (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
        $indices, $updates)>;

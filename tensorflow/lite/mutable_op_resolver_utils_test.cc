@@ -31,28 +31,32 @@ namespace tflite {
 namespace {
 
 // We need some dummy functions to identify the registrations.
-TfLiteStatus DummyInvoke(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+TfLiteStatus DummyInvoke(void* user_data, TfLiteOpaqueContext* context,
+                         TfLiteOpaqueNode* node) {
   return kTfLiteOk;
 }
-TfLiteStatus DummyPrepare(TfLiteOpaqueContext* context,
+TfLiteStatus DummyPrepare(void* user_data, TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
   return kTfLiteOk;
 }
 
 TfLiteOperator* GetDummyRegistration() {
   static TfLiteOperator* registration = []() {
-    auto* r = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "dummy", 1);
-    TfLiteOperatorSetPrepare(r, DummyPrepare);
-    TfLiteOperatorSetInvoke(r, DummyInvoke);
-    return r;
+    auto* op = TfLiteOperatorCreateWithData(
+        kTfLiteBuiltinCustom, "dummy", /*version=*/1, /*user_data=*/nullptr);
+    TfLiteOperatorSetPrepareWithData(op, DummyPrepare);
+    TfLiteOperatorSetInvokeWithData(op, DummyInvoke);
+    return op;
   }();
   return registration;
 }
 
 TfLiteOperator* GetAdditionOpRegistration() {
   static TfLiteOperator* registration = []() {
-    auto* r = TfLiteOperatorCreate(kTfLiteBuiltinAdd, nullptr, 1);
-    TfLiteOperatorSetInvoke(r, DummyInvoke);
+    auto* r =
+        TfLiteOperatorCreateWithData(kTfLiteBuiltinAdd, /*custom_name=*/nullptr,
+                                     /*version=*/1, /*user_data=*/nullptr);
+    TfLiteOperatorSetInvokeWithData(r, DummyInvoke);
     return r;
   }();
   return registration;
@@ -67,7 +71,8 @@ TEST_F(MutableOpResolverTest, FindOp) {
   const TfLiteRegistration* found_registration =
       resolver.FindOp(BuiltinOperator_ADD, 1);
   ASSERT_NE(found_registration, nullptr);
-  EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
+  EXPECT_TRUE(found_registration->registration_external->invoke_with_data ==
+              DummyInvoke);
   EXPECT_EQ(
       TfLiteOperatorGetBuiltInCode(found_registration->registration_external),
       kTfLiteBuiltinAdd);
@@ -98,7 +103,8 @@ TEST_F(MutableOpResolverTest, RegisterOpWithSingleVersion) {
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 2);
   ASSERT_NE(found_registration, nullptr);
-  EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
+  EXPECT_TRUE(found_registration->registration_external->invoke_with_data ==
+              DummyInvoke);
   EXPECT_EQ(found_registration->version, 2);
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 3);
@@ -114,12 +120,14 @@ TEST_F(MutableOpResolverTest, RegisterOpWithMultipleVersions) {
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 2);
   ASSERT_NE(found_registration, nullptr);
-  EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
+  EXPECT_TRUE(found_registration->registration_external->invoke_with_data ==
+              DummyInvoke);
   EXPECT_EQ(found_registration->version, 2);
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 3);
   ASSERT_NE(found_registration, nullptr);
-  EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
+  EXPECT_TRUE(found_registration->registration_external->invoke_with_data ==
+              DummyInvoke);
   EXPECT_EQ(found_registration->version, 3);
 }
 
@@ -144,7 +152,8 @@ TEST_F(MutableOpResolverTest, FindCustomOp) {
   const TfLiteRegistration* found_registration = resolver.FindOp("dummy", 1);
   ASSERT_NE(found_registration, nullptr);
   EXPECT_EQ(found_registration->builtin_code, BuiltinOperator_CUSTOM);
-  EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
+  EXPECT_TRUE(found_registration->registration_external->invoke_with_data ==
+              DummyInvoke);
   EXPECT_EQ(found_registration->version, 1);
 }
 

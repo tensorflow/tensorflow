@@ -23,8 +23,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/status.h"
+#include "absl/base/optimization.h"
+#include "absl/status/status.h"
 #include "xla/statusor.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -36,13 +39,13 @@ extern const char kPossibleAutoJitAlternative[];
 // Stream object used to collect error messages in MAKE_ERROR macros
 // or append error messages with APPEND_ERROR.  It accepts any
 // arguments with operator<< to build an error string, and then has an
-// implicit cast operator to Status, which converts the
-// logged string to a Status object and returns it, after logging the
+// implicit cast operator to absl::Status, which converts the
+// logged string to a absl::Status object and returns it, after logging the
 // error.  At least one call to operator<< is required; a compile time
 // error will be generated if none are given. Errors will only be
 // logged by default for certain status codes, as defined in
 // IsLoggedByDefault. This class will give ERROR errors if you don't
-// retrieve a Status exactly once before destruction.
+// retrieve a absl::Status exactly once before destruction.
 //
 // The class converts into an intermediate wrapper object
 // MakeErrorStreamWithOutput to check that the error stream gets at least one
@@ -52,7 +55,7 @@ class MakeErrorStream {
   // Wrapper around MakeErrorStream that only allows for output. This
   // is created as output of the first operator<< call on
   // MakeErrorStream. The bare MakeErrorStream does not have a
-  // Status operator. The net effect of that is that you
+  // absl::Status operator. The net effect of that is that you
   // have to call operator<< at least once or else you'll get a
   // compile time error.
   class MakeErrorStreamWithOutput {
@@ -66,10 +69,10 @@ class MakeErrorStream {
       return *this;
     }
 
-    // Implicit cast operators to Status and StatusOr.
+    // Implicit cast operators to absl::Status and absl::StatusOr.
     // Exactly one of these must be called exactly once before destruction.
     // NOLINTNEXTLINE(google-explicit-constructor)
-    operator Status() { return wrapped_error_stream_->GetStatus(); }
+    operator absl::Status() { return wrapped_error_stream_->GetStatus(); }
     template <typename T>
     // NOLINTNEXTLINE(google-explicit-constructor)
     operator absl::StatusOr<T>() {
@@ -113,13 +116,14 @@ class MakeErrorStream {
    public:
     Impl(const char* file, int line, tsl::error::Code code,
          MakeErrorStream* error_stream, bool is_logged_by_default = true);
-    Impl(const Status& status, PriorMessageHandling prior_message_handling,
-         const char* file, int line, MakeErrorStream* error_stream);
+    Impl(const absl::Status& status,
+         PriorMessageHandling prior_message_handling, const char* file,
+         int line, MakeErrorStream* error_stream);
 
     ~Impl();
 
     // This must be called exactly once before destruction.
-    Status GetStatus();
+    absl::Status GetStatus();
 
     void CheckNotDone() const;
 
@@ -130,16 +134,16 @@ class MakeErrorStream {
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
     std::string prior_message_;
-    bool is_done_;  // true after Status object has been returned
+    bool is_done_;  // true after absl::Status object has been returned
     std::ostringstream stream_;
     bool should_log_;
     int log_severity_;
     bool should_log_stack_trace_;
 
     // Wrapper around the MakeErrorStream object that has a
-    // Status conversion. The first << operator called on
+    // absl::Status conversion. The first << operator called on
     // MakeErrorStream will return this object, and only this object
-    // can implicitly convert to Status. The net effect of
+    // can implicitly convert to absl::Status. The net effect of
     // this is that you'll get a compile time error if you call
     // MAKE_ERROR etc. without adding any output.
     MakeErrorStreamWithOutput make_error_stream_with_output_wrapper_;
@@ -152,7 +156,7 @@ class MakeErrorStream {
   void CheckNotDone() const;
 
   // Returns the status. Used by MakeErrorStreamWithOutput.
-  Status GetStatus() const { return impl_->GetStatus(); }
+  absl::Status GetStatus() const { return impl_->GetStatus(); }
 
   // Store the actual data on the heap to reduce stack frame sizes.
   std::unique_ptr<Impl> impl_;
@@ -171,17 +175,18 @@ TF_ATTRIBUTE_NOINLINE MakeErrorStream::MakeErrorStream(const char* file,
 // that declares a variable.
 class StatusAdaptorForMacros {
  public:
-  explicit StatusAdaptorForMacros(Status status) : status_(std::move(status)) {}
+  explicit StatusAdaptorForMacros(absl::Status status)
+      : status_(std::move(status)) {}
 
   StatusAdaptorForMacros(const StatusAdaptorForMacros&) = delete;
   StatusAdaptorForMacros& operator=(const StatusAdaptorForMacros&) = delete;
 
   explicit operator bool() const { return ABSL_PREDICT_TRUE(status_.ok()); }
 
-  Status&& Consume() { return std::move(status_); }
+  absl::Status&& Consume() { return std::move(status_); }
 
  private:
-  Status status_;
+  absl::Status status_;
 };
 
 }  // namespace status_macros

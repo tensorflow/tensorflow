@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -472,7 +473,7 @@ std::vector<DotTestParam> CreateDotTestParameters() {
 XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
-XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, OVERSIZE_ON_GRM(TestF64)) { TestImpl<double>(); }
 XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }

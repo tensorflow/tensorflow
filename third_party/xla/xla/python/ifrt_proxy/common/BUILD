@@ -71,6 +71,7 @@ tf_proto_library(
         "//xla:xla_data_proto",
         "//xla/pjrt:execute_options_proto",
         "//xla/python/ifrt:dtype_proto",
+        "//xla/python/ifrt:remap_plan_proto",
         "//xla/python/ifrt:serdes_proto",
         "//xla/python/ifrt:shape_proto",
         "//xla/python/ifrt:sharding_proto",
@@ -159,7 +160,7 @@ cc_library(
     name = "common_serdes",
     deps = [
         "//xla/python/ifrt:plugin_program_serdes",
-        "//xla/python/pjrt_ifrt:xla_program_serdes",
+        "//xla/python/ifrt/hlo:hlo_program_serdes",
     ],
     alwayslink = True,
 )

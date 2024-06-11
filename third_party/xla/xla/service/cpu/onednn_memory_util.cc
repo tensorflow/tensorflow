@@ -169,7 +169,7 @@ int64_t MemrefInfo::GetChannels() const { return pod_->dims[pod_->rank - 1]; }
 
 int64_t MemrefInfo::GetRank() const { return pod_->rank; }
 
-StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
+absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
     const dnnl::memory::desc& md) {
   int64_t ndims = md.get_ndims();
   if (ndims < 2) {

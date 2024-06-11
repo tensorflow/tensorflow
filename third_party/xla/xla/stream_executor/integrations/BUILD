@@ -55,6 +55,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -89,6 +90,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

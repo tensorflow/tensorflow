@@ -11,6 +11,7 @@ message BackendConfig {
   // Configuration to be used by oneDNN matmul
   OneDnnMatMulConfig onednn_matmul_config = 2;
   OneDnnLayerNormConfig onednn_layer_norm_config = 3;
+  OneDnnSoftmaxConfig onednn_softmax_config = 4;
 }
 
 message OneDnnMatMulConfig {
@@ -27,6 +28,9 @@ message OneDnnMatMulConfig {
     GELU_TANH = 5;
     BINARY_ADD = 6;
     LINEAR = 7;
+    ELU = 8;
+    RELU6 = 9;
+    SIGMOID = 10;
   }
   repeated FusionKind fused_ops = 3;
   bool bias_broadcast = 4;
@@ -48,4 +52,8 @@ message OneDnnLayerNormConfig {
   }
   FusionKind fused_ops = 1;
   int32 epsilon_typecast = 2;
+}
+
+message OneDnnSoftmaxConfig {
+  int32 softmax_axis = 1;
 }

@@ -1306,6 +1306,7 @@ REGISTER_OP("GatherNd")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int16,int32,int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------
@@ -3173,6 +3174,7 @@ REGISTER_OP("ScatterNd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int16, int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));

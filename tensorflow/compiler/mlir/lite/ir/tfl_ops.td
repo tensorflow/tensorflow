@@ -1633,8 +1633,6 @@ def TFL_EluOp: TFL_Op<"elu", [
 
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
     [Pure,
-     PredOpTrait<"value and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 1>>,
      TFL_OperandHasRank<0, 1>,
      TFL_OperandHasRankAtLeast<1, 2>,
      DynamicRangeQuantizedOpInterface,
@@ -4052,7 +4050,7 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   let arguments = (ins
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
-    TFL_I32Tensor:$start_indices
+    TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (

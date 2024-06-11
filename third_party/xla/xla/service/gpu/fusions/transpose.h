@@ -60,7 +60,8 @@ namespace gpu {
 // efficient to launch fewer blocks so each transposes many tiles.
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
-  explicit TransposeFusion(const HloFusionAnalysis& analysis);
+  explicit TransposeFusion(const se::DeviceDescription& gpu_device_info,
+                           const HloFusionAnalysis& analysis);
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(

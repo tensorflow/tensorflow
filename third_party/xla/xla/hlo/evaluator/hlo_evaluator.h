@@ -244,12 +244,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // EvaluateInternal. Such partial evaluation reduces the computation and
   // memory overhead in cases where we need only one tuple element by avoiding
   // the evaluation of a full tuple.
-  Status EvaluateInternal(
+  absl::Status EvaluateInternal(
       const HloInstruction* instruction, const ShapeIndex& shape_index = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
-  Status EvaluateParameterFromCallerArgument(const HloInstruction* parameter,
-                                             const ShapeIndex& shape_index);
+  absl::Status EvaluateParameterFromCallerArgument(
+      const HloInstruction* parameter, const ShapeIndex& shape_index);
 
   // Helper method to extract a list of int64_t from evaluated instruction for
   // start_indices for DynamicSlice and DynamicUpdateSlice.
@@ -280,86 +280,88 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
   // Wraps around instruction handling to infer types before dispatching to
   // the corresponding typed Visitor.
-  Status DefaultAction(const HloInstruction* hlo) override {
+  absl::Status DefaultAction(const HloInstruction* hlo) override {
     return hlo->Visit(typed_visitors_[hlo->shape().element_type()].get());
   }
 
-  Status Preprocess(const HloInstruction* hlo) override;
-  Status Postprocess(const HloInstruction* hlo) override;
+  absl::Status Preprocess(const HloInstruction* hlo) override;
+  absl::Status Postprocess(const HloInstruction* hlo) override;
 
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
-  Status HandleBitcast(const HloInstruction* bitcast) override;
-  Status HandleBitcastConvert(const HloInstruction* convert) override;
-  Status HandleGetDimensionSize(
+  absl::Status HandleBitcast(const HloInstruction* bitcast) override;
+  absl::Status HandleBitcastConvert(const HloInstruction* convert) override;
+  absl::Status HandleGetDimensionSize(
       const HloInstruction* get_dimension_size) override;
-  Status HandleSetDimensionSize(
+  absl::Status HandleSetDimensionSize(
       const HloInstruction* set_dimension_size) override;
-  Status HandleParameter(const HloInstruction* parameter) override;
-  Status HandleInfeed(const HloInstruction* infeed) override;
-  Status HandleConstant(const HloInstruction* constant) override;
-  Status HandleConcatenate(const HloInstruction* concatenate) override;
-  Status HandleReshape(const HloInstruction* reshape) override;
-  Status HandleTranspose(const HloInstruction* transpose) override;
-  Status HandleIsFinite(const HloInstruction* is_finite) override;
-  Status HandleCompare(const HloInstruction* compare) override;
-  Status HandleTuple(const HloInstruction* tuple) override;
-  Status HandleFft(const HloInstruction* fft) override;
-  Status HandleGather(const HloInstruction* gather) override;
-  Status HandleScatter(const HloInstruction* hlo) override;
-  Status HandleGetTupleElement(
+  absl::Status HandleParameter(const HloInstruction* parameter) override;
+  absl::Status HandleInfeed(const HloInstruction* infeed) override;
+  absl::Status HandleConstant(const HloInstruction* constant) override;
+  absl::Status HandleConcatenate(const HloInstruction* concatenate) override;
+  absl::Status HandleReshape(const HloInstruction* reshape) override;
+  absl::Status HandleTranspose(const HloInstruction* transpose) override;
+  absl::Status HandleIsFinite(const HloInstruction* is_finite) override;
+  absl::Status HandleCompare(const HloInstruction* compare) override;
+  absl::Status HandleTuple(const HloInstruction* tuple) override;
+  absl::Status HandleFft(const HloInstruction* fft) override;
+  absl::Status HandleGather(const HloInstruction* gather) override;
+  absl::Status HandleScatter(const HloInstruction* hlo) override;
+  absl::Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleAsyncStart(const HloInstruction* async_start) override;
-  Status HandleAsyncUpdate(const HloInstruction* async_update) override;
-  Status HandleAsyncDone(const HloInstruction* async_done) override;
-  Status HandleCopy(const HloInstruction* copy) override;
-  Status HandleCopyStart(const HloInstruction* copy_start) override;
-  Status HandleCopyDone(const HloInstruction* copy_done) override;
-  Status HandleConditional(const HloInstruction* conditional) override;
-  Status HandleConvert(const HloInstruction* convert) override;
-  Status HandleCall(const HloInstruction* call) override;
-  Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
-  Status HandleDynamicUpdateSlice(const HloInstruction* dus) override;
-  Status HandleFusion(const HloInstruction* fusion) override;
-  Status HandleWhile(const HloInstruction* while_hlo) override;
-  Status HandleSelect(const HloInstruction* select) override;
-  Status HandleBroadcast(const HloInstruction* broadcast) override;
-  Status HandleAfterAll(const HloInstruction* after_all) override;
-  Status HandleAddDependency(const HloInstruction* add_dependency) override;
-  Status HandleReverse(const HloInstruction* reverse) override;
-  Status HandleSelectAndScatter(
+  absl::Status HandleAsyncStart(const HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(const HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(const HloInstruction* async_done) override;
+  absl::Status HandleCopy(const HloInstruction* copy) override;
+  absl::Status HandleCopyStart(const HloInstruction* copy_start) override;
+  absl::Status HandleCopyDone(const HloInstruction* copy_done) override;
+  absl::Status HandleConditional(const HloInstruction* conditional) override;
+  absl::Status HandleConvert(const HloInstruction* convert) override;
+  absl::Status HandleCall(const HloInstruction* call) override;
+  absl::Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
+  absl::Status HandleDynamicUpdateSlice(const HloInstruction* dus) override;
+  absl::Status HandleFusion(const HloInstruction* fusion) override;
+  absl::Status HandleWhile(const HloInstruction* while_hlo) override;
+  absl::Status HandleSelect(const HloInstruction* select) override;
+  absl::Status HandleBroadcast(const HloInstruction* broadcast) override;
+  absl::Status HandleAfterAll(const HloInstruction* after_all) override;
+  absl::Status HandleAddDependency(
+      const HloInstruction* add_dependency) override;
+  absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleSelectAndScatter(
       const HloInstruction* select_and_scatter) override;
-  Status HandleSlice(const HloInstruction* slice) override;
-  Status HandleSort(const HloInstruction* sort) override;
-  Status HandleStochasticConvert(
+  absl::Status HandleSlice(const HloInstruction* slice) override;
+  absl::Status HandleSort(const HloInstruction* sort) override;
+  absl::Status HandleStochasticConvert(
       const HloInstruction* stochastic_convert) override;
-  Status HandleReal(const HloInstruction* real) override;
-  Status HandleImag(const HloInstruction* imag) override;
-  Status HandleComplex(const HloInstruction* complex) override;
-  Status HandleReduce(const HloInstruction* hlo) override;
-  Status HandleReduceWindow(const HloInstruction* hlo) override;
-  Status HandleMap(const HloInstruction* map) override;
-  Status HandleCustomCall(const HloInstruction* custom_call) override;
+  absl::Status HandleReal(const HloInstruction* real) override;
+  absl::Status HandleImag(const HloInstruction* imag) override;
+  absl::Status HandleComplex(const HloInstruction* complex) override;
+  absl::Status HandleReduce(const HloInstruction* hlo) override;
+  absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
+  absl::Status HandleMap(const HloInstruction* map) override;
+  absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion
   // HLO pass to the HLO optimization pass during compilation, which can then be
   // handled by the evaluator.
-  Status HandleBatchNormGrad(const HloInstruction* batch_norm_grad) override {
+  absl::Status HandleBatchNormGrad(
+      const HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
   }
-  Status HandleBatchNormInference(
+  absl::Status HandleBatchNormInference(
       const HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
   }
-  Status HandleBatchNormTraining(
+  absl::Status HandleBatchNormTraining(
       const HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
   }
-  Status HandleOutfeed(const HloInstruction* outfeed) override {
+  absl::Status HandleOutfeed(const HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
   }
 

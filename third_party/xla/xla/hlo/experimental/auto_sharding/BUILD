@@ -2,7 +2,7 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 
 package(
@@ -79,7 +79,10 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + auto_sharding_deps(),
+    ] + xla_internal(
+        ["experimental/auto_sharding:auto_sharding_impl_internal"],
+        otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"],
+    ),
 )
 
 cc_library(
@@ -123,7 +126,10 @@ cc_library(
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:types",
-    ] + auto_sharding_solver_deps(),
+    ] + xla_internal(
+        ["experimental/auto_sharding:auto_sharding_solver_impl_internal"],
+        otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"],
+    ),
 )
 
 cc_library(
@@ -136,11 +142,11 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_ortools//ortools/linear_solver",
@@ -301,6 +307,7 @@ xla_cc_binary(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

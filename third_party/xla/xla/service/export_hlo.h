@@ -39,8 +39,8 @@ class SymbolUploader {
   virtual ~SymbolUploader() = default;
 
   // Returns a string identifying the uploaded HLO, or empty if the upload did
-  // not complete. We use optional rather than StatusOr because an upload error
-  // is not a compiler error.
+  // not complete. We use optional rather than absl::StatusOr because an upload
+  // error is not a compiler error.
   virtual std::optional<std::string> MaybeUploadUnoptimizedHloModule(
       HloModule* module,
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;

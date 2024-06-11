@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_MOCK_H_
 #define XLA_PYTHON_IFRT_MOCK_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -28,18 +29,27 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -112,6 +122,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, RemapArrays,
+              (const RemapPlan& plan,
+               absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(Future<>, GetReadyFuture,
+              (absl::Span<const tsl::RCReference<Value>> values), (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<tsl::RCReference<Value>> values), (final));
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
@@ -133,10 +150,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
-  MOCK_METHOD(
-      absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
-      GetTopologyForDevices, (const xla::ifrt::DeviceList& devices),
-      (const, final));
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
+              (const xla::ifrt::DeviceList& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
               GetDefaultLayoutForDevice,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
@@ -158,6 +173,10 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>, Compile,
               (std::unique_ptr<Program> program,
+               std::unique_ptr<CompileOptions> options),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, Compile,
+              (std::unique_ptr<Program> program, const Topology& topology,
                std::unique_ptr<CompileOptions> options),
               (final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>,

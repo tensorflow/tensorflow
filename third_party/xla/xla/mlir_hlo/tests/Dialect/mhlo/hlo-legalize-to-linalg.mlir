@@ -4719,6 +4719,50 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 
 // -----
 
+func.func @gather_batching_dims(%operand : tensor<5x4x8xi32>, %start_indices : tensor<8x5x1xi32>) -> tensor<8x5x8xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    someattr
+  } : (tensor<5x4x8xi32>, tensor<8x5x1xi32>) -> tensor<8x5x8xi32>
+  func.return %res : tensor<8x5x8xi32>
+}
+
+// CHECK: #[[MAP0:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL:   func @gather_batching_dims(
+// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
+// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
+// CHECK-SAME:    )
+// CHECK-DAG:       %[[C0:.+]] = arith.constant 0
+// CHECK-DAG:       %[[C3:.+]] = arith.constant 3
+// CHECK-DAG:       %[[INIT:.+]] = tensor.empty() : tensor<8x5x8xi32>
+// CHECK:           %[[RES:.+]] = linalg.generic
+// CHECK-SAME:           indexing_maps = [#[[MAP0]]],
+// CHECK-SAME:           iterator_types = ["parallel", "parallel", "parallel"]
+// CHECK-SAME:           outs(%[[INIT]] : tensor<8x5x8xi32>)
+// CHECK-SAME:           {someattr}
+// CHECK:           ^bb0
+// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C0]]] : tensor<8x5x1xi32>
+// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[S0]], %[[C0]]  : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C3]]
+// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IDX1]], %[[IN0]], %[[IDX2]]] : tensor<5x4x8xi32>
+// CHECK:             linalg.yield %[[Y]] : i32
+// CHECK-DAG:       return %[[RES]]
+
+// -----
+
 func.func @gather_unsigned_index(
     %operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xui32>)
     -> tensor<1x8x8xi32> {

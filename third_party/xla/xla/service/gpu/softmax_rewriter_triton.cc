@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -627,9 +626,15 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_version_);
-  if (!cuda_compute_capability || !cuda_compute_capability->IsAtLeastAmpere()) {
+  if (!cuda_compute_capability) {
     return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+        "Triton support is only enabled for CUDA GPUs.");
+  } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
   }
 
   std::vector<DiamondChainDescriptor> diamond_chains =

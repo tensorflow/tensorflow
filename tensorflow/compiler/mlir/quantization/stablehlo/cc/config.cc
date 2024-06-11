@@ -176,7 +176,6 @@ void ExpandWeightOnlyPtqPreset(QuantizationConfig& config) {
   // user-provided explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
   *new_specs.add_specs() = GetDefaultWeightOnlyPtqSpec();
-  // TODO: b/307625297 - Add per-channel weight only support.
 
   // Append user-provided specs to override existing specs.
   const QuantizationSpecs& previous_specs = config.specs();

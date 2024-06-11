@@ -97,7 +97,7 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
-                            [](HloModule* module) -> Status {
+                            [](HloModule* module) -> absl::Status {
                               BFloat16MixedPrecisionRemoval remover;
                               TF_RETURN_IF_ERROR(remover.Run(module).status());
                               Despecializer despecializer;

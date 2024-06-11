@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -79,6 +81,11 @@ class ModelRuntimeContext {
     flib_def_ = flib_def;
   }
 
+  tensorflow::DeviceMgr* device_mgr() const { return device_mgr_; }
+  void set_device_mgr(tensorflow::DeviceMgr* device_mgr) {
+    device_mgr_ = device_mgr;
+  }
+
   bool is_local_session() const { return is_local_session_; }
 
   void set_is_local_session(bool is_local_session) {
@@ -104,6 +111,7 @@ class ModelRuntimeContext {
   const GraphDef* graph_def_ = nullptr;
   const CallableOptions* callable_options_ = nullptr;
   tfrt::ResourceContext* resource_context_ = nullptr;
+  tensorflow::DeviceMgr* device_mgr_ = nullptr;
 
   FunctionLibraryDefinition* flib_def_ = nullptr;
 

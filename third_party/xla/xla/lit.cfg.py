@@ -24,7 +24,7 @@ import lit.formats
 
 
 config.name = "XLA"
-config.suffixes = [".cc", ".hlo", ".hlotxt", ".json", ".mlir", ".pbtxt", ".py"]
+config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py"]
 
 config.test_format = lit.formats.ShTest(execute_external=True)
 

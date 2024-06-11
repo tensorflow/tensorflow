@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -687,7 +688,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -723,7 +724,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -779,7 +780,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           module->entry_computation()->root_instruction();
-      Status s = instruction->set_backend_config(*backend_config);
+      absl::Status s = instruction->set_backend_config(*backend_config);
       return s.ok() ? ::testing::AssertionSuccess()
                     : ::testing::AssertionFailure() << s.message();
     }

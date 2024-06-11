@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -62,6 +64,13 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
+
+// Returns the computations within `module` whose instructions can still be
+// fused: computations that are not fusion computations, and not called
+// computations that are inlined (reducers, scatter combiners, etc.).
+std::vector<HloComputation*> GetFusibleComputations(
+    const HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads);
 
 // Returns projected shared memory usage of a given instruction in bytes.
 int64_t SharedMemoryUsage(const HloInstruction& instr,

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -36,23 +37,22 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
 
 // Write the tuple index buffers (arrays of pointers).
-static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
-                                         se::Stream* stream,
-                                         se::Stream* transfer_stream) {
+static absl::Status PopulateResultTupleBuffers(const ShapedBuffer& result,
+                                               se::Stream* stream,
+                                               se::Stream* transfer_stream) {
   TF_ASSIGN_OR_RETURN(
       auto transfer_manager,
       TransferManager::GetForPlatform(stream->parent()->GetPlatform()));

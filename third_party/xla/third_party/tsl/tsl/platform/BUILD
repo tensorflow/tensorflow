@@ -1455,6 +1455,7 @@ tsl_cc_test(
         "//tsl/platform/testdata:test_noop",
         "//tsl/platform/testdata:test_stderr",
     ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":path",
         ":strcat",
@@ -1705,6 +1706,12 @@ bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
     deps = tf_platform_alias("rules_cc_bzl"),
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["build_config_root.bzl"],
+    deps = tf_platform_alias("build_config_root_bzl"),
 )
 
 cc_library(

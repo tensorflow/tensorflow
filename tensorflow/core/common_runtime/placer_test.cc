@@ -213,6 +213,8 @@ REGISTER_OP("TestTypedConsumer").Input("i: variant");
 REGISTER_KERNEL_BUILDER(Name("TestTypedConsumer").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("TestTypedConsumer").Device("FakeGPU"), DummyOp);
 
+REGISTER_OP("ConvertToListOfCooTensorsV2").Input("i: int32");
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // A PlacerTest method has three phases:
@@ -1948,6 +1950,9 @@ REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeGPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("ConvertToListOfCooTensorsV2").Device("FakeCPU"),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Cast").Device("FakeCPU"), DummyOp);
 
 TEST_P(SoftPlacementPlacerTest,
        RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {
@@ -3106,6 +3111,127 @@ TEST_F(NestedPlacerTest, IndirectRecursion) {
       "{{function_node RecursiveF1}} which is already present in the call "
       "stack"))
       << s.ToString();
+}
+
+TEST_F(PlacerTest, IdentityMatchesInputAndOutputPlacement) {
+  /*
+   *     Op Input (assigned to task:1)
+   *       |
+   *       v
+   *     // Tests that this gets reassigned to task:1
+   *     Identity (No Assignment)
+   *       |
+   *       v
+   *     Op Output (assigned to task:1)
+   */
+  const std::string task0_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string task1_device = "/job:b/replica:0/task:1/device:FakeCPU:0";
+
+  GraphDef graph = GDef({
+      NDef("a", "_Arg", {}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity1", "Identity", {"a"}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity2", "Identity", {"identity1:0"}, {{"T", DT_FLOAT}}),
+      NDef("cast", "Cast", {"identity2:0"},
+           {{"SrcT", DT_FLOAT}, {"DstT", DT_INT32}}, task1_device),
+      NDef("COO", "ConvertToListOfCooTensorsV2", {"cast:0"}, {{"T", DT_INT32}},
+           task1_device),
+  });
+
+  Graph g(OpRegistry::Global());
+
+  DeviceSet multiple_tasks;
+  std::unique_ptr<Device> task0_cpu(FakeDevice::MakeCPU(task0_device));
+  multiple_tasks.AddDevice(task0_cpu.get());
+
+  std::unique_ptr<Device> task1_cpu(FakeDevice::MakeCPU(task1_device));
+  multiple_tasks.AddDevice(task1_cpu.get());
+
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+
+  absl::Status s = Place(&g, &multiple_tasks);
+  TF_ASSERT_OK(s);
+
+  Node* identity2 = GetNodeByName(g, "identity2");
+  EXPECT_EQ(identity2->assigned_device_name().c_str(), task1_device);
+}
+
+TEST_F(PlacerTest, IdentityWithoutOutputDoesntCrash) {
+  /*
+   *     Op Input (assigned to task:1)
+   *       |
+   *       v
+   *     // Tests that this doesn't crash.
+   *     Identity (No output)
+   */
+  const std::string task0_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string task1_device = "/job:b/replica:0/task:1/device:FakeCPU:0";
+
+  GraphDef graph = GDef({
+      NDef("a", "_Arg", {}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity1", "Identity", {"a"}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity2", "Identity", {"identity1:0"}, {{"T", DT_FLOAT}}),
+  });
+
+  Graph g(OpRegistry::Global());
+
+  DeviceSet multiple_tasks;
+  std::unique_ptr<Device> task0_cpu(FakeDevice::MakeCPU(task0_device));
+  multiple_tasks.AddDevice(task0_cpu.get());
+
+  std::unique_ptr<Device> task1_cpu(FakeDevice::MakeCPU(task1_device));
+  multiple_tasks.AddDevice(task1_cpu.get());
+
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+  Node* identity2 = GetNodeByName(g, "identity2");
+  const Edge* out_edge = *identity2->out_edges().begin();
+
+  g.RemoveEdge(out_edge);
+
+  absl::Status s = Place(&g, &multiple_tasks);
+  TF_ASSERT_OK(s);
+}
+
+TEST_F(PlacerTest, IdentityDoesntMatchWithMultipleOutput) {
+  /*
+   *     Op Input (assigned to task:1)
+   *       |
+   *       v
+   *     // Tests that identity gets assigned to default task:0
+   *     Identity (No Assignment)
+   *       |
+   *       v
+   *     Multiple Op Output (assigned to task:1)
+   */
+  const std::string task0_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string task1_device = "/job:b/replica:0/task:1/device:FakeCPU:0";
+
+  GraphDef graph = GDef({
+      NDef("a", "_Arg", {}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity1", "Identity", {"a"}, {{"T", DT_FLOAT}}, task1_device),
+      NDef("identity2", "Identity", {"identity1:0"}, {{"T", DT_FLOAT}}),
+      NDef("cast", "Cast", {"identity2:0"},
+           {{"SrcT", DT_FLOAT}, {"DstT", DT_INT32}}, task1_device),
+      NDef("COO", "ConvertToListOfCooTensorsV2", {"cast:0"}, {{"T", DT_INT32}},
+           task1_device),
+      NDef("identity3", "Identity", {"identity2:0"}, {{"T", DT_FLOAT}}),
+  });
+
+  Graph g(OpRegistry::Global());
+
+  DeviceSet multiple_tasks;
+  std::unique_ptr<Device> task0_cpu(FakeDevice::MakeCPU(task0_device));
+  multiple_tasks.AddDevice(task0_cpu.get());
+
+  std::unique_ptr<Device> task1_cpu(FakeDevice::MakeCPU(task1_device));
+  multiple_tasks.AddDevice(task1_cpu.get());
+
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+
+  absl::Status s = Place(&g, &multiple_tasks);
+  TF_ASSERT_OK(s);
+
+  Node* identity2 = GetNodeByName(g, "identity2");
+  EXPECT_EQ(identity2->assigned_device_name().c_str(), task0_device);
 }
 
 }  // namespace

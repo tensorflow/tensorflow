@@ -16,19 +16,17 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
 
 #include <memory>
-#include <optional>
-#include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/client/xla_computation.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/client/local_client.h"
@@ -158,15 +156,21 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
+  const int num_outputs = hlo_module->result_shape().IsTuple()
+                              ? hlo_module->result_shape().tuple_shapes_size()
+                              : 1;
   auto unique_module_group =
       std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler.CompileAheadOfTime(std::move(unique_module_group),
                                       aot_options));
+  std::vector<std::vector<absl::string_view>> output_memory_kinds(1);
+  output_memory_kinds[0].resize(num_outputs,
+                                StreamExecutorGpuHbmMemorySpace::kKind);
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name, fingerprint);
+      num_partitions, name, fingerprint, std::move(output_memory_kinds));
 #else
   return absl::InternalError(
       "GPU Compilation requires the target to be built with CUDA or "

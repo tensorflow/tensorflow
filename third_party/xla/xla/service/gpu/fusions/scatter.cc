@@ -28,23 +28,30 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -276,7 +283,7 @@ std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
         RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
         /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
-    scatter_indices_map.Simplify(GetIndexingMapForInstruction);
+    scatter_indices_map.Simplify();
     return scatter_indices_map;
   }
   return scatter_update_map;

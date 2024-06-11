@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessMultinomial"
   input_arg {
     name: "logits"

@@ -572,12 +572,11 @@ int TfLiteTypeGetSize(TfLiteType type) {
 bool IsMobilePlatform() {
 #if defined(ANDROID) || defined(__ANDROID__)
   return true;
-#elif defined(__APPLE__)
-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#elif defined(__APPLE__) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
   return true;
-#endif
-#endif
+#else
   return false;
+#endif
 }
 
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {

@@ -40,7 +40,11 @@ cc_library(
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",
         ],
-    }),
+    }) + [
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "@local_tsl//tsl/platform:status",
+    ],
 )
 
 tf_cc_test(
@@ -50,9 +54,11 @@ tf_cc_test(
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

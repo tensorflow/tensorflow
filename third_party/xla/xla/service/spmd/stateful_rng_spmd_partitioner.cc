@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
+absl::Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
     HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
@@ -43,7 +43,7 @@ Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
   SetPartitionedHlo(
       hlo, spmd::PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>
@@ -57,7 +57,7 @@ StatefulRngSpmdPartitioner::CreateVisitor(
       next_channel_id, logger, std::move(options), this, call_graph);
 }
 
-Status StatefulRngSpmdPartitioner::PreprocessSharding(
+absl::Status StatefulRngSpmdPartitioner::PreprocessSharding(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // For rng-get-and-update-status with no sharding, set sharding to be

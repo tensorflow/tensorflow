@@ -181,7 +181,7 @@ class OpsTestBase : public ::testing::Test {
 
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs
 
-  gtl::InlinedVector<TensorValue, 4> inputs_;
+  absl::InlinedVector<TensorValue, 4> inputs_;
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
   // Copies of the outputs in unified memory (host and device accessible).

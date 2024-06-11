@@ -14,11 +14,12 @@
 # limitations under the License.
 # ==============================================================================
 if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
-  # Simple retry logic for docker-pull errors. Sleeps for 15s if a pull fails.
+  # Simple retry logic for docker-pull errors. Sleeps if a pull fails.
   # Pulling an already-pulled container image will finish instantly, so
   # repeating the command costs nothing.
   docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
-  docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
+  docker pull "$TFCI_DOCKER_IMAGE" || sleep 30
+  docker pull "$TFCI_DOCKER_IMAGE" || sleep 60
   docker pull "$TFCI_DOCKER_IMAGE"
 fi 
 

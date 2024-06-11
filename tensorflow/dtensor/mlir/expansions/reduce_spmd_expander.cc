@@ -111,7 +111,7 @@ template <>
 Status ExtractDims<mlir::TF::L2LossOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return absl::OkStatus();
   auto loss_op = llvm::cast<mlir::TF::L2LossOp>(op);
   *reduced_dims = llvm::SmallVector<int64_t, 4>{};
   reduced_dims->resize(ValueRank(loss_op->getOperand(0)));
@@ -120,23 +120,23 @@ Status ExtractDims<mlir::TF::L2LossOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return absl::OkStatus();
   auto bias_add_grad_op = llvm::cast<mlir::TF::BiasAddGradOp>(op);
   auto data_format = bias_add_grad_op.getDataFormat();
   // rank is at least 2 (required by BiasAddGrad).
   int rank = ValueRank(bias_add_grad_op->getOperand(0));
-  if (data_format.equals("NHWC")) {
+  if (data_format == "NHWC") {
     for (int dim = 0; dim < rank - 1; ++dim) {
       reduced_dims->push_back(dim);
     }
-  } else if (data_format.equals("NCHW")) {
+  } else if (data_format == "NCHW") {
     for (int dim = 0; dim < rank; ++dim) {
       if (dim == 1) continue;
       reduced_dims->push_back(dim);
@@ -147,18 +147,18 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::EncodePngOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return absl::OkStatus();
   *reduced_dims = {-3, -2, -1};
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractReductionParameters(mlir::Operation* op,

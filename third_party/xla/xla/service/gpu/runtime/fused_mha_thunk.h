@@ -53,6 +53,7 @@ class FusedMHAThunk : public Thunk {
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
 
+  absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
@@ -101,6 +102,7 @@ class FusedMHABackwardThunk : public Thunk {
   FusedMHABackwardThunk(const FusedMHABackwardThunk&) = delete;
   FusedMHABackwardThunk& operator=(const FusedMHABackwardThunk&) = delete;
 
+  absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:

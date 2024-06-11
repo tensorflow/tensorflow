@@ -55,6 +55,9 @@ def Clamp: NativeCodeCall<
     "  $0.getLoc(),"
     "  $2.getType(), $2, $1, $3)">;
 
+def CopyXlaOutsideCompilationAttr: NativeCodeCallVoid<
+    "CopyXlaOutsideCompilationAttributesAdaptor($0, $1)">;
+
 def DecomposeAssignAddVariableOp :
   Pat<
     (TF_AssignAddVariableOp:$src_op $resource, $value),
@@ -338,12 +341,12 @@ def DecomposeResourceApplyAdamNesterov :
 def DecomposeResourceGather : Pat<
   (TF_ResourceGatherOp:$old_result
     $resource, $indices, $batch_dims, $validate_indices),
-  (TF_GatherV2Op
+  (TF_GatherV2Op:$dest
     (CreateTFReadVariableOp $old_result, $old_result, $resource),
     $indices,
     (TF_ConstOp $batch_dims), // axis
     $batch_dims
-  )>;
+  ), [], [(CopyXlaOutsideCompilationAttr $old_result, $dest)]>;
 
 // Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
 // tf.TensorScatterAdd, and tf.AssignVariable.

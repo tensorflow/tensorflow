@@ -62,8 +62,6 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
-  HloModuleConfig config;
-  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -72,8 +70,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       y = f32[5,14]{1,0} parameter(1)
       reshape = f32[5,7,2]{2,1,0} reshape(y)
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
-    })",
-                                             config)
+    })")
                     .value();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
@@ -85,11 +82,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
                      /*match_optimized_ir=*/true);
 }
 
-#if TENSORFLOW_USE_ROCM
-#else
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
-  HloModuleConfig config;
-  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -99,8 +92,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       reshape = f32[7,2]{1,0} reshape(y)
       broadcast = f32[5,7,2]{2,1,0} broadcast(reshape), dimensions={1,2}
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
-    })",
-                                             config)
+    })")
                     .value();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
@@ -117,55 +109,36 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       )",
                      /*match_optimized_ir=*/true);
 }
-#endif
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule  test_module
 
     ENTRY CompatibleUseLinearIndexWithSizeOneDimensions  {
       x = f32[1,1024,1,256]{3,2,1,0} parameter(0)
       ROOT y = f16[1,1024,1,256]{3,2,1,0} convert(x)
-    })",
-                                             config)
+    })")
                     .value();
 
-  // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
                      R"(
-; CHECK-LABEL: @wrapped_convert
-; CHECK: icmp ult i32 %[[linear_index:.*]], 262144
-; CHECK: %[[ld_addr_base:.*]] = getelementptr float, ptr {{.*}}, i32 %[[linear_index]]
-; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr %[[ld_addr_base]], i32 0
-; CHECK: load float, ptr %[[ld_addr]]
-; CHECK: %[[st_addr_base:.*]] = getelementptr half, ptr {{.*}}, i32 %[[linear_index]]
-; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr %[[st_addr_base]], i32 0
-; CHECK: store half {{.*}}, ptr %[[st_addr]]
+; CHECK-NOT: udiv
+; CHECK-NOT: urem
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
+TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithBitcastTranspose) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule  test_module
 
     ENTRY CompatibleUseLinearIndexWithTranspose  {
-      x = f32[2,1024,3,256]{3,2,1,0} parameter(0)
-      y = f32[1024,2,256,3]{2,3,0,1} parameter(1)
-      transpose = f32[1024,2,256,3]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
-      ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
-    })",
-                                             config)
+      x = f32[1024,2,256,3]{2,3,0,1} parameter(0)
+      y = f32[2,1024,3,256]{3,2,1,0} parameter(1)
+      transpose = f32[2,1024,3,256]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
+      ROOT gte = pred[2,1024,3,256]{3,2,1,0} compare(transpose, y), direction=GE
+    })")
                     .value();
-  // Check the optimized IR contains no udiv and urem.
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK-NOT: udiv

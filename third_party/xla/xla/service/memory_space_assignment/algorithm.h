@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 
@@ -684,8 +684,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // For the given loop with the start and end index and loop size, run the
   // MemoryBoundLoopOptimizer and record its outputs into
   // optimized_allocations_map_.
-  Status OptimizeMemoryBoundLoop(int loop_start_idx, int loop_end_idx,
-                                 int loop_size);
+  absl::Status OptimizeMemoryBoundLoop(int loop_start_idx, int loop_end_idx,
+                                       int loop_size);
 
   // Identify memory-bound loops in the graph and call OptimizeMemoryBoundLoop
   // for the found loops.
@@ -945,7 +945,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Helper functions to implement ImportRepackedAllocations.
   void ImportRepackedNonSlicedAllocation(RepackAllocationBlock& block);
   void ImportRepackedSlicedAllocation(RepackAllocationBlock& block);
-  Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
+  absl::Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(

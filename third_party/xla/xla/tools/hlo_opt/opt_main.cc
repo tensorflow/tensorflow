@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/status.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -168,7 +167,7 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   return out_combined;
 }
 
-Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
+absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
   if (opts.output_file == "-") {
     std::cout << output << std::endl;
@@ -176,7 +175,7 @@ Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
     TF_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), opts.output_file, output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

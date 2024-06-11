@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -84,7 +84,8 @@ constexpr char kSPMDOpRotateRight[] = "_SPMDInternalOp_RotateRight";
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
+    HloInstruction* hlo) {
   if (!hlo->operand(0)->has_sharding()) {
     return DefaultAction(hlo);
   }
@@ -251,10 +252,10 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
+absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
@@ -281,7 +282,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   amount %= full_size;
   if (amount == 0) {
     SetPartitionedHlo(hlo, input);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // First step: rotate `amount` on padded data. E.g., before
@@ -344,7 +345,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* rotated0 = rotate_with_padding(amount);
   if (right_padding == 0) {
     SetPartitionedHlo(hlo, [&] { return rotated0; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Second step: perform another rotate from input, with `right_padding` added
@@ -380,7 +381,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     return b_.AddInstruction(HloInstruction::CreateTernary(
         rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
@@ -390,7 +391,7 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
                                           kSPMDOpRotateRight, opaque);
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
     return partitioner->Partition(this, hlo);
   }
@@ -408,7 +409,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
@@ -419,7 +420,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     CHECK(ShapeUtil::Compatible(
         copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
@@ -451,7 +452,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       }
       return instr;
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == "TopK") {
@@ -476,7 +477,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     SetPartitionedHlo(hlo, PartitionedHlo(move_to_device, hlo->shape(),
                                           MakePartitioningState())
                                .Reshard(hlo->sharding()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return DefaultAction(hlo);

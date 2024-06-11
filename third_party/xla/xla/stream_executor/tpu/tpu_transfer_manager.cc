@@ -36,9 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
-#include "xla/stream_executor/tpu/proto_helper.h"
 #include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_executor.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
@@ -49,9 +47,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-
-template <typename T>
-using StatusOr = absl::StatusOr<T>;
 
 TpuTransferManager::TpuTransferManager() {
   manager_ = stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_NewFn();
@@ -95,9 +90,7 @@ absl::Status TpuTransferManager::TransferLiteralToDeviceAsync(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_TransferLiteralToDeviceAsyncFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           &c_literal, &c_device_buffer, status.c_status);
   ApiConverter::Destroy(&c_device_buffer);
   ApiConverter::Destroy(&c_literal);
@@ -226,9 +219,7 @@ void TpuTransferManager::TransferLiteralFromDevice(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_TransferLiteralFromDeviceFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           &c_device_buffer, &c_literal, TransferLiteralFromDeviceTrampoline,
           state);
   ApiConverter::Destroy(&c_device_buffer);
@@ -248,7 +239,7 @@ int64_t TpuTransferManager::GetByteSizeRequirement(
   return size_in_bytes;
 }
 
-StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
+absl::StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
     const xla::Shape& host_shape) const {
   XLA_Shape c_host_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
@@ -314,9 +305,7 @@ absl::Status TpuTransferManager::WriteSingleTupleIndexTable(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_WriteSingleTupleIndexTableFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           elements_bases, elements.size(), &c_shape, &region_base,
           status.c_status);
 
@@ -368,8 +357,7 @@ absl::Status TpuTransferManager::ReadDynamicShapes(
   XLA_Shape c_updated_shape;
   StatusHelper status;
   stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_ReadDynamicShapesFn(
-      TpuPlatform::GetRegisteredPlatform()->LookupStream(
-          stream->implementation()),
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
       &c_device_buffer, c_device_shape, &c_updated_shape, status.c_status);
   ApiConverter::Destroy(&c_device_buffer);
   ApiConverter::Destroy(&c_device_shape);

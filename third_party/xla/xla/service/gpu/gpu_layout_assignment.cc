@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/util/env_var.h"
@@ -128,6 +127,12 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  const auto* rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  if (rocm_compute_capability && input_ty == F16) return kAllNHWC;
+
+  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+  // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
   if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
     // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is

@@ -409,8 +409,6 @@ def _run_function_for_calibration_eager_mode(
     # This conversion is required because the model saved in `model_dir` is
     # saved using TF1 SavedModelBuilder, which doesn't save the
     # SavedObjectGraph.
-    # TODO(b/236795224): Remove the need for this conversion by keeping the
-    # FunctionSpec (object graph) in the SavedModel. Related: b/213406917.
     func_kwargs = _convert_values_to_tf_tensors(sample)
     func(**func_kwargs)
 

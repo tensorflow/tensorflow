@@ -44,10 +44,12 @@ class InPlaceDynamicUpdateSliceFusionTest : public HloTestBase {
  protected:
   AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
+  stream_executor::DeviceDescription device_info_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
 TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     fused_computation {
@@ -64,18 +66,13 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
       i1 = s32[] constant(3)
       ROOT fusion = f32[20,30] fusion(in, updates, i0, i1), kind=kLoop, calls=fused_computation
     }
-  )")
-                    .value();
-
-  stream_executor::DeviceDescription device_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  )"));
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused = AnalyzeFusion(*root, device_info);
+  auto analysis_fused = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto fusion = dynamic_cast<InPlaceDynamicUpdateSliceFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
@@ -98,6 +95,43 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
   auto thread_id_dst_indexing = fusion->ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
   EXPECT_THAT(thread_id_dst_indexing, ::testing::Eq(std::nullopt));
+}
+
+TEST_F(InPlaceDynamicUpdateSliceFusionTest, ProduceConsumerFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    fused_computation.1 {
+      param_0 = bf16[1,2,5,1,2] parameter(0)
+      bitcast = bf16[1,5,1,2,2] bitcast(param_0)
+      param_1 = bf16[1,1,1,2,2] parameter(1)
+      param_2 = s32[] parameter(2)
+      param_3 = s32[] parameter(3)
+      ROOT dynamic-update-slice = bf16[1,5,1,2,2] dynamic-update-slice(bitcast, param_1, param_2, param_3, param_2, param_2, param_2)
+    }
+
+    ENTRY entry_computation {
+      param_0.2 = bf16[1,2,5,1,2] parameter(3)
+      param_1.2 = bf16[1,1,1,2,2] parameter(0)
+      param_2.2 = s32[] parameter(1)
+      param_3.2 = s32[] parameter(2)
+      fusion = bf16[1,5,1,2,2] fusion(param_0.2, param_1.2, param_2.2, param_3.2), kind=kLoop, calls=fused_computation.1
+      ROOT bitcast.1 = bf16[1,2,5,1,2] bitcast(fusion)
+    }
+  )"));
+
+  auto* root = module->entry_computation()->root_instruction();
+
+  auto analysis_fused =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info_);
+
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
+
+  auto fusion = dynamic_cast<InPlaceDynamicUpdateSliceFusion*>(emitter.get());
+
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->launch_dimensions().launch_bound(), 4 /* update size */);
 }
 
 }  // namespace

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdbool.h>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 
 namespace mlir {
 class ModuleOp;
@@ -35,10 +35,10 @@ class HloModuleProto;
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto const* hlo_module,
-                           bool import_all_computations = false,
-                           bool flatten_computation_args_result = false);
+absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
+                                 xla::HloModuleProto const* hlo_module,
+                                 bool import_all_computations = false,
+                                 bool flatten_computation_args_result = false);
 
 // Converts an HLO module to a MLIR module in HLO dialect.
 //
@@ -47,9 +47,10 @@ Status ConvertHloToMlirHlo(mlir::ModuleOp module,
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
-                           bool import_all_computations = false,
-                           bool flatten_computation_args_result = false);
+absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
+                                 xla::HloModule* hlo_module,
+                                 bool import_all_computations = false,
+                                 bool flatten_computation_args_result = false);
 
 }  // namespace xla
 

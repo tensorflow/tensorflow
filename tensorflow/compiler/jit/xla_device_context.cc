@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor_reference.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -171,8 +172,8 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
         host_to_device_stream_.get(), literal, xla_tensor->shaped_buffer()));
 
     if (UseMultipleStreams()) {
-      auto event = std::make_shared<se::Event>(stream_->parent());
-      TF_RET_CHECK(event->Init()) << "Event failed to initialize!";
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<se::Event> event,
+                          stream_->parent()->CreateEvent());
       TF_RETURN_IF_ERROR(host_to_device_stream_->RecordEvent(event.get()));
       xla_tensor->ResetDefinitionEvent(std::move(event),
                                        host_to_device_stream_.get());

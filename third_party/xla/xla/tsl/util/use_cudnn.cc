@@ -27,14 +27,15 @@ limitations under the License.
 
 namespace tsl {
 
-#define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
-  bool func_name() {                                                       \
-    bool value = default_value;                                            \
-    Status status = ReadBoolFromEnvVar(#flag_name, default_value, &value); \
-    if (!status.ok()) {                                                    \
-      LOG(ERROR) << status;                                                \
-    }                                                                      \
-    return value;                                                          \
+#define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value) \
+  bool func_name() {                                             \
+    bool value = default_value;                                  \
+    absl::Status status =                                        \
+        ReadBoolFromEnvVar(#flag_name, default_value, &value);   \
+    if (!status.ok()) {                                          \
+      LOG(ERROR) << status;                                      \
+    }                                                            \
+    return value;                                                \
   }
 
 bool CudnnUseFrontend() {
@@ -43,8 +44,8 @@ bool CudnnUseFrontend() {
 #if GOOGLE_CUDA
     if (CUDNN_VERSION >= 8100) {
       // cuDNN 8.1.0 + the frontend has issues regarding fused convolution.
-      Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND",
-                                         CUDNN_VERSION >= 8200, &value);
+      absl::Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND",
+                                               CUDNN_VERSION >= 8200, &value);
       if (!status.ok()) {
         LOG(ERROR) << status;
       }
@@ -64,7 +65,7 @@ bool CudnnUseRuntimeFusion() {
     bool value = false;
 #if GOOGLE_CUDA
     if (CUDNN_VERSION >= 8400) {
-      Status status =
+      absl::Status status =
           ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
       if (!status.ok()) {
         LOG(ERROR) << status;
@@ -99,14 +100,15 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
                     TF_DEBUG_CUDNN_RNN_USE_TENSOR_OPS, false);
 #undef ADD_BOOL_CUDNN_FLAG
 
-#define ADD_INT64_CUDNN_FLAG(func_name, flag_name, default_value)           \
-  int64_t func_name() {                                                     \
-    int64_t value = default_value;                                          \
-    Status status = ReadInt64FromEnvVar(#flag_name, default_value, &value); \
-    if (!status.ok()) {                                                     \
-      LOG(ERROR) << status;                                                 \
-    }                                                                       \
-    return value;                                                           \
+#define ADD_INT64_CUDNN_FLAG(func_name, flag_name, default_value) \
+  int64_t func_name() {                                           \
+    int64_t value = default_value;                                \
+    absl::Status status =                                         \
+        ReadInt64FromEnvVar(#flag_name, default_value, &value);   \
+    if (!status.ok()) {                                           \
+      LOG(ERROR) << status;                                       \
+    }                                                             \
+    return value;                                                 \
   }
 // Cudnn RNN algorithm to use for both forward and backward pass. Only effective
 // when TF_DEBUG_CUDNN_RNN is true. See Nvidia Cudnn manual for allowed

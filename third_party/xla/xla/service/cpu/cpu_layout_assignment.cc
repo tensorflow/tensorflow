@@ -120,7 +120,7 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
   return false;
 }
 
-Status CpuLayoutAssignment::AddBackendConstraints(
+absl::Status CpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   ShouldMakeOperandColMajorCache cache;
 
@@ -185,7 +185,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla

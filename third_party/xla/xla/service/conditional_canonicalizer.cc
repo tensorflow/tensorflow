@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
+absl::Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
   for (auto* branch : conditional->called_computations()) {
     HloInstruction* root = branch->root_instruction();
@@ -39,7 +39,7 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
   auto gte = parent->AddInstruction(
       HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
   TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

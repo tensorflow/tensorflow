@@ -18,18 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "llvm/ADT/TypeSwitch.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -38,12 +31,12 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/service_executable_run_options.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -67,7 +60,8 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
       call_target_(std::move(call_target)),
       opaque_(opaque) {}
 
-CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
+CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
+                                 XLA_FFI_Handler_Bundle bundle,
                                  std::vector<std::optional<Slice>> operands,
                                  std::vector<std::optional<Slice>> results,
                                  AttributesMap attributes,
@@ -75,7 +69,7 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
     : Thunk(Thunk::kCustomCall, thunk_info),
       operands_(std::move(operands)),
       results_(std::move(results)),
-      handler_(std::move(handler)),
+      bundle_(bundle),
       attributes_(std::move(attributes)),
       called_computation_(called_computation) {}
 
@@ -116,7 +110,16 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 #endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
+absl::Status CustomCallThunk::ExecuteFfiHandler(
+    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+    int32_t device_ordinal, se::Stream* stream,
+    se::DeviceMemoryAllocator* allocator,
+    const ffi::ExecutionContext* execution_context,
+    const BufferAllocations* buffer_allocations) {
+  if (handler == nullptr) {
+    return absl::InternalError("FFI execute handler is not set");
+  }
+
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
@@ -128,9 +131,9 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     if (!operand->slice.allocation())
       return Internal("custom call argument missing buffer allocation");
 
-    builder.AddBufferArg(
-        params.buffer_allocations->GetDeviceAddress(operand->slice),
-        operand->shape.element_type(), operand->shape.dimensions());
+    builder.AddBufferArg(buffer_allocations->GetDeviceAddress(operand->slice),
+                         operand->shape.element_type(),
+                         operand->shape.dimensions());
   }
 
   for (auto& result : results_) {
@@ -139,9 +142,9 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     if (!result->slice.allocation())
       return Internal("custom call result missing buffer allocation");
 
-    builder.AddBufferRet(
-        params.buffer_allocations->GetDeviceAddress(result->slice),
-        result->shape.element_type(), result->shape.dimensions());
+    builder.AddBufferRet(buffer_allocations->GetDeviceAddress(result->slice),
+                         result->shape.element_type(),
+                         result->shape.dimensions());
   }
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -150,114 +153,40 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler
-  // execution context, as apparently it's not easily accessible from Thunk.
-  ExecutableRunOptions run_options;
-  run_options.set_stream(params.stream);
-  run_options.set_allocator(params.buffer_allocations->memory_allocator());
-  run_options.set_device_ordinal(params.buffer_allocations->device_ordinal());
-  ServiceExecutableRunOptions service_run_options(run_options);
+  CallOptions options = {device_ordinal, stream, allocator, called_computation_,
+                         execution_context};
+  return Call(bundle_->execute, call_frame, options, stage);
+}
 
-  CallOptions options = {&service_run_options, called_computation_};
-  return Call(handler_, call_frame, options);
+absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
+                                      ResourceRequests& resource_requests) {
+  if (bundle_ && bundle_->prepare) {
+    return absl::InternalError("FFI prepare stage is not yet supported");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
+  if (!bundle_ || !bundle_->initialize) {
+    return absl::OkStatus();
+  }
+
+  return ExecuteFfiHandler(
+      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
+      params.buffer_allocations->device_ordinal(), params.stream,
+      params.buffer_allocations->memory_allocator(),
+      params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return handler_ ? ExecuteFfiHandler(params) : ExecuteCustomCall(params);
-}
-
-absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
-    mlir::DictionaryAttr dict) {
-  CustomCallThunk::AttributesMap attributes;
-  for (auto& kv : dict) {
-    std::string_view name = kv.getName().strref();
-
-    auto boolean = [&](mlir::BoolAttr boolean) {
-      attributes[name] = static_cast<bool>(boolean.getValue());
-      return absl::OkStatus();
-    };
-
-    auto integer = [&](mlir::IntegerAttr integer) {
-      switch (integer.getType().getIntOrFloatBitWidth()) {
-        case 1:
-          attributes[name] = static_cast<bool>(integer.getInt());
-          return absl::OkStatus();
-        case 8:
-          attributes[name] = static_cast<int8_t>(integer.getInt());
-          return absl::OkStatus();
-        case 16:
-          attributes[name] = static_cast<int16_t>(integer.getInt());
-          return absl::OkStatus();
-        case 32:
-          attributes[name] = static_cast<int32_t>(integer.getInt());
-          return absl::OkStatus();
-        case 64:
-          attributes[name] = static_cast<int64_t>(integer.getInt());
-          return absl::OkStatus();
-        default:
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Unsupported integer attribute bit width for attribute: ", name));
-      }
-    };
-
-    auto fp = [&](mlir::FloatAttr fp) {
-      switch (fp.getType().getIntOrFloatBitWidth()) {
-        case 32:
-          attributes[name] = static_cast<float>(fp.getValue().convertToFloat());
-          return absl::OkStatus();
-        case 64:
-          attributes[name] =
-              static_cast<double>(fp.getValue().convertToDouble());
-          return absl::OkStatus();
-        default:
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Unsupported float attribute bit width for attribute: ", name));
-      }
-    };
-
-    auto arr = [&](mlir::DenseArrayAttr arr) {
-      if (auto dense = mlir::dyn_cast<mlir::DenseI8ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else if (auto dense = mlir::dyn_cast<mlir::DenseI16ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else if (auto dense = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else if (auto dense = mlir::dyn_cast<mlir::DenseF32ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else if (auto dense = mlir::dyn_cast<mlir::DenseF64ArrayAttr>(arr)) {
-        attributes[name] = dense.asArrayRef().vec();
-        return absl::OkStatus();
-      } else {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Unsupported array element type for attribute: ", name));
-      }
-    };
-
-    auto str = [&](mlir::StringAttr str) {
-      attributes[name] = str.getValue().str();
-      return absl::OkStatus();
-    };
-
-    TF_RETURN_IF_ERROR(
-        llvm::TypeSwitch<mlir::Attribute, Status>(kv.getValue())
-            .Case<mlir::BoolAttr>(boolean)
-            .Case<mlir::IntegerAttr>(integer)
-            .Case<mlir::FloatAttr>(fp)
-            .Case<mlir::DenseArrayAttr>(arr)
-            .Case<mlir::StringAttr>(str)
-            .Default([&](mlir::Attribute) {
-              return absl::InvalidArgumentError(absl::StrCat(
-                  "Unsupported attribute type for attribute: ", name));
-            }));
+  if (bundle_.has_value()) {
+    return ExecuteFfiHandler(
+        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
+        params.buffer_allocations->device_ordinal(), params.stream,
+        params.buffer_allocations->memory_allocator(),
+        params.ffi_execution_context, params.buffer_allocations);
   }
-  return attributes;
+  return ExecuteCustomCall(params);
 }
 
 }  // namespace gpu

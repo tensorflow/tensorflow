@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -48,11 +52,11 @@ class SymbolicTileAnalysis {
   // a diagnostic if the construction fails for any reason.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
       const HloComputation& computation, mlir::MLIRContext* ctx);
+  static SymbolicTileAnalysisOrError AnalyzeFusion(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
-  // Result vector has instructions in def-before-use order.
-  absl::StatusOr<std::vector<std::unique_ptr<TiledHloInstruction>>>
-  ComputeTiledHloInstructions(
+  absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
       const std::vector<int64_t>& tile_parameters) const;
 
   // Returns the tiled root instruction.
@@ -68,6 +72,11 @@ class SymbolicTileAnalysis {
 
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
+
+  // Returns a string representation of the analysis. Used only for error
+  // messages and debugging.
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
 
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>

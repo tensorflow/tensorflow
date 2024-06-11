@@ -101,7 +101,7 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
-  // returns false as the StatusOr value.
+  // returns false as the absl::StatusOr value.
   //
   // These three overloads all do the same thing.  The && overload lets you do
   // `RunHloPass(MyPass(), module)` all in one line.  The reason for the
@@ -121,7 +121,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Runs the hlo_pass with the provided module group and returns the result.
   // This method runs the input HLO module group pass for a `HloModuleGroup` and
   // it also verifies the module group remains unchanged when hlo_pass returns
-  // false as the StatusOr value.
+  // false as the absl::StatusOr value.
   static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
                                          HloModuleGroup* module_group);
 

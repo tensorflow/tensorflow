@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "tsl/platform/errors.h"
@@ -111,8 +112,9 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     if (copies.empty()) {
       continue;
     }
-    auto dynamic_update_slices = GetOutputDefiningDynamicUpdateSlices(
-        GetFusionRoots(*fused_computation));
+    auto fusion_adaptor = HloFusionAdaptor::ForComputation(fused_computation);
+    auto dynamic_update_slices =
+        GetOutputDefiningDynamicUpdateSlices(fusion_adaptor->GetRoots());
     // Skip dynamic update slice fusions which might be emitted in-place.
     if (!dynamic_update_slices.empty() &&
         (root->opcode() != HloOpcode::kTuple ||

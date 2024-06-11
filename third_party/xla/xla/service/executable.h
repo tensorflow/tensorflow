@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -95,7 +96,7 @@ class ExecutionInput {
     return host_shape_ != nullptr ? *host_shape_ : shape();
   }
 
-  Status SetDynamicShape(Shape dynamic_shape);
+  absl::Status SetDynamicShape(Shape dynamic_shape);
 
   absl::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
       se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
@@ -405,6 +406,12 @@ class Executable {
   // the program has finished since XRT doesn't support async deallocation.
   void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                  ExecutionOutput& result);
+
+  // Returns the allocations resulting from buffer assignment, or an empty span
+  // if unimplemented.
+  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+    return {};
+  }
 
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to

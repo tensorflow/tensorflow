@@ -71,7 +71,7 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-XLA_TEST_P(SelectAndScatterTest, ParamTest) {
+XLA_TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) {
   auto operand_shape = GetParam().operand_shape;
   Array<float> o(operand_shape);
   o.FillRandom(1.5f);

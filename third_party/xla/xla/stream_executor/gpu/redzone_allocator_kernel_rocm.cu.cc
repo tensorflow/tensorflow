@@ -20,14 +20,14 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 
 namespace {
 __global__ void redzone_checker_kernel(uint8_t* input_buffer,
                                        uint8_t redzone_pattern,
                                        uint64_t buffer_length,
-                                       int* out_mismatched_ptr) {
+                                       uint32_t* out_mismatched_ptr) {
   uint64_t idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= buffer_length) return;
   if (input_buffer[idx] != redzone_pattern) atomicAdd(out_mismatched_ptr, 1);
@@ -36,13 +36,13 @@ __global__ void redzone_checker_kernel(uint8_t* input_buffer,
 
 namespace stream_executor {
 
-absl::StatusOr<const RedzoneAllocator::ComparisonKernel*> GetComparisonKernel(
+absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
     StreamExecutor* executor, GpuAsmOpts /*gpu_asm_opts*/) {
-  static auto kernel =
-      TypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
-                  DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
-                                                  reinterpret_cast<void*>(
-                                                      redzone_checker_kernel));
+  static auto kernel = TypedKernelFactory<
+      DeviceMemory<uint8>, uint8, uint64_t,
+      DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
+                                      reinterpret_cast<void*>(
+                                          redzone_checker_kernel));
 
   if (!kernel.ok()) return kernel.status();
   return &kernel.value();

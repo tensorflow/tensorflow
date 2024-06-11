@@ -18,15 +18,14 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
 // A wrapper around ModuleHandle that uses RAII to manage its lifetime.
 class ScopedModuleHandle {
  public:
-  ScopedModuleHandle(StreamExecutorInterface* executor,
-                     ModuleHandle module_handle)
+  ScopedModuleHandle(StreamExecutor* executor, ModuleHandle module_handle)
       : executor_(executor), module_handle_(module_handle) {}
 
   ScopedModuleHandle(ScopedModuleHandle&& other) {
@@ -51,7 +50,7 @@ class ScopedModuleHandle {
   }
 
  private:
-  StreamExecutorInterface* executor_;
+  StreamExecutor* executor_;
   ModuleHandle module_handle_;
 
   ScopedModuleHandle(const ScopedModuleHandle&) = delete;

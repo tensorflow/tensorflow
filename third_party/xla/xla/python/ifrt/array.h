@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/status.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {

@@ -1,4 +1,3 @@
-#include "xla/service/gpu/gpu_compiler.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "xla/service/gpu/gpu_compiler.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -41,11 +41,15 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -81,6 +85,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ResetCompiledProgramsCountForTesting();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -331,6 +336,16 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+  GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
+               << " until flakiness is fixed.";
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
+                 << "and Hopper GPUs";
+  }
   const absl::string_view hlo_string = R"(
 HloModule test
 
@@ -361,6 +376,8 @@ ENTRY main {
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
   triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
       false);
+  triton_enabled_debug_options
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
   config.set_replica_count(1);
   config.set_num_partitions(1);
@@ -444,60 +461,54 @@ ENTRY test_computation {
 }
 )";
 
-  // In the expected string, we skip some detail on the while-init tuple due to
-  // b/333572009.
   const char* kExpected = R"(
-CHECK: %body.1 (param.2.0: (u32[], f32[1,1024,1024], (f32[1,1024,1024], u32[], token[]), (f32[1,1024,1024], u32[], token[]), u32[])) -> (u32[], f32[1,1024,1024], (f32[1,1024,1024], u32[], token[]), (f32[1,1024,1024], u32[], token[]), u32[]) {
-CHECK:   %param.2.0 = parameter(0)
-CHECK:   %get-tuple-element.38 = get-tuple-element(%param.2.0), index=2
-CHECK:   %get-tuple-element.39 = get-tuple-element(%param.2.0), index=3
-CHECK-DAG:   %get-tuple-element.22 = get-tuple-element(%param.2.0), index=0
-CHECK-DAG:   %recv-done.3 = recv-done(%get-tuple-element.38), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK-DAG:   %get-tuple-element.25 = get-tuple-element(%recv-done.3), index=0
-CHECK:   %loop_multiply_tan_fusion = fusion
-CHECK:   %send-done.3 = send-done(%get-tuple-element.39), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:   %custom-call.1.0 = custom-call
-CHECK:   %after-all.3.0 = after-all()
-CHECK{LITERAL}:   %recv.2.0 = recv(%after-all.3.0), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}, control-predecessors={%custom-call.1.0}
-CHECK{LITERAL}:   %send.2.0 = send(%bitcast.119.0, %after-all.3.0), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}, control-predecessors={%recv.2.0}
-CHECK:   %loop_add_fusion = fusion
-CHECK:   %loop_add_fusion.1 = fusion
-CHECK:   ROOT %tuple.13 = tuple(%loop_add_fusion.1, %bitcast.119.0, %recv.2.0, %send.2.0, %loop_add_fusion)
-CHECK: }
+CHECK:       recv-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID:[0-9]+]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       send-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       %[[CUSTOM_CALL:.*]] = custom-call
+CHECK:       %[[AFTER_ALL:.*]] = after-all
+CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
+CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
+CHECK-SAME:    channel_id=1
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
+CHECK:       ROOT
+// We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
+// However, despite popular belief, CHECK-DAG-SAME is not actually a valid
+// directive. Checking for both without using a DAG would be inherently flaky,
+// so we take the hit and only check for one of them.
+CHECK-SAME:    %[[RESULT_RECV]]
 
-CHECK: %cond.1 (cond_param.1: (u32[], f32[1,1024,1024], (f32[1,1024,1024], u32[], token[]), (f32[1,1024,1024], u32[], token[]), u32[])) -> pred[] {
-CHECK:   %cond_param.1 = parameter(0)
-CHECK:   %get-tuple-element.5.0 = get-tuple-element(%cond_param.1), index=0
-CHECK:   ROOT %loop_compare_fusion = fusion(%get-tuple-element.5.0), kind=kLoop, calls=%fused_compare
-CHECK: }
-
-CHECK: ENTRY %test_computation () -> f32[1,1024,1024] {
-CHECK:   %after-all.1.0 = after-all()
-CHECK:   %loop_broadcast_fusion = fusion
-CHECK{LITERAL}:   %recv.1.0 = recv(%after-all.1.0), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
-CHECK{LITERAL}:   %send.1.0 = send(%loop_broadcast_fusion, %after-all.1.0), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0",_xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}, control-predecessors={%recv.1.0}
-CHECK:   %copy_fusion = fusion
-CHECK:   %get-tuple-element.36 = get-tuple-element(%copy_fusion), index=0
-CHECK:   %get-tuple-element.37 = get-tuple-element(%copy_fusion), index=1
-CHECK:   %bitcast.170 = bitcast(%get-tuple-element.36)
-CHECK:   %bitcast.171 = bitcast(%get-tuple-element.37)
-CHECK:   %while-init = tuple
-CHECK-SAME: %recv.1.0, %send.1.0
-CHECK{LITERAL}:   %while-result = while(%while-init), condition=%cond.1, body=%body.1, backend_config={"known_trip_count":{"n":"10"}}
-CHECK:   %get-tuple-element.40 = get-tuple-element(%while-result), index=2
-CHECK:   %get-tuple-element.41 = get-tuple-element(%while-result), index=3
-CHECK:   %recv-done.4 = recv-done(%get-tuple-element.40), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:   %get-tuple-element.7.0 = get-tuple-element(%recv-done.4), index=0
-CHECK:   %loop_multiply_tan_fusion.1 = fusion
-CHECK:   %get-tuple-element.13 = get-tuple-element(%loop_multiply_tan_fusion.1), index=0
-CHECK:   %get-tuple-element.14 = get-tuple-element(%loop_multiply_tan_fusion.1), index=1
-CHECK:   %bitcast.150.0 = bitcast(%get-tuple-element.13)
-CHECK:   %bitcast.155.0 = bitcast(%get-tuple-element.14)
-CHECK:   %send-done.4 = send-done(%get-tuple-element.41), channel_id=1, frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:   %custom-call.3.0 = custom-call(%bitcast.150.0, %bitcast.155.0), custom_call_target="__cublas$gemm"
-CHECK:   %get-tuple-element.10.0 = get-tuple-element(%custom-call.3.0), index=0
-CHECK:   ROOT %bitcast.5.0 = bitcast(%get-tuple-element.10.0)
-CHECK: }
+CHECK: ENTRY
+CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
+CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
+CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
+CHECK-SAME:    channel_id=1
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
+CHECK:       %[[WHILE_INIT:.*]] = tuple
+// Check here that the send argument is likewise passed to the while loop, as
+// a counterpart to the check in the child computation above.
+CHECK-SAME:    %[[ENTRY_SEND]]
+CHECK:       while(%[[WHILE_INIT]])
+CHECK:       recv-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       send-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
 )";
 
   HloModuleConfig config;

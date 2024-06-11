@@ -83,6 +83,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tsl/platform:logging",
+        "@com_google_absl//absl/numeric:bits",
     ],
     alwayslink = 1,
 )
@@ -102,7 +103,6 @@ cc_library(
     hdrs = ["bits.h"],
     deps = [
         "//tsl/platform:logging",
-        "//tsl/platform:types",
         "@com_google_absl//absl/numeric:bits",
     ],
 )

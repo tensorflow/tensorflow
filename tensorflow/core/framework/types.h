@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 
+#include <cstddef>
 #include <map>
 #include <set>
 #include <string>
 
+#include "absl/numeric/bits.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -124,7 +126,7 @@ class DataTypeSet {
       if (pos_ < kNumBits) {
         uint32 remaining_mask = set_.mask_ >> pos_;
         if (remaining_mask != 0u) {
-          pos_ += ctz_uint32(remaining_mask);
+          pos_ += absl::countr_zero(remaining_mask);
         }
       }
       DCHECK_LE(pos_, kNumBits);
@@ -137,39 +139,11 @@ class DataTypeSet {
     }
   };
 
-  static uint32 ctz_uint32(uint32 x) {
-    DCHECK_NE(x, 0u);
-#ifdef __GNUC__
-    return __builtin_ctz(x);
-#else
-    uint32 n = 0u;
-    while ((x & 1u) == 0u) {
-      x >>= 1;
-      ++n;
-    }
-    return n;
-#endif
-  }
-
-  static uint32 clz_uint32(uint32 x) {
-    DCHECK_NE(x, 0u);
-#ifdef __GNUC__
-    return __builtin_clz(x);
-#else
-    uint32 n = 0u;
-    while ((x >> (kNumBits - 1u)) == 0u) {
-      x <<= 1;
-      ++n;
-    }
-    return n;
-#endif
-  }
-
   Iterator begin() const {
     // The begin position is the index of the first bit set to 1 in the entire
     // bit mask. If there are no bits set to 1, then the index is 0.
     if (mask_ != 0) {
-      return Iterator(*this, ctz_uint32(mask_));
+      return Iterator(*this, absl::countr_zero(mask_));
     }
     // The set is empty.
     return Iterator(*this, 0);
@@ -179,25 +153,13 @@ class DataTypeSet {
     // The end position is the index of the highest bit that is set, plus 1.
     // If there are no bits set to 1, then the index is 0.
     if (mask_ != 0) {
-      return Iterator(*this, kNumBits - clz_uint32(mask_));
+      return Iterator(*this, kNumBits - absl::countl_zero(mask_));
     }
     // The set is empty.
     return Iterator(*this, 0);
   }
 
-  size_t size() const {
-#if defined(__GNUC__)
-    return __builtin_popcount(mask_);
-#else
-    size_t n = 0;
-    uint32 x = mask_;
-    while (x > 0) {
-      n += x & 1u;
-      x >>= 1;
-    }
-    return n;
-#endif
-  }
+  size_t size() const { return absl::popcount(mask_); }
 
   constexpr DataTypeSet operator|(const DataTypeSet& other) const {
     return DataTypeSet(mask_ | other.mask_);

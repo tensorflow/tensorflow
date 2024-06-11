@@ -23,13 +23,13 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/worker_thread.h"
-#include "xla/status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -136,6 +136,11 @@ class LocalDeviceState {
   // fashion amongst the available streams.
   se::Stream* GetDeviceToDeviceStream();
 
+  // Returns a usage stream. Allocates streams in a round-robin fashion amongst
+  // the available streams. When the overhead from BorrowStreamFromPool is too
+  // large for a use case, consider using this API instead.
+  se::Stream* GetFixedSizePoolUsageStream();
+
   // Return a stream that should be used to track when an externally-managed
   // buffer is ready. This is intended to support dlpack on GPU. Allocates
   // streams in a round-robin fashion amongst the available streams.
@@ -146,12 +151,12 @@ class LocalDeviceState {
   // returned by GetExternalReadyEventStream.
   // TODO(skyewm): this function could map other raw streams if needed. It's
   // currently only used with external ready event streams.
-  StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
+  absl::StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
 
   // Returns a vector of device to device streams.
   std::vector<se::Stream*> GetDeviceToDeviceStreams();
 
-  // Returns a stream from a pool. The stream is guaranteed not to have any
+  // Borrows a stream from a pool. The stream is guaranteed not to have any
   // currently outstanding work at its tail.
   std::unique_ptr<se::Stream> BorrowStreamFromPool();
   // Returns a stream to the pool. The caller must ensure the stream does not
@@ -159,10 +164,9 @@ class LocalDeviceState {
   void ReturnStreamToPool(std::unique_ptr<se::Stream> stream);
 
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
-  virtual Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
-                                          se::Stream* dst_stream,
-                                          se::DeviceMemoryBase src_buffer,
-                                          se::DeviceMemoryBase dst_buffer);
+  virtual absl::Status ThenMemcpyDeviceToDevice(
+      se::Stream* transfer_stream, se::Stream* dst_stream,
+      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
@@ -196,7 +200,7 @@ class LocalDeviceState {
   int GetNewPrngSeed();
 
  private:
-  Status SynchronizeAllActivity();
+  absl::Status SynchronizeAllActivity();
 
   AllocationModel allocation_model_;
 
@@ -214,15 +218,18 @@ class LocalDeviceState {
   std::unique_ptr<se::Stream> host_to_device_stream_;
   std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
   std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
+  std::vector<std::unique_ptr<se::Stream>> fixed_size_pool_usage_streams_;
   std::vector<std::unique_ptr<se::Stream>> external_ready_event_streams_;
 
   static constexpr int kNumDeviceToHostStreams = 4;
   static constexpr int kNumDeviceToDeviceStreams = 4;
+  static constexpr int kNumFixedSizePoolUsageStreams = 4;
   static constexpr int kNumExternalReadyEventStreams = 4;
 
   absl::Mutex mu_;
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ ABSL_GUARDED_BY(mu_) = 0;
+  int next_fixed_size_pool_usage_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
 
   std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);

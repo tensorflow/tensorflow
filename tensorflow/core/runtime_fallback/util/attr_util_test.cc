@@ -283,12 +283,16 @@ TEST(UtilsTest, FillAttrValueMapOk) {
   attrs.SetArray("shape", tfrt::ArrayRef<int64_t>{2, 2});
   attrs.SetArray("values", tfrt::ArrayRef<float>{2});
   attrs.SetArray("flags", tfrt::ArrayRef<bool>{false, true});
+  attrs.SetArray("baz", tfrt::ArrayRef<char>{'a'});
 
   attrs.Set<bool>("transpose_a", false);
   attrs.Set<bool>("transpose_b", true);
   attrs.Set<int64_t>("result_segment_sizes", 2);  // unused
   attrs.Set<float>("foo", 2);
   attrs.Set<int64_t>("bar", 2);
+
+  tfrt::AggregateAttr aggAttr;
+  attrs.Set<tfrt::AggregateAttr>("aggAttr", aggAttr);
 
   AttrValueMap map;
   auto host_context = CreateTestHostContext();
@@ -303,10 +307,12 @@ TEST(UtilsTest, FillAttrValueMapOk) {
           Pair(Eq("shape"), EqualsProto(R"pb(list { i: 2 i: 2 })pb")),
           Pair(Eq("values"), EqualsProto(R"pb(list { f: 2 })pb")),
           Pair(Eq("flags"), EqualsProto(R"pb(list { b: false b: true })pb")),
+          Pair(Eq("baz"), EqualsProto(R"pb(s: "a")pb")),
           Pair(Eq("transpose_a"), EqualsProto(R"pb(b: false)pb")),
           Pair(Eq("transpose_b"), EqualsProto(R"pb(b: true)pb")),
           Pair(Eq("foo"), EqualsProto(R"pb(f: 2)pb")),
-          Pair(Eq("bar"), EqualsProto(R"pb(i: 2)pb"))));
+          Pair(Eq("bar"), EqualsProto(R"pb(i: 2)pb")),
+          Pair(Eq("aggAttr"), EqualsProto(R"pb(list {})pb"))));
 }
 
 }  // namespace

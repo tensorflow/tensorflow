@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

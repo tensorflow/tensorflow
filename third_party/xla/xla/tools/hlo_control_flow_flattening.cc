@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -145,7 +145,7 @@ int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
   return loop_bound;
 }
 
-Status HloControlFlowFlattening::FlattenWhileLoop(
+absl::Status HloControlFlowFlattening::FlattenWhileLoop(
     HloInstruction* while_hlo, const CallGraph& call_graph) const {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
   HloComputation* computation = while_hlo->parent();
@@ -261,10 +261,10 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
                                               /*accept_different_shape=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveInfeed(
+absl::Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
   HloComputation* computation = infeed_hlo->parent();
@@ -282,7 +282,7 @@ Status HloControlFlowFlattening::RemoveInfeed(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
   custom_call->SetAndSanitizeName(infeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
@@ -326,7 +326,7 @@ HloControlFlowFlattening::RemoveRecvAndRecvDone(
   return std::make_pair(custom_call_recv, custom_call_recv_done);
 }
 
-Status HloControlFlowFlattening::RemoveOutfeed(
+absl::Status HloControlFlowFlattening::RemoveOutfeed(
     HloInstruction* outfeed_hlo) const {
   CHECK_EQ(outfeed_hlo->opcode(), HloOpcode::kOutfeed);
   HloComputation* computation = outfeed_hlo->parent();
@@ -344,7 +344,7 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
@@ -409,13 +409,13 @@ absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
   return custom_call;
 }
 
-Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
+absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
   zero->SetAndSanitizeName(original_op_name);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloControlFlowFlattening::Run(

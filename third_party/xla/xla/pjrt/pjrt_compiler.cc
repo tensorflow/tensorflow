@@ -72,7 +72,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
   (*compiler_registry)[platform_name] = std::move(compiler);
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   return it->second->Compile(std::move(options), computation, topology, client);
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();

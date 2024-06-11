@@ -78,7 +78,7 @@ using InstructionOperandsPair =
     std::pair<HloInstruction*, TransposeFolding::OperandIndices>;
 
 // Folds the operands of `dot` that are foldable transposes.
-Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
+absl::Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
   HloInstruction* dot = pair.first;
 
   DotDimensionNumbers new_dot_dims = dot->dot_dimension_numbers();
@@ -202,7 +202,7 @@ absl::StatusOr<bool> TransposeFolding::Run(
       // Don't fold dots with a 1D operand.
       if ((instruction->operand(0)->shape().rank() < 2) ||
           (instruction->operand(1)->shape().rank() < 2)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       OperandIndices operand_indices;
@@ -231,7 +231,7 @@ absl::StatusOr<bool> TransposeFolding::Run(
         foldable_convolutions.emplace_back(instruction, operand_indices);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   });
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {

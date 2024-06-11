@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
+#include "tensorflow/core/profiler/utils/host_offload_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -461,6 +461,14 @@ void DeriveLinesFromStats(XPlane* device_trace) {
       &plane_builder, tensorflow::profiler::kThreadIdSource,
       tensorflow::profiler::kSourceLineName, start_timestamp_ns, {});
 
+  XLineBuilder host_offload_op_line_builder =
+      plane_builder.GetOrCreateLine(kThreadIdHostOffloadOp);
+  host_offload_op_line_builder.SetName(kHostOffloadOpLineName);
+  host_offload_op_line_builder.SetTimestampNs(start_timestamp_ns);
+
+  HostOffloadEventProcessor host_offload_event_processor(
+      &plane_builder, &host_offload_op_line_builder);
+
   for (const XEventVisitor& event :
        GetSortedEvents<XEventVisitor>(plane_visitor, true)) {
     tsl::profiler::Timespan event_span = event.GetTimespan();
@@ -492,6 +500,9 @@ void DeriveLinesFromStats(XPlane* device_trace) {
       source.ExpandOrAddEvent(
           *plane_builder.GetOrCreateEventMetadata(*source_info), event_span,
           group_id);
+    }
+    if (host_offload_event_processor.IsHostOffloadOpName(event)) {
+      host_offload_event_processor.ProcessHostOffloadOpEvent(event, group_id);
     }
   }
 

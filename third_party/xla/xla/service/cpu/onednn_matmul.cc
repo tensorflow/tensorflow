@@ -138,6 +138,12 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
       case OneDnnMatMulConfig::GELU_ERF:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_gelu_erf, 0.f, 0.f);
         break;
+      case OneDnnMatMulConfig::RELU6:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_clip_v2, 0.f, 6.0f);
+        break;
+      case OneDnnMatMulConfig::SIGMOID:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_logistic, 0.f, 0.f);
+        break;
       case OneDnnMatMulConfig::BIAS: {
         bias_md = fused_mds.at(fused_operand_idx);
         // Extend bias rank to match result rank.
@@ -156,8 +162,19 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
         }
         fused_operand_idx++;
       } break;
+      case OneDnnMatMulConfig::ELU:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_elu, 1.0f, 0.0f);
+        break;
       case OneDnnMatMulConfig::BINARY_ADD: {
         auto binary_md = fused_mds.at(fused_operand_idx);
+        // Extend addend rank to match result rank.
+        auto missed_rank = output_md.get_ndims() - binary_md.get_ndims();
+        XLA_LIGHTWEIGHT_CHECK(missed_rank >= 0);
+        if (missed_rank > 0) {
+          auto binary_dims = binary_md.get_dims();
+          binary_dims.insert(binary_dims.begin(), missed_rank, 1);
+          binary_md = binary_md.reshape(binary_dims);
+        }
         if (fused_operands_ref) {
           auto arg_idx =
               DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;

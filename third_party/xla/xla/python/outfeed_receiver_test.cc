@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
@@ -33,8 +34,8 @@ namespace xla {
 
 namespace {
 
-Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
-                         PjRtClient* client) {
+absl::Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
+                               PjRtClient* client) {
   XlaComputation computation = builder->Build(root).value();
 
   CompileOptions compile_options;
@@ -51,7 +52,7 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Accumulates the received data.
@@ -79,7 +80,8 @@ class Accumulator {
 
 // TODO(necula): update this test for the TFRT CPU client, which current does
 // not support non-local devices.
-// StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
+// absl::StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice()
+// {
 //   TF_ASSIGN_OR_RETURN(se::Platform * platform,
 //                       PlatformUtil::GetPlatform("Host"));
 //   if (platform->VisibleDeviceCount() <= 0) {

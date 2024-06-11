@@ -59,6 +59,7 @@ mlir::LogicalResult StatusScopedDiagnosticHandler::handleDiagnostic(
   // Emit non-errors to VLOG instead of the internal status.
   if (diag.getSeverity() != mlir::DiagnosticSeverity::Error) {
     VLOG(1) << diag_str_;
+    return mlir::success();
   }
 
   status_.Update(absl::UnknownError(diag_str_));

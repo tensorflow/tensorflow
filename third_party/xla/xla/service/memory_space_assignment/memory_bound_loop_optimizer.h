@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -207,7 +207,7 @@ class MemoryBoundLoopOptimizer {
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn);
 
   // Initializes the data structures used by the optimizer.
-  Status Initialize();
+  absl::Status Initialize();
 
   // Given an HloBuffer object, determines if this buffer represents a LoopValue
   // that can be optimized by the optimizer, and if so it adds a LoopValue to

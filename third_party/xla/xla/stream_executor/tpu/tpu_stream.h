@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -32,8 +33,15 @@ namespace tpu {
 
 class TpuStream : public tensorflow::tpu::TpuStreamInterface {
  public:
-  explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
+  explicit TpuStream(SE_Stream* stream,
+                     stream_executor::StreamExecutor* executor,
+                     SE_StreamExecutor* se_executor)
+      : TpuStreamInterface(executor),
+        stream_(stream),
+        se_executor_(se_executor) {}
   ~TpuStream() override {
+    BlockHostUntilDone().IgnoreError();
+    parent()->DeallocateStream(this);
     stream_executor::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
   }
 
@@ -76,11 +84,19 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
+  absl::Status RefreshStatus() override {
+    StatusHelper status;
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_GetStatusFn(
+        se_executor_, stream_, status.c_status);
+    CheckStatus(status.status());
+    return status.status();
+  }
 
   SE_Stream* se_stream() const { return stream_; }
 
  private:
   mutable SE_Stream* stream_;
+  SE_StreamExecutor* se_executor_;
 };
 
 }  // namespace tpu

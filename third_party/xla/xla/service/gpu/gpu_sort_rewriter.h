@@ -37,7 +37,13 @@ class GpuSortRewriter : public HloModulePass {
 
   // CUB radix sort is slower than XLA sort on small shapes, so do not rewrite
   // tensors with sizes below this limit.
-  static constexpr int kSortSizeThreshold = 100000;
+  static int SortSizeThreshold() { return sort_size_threshold_; }
+  static void SetSortSizeThresholdForTestingOnly(int threshold) {
+    // We need to be able to reduce the threshold for testing, so that the tests
+    // can run and compare against the reference interpreter, which is quite
+    // slow.
+    sort_size_threshold_ = threshold;
+  }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -47,6 +53,8 @@ class GpuSortRewriter : public HloModulePass {
  private:
   absl::StatusOr<bool> RunOnInstruction(HloSortInstruction* sort_op);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+
+  static inline int sort_size_threshold_ = 100000;
 };
 
 }  // namespace gpu

@@ -15,7 +15,7 @@ module {
 
 // CHECK: %[[cst:.*]] = "arith.constant"() <{value = dense<0.000000e+00> : tensor<2x1024xf32>}> : () -> tensor<2x1024xf32>
 // CHECK: %[[q_cst:.*]] = "quantfork.qcast"(%[[cst]]) : (tensor<2x1024xf32>) -> tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>
-// CHECK: %[[out:.*]] = "tf.PartitionedCall"(%arg0, %[[q_cst]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x2x2x3xf32>, tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>) -> tensor<*xf32>
+// CHECK: %[[out:.*]] = "tf.PartitionedCall"([[ARG0:%arg[0-9]+]], %[[q_cst]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x2x2x3xf32>, tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>) -> tensor<*xf32>
 // CHECK: "func.return"(%[[out]]) : (tensor<*xf32>) -> ()
 }
 

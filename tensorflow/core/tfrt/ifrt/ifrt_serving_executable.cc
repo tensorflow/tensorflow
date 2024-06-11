@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -70,13 +72,16 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/framework/serving_device_selector.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/platform/tstring.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -151,6 +156,33 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
 
 }  // namespace
 
+absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
+IfrtServingExecutable::Create(
+    int64_t program_id, absl::string_view model_name,
+    absl::string_view signature_name, mlir::OwningOpRef<mlir::ModuleOp> module,
+    std::shared_ptr<xla::ifrt::Client> client,
+    const tsl::thread::ThreadPool* thread_pool,
+    IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+    const IfrtRestoreTensorRegistry* ifrt_restore,
+    tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
+    tensorflow::DeviceMgr* device_mgr,
+    tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    IfrtServingCoreSelector* ifrt_serving_core_selector,
+    tsl::protobuf::Message* compilation_environement_proto) {
+  TF_ASSIGN_OR_RETURN(
+      tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
+      GetCompileMetadata(*module, *client));
+
+  auto executable = absl::WrapUnique(new IfrtServingExecutable(
+      program_id, model_name, signature_name, std::move(module),
+      std::move(client), thread_pool, ifrt_loaded_variable_registry,
+      ifrt_restore, checkpoint_loader_queue, device_mgr,
+      std::move(shape_representation_fn), ifrt_serving_core_selector,
+      std::move(original_compile_metadata), compilation_environement_proto));
+
+  return executable;
+}
+
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 IfrtServingExecutable::ConvertTensorToArray(
     const tensorflow::Tensor& tensor, const xla::ifrt::DeviceList& device_list,
@@ -208,7 +240,7 @@ GroupHostCallbackByKey(const Tf2HloResult& tf2hlo_result) {
 // TODO: shape propagation in module
 absl::StatusOr<xla::HostCallback> BuildHostCallback(
     absl::string_view key, const HostCallbackBuilderInfo& builder_info,
-    mlir::ModuleOp module, tensorflow::StaticDeviceMgr* device_mgr,
+    mlir::ModuleOp module, tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   VLOG(2) << "BuildHostCallback for key: " << key;
 
@@ -281,7 +313,7 @@ absl::StatusOr<xla::HostCallback> BuildHostCallback(
 
 absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
     const Tf2HloResult& tf2hlo_result, mlir::ModuleOp module,
-    tensorflow::StaticDeviceMgr* device_mgr,
+    tensorflow::DeviceMgr* device_mgr,
     std::vector<std::unique_ptr<TfHostCallback>>& tf_host_callbacks) {
   TF_ASSIGN_OR_RETURN(auto host_callback_maps,
                       GroupHostCallbackByKey(tf2hlo_result));
@@ -300,11 +332,9 @@ absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
 
 absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
+    mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes) {
-  // Clone the module b/c CompileTfToHlo serialize the module and may lead to
-  // race condition.
-  mlir::OwningOpRef<mlir::ModuleOp> module_copy(module_->clone());
   TF_ASSIGN_OR_RETURN(
       Tf2HloResult tf2hlo_result,
       CompileTfToHlo(*module_copy, dtypes_and_shapes, signature_name(),
@@ -324,8 +354,15 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
-  // TODO(b/304839793): populate xla_compile_options.argument_layouts.
-  // TODO(b/316071625): per model config in TFRT + IFRT.
+  if (compilation_environment_proto_) {
+    tsl::protobuf::Message* comp_env_copy =
+        compilation_environment_proto_->New();
+    comp_env_copy->CopyFrom(*compilation_environment_proto_);
+    TF_RETURN_IF_ERROR(
+        xla_compile_options.executable_build_options.mutable_comp_envs()
+            ->AddEnv(absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+  }
+
   xla_compile_options.executable_build_options.set_num_replicas(num_replicas);
   xla_compile_options.executable_build_options.set_num_partitions(
       num_partitions);
@@ -344,8 +381,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
   std::vector<std::unique_ptr<TfHostCallback>> tf_host_callbacks;
   TF_ASSIGN_OR_RETURN(auto host_callbacks,
-                      BuildHostCallbacks(tf2hlo_result, *module_, device_mgr_,
-                                         tf_host_callbacks));
+                      BuildHostCallbacks(tf2hlo_result, *module_copy,
+                                         device_mgr_, tf_host_callbacks));
 
   std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
       loaded_host_callbacks;
@@ -360,7 +397,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
       ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::XlaProgram>(
+          std::make_unique<xla::ifrt::HloProgram>(
               tf2hlo_result.mlir_hlo_module.get()),
           std::make_unique<xla::ifrt::XlaCompileOptions>(
               xla_compile_options, loaded_host_callbacks)));
@@ -387,7 +424,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   xla::ifrt::Promise<SharedCachedExecutableBundle> promise;
   xla::ifrt::Future<SharedCachedExecutableBundle> future;
-
+  mlir::OwningOpRef<mlir::ModuleOp> module_copy;
   {
     absl::MutexLock lock(&mutex_);
 
@@ -396,18 +433,37 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       return it->second;
     }
 
+    if (is_frozen_) {
+      xla::ifrt::Future<SharedCachedExecutableBundle> frozen_future(
+          absl::FailedPreconditionError(
+              "Cannot compile for new input shapes after the executable is "
+              "already frozen."));
+      return frozen_future;
+    }
+
     // Only create promise and future when cache missed.
     promise = xla::ifrt::Future<SharedCachedExecutableBundle>::CreatePromise();
     future = xla::ifrt::Future<SharedCachedExecutableBundle>(promise);
 
     executable_bundles_.emplace(key, future);
+    // Clone the module to avoid race condition between Freeze() and
+    // compilation.
+    module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
   }
 
   LOG(INFO) << "Cache missed. Building executable";
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
-      CreateExecutableSynchronously(compile_metadata, dtypes_and_shapes);
+      CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
+                                    dtypes_and_shapes);
   promise.Set(std::move(executable_bundle));
   return future;
+}
+
+void IfrtServingExecutable::Freeze() {
+  LOG(INFO) << "Freezing executable. Program id: " << program_id_;
+  absl::MutexLock lock(&mutex_);
+  is_frozen_ = true;
+  module_ = nullptr;
 }
 
 bool IfrtServingExecutable::UsePortableExecution(
@@ -453,9 +509,10 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
                       BuildDtypeAndShape(inputs, variable_arg_indices,
                                          ifrt_restore_tensor_registry_));
 
-  TF_ASSIGN_OR_RETURN(
-      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(*module_, dtypes_and_shapes, *ifrt_client_));
+  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
+      original_compile_metadata_;
+  TF_RETURN_IF_ERROR(
+      UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
 
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
@@ -589,7 +646,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                        inputs[i].shape().DebugString(), " at index ", i));
     }
     std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
-    // TODO(b/330360798): Add test cases for OpSharding on variables.
+    // TODO(b/339521818): Add test cases for OpSharding on variables.
     VariableDeviceShardingConfigProto sharding_config;
     *sharding_config.mutable_sharding() =
         executable_bundle.compile_metadata.args()[i].sharding();

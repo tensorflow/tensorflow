@@ -1,6 +1,6 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
-load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -38,7 +38,9 @@ filegroup(
         "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
+        "//tsl/profiler/utils:mobile_srcs_no_runtime",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )
 
@@ -64,6 +66,7 @@ cc_library(
         "//tsl/platform:logging",
         "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -112,12 +115,12 @@ tsl_cc_test(
         ":profiler_factory_impl",
         ":profiler_interface",
         "//tsl/platform:macros",
-        "//tsl/platform:status",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -149,6 +152,7 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/util:env_var",
     ],
@@ -159,9 +163,9 @@ tsl_cc_test(
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
-        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -178,6 +182,7 @@ cc_library(
         "//tsl/platform:types",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",
@@ -206,6 +211,7 @@ cc_library(
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ] + if_not_android([
         ":profiler_collection",
         ":profiler_factory",
@@ -262,6 +268,7 @@ cc_library(
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
+        "//tsl/profiler/utils:no_init",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tsl/profiler/backends/cpu:traceme_recorder",
@@ -296,7 +303,6 @@ config_setting(
 cc_library(
     name = "scoped_annotation",
     hdrs = [
-        "nvtx_utils.h",
         "scoped_annotation.h",
     ],
     visibility = ["//visibility:public"],
@@ -354,6 +360,7 @@ cc_library(
         ":profiler_interface",
         "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 

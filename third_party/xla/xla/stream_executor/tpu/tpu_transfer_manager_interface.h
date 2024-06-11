@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/status/status.h"
+#include "xla/literal.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/status.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 
@@ -27,11 +29,11 @@ namespace xla {
 
 class TpuTransferManagerInterface : public xla::TransferManager {
  public:
-  virtual Status TransferBuffersToInfeed(
+  virtual absl::Status TransferBuffersToInfeed(
       se::StreamExecutor* executor,
       const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) = 0;
 
-  virtual Status LinearizeToBuffers(
+  virtual absl::Status LinearizeToBuffers(
       const LiteralSlice& literal, const Shape& device_shape,
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
 

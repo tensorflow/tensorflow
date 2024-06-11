@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -69,9 +68,9 @@ static absl::StatusOr<bool> ShouldSkip(
 // SendRecvAsyncEvents
 //===----------------------------------------------------------------------===//
 
-absl::Status SendRecvAsyncEvents::Emplace(se::StreamExecutor* executor,
-                                          int32_t channel_id,
-                                          tsl::AsyncValueRef<se::Event> event) {
+absl::Status SendRecvAsyncEvents::Emplace(
+    se::StreamExecutor* executor, int32_t channel_id,
+    tsl::AsyncValueRef<std::unique_ptr<se::Event>> event) {
   Key key = {executor, channel_id};
 
   absl::MutexLock lock(&mutex_);
@@ -82,8 +81,8 @@ absl::Status SendRecvAsyncEvents::Emplace(se::StreamExecutor* executor,
       "Async send/recv event already exists (channel_id=%d)", channel_id));
 }
 
-absl::StatusOr<AsyncValueRef<se::Event>> SendRecvAsyncEvents::Extract(
-    se::StreamExecutor* executor, int32_t channel_id) {
+absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>>
+SendRecvAsyncEvents::Extract(se::StreamExecutor* executor, int32_t channel_id) {
   Key key = {executor, channel_id};
 
   absl::MutexLock lock(&mutex_);
@@ -135,7 +134,7 @@ absl::Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Send buffer to a handler registered with the executable.
   if (auto* send = params.send_device_memory_function) {
     TF_ASSIGN_OR_RETURN(
-        AsyncValueRef<se::Event> done,
+        AsyncValueRef<std::unique_ptr<se::Event>> done,
         (*send)(channel_id_, stream, shape_, src, frontend_attrs_));
     return events_->Emplace(stream->parent(), channel_id_, std::move(done));
   }
@@ -176,7 +175,7 @@ absl::Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(5) << "Completed Send operation: channel_id=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
-  return params.stream->WaitFor(&done_event.get());
+  return params.stream->WaitFor(done_event.get().get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,7 +220,7 @@ absl::Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = params.recv_device_memory_function) {
     TF_ASSIGN_OR_RETURN(
-        AsyncValueRef<se::Event> done,
+        AsyncValueRef<std::unique_ptr<se::Event>> done,
         (*recv)(channel_id_, stream, shape_, &dst, frontend_attrs_));
     return events_->Emplace(stream->parent(), channel_id_, std::move(done));
   }
@@ -261,7 +260,7 @@ absl::Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(5) << "Completed Recv operation: channel=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
-  return params.stream->WaitFor(&done_event.get());
+  return params.stream->WaitFor(done_event.get().get());
 }
 
 }  // namespace xla::gpu

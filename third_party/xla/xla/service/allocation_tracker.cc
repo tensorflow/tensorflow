@@ -94,7 +94,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   return result;
 }
 
-Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
+absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   absl::MutexLock lock(&mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
@@ -123,7 +123,7 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<GlobalDataHandle>>
@@ -218,8 +218,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   }
 }
 
-Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
-                                            int device_ordinal) {
+absl::Status AllocationTracker::DecrementRefCount(
+    se::DeviceMemoryBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());
@@ -231,7 +231,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   } else {
     allocation.ref_count--;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

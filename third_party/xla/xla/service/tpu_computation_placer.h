@@ -26,19 +26,16 @@ namespace tpu {
 
 class TpuComputationPlacer : public xla::ComputationPlacer {
  public:
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
-
   TpuComputationPlacer();
   ~TpuComputationPlacer() override;
 
-  StatusOr<int> DeviceId(int replica, int computation, int replica_count,
-                         int computation_count) override;
+  absl::StatusOr<int> DeviceId(int replica, int computation, int replica_count,
+                               int computation_count) override;
 
-  StatusOr<xla::DeviceAssignment> AssignDevices(int replica_count,
-                                                int computation_count) override;
+  absl::StatusOr<xla::DeviceAssignment> AssignDevices(
+      int replica_count, int computation_count) override;
 
-  static StatusOr<xla::DeviceAssignment> AssignLocalDevices(
+  static absl::StatusOr<xla::DeviceAssignment> AssignLocalDevices(
       TpuHostLocationExternal host_location, int replica_count,
       int computation_count);
 

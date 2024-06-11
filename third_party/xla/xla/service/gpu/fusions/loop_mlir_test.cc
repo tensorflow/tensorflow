@@ -55,7 +55,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
    (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
-   (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
+   (((bl_x * 128 + th_x) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:
@@ -150,7 +150,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
                 ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
-                (th_x + bl_x * 128) mod 30)
+                (bl_x * 128 + th_x) mod 30)
                 domain:
                 th_x in [0, 127]
                 th_y in [0, 0]
@@ -411,6 +411,40 @@ TEST_F(MlirLoopFusionTest, TupleBitcast) {
       param0 = f64[8] parameter(0)
       param1 = f64[8] parameter(1)
       ROOT fusion = (f64[8], f64[2,4]) fusion(param0, param1),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, NestedTuple) {
+  auto kHloString = R"(
+    add {
+      scalar_lhs.0 = f32[] parameter(0)
+      scalar_lhs.1 = f32[] parameter(1)
+      scalar_rhs.0 = f32[] parameter(2)
+      scalar_rhs.1 = f32[] parameter(3)
+      add = f32[] add(scalar_lhs.0, scalar_rhs.0)
+      mul = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
+      ROOT t = (f32[], f32[]) tuple(add, mul)
+    }
+    fused_computation {
+      param_0 = f32[3,4,5]{2,1,0} parameter(0)
+      param_1 = f32[3,4,5]{2,1,0} parameter(1)
+      param_2 = f32[] parameter(2)
+      param_3 = f32[4] parameter(3)
+      reduce = (f32[4], f32[4]) reduce(f32[3,4,5]{2,1,0} param_0,
+          f32[3,4,5]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
+          dimensions={0,2}, to_apply=add
+      log = f32[4] log(param_3)
+      ROOT tuple = ((f32[4], f32[4]), f32[4]) tuple(reduce, log)
+    }
+    ENTRY main {
+      a = f32[3,4,5]{2,1,0} parameter(0)
+      b = f32[3,4,5]{2,1,0} parameter(1)
+      c = f32[] constant(0)
+      d = f32[4] parameter(2)
+      ROOT fusion = ((f32[4], f32[4]), f32[4]) fusion(a, b, c, d),
         kind=kLoop, calls=fused_computation
     }
   )";

@@ -49,7 +49,7 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
 
   auto thread_id_to_output_indexing_0 =
       emitter->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  thread_id_to_output_indexing_0->Simplify(GetIndexingMapForInstruction);
+  thread_id_to_output_indexing_0->Simplify();
   EXPECT_THAT(thread_id_to_output_indexing_0->ToString(thread_id_printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (
@@ -69,7 +69,7 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
   )"));
   auto thread_id_to_output_indexing_1 =
       emitter->ComputeThreadIdToOutputIndexing(1, &mlir_context_);
-  thread_id_to_output_indexing_1->Simplify(GetIndexingMapForInstruction);
+  thread_id_to_output_indexing_1->Simplify();
   EXPECT_THAT(thread_id_to_output_indexing_1->ToString(thread_id_printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (
@@ -122,6 +122,25 @@ TEST_F(MlirInputSlicesFusionTest, SliceOfPad) {
     ENTRY entry {
       input = f32[6] parameter(0)
       ROOT fusion = (f32[11], f32[11]) fusion(input), kind=kLoop, calls=fusion
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirInputSlicesFusionTest, ZeroSlice) {
+  auto kHloString = R"(
+    fusion {
+      %p0 = s32[0] parameter(0)
+      %p1 = s32[2] parameter(1)
+      %concatenate = s32[2] concatenate(p0, p1), dimensions={0}
+      %slice = s32[0] slice(%concatenate), slice={[0:0]}
+      %slice.1 = s32[2] slice(%concatenate), slice={[0:2]}
+      ROOT %tuple = (s32[0], s32[2]) tuple(%slice, %slice.1)
+    }
+
+    ENTRY entry {
+      %p0 = s32[0] parameter(0)
+      %p1 = s32[2] parameter(1)
+      ROOT fusion = (s32[0], s32[2]) fusion(%p0, %p1), kind=kLoop, calls=fusion
     })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

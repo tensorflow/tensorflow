@@ -1200,7 +1200,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
                     .value();
   ASSERT_TRUE(mof_.Run(module.get()).value());
 
-  EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
+  EXPECT_EQ(5, CountMultiOutputFusions(module.get()));
 }
 
 TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
@@ -1942,9 +1942,8 @@ ENTRY main {
   CheckGpuMultiOutputFusion(hlo, std::nullopt);
 }
 
-// A variation of the test above, where no CSE was run, so we don't detect
-// 'fusion' as a transpose fusion.
-TEST_F(TransposeMultiOutputFusionTest, IncompatibleTransposesNoCSE) {
+// A variation of the test above, where no CSE was run.
+TEST_F(TransposeMultiOutputFusionTest, TransposesNoCSE) {
   const char* hlo = R"(
 HloModule module
 
@@ -1974,20 +1973,7 @@ ENTRY main {
 }
   )";
 
-  CheckGpuMultiOutputFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[18,16,32], param_1.1: f32[32,16,18]) -> (f32[32,16,18], f32[18,32,16]) {
-// CHECK-NEXT: [[param_0:%[^ ]+]] = f32[18,16,32]{2,1,0} parameter(0)
-// CHECK-NEXT: [[s_1:%[^ ]+]] = f32[18,16,32]{2,1,0} sqrt([[param_0]])
-// CHECK-NEXT: [[t_1:%[^ ]+]] = f32[32,16,18]{2,1,0} transpose([[s_1]]), dimensions={2,1,0}
-// CHECK-NEXT: [[param_1:%[^ ]+]] = f32[32,16,18]{2,1,0} parameter(1)
-// CHECK-NEXT: [[sub:%[^ ]+]] = f32[32,16,18]{2,1,0} subtract([[t_1]], [[param_1]])
-// CHECK-NEXT: [[exp_1:%[^ ]+]] = f32[32,16,18]{2,1,0} exponential([[sub]])
-// CHECK-NEXT: [[exp_2:%[^ ]+]] = f32[32,16,18]{2,1,0} exponential([[sub]])
-// CHECK-NEXT: [[add:%[^ ]+]] = f32[32,16,18]{2,1,0} add([[exp_1]], [[exp_2]])
-// CHECK-NEXT: [[s_2:%[^ ]+]] = f32[18,16,32]{2,1,0} sqrt([[param_0]])
-// CHECK-NEXT: [[t_2:%[^ ]+]] = f32[18,32,16]{2,1,0} transpose([[s_2]]), dimensions={0,2,1}
-// CHECK-NEXT: ROOT %{{.*}} = (f32[32,16,18]{2,1,0}, f32[18,32,16]{2,1,0}) tuple([[add]], [[t_2]])
-})");
+  CheckGpuMultiOutputFusion(hlo, std::nullopt);
 }
 
 TEST_F(TransposeMultiOutputFusionTest, CopyAndInput) {

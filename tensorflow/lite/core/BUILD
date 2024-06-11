@@ -302,6 +302,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
     alwayslink = 1,

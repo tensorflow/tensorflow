@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -218,12 +217,19 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
                      IrBasicBlockSplitCount(consumer);
   VLOG(5) << "Basic block split counts: " << IrBasicBlockSplitCount(producer)
           << ", " << IrBasicBlockSplitCount(consumer) << " -> " << n_splits;
-  if (n_splits > kMaxBasicBlockSplitsPerFusion) {
-    return true;
-  }
   int64_t merged_ir_size =
-      (IrSize(producer) * producer_replication + IrSize(consumer)) *
-      (1 << n_splits);
+      (IrSize(producer) * producer_replication + IrSize(consumer));
+  // The MLIR emitters don't have the problem with cache invalidation, so we
+  // don't need to evaluate basic block split counts.
+  if (producer.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_mlir_emitter_level() < 4) {
+    if (n_splits > kMaxBasicBlockSplitsPerFusion) {
+      return true;
+    }
+    merged_ir_size *= (1 << n_splits);
+  }
   VLOG(5) << "IR sizes: " << IrSize(producer) << ", " << IrSize(consumer)
           << " -> " << merged_ir_size;
   return merged_ir_size > kMaxIRSize;

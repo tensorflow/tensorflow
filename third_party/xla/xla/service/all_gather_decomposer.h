@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -40,6 +41,19 @@ class AllGatherDecomposer : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ protected:
+  virtual HloInstruction* TranslateAllGatherToAllReducePerOperand(
+      CollectiveOpGroupMode group_mode, const HloAllGatherInstruction& ag,
+      const Shape& output_shape, HloInstruction* operand, HloComputation* comp,
+      int64_t ag_dim);
+
+  virtual bool ShouldDecompose(const HloAllGatherInstruction& ag) const {
+    return should_decompose_(ag);
+  }
+
+  absl::Status DecomposeAllGather(HloAllGatherInstruction* ag,
+                                  HloComputation* comp);
 
  private:
   std::function<bool(const HloAllGatherInstruction&)> should_decompose_;

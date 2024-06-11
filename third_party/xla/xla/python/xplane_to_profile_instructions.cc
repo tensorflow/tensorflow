@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/types.h"
@@ -177,7 +176,7 @@ void GetXPlaneHloModuleInfo(
 
 }  // namespace
 
-Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
@@ -202,7 +201,7 @@ Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                                   profiled_instructions_proto);
 }
 
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto) {
@@ -244,7 +243,7 @@ Status ConvertXplaneToProfiledInstructionsProto(
     cost->set_name(iter.first);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

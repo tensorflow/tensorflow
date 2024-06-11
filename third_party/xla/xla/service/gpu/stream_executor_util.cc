@@ -52,10 +52,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
@@ -66,17 +68,24 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-se::dnn::VersionInfo GetDnnVersionInfo(
-    stream_executor::StreamExecutor* stream_exec,
-    se::dnn::VersionInfo fallback_version) {
+absl::StatusOr<se::dnn::VersionInfo> GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec) {
   if (!stream_exec) {
-    return fallback_version;
+    return absl::InvalidArgumentError("StreamExecutor is null");
   }
   stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
   if (!dnn) {
-    return fallback_version;
+    return absl::FailedPreconditionError(
+        "DNN library initialization failed. Look at the errors above for more "
+        "details.");
   }
-  return dnn->GetVersion().value_or(fallback_version);
+  return dnn->GetVersion();
+}
+
+se::dnn::VersionInfo GetDnnVersionInfoOrDefault(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  return GetDnnVersionInfo(stream_exec).value_or(fallback_version);
 }
 
 namespace {
@@ -368,7 +377,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                      se::Kernel::Create(stream_exec, loader_spec));
+                      se::KernelFactory::Create(stream_exec, loader_spec));
 
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
@@ -488,10 +497,11 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Repeat the host_buffer_size elements at the start of `buf` to the end
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
-  auto kernel = se::TypedKernel<se::DeviceMemoryBase, int64_t, int64_t>::Create(
-      executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+  auto kernel =
+      se::TypedKernelFactory<se::DeviceMemoryBase, int64_t, int64_t>::Create(
+          executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
   if (!kernel.ok()) {
-    LOG(FATAL) << "Could not create RepeatBufferKernel";
+    LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
   }
   // Launch the kernel with at least host_buffer_bytes threads. Each thread
   // will read one byte of `host_buffer` from the start of `buffer`, where the
@@ -662,12 +672,12 @@ absl::Status NoAlgorithmSuppliedInternalError(
     std::optional<std::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
-    msg << "There are no algorithm candiates for computing: \n  "
+    msg << "There are no algorithm candidates for computing: \n  "
         << instr_str.value()
         << "\nThis likely means that the instruction shape is not supported by "
            "the target GPU library.";
   } else {
-    msg << "There are no algorithm candiates for computing the instruction.\n"
+    msg << "There are no algorithm candidates for computing the instruction.\n"
            "This likely means that the instruction shape is not supported by "
            "the target GPU library.";
   }

@@ -121,8 +121,8 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
   return pass_through;
 }
 
-Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
-                                   const HloSharding& sharding) {
+absl::Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
+                                         const HloSharding& sharding) {
   for (auto& pass_through : LocatePassThroughDomainLinks(domain)) {
     HloInstruction* tuple = pass_through.operand->parent()->AddInstruction(
         HloInstruction::CreateTuple({pass_through.operand}));
@@ -137,7 +137,7 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
       pass_through.operand->parent()->set_root_instruction(gte);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For tuple shardings if every element have the same sharding then we want to
@@ -153,8 +153,8 @@ std::shared_ptr<const HloSharding> CloneShardingForDomain(
   return std::make_shared<const HloSharding>(*single_sharding);
 }
 
-Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
-                                 const HloSharding& sharding) {
+absl::Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
+                                       const HloSharding& sharding) {
   VLOG(4) << "Applying " << sharding << " sharding";
   for (HloInstruction* instruction : domain.instructions) {
     // We only change instructions without sharding, since otherwise we might
@@ -166,7 +166,7 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
               << instruction->sharding();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return the ShapeTree<HloSharding> of the user argument. The user argument
@@ -342,8 +342,8 @@ absl::StatusOr<int64_t> ApplyDomainShardingPass(
   return assigned;
 }
 
-Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
-                           const HloSharding& sharding) {
+absl::Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
+                                 const HloSharding& sharding) {
   // None of the external normalizers handled the domain sharding, try to see
   // whether this is a single sharding first.
   auto single_sharding = sharding.ExtractSingleSharding();
@@ -377,7 +377,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
     }
   }
   // Should we error out if unassigned > 0?
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::shared_ptr<const HloSharding>>
@@ -438,14 +438,14 @@ std::string ShardingMetadata::ToString() const {
 /*static*/ absl::StatusOr<const ShardingMetadata*>
 ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
   if (metadata->Kind() != ShardingMetadata::KindName()) {
-    return Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "ShardingMetadata normalizer called with incorrect domain metadata");
   }
   return static_cast<const ShardingMetadata*>(metadata);
 }
 
-Status ShardingMetadata::NormalizeShardingDomain(
+absl::Status ShardingMetadata::NormalizeShardingDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
   if (metadata != nullptr) {
     TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
@@ -466,7 +466,7 @@ Status ShardingMetadata::NormalizeShardingDomain(
       VLOG(1) << "Unable to find common sharding";
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a kDomain instruction to be placed between instruction and operand.

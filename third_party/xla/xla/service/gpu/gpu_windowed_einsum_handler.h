@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_WINDOWED_EINSUM_HANDLER_H_
 #define XLA_SERVICE_GPU_GPU_WINDOWED_EINSUM_HANDLER_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 
@@ -38,16 +41,24 @@ class GpuWindowedEinsumHandler : public HloModulePass {
     return "gpu-windowed-einsum-handler";
   }
 
+  struct WindowedEinsumAgLoops {
+    explicit WindowedEinsumAgLoops(HloInstruction* loop) : loop(loop) {}
+    HloInstruction* loop;
+    bool consumed = false;
+  };
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
- private:
   constexpr static const char* kWindowedEinsumRsLoopName =
       "windowed_dot_general_body_rs";
   constexpr static const char* kWindowedEinsumAgLoopName =
       "windowed_dot_general_body_ag";
+
+ private:
+  std::vector<WindowedEinsumAgLoops> all_ag_loops_;
 };
 
 }  // namespace xla::gpu

@@ -20,13 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -43,10 +43,10 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
       config_(GetNcclCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 
-/*static*/ Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
+/*static*/ absl::Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ CollectiveOpGroupMode
@@ -55,7 +55,7 @@ NcclCollectiveBroadcastStartThunk::GetGroupMode(
   return GetNcclCollectiveConfig(inst, std::nullopt).group_mode;
 }
 
-Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
+absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
     NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
@@ -65,9 +65,10 @@ Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
       device_buffers, stream, comm_wrapper.comm_handle, nccl_api());
 }
 
-Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, NcclApi::NcclCommHandle comm,
-                              NcclApi* nccl_api) {
+absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
+                                    se::Stream& stream,
+                                    NcclApi::NcclCommHandle comm,
+                                    NcclApi* nccl_api) {
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   for (auto buffer : buffers) {
     se::DeviceMemoryBase src_addr = buffer.source_buffer;

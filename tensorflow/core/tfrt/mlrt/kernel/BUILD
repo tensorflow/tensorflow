@@ -8,7 +8,7 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/infra/mira/distributed:__subpackages__",
+        # copybara:uncomment "//learning/serving/servables/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
         "//tensorflow/core/tfrt/tfrt_session:__subpackages__",
@@ -48,15 +48,31 @@ cc_library(
 )
 
 cc_library(
+    name = "shard_restore_util",
+    srcs = ["shard_restore_util.cc"],
+    hdrs = ["shard_restore_util.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "ifrt_ops_kernel",
     srcs = ["ifrt_ops_kernel.cc"],
     deps = [
         ":context",
         ":kernel",
         ":kernel_runner_utils",
+        ":shard_restore_util",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core/common_runtime:function",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:protobuf",
@@ -75,6 +91,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/python/ifrt",
@@ -180,9 +197,11 @@ tf_cc_shared_test(
         ":ifrt_ops_kernel",
         ":kernel",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
@@ -215,6 +234,7 @@ tf_cc_shared_test(
         "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -223,5 +243,16 @@ tf_cc_shared_test(
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_cc_shared_test(
+    name = "shard_restore_util_test",
+    srcs = ["shard_restore_util_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":shard_restore_util",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

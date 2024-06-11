@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ConnectTPUEmbeddingHosts"
   input_arg {
     name: "network_configs"

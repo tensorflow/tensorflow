@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/types.h"
 #include "tsl/lib/core/status_test_util.h"

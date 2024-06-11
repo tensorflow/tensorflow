@@ -127,7 +127,7 @@ absl::StatusOr<std::unique_ptr<TfHostCallback>> TfHostCallback::Create(
     absl::string_view entry_function_name,
     absl::Span<const DtypeAndShape> operand_type_and_shapes,
     absl::Span<const DtypeAndShape> result_type_and_shapes,
-    tensorflow::StaticDeviceMgr* device_mgr) {
+    tensorflow::DeviceMgr* device_mgr) {
   tensorflow::SessionOptions options;
   // Explicitly disable non-CPU devices to avoid triggering TPU device
   // initialization inside TF.

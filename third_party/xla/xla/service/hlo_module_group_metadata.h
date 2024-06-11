@@ -23,11 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/status.h"
 
@@ -215,11 +215,11 @@ class HloModuleGroupMetadata {
   }
 
  private:
-  Status Build();
+  absl::Status Build();
 
   // Record all channel instructions, cross-module AllReduce instructions, and
   // While/Conditional/Call instructions.
-  Status RecordInstructions();
+  absl::Status RecordInstructions();
 
   // Verifies the given HloModules are well-formed and follow the specification,
   // in particular with respect to using channel instructions.
@@ -229,20 +229,20 @@ class HloModuleGroupMetadata {
   // * The nest level of channel instructions match.
   // * Channel instructions are used in allowed computations, i.e., in the
   //   entry computation of the module or condition/body of While computations.
-  Status VerifyChannelInstructions();
+  absl::Status VerifyChannelInstructions();
 
   // Adds metadata that the given two instructions are companions.
-  Status AddCompanion(HloInstruction* instruction1,
-                      HloInstruction* instruction2);
+  absl::Status AddCompanion(HloInstruction* instruction1,
+                            HloInstruction* instruction2);
 
   // Checks whether a communicating instruction is placed in a valid position
   // within the graph.
-  Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
+  absl::Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
 
   // Performs a consistency check on the companion sets built for the input
   // modules. Checks that each instruction in a companion set is in a different
   // module/device.
-  Status VerifyCompanionSets() const;
+  absl::Status VerifyCompanionSets() const;
 
   // Retrieves a pointer to the stored TrackedInstruction associated with a
   // tracked computation, or nullptr in case such computation is not tracked.

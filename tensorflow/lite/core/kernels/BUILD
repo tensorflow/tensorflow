@@ -25,7 +25,6 @@ cc_test(
         ":builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],

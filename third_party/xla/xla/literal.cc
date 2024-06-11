@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/util/byte_swap_array.h"
 #include "xla/types.h"
@@ -223,7 +223,11 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal) {
 
 Shape* MutableLiteralBase::mutable_shape_do_not_use() {
   const Shape* const_shape = shape_.get();
-  Shape* shape = shape_.get_mutable(/*ensure_owned=*/true);
+  if (!shape_.OwnsPtr()) {
+    shape_ = MaybeOwningShapePtr(std::make_unique<Shape>(*shape_));
+  }
+  Shape* shape = shape_.get_mutable();
+
   if (shape != const_shape) {
     std::function<void(const Shape&, Piece*)> set_piece_shapes =
         [&set_piece_shapes](const Shape& shape, Piece* piece) {
@@ -401,7 +405,7 @@ absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
 }
 
 template <typename NativeT>
-Status MutableLiteralBase::CopySliceFromInternal(
+absl::Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64_t> src_base,
     absl::Span<const int64_t> dest_base, absl::Span<const int64_t> copy_size) {
   auto linear_index = [](const Shape& shape,
@@ -454,7 +458,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
@@ -517,10 +521,10 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (piece->subshape().element_type() == TOKEN) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         CHECK(piece->subshape().IsArray());
@@ -532,7 +536,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
           TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return std::move(literal);
@@ -670,8 +674,8 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
-Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
-                                    bool only_dynamic_bound) {
+absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
+                                          bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
   CHECK(LayoutUtil::IsDenseArray(subshape()))
@@ -687,7 +691,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
       DeallocateBuffers();
     }
     array_value_state_ = src.array_value_state_;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
@@ -720,7 +724,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
            src.dynamic_size_buffer_bytes());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableLiteralBase::SetDynamicSize(int64_t dim_index, int32_t size) {
@@ -741,10 +745,10 @@ void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
   piece(shape_index).SetDynamicSize(dim_index, size);
 }
 
-Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
-                                    const ShapeIndex& dest_shape_index,
-                                    const ShapeIndex& src_shape_index,
-                                    bool only_dynamic_bound) {
+absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
+                                          const ShapeIndex& dest_shape_index,
+                                          const ShapeIndex& src_shape_index,
+                                          bool only_dynamic_bound) {
   const Shape& dest_subshape =
       ShapeUtil::GetSubshape(shape(), dest_shape_index);
   const Shape& src_subshape =
@@ -767,7 +771,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   return mutable_root_piece().ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         if (!piece->subshape().IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Determine if this index is in the part of this literal that we want
@@ -780,7 +784,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
           }
         }
         if (!in_subtree_to_copy) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
@@ -791,12 +795,12 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         TF_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
-Status Literal::MoveFrom(Literal&& src_literal,
-                         const ShapeIndex& dest_shape_index) {
+absl::Status Literal::MoveFrom(Literal&& src_literal,
+                               const ShapeIndex& dest_shape_index) {
   const Shape& dest_subshape =
       ShapeUtil::GetSubshape(shape(), dest_shape_index);
   if (!ShapeUtil::Equal(dest_subshape, src_literal.shape())) {
@@ -825,13 +829,12 @@ Status Literal::MoveFrom(Literal&& src_literal,
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
-                                         absl::Span<const int64_t> src_base,
-                                         absl::Span<const int64_t> dest_base,
-                                         absl::Span<const int64_t> copy_size) {
+absl::Status MutableLiteralBase::CopySliceFrom(
+    const LiteralSlice& src_literal, absl::Span<const int64_t> src_base,
+    absl::Span<const int64_t> dest_base, absl::Span<const int64_t> copy_size) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape())) << shape();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(src_literal.shape()))
       << src_literal.shape();
@@ -839,8 +842,8 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
   TF_RET_CHECK(src_literal.shape().rank() == src_base.size());
   TF_RET_CHECK(shape().rank() == dest_base.size());
 
-  return primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+  return primitive_util::ArrayTypeSwitch<absl::Status>(
+      [&](auto primitive_type_constant) -> absl::Status {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return CopySliceFromInternal<NativeT>(src_literal, src_base, dest_base,
                                               copy_size);
@@ -923,7 +926,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
   }
 }
 
-Status MutableLiteralBase::PopulateInplace(
+absl::Status MutableLiteralBase::PopulateInplace(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -932,16 +935,16 @@ Status MutableLiteralBase::PopulateInplace(
         return populator(dest, indexes);
       },
       /*parallel=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableLiteralBase::PopulateInplaceParallel(
+absl::Status MutableLiteralBase::PopulateInplaceParallel(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateInplaceInternal(populator,
                           /*parallel=*/element_count() > 32);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Literal LiteralBase::Relayout(const Layout& new_layout,
@@ -1378,16 +1381,16 @@ std::optional<complex128> LiteralBase::GetAsComplex128(
       shape().element_type());
 }
 
-Status MutableLiteralBase::SetIntegralAsS64(
+absl::Status MutableLiteralBase::SetIntegralAsS64(
     absl::Span<const int64_t> multi_index, int64_t value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
-  return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant) ||
                       primitive_type_constant == PRED) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           Set<NativeT>(multi_index, static_cast<NativeT>(value));
-          return OkStatus();
+          return absl::OkStatus();
         }
         return FailedPrecondition("Array element type is not integral: %s",
                                   PrimitiveType_Name(shape().element_type()));
@@ -1395,8 +1398,8 @@ Status MutableLiteralBase::SetIntegralAsS64(
       shape().element_type());
 }
 
-Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
-                                         double value) {
+absl::Status MutableLiteralBase::SetFromDouble(
+    absl::Span<const int64_t> multi_index, double value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   if (!primitive_util::IsFloatingPointType(shape().element_type())) {
     return FailedPrecondition("Array element type is not integral: %s",
@@ -1408,7 +1411,7 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
         Set<NativeT>(multi_index, static_cast<NativeT>(value));
       },
       shape().element_type());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1691,8 +1694,8 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
 }
 
 template <PrimitiveType kSrcType>
-Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
-                                MutableLiteralBase& dst_literal) {
+absl::Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
+                                      MutableLiteralBase& dst_literal) {
   DCHECK(dst_literal.shape().IsArray());
   using NativeSrcT = NativeTypeOf<kSrcType>;
   // Pass raw data Span/pointers to called template methods to avoid duplicating
@@ -1700,8 +1703,8 @@ Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
   auto src_data = src_literal.data<NativeSrcT>();
   void* dst_base = dst_literal.untyped_data();
   DCHECK_EQ(src_data.size(), dst_literal.element_count());
-  return primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+  return primitive_util::ArrayTypeSwitch<absl::Status>(
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsComplexType(kSrcType) &&
                       !primitive_util::IsComplexType(primitive_type_constant)) {
           return Unimplemented("%s from type %s to type %s is not implemented.",
@@ -1712,7 +1715,7 @@ Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
           ConvertBetweenNativeTypes<NativeSrcT, NativeDestT>(src_data,
                                                              dst_base);
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       dst_literal.shape().element_type());
 }
@@ -1736,8 +1739,8 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   // duplicating it N^2 times in the conversion implementation.
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
-  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+      [&](auto primitive_type_constant) -> absl::Status {
         return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
                                                                  result);
       },
@@ -2332,20 +2335,20 @@ void* LiteralBase::Piece::untyped_data() {
 namespace {
 
 template <typename RepeatedFieldT, typename NativeT>
-Status CopyFromRepeatedField(absl::Span<NativeT> dest,
-                             const RepeatedFieldT& src) {
+absl::Status CopyFromRepeatedField(absl::Span<NativeT> dest,
+                                   const RepeatedFieldT& src) {
   if (dest.size() != src.size()) {
     return InvalidArgument(
         "Expected %lu elements in LiteralProto repeated field, has %d",
         dest.size(), src.size());
   }
   std::copy(src.begin(), src.end(), dest.begin());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
+absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());
@@ -2511,7 +2514,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       return InvalidArgument("Is called on unsupported shape: %s",
                              ShapeUtil::HumanString(subshape()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool LiteralBase::Piece::IsKnown() const {

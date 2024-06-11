@@ -20,11 +20,11 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 

@@ -33,9 +33,9 @@ from xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  from xla.python import custom_call_for_test
+  from xla.python import custom_calls_testlib
 except ImportError:
-  custom_call_for_test = None
+  custom_calls_testlib = None
 
 try:
   from xla.python import xla_extension
@@ -124,8 +124,10 @@ def TestFactory(xla_backend,
 
       global _CUSTOM_CALLS_REGISTERED
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
-        for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
-          xla_client.register_custom_call_target(name, fn, platform="cpu")
+        for name, fn in custom_calls_testlib.registrations().items():
+          xla_client.register_custom_call_target(
+              name, {"execute": fn}, platform="cpu", api_version=1
+          )
         _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
@@ -424,7 +426,7 @@ def TestFactory(xla_backend,
       c = self._NewComputation()
       ops.CustomCallWithLayout(
           c,
-          b"test_subtract_f32",
+          b"subtract_f32",
           operands=[
               ops.Constant(c, np.float32(1.25)),
               ops.Constant(c, np.float32(0.5))
@@ -436,33 +438,106 @@ def TestFactory(xla_backend,
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
           api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING)
+          .API_VERSION_TYPED_FFI)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
-    def testCustomCallWithUnifiedApi(self):
+    def testCustomCallWithUnifiedApiUnknownTarget(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
-      opaque_str = b"foo"
       ops.CustomCallWithLayout(
           c,
-          b"test_add_input_and_opaque_len",
-          operands=[
-              ops.Constant(c, np.float32(1.25)),
-              ops.Constant(c, np.float32(0.5))
-          ],
+          b"not_existing",
+          operands=[],
           shape_with_layout=xla_client.Shape.array_shape(
-              np.dtype(np.float32), (), ()),
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED,
+      )
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, expected_regex="INVALID_ARGUMENT"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiUnknownTarget(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"not_existing",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysFail(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_fail",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      with self.assertRaisesRegex(
+          Exception, expected_regex="Failed intentionally"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysSucceed(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_succeed",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiSubtract(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"subtract_f32_cst",
+          operands=[ops.Constant(c, np.float32(1.25))],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
-          # With opaque length = 3.0
-          opaque=opaque_str,
-          api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING_UNIFIED)
-      self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
+          opaque=b"{cst = 3.0 : f32}",
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      self._ExecuteAndCompareClose(c, expected=[-1.75])
 
     def testCustomCallLookup(self):
       if self.backend.platform != "cpu":
@@ -473,10 +548,7 @@ def TestFactory(xla_backend,
       self.assertTrue(_CUSTOM_CALLS_REGISTERED)
       xla_client.make_cpu_client()
       self.assertContainsSubset(
-          [
-              call.decode()
-              for call in custom_call_for_test.cpu_custom_call_targets.keys()
-          ],
+          list(custom_calls_testlib.registrations().keys()),
           xla_client.custom_call_targets("Host").keys(),
       )
 
@@ -2963,15 +3035,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       program = xla_client.ifrt_programs.make_plugin_program("foobar")
       options = xla_client.ifrt_programs.make_plugin_compile_options()
       with self.assertRaisesRegex(
-          xla_client.XlaRuntimeError, "PjRtCompiler requires an XlaProgram"
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an HloProgram"
       ):
         self.backend.compile_ifrt_program(program, options)
 
     @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
-    def testXlaProgramViaIfrtProgram(self):
+    def testHloProgramViaIfrtProgram(self):
       c = self._NewComputation()
       ops.Iota(c, xla_client.PrimitiveType.F32, 10)
-      program = xla_client.ifrt_programs.make_xla_program(
+      program = xla_client.ifrt_programs.make_hlo_program(
           xla_computation_to_mlir_module(c.build())
       )
       options = xla_client.ifrt_programs.make_xla_compile_options(

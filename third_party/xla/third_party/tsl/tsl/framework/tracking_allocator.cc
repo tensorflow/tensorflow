@@ -171,9 +171,9 @@ std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   return std::make_tuple(total_bytes, high_watermark, still_live_bytes);
 }
 
-gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetRecordsAndUnRef() {
+absl::InlinedVector<AllocRecord, 4UL> TrackingAllocator::GetRecordsAndUnRef() {
   bool should_delete;
-  gtl::InlinedVector<AllocRecord, 4> allocations;
+  absl::InlinedVector<AllocRecord, 4UL> allocations;
   {
     mutex_lock lock(mu_);
     allocations.swap(allocations_);
@@ -185,8 +185,8 @@ gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetRecordsAndUnRef() {
   return allocations;
 }
 
-gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetCurrentRecords() {
-  gtl::InlinedVector<AllocRecord, 4> allocations;
+absl::InlinedVector<AllocRecord, 4UL> TrackingAllocator::GetCurrentRecords() {
+  absl::InlinedVector<AllocRecord, 4UL> allocations;
   {
     mutex_lock lock(mu_);
     for (const AllocRecord& alloc : allocations_) {

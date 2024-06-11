@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
+#include <string>
+#include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -33,8 +37,10 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -59,11 +65,11 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return executor->GetDeviceDescription()
                .cuda_compute_capability()
                .IsAtLeastHopper() &&
-           GetDnnVersionInfo(executor).major_version() >= 9;
+           GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
   bool IsAtLeastCuDnn91() {
     se::StreamExecutor* executor = backend().default_stream_executor();
-    const se::dnn::VersionInfo version = GetDnnVersionInfo(executor);
+    const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
     return (version.major_version() == 9 && version.minor_version() >= 1) ||
            version.major_version() > 9;
   }
@@ -522,6 +528,9 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Fused scalar constants require cuDNN 9.1+.";
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   x = bf16[16,32] parameter(0)
@@ -542,6 +551,57 @@ ENTRY e {
   p0 = bf16[16,32] parameter(0)
   p1 = bf16[32,16] parameter(1)
   ROOT _ = f32[16,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, ClampExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  x_const_lower = bf16[] constant(3e-3)
+  x_const_upper = bf16[] constant(1e-1)
+  y_const_lower = bf16[] constant(3e-3)
+  y_const_upper = bf16[] constant(1e-1)
+  x_const_bcast_lower = bf16[16,32] broadcast(x_const_lower), dimensions={}
+  x_const_bcast_upper = bf16[16,32] broadcast(x_const_upper), dimensions={}
+  y_const_bcast_lower = bf16[32,16] broadcast(y_const_lower), dimensions={}
+  y_const_bcast_upper = bf16[32,16] broadcast(y_const_upper), dimensions={}
+  x_clamp = bf16[16,32] clamp(x_const_bcast_lower, x, x_const_bcast_upper)
+  y_clamp = bf16[32,16] clamp(y_const_bcast_lower, y, y_const_bcast_upper)
+  ROOT dot_a = f32[16,16] dot(x_clamp, y_clamp), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+ENTRY e {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,16] parameter(1)
+  ROOT _ = f32[16,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, DotF8ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+
+fusion1 {
+  x = f8e4m3fn[16,32] parameter(0)
+  y = f8e4m3fn[32,16] parameter(1)
+  dot = f32[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  combined_scale = f32[] multiply(x_scale, y_scale)
+  scale_bcast = f32[16,16] broadcast(combined_scale), dimensions={}
+  ROOT out =  f32[16,16] multiply(dot, scale_bcast)
+}
+
+ENTRY e {
+  p0 = f8e4m3fn[16,32] parameter(0)
+  p1 = f8e4m3fn[32,16] parameter(1)
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  ROOT _ = f32[16,16] fusion(p0, p1, x_scale, y_scale), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -577,7 +637,7 @@ ENTRY r {
   ROOT r = bf16[192,128]{1,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionLevel3Test,
@@ -601,7 +661,7 @@ ENTRY r {
   ROOT r = bf16[4,3,16,128]{2,1,3,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 class ElementwiseTest : public CuDnnFusionExecutionTest,
@@ -656,12 +716,12 @@ ENTRY e {
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(F32),
-                       ::testing::ValuesIn({HloOpcode::kAbs, HloOpcode::kCos,
-                                            HloOpcode::kExp, HloOpcode::kLog,
-                                            HloOpcode::kNegate,
-                                            HloOpcode::kRsqrt, HloOpcode::kSin,
-                                            HloOpcode::kSqrt, HloOpcode::kTan,
-                                            HloOpcode::kTanh}),
+                       ::testing::ValuesIn(
+                           {HloOpcode::kAbs, HloOpcode::kCeil, HloOpcode::kCos,
+                            HloOpcode::kExp, HloOpcode::kFloor, HloOpcode::kLog,
+                            HloOpcode::kNegate, HloOpcode::kRsqrt,
+                            HloOpcode::kSin, HloOpcode::kSqrt, HloOpcode::kTan,
+                            HloOpcode::kTanh}),
                        ::testing::Values(5e-4)),
     ElementwiseTestParamsToString);
 

@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace {
 
 void IntTensorToInt64Vec(const Tensor& tensor,
-                         gtl::InlinedVector<int64_t, 4>* out) {
+                         absl::InlinedVector<int64_t, 4>* out) {
   out->resize(tensor.NumElements());
   int64_t* out_ptr = out->data();
   if (tensor.dtype() == DT_INT32) {
@@ -63,8 +63,8 @@ typedef Eigen::GpuDevice GPUDevice;
 void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                            TensorShape* output_shape, bool* is_identity,
                            bool* slice_dim0,
-                           gtl::InlinedVector<int64_t, 4>* begin,
-                           gtl::InlinedVector<int64_t, 4>* size) {
+                           absl::InlinedVector<int64_t, 4>* begin,
+                           absl::InlinedVector<int64_t, 4>* size) {
   const Tensor& begin_tensor = context->input(1);
   const Tensor& size_tensor = context->input(2);
 
@@ -121,8 +121,8 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
 template <typename T>
 static void SharedSliceCommonCases(OpKernelContext* context,
                                    const Tensor& input,
-                                   gtl::InlinedVector<int64, 4>* begin,
-                                   gtl::InlinedVector<int64, 4>* size,
+                                   absl::InlinedVector<int64, 4>* begin,
+                                   absl::InlinedVector<int64, 4>* size,
                                    Tensor** result, bool* done) {
   bool is_identity = true;
   bool slice_dim0 = true;
@@ -157,8 +157,8 @@ class SliceOp : public OpKernel {
   explicit SliceOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    gtl::InlinedVector<int64_t, 4> begin;
-    gtl::InlinedVector<int64_t, 4> size;
+    absl::InlinedVector<int64_t, 4> begin;
+    absl::InlinedVector<int64_t, 4> size;
     const Tensor& input = context->input(0);
     Tensor* result = nullptr;
     bool done = false;

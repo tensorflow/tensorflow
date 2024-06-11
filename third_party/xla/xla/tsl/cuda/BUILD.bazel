@@ -262,6 +262,7 @@ cc_library(
     textual_hdrs = ["cusparse.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
         "@local_tsl//tsl/platform:logging",

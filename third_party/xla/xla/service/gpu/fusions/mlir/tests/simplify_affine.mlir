@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-affine | FileCheck %s
+// RUN: mlir_fusions_opt --allow-unregistered-dialect %s -split-input-file -xla-gpu-simplify-affine | FileCheck %s
 
 func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.ptr) {
   %c0 = arith.constant 0 : index
@@ -103,12 +103,43 @@ func.func @arg_ranges(%arg0: index, %arg1: index) -> index {
 
 // -----
 
-func.func @cant_lower(%arg0: index, %arg1: index) -> index {
-  %0 = xla_gpu.apply_indexing
-    affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100)>
+func.func @cant_lower(%arg0: index, %arg1: index) -> (index, index) {
+  %0:2 = xla_gpu.apply_indexing
+    affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100, s0 + s1)>
     [%arg0 in [-10, 42], %arg1 in [0, 1000]]
-  return %0 : index
+  return %0#0, %0#1 : index, index
 }
 
-// CHECK-LABEL:       @cant_lower
-// CHECK:       affine.apply
+// CHECK-LABEL: @cant_lower
+// CHECK:         affine.apply
+// CHECK-NEXT:    arith.addi
+
+// -----
+
+func.func @order_summands(%arg1: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  scf.for %arg2 = %c0 to %c4 step %c1 {
+    scf.for %arg3 = %c0 to %c4 step %c1 {
+      %0 = xla_gpu.apply_indexing
+        affine_map<()[s0, s1, s2] -> ((s0 + s1) floordiv 3 + s0 * 512 + s1 * 4 + s2 * 10)>
+        [%arg2 in [0, 3], %arg1 in [0, 3], %arg3 in [0, 3]]
+      "dummy.op"(%0) : (index) -> ()
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: @order_summands
+// CHECK-SAME:    (%[[ARG1:.*]]: index)
+// CHECK: scf.for %[[ARG2:.*]] =
+// CHECK: scf.for %[[ARG3:.*]] =
+// CHECK: arith.muli %[[ARG1]]
+// CHECK: arith.muli %[[ARG2]]
+// CHECK: arith.addi
+// CHECK: arith.addi %[[ARG1]], %[[ARG2]]
+// CHECK: arith.divui
+// CHECK: arith.addi
+// CHECK: arith.muli %[[ARG3]]
+// CHECK: arith.addi %5, %6 : index

@@ -53,9 +53,9 @@ limitations under the License.
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -363,7 +363,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   if (options.repo_options.wait_for_uploads) {
     MaybeWaitForUploads();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

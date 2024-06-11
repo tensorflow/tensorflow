@@ -26,10 +26,10 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
@@ -229,22 +229,23 @@ class ShapeTree {
     }
   }
 
-  // Like ForEach(Mutable)Element, but the callable returns a Status instead of
-  // void.  The first non-OK return value is returned by the ForEach* function.
-  Status ForEachElementWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+  // Like ForEach(Mutable)Element, but the callable returns a absl::Status
+  // instead of void.  The first non-OK return value is returned by the ForEach*
+  // function.
+  absl::Status ForEachElementWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ForEachMutableElementWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+  absl::Status ForEachMutableElementWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Like the above, but traverses in post-order.  Note children are visited in
@@ -263,20 +264,20 @@ class ShapeTree {
     }
   }
 
-  Status ForEachElementPostOrderWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+  absl::Status ForEachElementPostOrderWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ForEachMutableElementPostOrderWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+  absl::Status ForEachMutableElementPostOrderWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, &node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.
@@ -340,7 +341,7 @@ class ShapeTree {
     });
   }
 
-  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
+  absl::StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
     TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
                         ShapeUtil::TryGetSubshape(shape(), index));
     size_t count = ShapeUtil::SubshapeCount(*sub_shape);

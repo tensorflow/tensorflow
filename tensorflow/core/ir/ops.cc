@@ -722,7 +722,8 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation* op,
   // Check if a node does indirect function call via PartitionedCallOp.
   // TODO(aminim): consider replacing with isa<...> when possible.
   if (op->getName().getStringRef() == "tfg.PartitionCall" ||
-      op->getName().getStringRef() == "tfg.StatefulPartitionedCall") {
+      op->getName().getStringRef() == "tfg.StatefulPartitionedCall" ||
+      op->getName().getStringRef() == "tfg.TPUPartitionedCall") {
     auto func_attr = op->getAttrOfType<FuncAttr>("f");
     if (!func_attr) return {};
     GraphFuncOp callee = symbol_table.lookup<GraphFuncOp>(

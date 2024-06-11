@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -37,11 +37,11 @@ namespace {
 
 class SparseDotRewriterImpl : public DfsHloRewriteVisitor {
  public:
-  Status HandleDot(HloInstruction* instr) override {
+  absl::Status HandleDot(HloInstruction* instr) override {
     // Only handle sparse dots with a single RHS sparse descriptor.
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     if (dot->sparse_operands() != 1 || dot->sparsity().front().index() != 1) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction* lhs = dot->mutable_operand(0);

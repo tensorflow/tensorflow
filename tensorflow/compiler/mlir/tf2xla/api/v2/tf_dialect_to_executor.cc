@@ -88,6 +88,8 @@ void AddTfDialectToExecutorPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUDevicePropagationPass());
   pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUColocateSplitsPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
     bool composite_tpuexecute_side_effects =

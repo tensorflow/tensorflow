@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RaggedFillEmptyRowsGrad"
   input_arg {
     name: "reverse_index_map"

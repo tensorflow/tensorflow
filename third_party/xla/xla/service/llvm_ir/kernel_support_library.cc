@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include "absl/status/status.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
-Status KernelSupportLibrary::ForWithStatus(
+absl::Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
-    const std::function<Status(llvm::Value*, bool)>& for_body_generator) {
-  return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> Status {
+    const std::function<absl::Status(llvm::Value*, bool)>& for_body_generator) {
+  return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> absl::Status {
     TF_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
     return ForWithStatus(
         name, b_->CreateAdd(start, step), end, step,
@@ -31,10 +32,10 @@ Status KernelSupportLibrary::ForWithStatus(
   });
 }
 
-Status KernelSupportLibrary::ForWithStatus(
+absl::Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
-    const std::function<Status(llvm::Value*)>& for_body_generator) {
+    const std::function<absl::Status(llvm::Value*)>& for_body_generator) {
   std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
       name, start, end, step, b_,
       /*unroll_mode=*/unroll_mode_,
@@ -42,13 +43,13 @@ Status KernelSupportLibrary::ForWithStatus(
   b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
   TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
   llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status KernelSupportLibrary::IfWithStatus(
+absl::Status KernelSupportLibrary::IfWithStatus(
     absl::string_view name, llvm::Value* condition,
-    const std::function<Status()>& true_block_generator,
-    const std::function<Status()>& false_block_generator) {
+    const std::function<absl::Status()>& true_block_generator,
+    const std::function<absl::Status()>& false_block_generator) {
   llvm_ir::LlvmIfData if_data =
       llvm_ir::EmitIfThenElse(condition, name, b_,
                               /*emit_else=*/false_block_generator != nullptr);
@@ -59,7 +60,7 @@ Status KernelSupportLibrary::IfWithStatus(
     TF_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(

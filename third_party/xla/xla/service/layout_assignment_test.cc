@@ -481,7 +481,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
       : LayoutAssignment(entry_computation_layout) {}
 
  protected:
-  Status PropagateBufferConstraint(
+  absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
     const LogicalBuffer& buffer = buffer_constraint.buffer();
@@ -645,12 +645,13 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
                          /*device_allocator=*/nullptr)
           .value();
 
-  EXPECT_EQ(OkStatus(), backend()
-                            .compiler()
-                            ->RunBackend(std::move(compiled_module),
-                                         backend().default_stream_executor(),
-                                         /*device_allocator=*/nullptr)
-                            .status());
+  EXPECT_EQ(absl::OkStatus(),
+            backend()
+                .compiler()
+                ->RunBackend(std::move(compiled_module),
+                             backend().default_stream_executor(),
+                             /*device_allocator=*/nullptr)
+                .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -803,7 +804,7 @@ TEST_F(LayoutAssignmentTest, LayoutAssignmentToTupleSiblingOperand) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_TRUE(error_status.ok());
 }
 
@@ -820,7 +821,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(
       error_status.message(),
@@ -862,6 +863,35 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
 
   EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
                                FindInstruction(m.get(), "recv")->shape()));
+}
+
+TEST_F(LayoutAssignmentTest, AllReduceSpmd) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module, num_partitions=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry_computation {
+      param = f32[2,2] parameter(0)
+      ar.0 = f32[2,2] all-reduce(param),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      p1 = f32[2] parameter(1)
+      ar.1 = f32[2] all-reduce(p1),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      ROOT t = tuple(ar.0, ar.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Check that assign layouts does not crash with repeated channel_id and
+  // different shapes.
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  AssignLayouts(m.get(), &computation_layout);
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
@@ -1328,7 +1358,7 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
-Status AssignLayoutsToComputation(
+absl::Status AssignLayoutsToComputation(
     HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
     m->mutable_entry_computation_layout()

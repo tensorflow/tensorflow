@@ -40,9 +40,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
-        "//xla:statusor",
         "//xla:types",
         "//xla:util",
         "//xla:window_util",
@@ -52,6 +50,7 @@ cc_library(
         "//xla/client/lib:comparators",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
+        "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
@@ -80,6 +79,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -101,13 +101,21 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_pass_pipeline",
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_format_picker",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -130,13 +138,11 @@ xla_cc_test(
 
 cc_library(
     name = "shard_barrier_partitioner",
-    srcs = ["shard_barrier_partitioner.cc"],
     hdrs = ["shard_barrier_partitioner.h"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
     ],
-    alwayslink = 1,
 )
 
 cc_library(

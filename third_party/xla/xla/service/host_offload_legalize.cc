@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -144,9 +143,9 @@ absl::StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
   return split_at_least_one;
 }
 
-// Walk up in the chain of memory offloaded instructions. Status not-ok when
-// an instructions not supported or end of chain reached.
-// Walks one instruction at a time.
+// Walk up in the chain of memory offloaded instructions. absl::Status not-ok
+// when an instructions not supported or end of chain reached. Walks one
+// instruction at a time.
 absl::StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
     std::pair<HloInstruction*, int> current_value,
     const CallGraph& call_graph) {
@@ -220,10 +219,10 @@ absl::StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
   }
 }
 
-// Walk down in the chain of memory offloaded instructions. Status not-ok when
-// an instructions not supported or end of chain reached.
-// Walks one instruction at a time, but returns multiple instructions for each
-// conforming user.
+// Walk down in the chain of memory offloaded instructions. absl::Status not-ok
+// when an instructions not supported or end of chain reached. Walks one
+// instruction at a time, but returns multiple instructions for each conforming
+// user.
 absl::StatusOr<std::vector<std::pair<HloInstruction*, int>>>
 WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
                       const CallGraph& call_graph) {
@@ -232,7 +231,8 @@ WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
   VLOG(5) << "Current value in progress: " << current_value.first->ToString()
           << " idx: " << current_value.second;
   std::vector<std::pair<HloInstruction*, int>> results;
-  auto add_gte_for_idx = [&results](HloInstruction* instr, int idx) -> Status {
+  auto add_gte_for_idx = [&results](HloInstruction* instr,
+                                    int idx) -> absl::Status {
     HloInstruction* gte = nullptr;
     for (HloInstruction* user : instr->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
@@ -248,7 +248,7 @@ WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
       }
       results.push_back(std::make_pair(user, -1));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   if (current_value.first->user_count() == 0) {
     if (current_value.first->parent()->root_instruction() ==

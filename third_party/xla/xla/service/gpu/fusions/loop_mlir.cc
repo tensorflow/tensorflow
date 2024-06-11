@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
 #include <iterator>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
@@ -63,7 +65,7 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
   auto launch_dims = launch_dimensions();
   return GetDefaultThreadIdIndexingMap(
       launch_dims, config_.unroll_factor,
-      GetIndexShape(analysis_.fusion_roots()[root_index]->shape()), ctx);
+      GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
 }
 
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
@@ -85,14 +87,14 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
   CHECK_EQ(output_to_input_indexing_set.size(), 1);
   IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
       *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
+  thread_id_to_input_indexing_map.Simplify();
   return thread_id_to_input_indexing_map;
 }
 
 LaunchDimensions MlirLoopFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(
-      GetIndexShape(analysis_.fusion_roots()[0]->shape()),
-      analysis_.device_info(), config_);
+      GetIndexShape(analysis_.fusion_root(0).shape()), analysis_.device_info(),
+      config_);
 }
 
 absl::Status MlirLoopFusion::EmitEntryFunction(
@@ -111,20 +113,21 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
   llvm::SmallVector<const Shape*> result_shapes;
-  for (const auto* root : analysis_.fusion_roots()) {
-    if (root->shape().IsTuple()) {
-      for (const auto& shape : root->shape().tuple_shapes()) {
+  for (const HloInstructionAdaptor& root : analysis_.fusion_roots()) {
+    if (root.shape().IsTuple()) {
+      for (const auto& shape : root.shape().tuple_shapes()) {
         result_shapes.push_back(&shape);
       }
     } else {
-      result_shapes.push_back(&root->shape());
+      result_shapes.push_back(&root.shape());
     }
   }
 
   auto body_builder = [&](ValueRange output_tensors, ValueRange dim_values,
                           ValueRange symbol_values) -> SmallVector<Value> {
-    auto first_output_indices = mlir_converter::ApplyAffineMap(
-        indexing->GetAffineMap(), dim_values, symbol_values, builder);
+    llvm::SmallVector<Value> first_output_indices =
+        mlir_converter::ApplyIndexing(*indexing, dim_values, symbol_values,
+                                      builder);
     auto root_fn = call_targets(
         fusion.fused_instructions_computation()->root_instruction());
 
@@ -140,10 +143,9 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     result_tensors.reserve(output_tensor_args.size());
     for (auto [root_shape, tensor, value] :
          llvm::zip(result_shapes, output_tensors, result_scalars)) {
-      auto output_indices = mlir_converter::ApplyAffineMap(
+      llvm::SmallVector<Value> output_indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(*result_shapes.front(), *root_shape,
-                        builder.getContext())
-              .GetAffineMap(),
+                        builder.getContext()),
           first_output_indices, {}, builder);
       result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
           value, tensor, output_indices));

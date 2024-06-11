@@ -624,7 +624,8 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
-  ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 add_library(tensorflow-lite
@@ -709,6 +710,13 @@ if(TFLITE_KERNEL_TEST)
   enable_testing()
   add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
 endif()
+
+# Add the generated headers directory. Required for maintaining the
+# tensorflow/lite directory structure for generated headers.
+set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
+
+# Add the profiling proto directory.
+add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
 
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)

@@ -51,7 +51,8 @@ struct CudaComputeCapability {
     PASCAL_ = 6,
     VOLTA = 7,
     AMPERE = 8,
-    HOPPER = 9
+    HOPPER = 9,
+    BLACKWELL = 10
   };
 
   constexpr CudaComputeCapability() = default;
@@ -183,6 +184,15 @@ class RocmComputeCapability {
     return absl::StrJoin(kSupportedGfxVersions, ", ");
   }
 
+  bool gfx9_mi100() const { return gfx_version() == "gfx908"; }
+
+  bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
+
+  bool gfx9_mi300() const {
+    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
+    return absl::c_count(kList, gfx_version()) != 0;
+  }
+
   bool gfx9_mi100_or_later() const {
     static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
                                                   "gfx941", "gfx942"};
@@ -192,11 +202,6 @@ class RocmComputeCapability {
   bool gfx9_mi200_or_later() const {
     static constexpr absl::string_view kList[] = {"gfx90a", "gfx940", "gfx941",
                                                   "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
-  }
-
-  bool gfx9_mi300() const {
-    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
@@ -394,6 +399,67 @@ class DeviceDescription {
   // including the dynamically allocated one.
   int64_t shared_memory_per_block_optin() const {
     return shared_memory_per_block_optin_;
+  }
+
+  // L1 size varies because it can be dynamically
+  // configured as shared memory; there is no easy way to query its actual size;
+  // also we do not count what occupies cache, but rather claim that what is
+  // much smaller than the cache size will likely stay in it.
+  constexpr int64_t l1_cache_size_per_SM() const {
+    return std::visit(
+        [](const auto &capability) -> int64_t {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // MI100 and MI200 has 16KB L1 cache per CU.
+            if (capability.gfx9_mi100() || capability.gfx9_mi200()) {
+              return 16 * 1024;
+            }
+            // MI300 has 32KB L1 cache per CU.
+            if (capability.gfx9_mi300()) {
+              return 32 * 1024;
+            }
+          }
+          // Default return for other GPUs (e.g., RTX A6000).
+          return 2 * 1024;
+        },
+        gpu_compute_capability_);
+  }
+
+  constexpr int64_t dram_to_l2_transaction_size_bytes() const {
+    return std::visit(
+        [](const auto &capability) -> int {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // DRAM->L2 bus is 128 Byte width for MI300.
+            if (capability.gfx9_mi300()) {
+              return 128;
+            }
+          }
+          // Cache line is 128B that is split into 4 sectors of 32B. Default
+          // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
+          // V100, but it can be also configured.
+          // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
+          // (page 10).
+          // return 64 Bytes by default.
+          return 64;
+        },
+        gpu_compute_capability_);
+  }
+
+  constexpr int64_t memory_transactions_per_clock() const {
+    return std::visit(
+        [](const auto &capability) -> int {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // 16 works well on MI300.
+            if (capability.gfx9_mi300()) {
+              return 16;
+            }
+          }
+          // Default return for other GPUs.
+          return 32;
+        },
+        gpu_compute_capability_);
   }
 
   GpuDeviceInfoProto ToGpuProto() const;

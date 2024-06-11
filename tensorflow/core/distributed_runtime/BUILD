@@ -779,6 +779,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@eigen_archive//:eigen3",
     ] + tf_grpc_cc_dependencies(),
 )
 

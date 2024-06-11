@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -82,7 +82,7 @@ class HloBisectState {
 
   // Asserts that the module still has the bug. If negative, runs the bug
   // checker repeatedly to verify that it's deterministic.
-  Status ExpectModuleIsBuggy();
+  absl::Status ExpectModuleIsBuggy();
 
   std::unique_ptr<xla::HloModule> module_;
   BugCheckerInterface* bug_checker_;

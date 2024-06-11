@@ -15,18 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -36,24 +39,46 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::ExplainMatchResult;
+using ::testing::Matcher;
+
+MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
+           block_id_to_tile_offsets_indexing, "") {
+  return ExplainMatchResult(ElementsAreArray(tile_sizes), arg.tile_sizes(),
+                            result_listener) &&
+         ExplainMatchResult(ElementsAreArray(tile_strides), arg.tile_strides(),
+                            result_listener) &&
+         ExplainMatchResult(MatchIndexingMap(block_id_to_tile_offsets_indexing),
+                            arg.block_id_to_tile_offsets_indexing(),
+                            result_listener);
+}
+
+Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
+    absl::Span<const int64_t> tile_sizes,
+    absl::Span<const int64_t> tile_strides,
+    absl::string_view block_id_to_tile_offsets_indexing) {
+  return MatchTiledHloInstructionImpl(tile_sizes, tile_strides,
+                                      block_id_to_tile_offsets_indexing);
+}
 
 class SymbolicTileAnalysisTest : public HloTestBase {
  public:
-  bool SetAnalysis(HloModule* module) {
+  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeComputation(*module->entry_computation(),
-                                                 &mlir_context_);
+        SymbolicTileAnalysis::AnalyzeComputation(
+            *module->entry_computation()
+                 ->root_instruction()
+                 ->fused_instructions_computation(),
+            &mlir_context_);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
-      analysis_ = std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
-      return true;
+      return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
     }
-    return false;
+    return std::nullopt;
   }
 
   mlir::MLIRContext mlir_context_;
-  std::optional<SymbolicTileAnalysis> analysis_;
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -65,21 +90,26 @@ max {
   ROOT m = f32[] maximum(p0, p1)
 }
 
-ENTRY main {
+fusion {
   p0 = f32[2,97]{1,0} parameter(0)
   constant = f32[] constant(-inf)
   reduce = f32[2] reduce(p0, constant), dimensions={1}, to_apply=max
   broadcast = f32[2,97]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = f32[2,97]{1,0} subtract(p0, broadcast)
-})"));
+}
 
-  EXPECT_TRUE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[2,97]{1,0} parameter(0)
+  ROOT fusion = f32[2,97]{1,0} fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
     (d0) -> (d0 floordiv 10, (d0 mod 10) * 10)
@@ -90,21 +120,19 @@ ENTRY main {
   auto p0_from_subtract0 = root->operand(0);
   auto p0_from_subtract1 = root->operand(1)->operand(0)->operand(0);
 
-  EXPECT_THAT(p0_from_subtract0->tile_sizes(), ElementsAre(1, 10));
-  EXPECT_THAT(p0_from_subtract0->tile_strides(), ElementsAre(1, 1));
-
-  EXPECT_THAT(p0_from_subtract0->block_id_to_tile_offsets_indexing(),
-              MatchIndexingMap(R"(
+  EXPECT_THAT(*p0_from_subtract0, MatchTiledHloInstruction(
+                                      /*tile_sizes=*/{1, 10},
+                                      /*tile_strides=*/{1, 1},
+                                      /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> (d0 floordiv 10, (d0 mod 10) * 10)
     domain:
     d0 in [0, 19]
   )"));
 
-  EXPECT_THAT(p0_from_subtract1->tile_sizes(), ElementsAre(1, 97));
-  EXPECT_THAT(p0_from_subtract1->tile_strides(), ElementsAre(1, 1));
-
-  EXPECT_THAT(p0_from_subtract1->block_id_to_tile_offsets_indexing(),
-              MatchIndexingMap(R"(
+  EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
+                                      /*tile_sizes=*/{1, 97},
+                                      /*tile_strides=*/{1, 1},
+                                      /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> (d0 floordiv 10, 0)
     domain:
     d0 in [0, 19]
@@ -114,20 +142,25 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, ElementwiseDiamondCSEIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[2,97] parameter(0)
   exp = f32[2,97] exponential(p0)
   log = f32[2,97] log(p0)
   ROOT subtract = f32[2,97] subtract(exp, log)
-})"));
+}
 
-  EXPECT_TRUE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[2,97] parameter(0)
+  ROOT fusion = f32[2,97] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   auto p0_from_subtract0 = root->operand(0)->operand(0);
   auto p0_from_subtract1 = root->operand(1)->operand(0);
@@ -135,30 +168,100 @@ ENTRY main {
   EXPECT_EQ(p0_from_subtract0, p0_from_subtract1);
 }
 
+TEST_F(SymbolicTileAnalysisTest, ProducerConsumerFusionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+fusion.1 {
+  p0 = f32[2,97] parameter(0)
+  constant = f32[] constant(-inf)
+  exp = f32[2,97] exponential(p0)
+  ROOT reduce = f32[2] reduce(exp, constant), dimensions={1}, to_apply=max
+}
+
+fusion.2 {
+  p0 = f32[2] parameter(0)
+  p1 = f32[2,97] parameter(1)
+  broadcast = f32[2,97]{1,0} broadcast(p0), dimensions={0}
+  ROOT subtract = f32[2,97] subtract(p1, broadcast)
+}
+
+ENTRY main {
+  p0 = f32[2,97] parameter(0)
+  producer = f32[2] fusion(p0), kind=kLoop, calls=fusion.1
+  ROOT consumer = f32[2,97] fusion(producer, p0), kind=kLoop, calls=fusion.2
+})"));
+
+  const auto* consumer = module->entry_computation()->root_instruction();
+  const auto* producer = consumer->operand(0);
+
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis.ComputeTiledHloInstructions(/*tile_parameters=*/{1, 97}));
+
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
+
+  const TiledHloInstruction* p0_from_producer =
+      root->operand(1)->operand(0)->operand(0)->operand(0);
+  const TiledHloInstruction* p0_from_consumer = root->operand(0);
+
+  EXPECT_EQ(p0_from_producer, p0_from_consumer);
+
+  EXPECT_THAT(*p0_from_producer,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
+    (d0) -> (d0, 0)
+    domain: d0 in [0, 1]
+  )"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, TransposeOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[8,16,4] parameter(0)
   ROOT transpose = f32[4,8,16] transpose(p0), dimensions={2,0,1}
-})"));
+}
 
-  EXPECT_TRUE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[8,16,4] parameter(0)
+  ROOT fusion = f32[4,8,16] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 4, 2}));
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 4, 2}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
-  EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
+  EXPECT_THAT(*root, MatchTiledHloInstruction(
+                         /*tile_sizes=*/{2, 4, 2}, /*tile_strides=*/{1, 1, 1},
+                         /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> ((d0 floordiv 16) * 2, ((d0 floordiv 8) mod 2) * 4, (d0 mod 8) * 2)
     domain:
     d0 in [0, 31]
   )"));
 
-  EXPECT_THAT(root->operand(0)->block_id_to_tile_offsets_indexing(),
-              MatchIndexingMap(R"(
+  EXPECT_THAT(*root->operand(0),
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{4, 2, 2}, /*tile_strides=*/{1, 1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> (((d0 floordiv 8) mod 2) * 4, (d0 mod 8) * 2, (d0 floordiv 16) * 2)
     domain:
     d0 in [0, 31]
@@ -168,38 +271,49 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, SliceOffsetIndexingIsCorrect) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[8,16] parameter(0)
   slice.0 = f32[4,8] slice(p0), slice={[0:4], [2:10]}
   slice.1 = f32[4,8] slice(p0), slice={[3:7], [4:12]}
   ROOT add = f32[4,8] add(slice.0, slice.1)
-})"));
+}
 
-  EXPECT_TRUE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  ROOT fusion = f32[4,8] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 2}));
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 2}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
   const TiledHloInstruction* p0_from_slice0 = root->operand(0)->operand(0);
   const TiledHloInstruction* p0_from_slice1 = root->operand(1)->operand(0);
 
-  EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
+  EXPECT_THAT(*root, MatchTiledHloInstruction(
+                         /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
+                         /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> ((d0 floordiv 4) * 2, (d0 mod 4) * 2)
     domain:
     d0 in [0, 7]
   )"));
 
-  EXPECT_THAT(p0_from_slice0->block_id_to_tile_offsets_indexing(),
-              MatchIndexingMap(R"(
+  EXPECT_THAT(*p0_from_slice0,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> ((d0 floordiv 4) * 2, (d0 mod 4) * 2 + 2)
     domain:
     d0 in [0, 7]
   )"));
 
-  EXPECT_THAT(p0_from_slice1->block_id_to_tile_offsets_indexing(),
-              MatchIndexingMap(R"(
+  EXPECT_THAT(*p0_from_slice1,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
     (d0) -> ((d0 floordiv 4) * 2 + 3, (d0 mod 4) * 2 + 4)
     domain:
     d0 in [0, 7]
@@ -209,49 +323,86 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedDot) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   p1 = f32[2,3]{1,0} parameter(1)
   ROOT dot = f32[1,3]{1,0} dot(p0, p1),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})"));
+}
 
-  EXPECT_FALSE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  ROOT fusion = f32[1,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedReshape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT reshape = f32[2] reshape(p0)
-})"));
+}
 
-  EXPECT_FALSE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedBitcast) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,2]{1,0} parameter(0)
   ROOT bitcast = f32[2] bitcast(p0)
-})"));
+}
 
-  EXPECT_FALSE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[1,2]{1,0} parameter(0)
+  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-ENTRY main {
+fusion {
   p0 = f32[1,3]{1,0} parameter(0)
   p1 = f32[1,3]{1,0} parameter(1)
   ROOT concatenate = f32[2,3] concatenate(p0, p1), dimensions={0}
-})"));
+}
 
-  EXPECT_FALSE(SetAnalysis(module.get()));
+ENTRY main {
+  p0 = f32[1,3]{1,0} parameter(0)
+  p1 = f32[1,3]{1,0} parameter(1)
+  ROOT fusion = f32[2,3] fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+}
+
+TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  add = f32[32] add(p0, p1)
+  subtract = f32[32] subtract(p0, p1)
+  ROOT tuple = (f32[32], f32[32]) tuple(add, subtract)
+}
+
+ENTRY main {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  ROOT fusion = (f32[32], f32[32]) fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
 }
 
 }  // namespace

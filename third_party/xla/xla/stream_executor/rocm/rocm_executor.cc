@@ -41,10 +41,10 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_driver.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -66,7 +66,7 @@ namespace gpu {
 
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
-  return static_cast<GpuEvent*>(event->implementation());
+  return static_cast<GpuEvent*>(event);
 }
 
 // Given const GPU memory, returns a librocm device pointer datatype, suitable
@@ -245,7 +245,7 @@ absl::Status GpuExecutor::Init() {
 // Arg: strip_exe: if true, remove the name of the executable itself from the
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
-static string GetBinaryDir(bool strip_exe) {
+static std::string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
   CHECK_NE(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1), -1);
   // Make sure it's null-terminated:
@@ -253,8 +253,8 @@ static string GetBinaryDir(bool strip_exe) {
 
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
-    string ret = exe_path;
-    std::vector<string> components = absl::StrSplit(exe_path, '/');
+    std::string ret = exe_path;
+    std::vector<std::string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
     return absl::StrJoin(components, "/");
   }
@@ -265,7 +265,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                     Kernel* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
-  const string* kernel_name;
+  const std::string* kernel_name;
 
   if (spec.has_cuda_cubin_in_memory()) {
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
@@ -611,7 +611,8 @@ absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
                                              AsROCmDevicePtr(gpu_src), size,
                                              AsGpuStreamValue(stream));
 
-  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return Status.
+  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
+  // absl::Status.
   if (!ok) {
     return absl::InternalError("Failed to memcpy from device to host.");
   }
@@ -623,7 +624,8 @@ absl::Status GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
   bool ok = GpuDriver::AsynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
                                              host_src, size,
                                              AsGpuStreamValue(stream));
-  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return Status.
+  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
+  // absl::Status.
   if (!ok) {
     return absl::InternalError("Failed to memcpy from device to host.");
   }
@@ -658,14 +660,6 @@ bool GpuExecutor::HostCallback(Stream* stream,
   delete callback;
 }
 
-absl::Status GpuExecutor::AllocateEvent(Event* event) {
-  return AsGpuEvent(event)->Init();
-}
-
-absl::Status GpuExecutor::DeallocateEvent(Event* event) {
-  return AsGpuEvent(event)->Destroy();
-}
-
 absl::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
   return AsGpuEvent(event)->Record(AsGpuStream(stream));
 }
@@ -680,29 +674,6 @@ absl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
         absl::StrFormat("error recording waiting for ROCM event on stream %p",
                         stream)};
   }
-}
-
-absl::Status GpuExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
-                                                       Event* event) {
-  if (GpuDriver::WaitStreamOnEvent(context_,
-                                   absl::bit_cast<GpuStreamHandle>(stream),
-                                   AsGpuEvent(event)->gpu_event())) {
-    return absl::OkStatus();
-  } else {
-    return absl::InternalError(
-        "error waiting for ROCM event on external stream");
-  }
-}
-
-Event::Status GpuExecutor::PollForEventStatus(Event* event) {
-  return AsGpuEvent(event)->PollForStatus();
-}
-
-bool GpuExecutor::AllocateStream(Stream* stream) {
-  absl::MutexLock l(&alive_gpu_streams_mu_);
-  bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
-  return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
@@ -801,12 +772,12 @@ fft::FftSupport* GpuExecutor::AsFft() {
   return fft_.get();
 }
 
-bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {
+bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::CanEnablePeerAccess(context_, rocm_other->context_);
 }
 
-absl::Status GpuExecutor::EnablePeerAccessTo(StreamExecutorInterface* other) {
+absl::Status GpuExecutor::EnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::EnablePeerAccess(context_, rocm_other->context_);
 }
@@ -815,30 +786,33 @@ bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }
 
-bool GpuExecutor::GetSymbol(const string& symbol_name,
-                            ModuleHandle module_handle, void** mem,
-                            size_t* bytes) {
+absl::StatusOr<DeviceMemoryBase> GpuExecutor::GetSymbol(
+    const std::string& symbol_name, ModuleHandle module_handle) {
+  void* mem = nullptr;
+  size_t bytes = 0;
+
   absl::MutexLock lock{&in_memory_modules_mu_};
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle.id());
     CHECK(it != gpu_binary_to_module_.end());
-    if (GpuDriver::GetModuleSymbol(
-            context_, it->second.first, symbol_name.c_str(),
-            reinterpret_cast<hipDeviceptr_t*>(mem), bytes)) {
-      return true;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
+        context_, it->second.first, symbol_name.c_str(),
+        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    return DeviceMemoryBase(mem, bytes);
   }
 
   for (auto& it : gpu_binary_to_module_) {
-    if (GpuDriver::GetModuleSymbol(
-            context_, it.second.first, symbol_name.c_str(),
-            reinterpret_cast<hipDeviceptr_t*>(mem), bytes)) {
-      return true;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
+        context_, it.second.first, symbol_name.c_str(),
+        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    return DeviceMemoryBase(mem, bytes);
   }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
-  return false;
+  return absl::NotFoundError(
+      absl::StrCat("Check if module containing symbol ", symbol_name,
+                   " is loaded (module_handle = ",
+                   reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
 absl::Status FillBlockDimLimit(GpuDeviceHandle device,
@@ -856,12 +830,31 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-std::unique_ptr<EventInterface> GpuExecutor::CreateEventImplementation() {
-  return std::unique_ptr<EventInterface>(new GpuEvent(this));
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  auto gpu_event = std::make_unique<RocmEvent>(this);
+  TF_RETURN_IF_ERROR(gpu_event->Init());
+  return std::move(gpu_event);
 }
 
-std::unique_ptr<StreamInterface> GpuExecutor::GetStreamImplementation() {
-  return std::unique_ptr<StreamInterface>(new GpuStream(this));
+absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto gpu_stream = std::make_unique<GpuStream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      gpu_stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      gpu_stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  bool init_worked = gpu_stream->Init();
+  if (init_worked) {
+    auto platform_specific_stream = gpu_stream->platform_specific_stream();
+    alive_gpu_streams_[platform_specific_stream] = gpu_stream.get();
+    return std::move(gpu_stream);
+  } else {
+    return absl::InvalidArgumentError("Failed to initialize GPU stream");
+  }
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {
@@ -891,7 +884,8 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 //
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
-static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
+static int TryToReadNumaNode(const std::string& pci_bus_id,
+                             int device_ordinal) {
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -965,7 +959,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     int version = GpuDriver::GetDriverVersion().value_or(-1);
-    string augmented_driver_version = absl::StrFormat(
+    std::string augmented_driver_version = absl::StrFormat(
         "%d (%s)", version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());
@@ -973,7 +967,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    string pci_bus_id = GpuDriver::GetPCIBusID(device);
+    std::string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
@@ -1022,7 +1016,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    string device_name;
+    std::string device_name;
     TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
     builder.set_name(device_name);
   }

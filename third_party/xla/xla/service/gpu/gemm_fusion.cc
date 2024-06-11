@@ -50,13 +50,11 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -739,7 +737,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
               *Cast<HloDotInstruction>(dot),
               std::get<se::CudaComputeCapability>(gpu_version_)) &&
           !should_fuse) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 
@@ -803,9 +801,15 @@ absl::StatusOr<bool> GemmFusion::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_version_);
-  if (!cuda_compute_capability || !cuda_compute_capability->IsAtLeastAmpere()) {
+  if (!cuda_compute_capability) {
     return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+        "Triton support is only enabled for CUDA GPUs.");
+  } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
   }
 
   bool changed = false;

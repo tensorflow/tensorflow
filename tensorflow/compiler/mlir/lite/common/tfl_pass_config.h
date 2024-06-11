@@ -101,7 +101,7 @@ struct PassConfig {
   bool enable_stablehlo_quantizer = false;
 
   // Enables the attempt to directly lower composites into tflite ops.
-  bool enable_composite_direct_lowering = false;
+  bool enable_composite_direct_lowering = true;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

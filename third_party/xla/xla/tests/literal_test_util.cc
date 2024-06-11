@@ -63,7 +63,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-::testing::AssertionResult StatusToAssertion(const Status& s) {
+::testing::AssertionResult StatusToAssertion(const absl::Status& s) {
   if (s.ok()) {
     return ::testing::AssertionSuccess();
   }

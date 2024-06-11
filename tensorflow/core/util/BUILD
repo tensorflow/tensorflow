@@ -45,6 +45,8 @@ package(
 # List of exported source files.
 exports_files(
     srcs = [
+        "bad_indices_policy.cc",
+        "bad_indices_policy.h",
         "event.proto",
         "example_proto_fast_parsing_test.proto",
         "image_resizer_state.h",
@@ -772,6 +774,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
@@ -1024,5 +1027,31 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
+    ],
+)
+
+cc_library(
+    name = "bad_indices_policy",
+    srcs = ["bad_indices_policy.cc"],
+    hdrs = ["bad_indices_policy.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "bad_indices_policy_test",
+    srcs = ["bad_indices_policy_test.cc"],
+    deps = [
+        ":bad_indices_policy",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -1,0 +1,40 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/array_spec.proto";
+
+// Wire format for `RemapPlan`. See `RemapPlan` for the semantics of the proto
+// fields.
+message RemapPlanProto {
+  message MappingProto {
+    int32 in_array = 1;
+    int32 out_array = 2;
+    // Transposed lists for `from` and `to`. This transposition makes a
+    // serialized proto smaller when `from` or `to` has many elements.
+    repeated int64 from_start = 3;
+    repeated int64 from_end = 4;
+    repeated int64 from_step = 5;
+    repeated int64 to_start = 6;
+    repeated int64 to_end = 7;
+    repeated int64 to_step = 8;
+  }
+  repeated ArraySpecProto input_specs = 1;
+  repeated ArraySpecProto output_specs = 2;
+  repeated MappingProto mappings = 3;
+}

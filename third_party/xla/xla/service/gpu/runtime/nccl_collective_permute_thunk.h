@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -49,7 +50,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
       if (recv_ptrs_.find(current_id) == recv_ptrs_.end()) {
         recv_ptrs_[current_id] = tsl::MakeUnconstructedAsyncValueRef<void*>();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     absl::Status PutRecvPtr(int64_t current_id, void* ptr) {
@@ -62,7 +63,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
         VLOG(3) << "Putting pointer: " << ptr << " current_id " << current_id;
         recv_ptrs_.at(current_id).emplace(ptr);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     absl::StatusOr<AsyncValueRef<void*>> GetRecvPtr(int64_t target_id) {

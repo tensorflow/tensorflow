@@ -120,12 +120,12 @@ def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
 def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
   let summary = "DynamicIota operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
+    This operation is functionally identical to
+    [iota](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#iota)
+    op, but the result shape is specified dynamically via `output_shape`.
 
-    Informally, this operation does the same thing as IotaOp except that the
-    result shape is specified dynamically via `output_shape`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#iota
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_iota
 
     Example:
     ```mlir
@@ -1293,11 +1293,7 @@ def MHLO_AsyncUpdateOp : MHLO_Op<"async_update", [DeclareOpInterfaceMethods<Infe
     See the documentation for AsyncStart for more information.
   }];
 
-  let arguments = (ins
-    MHLO_AsyncBundle:$bundle,
-    FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread
-    );
+  let arguments = (ins MHLO_AsyncBundle:$bundle);
 
   let results = (outs MHLO_AsyncBundle);
 
@@ -1317,11 +1313,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
     See the documentation for AsyncStart for more information.
   }];
 
-  let arguments = (ins
-    MHLO_AsyncBundle:$bundle,
-    FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread
-    );
+  let arguments = (ins MHLO_AsyncBundle:$bundle);
 
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
   let hasVerifier = 1;
@@ -2134,19 +2126,30 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
     "dynamic_broadcast_in_dim", [Pure]> {
   let summary = "DynamicBroadcastInDim operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
-
-    Informally, this operation does the same thing as BroadcastInDimOp except
-    that the result shape is specified dynamically via `output_dimensions`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#broadcast_in_dim
+    This operation is functionally identical to
+    [broadcast_in_dim](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#broadcast_in_dim)
+    op, but the result shape is specified dynamically via `output_dimensions`.
 
     It also accepts optional attributes to express static knowledge about the
     expanding behavior of dimensions. If not specified, all dimensions are
     assumed to be possibly expanding. The sets of dimensions that are known to
     be expanding and the set of dimensions that are known to be non-expanding
     must be disjoint and they must be a subset of the operand's dimensions.
+
+    See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_broadcast_in_dim
+
+    Example:
+    ```mlir
+    %operand = mhlo.constant dense<[[1, 2, 3]]> : tensor<1x3xi64>
+    %output_dimensions = mhlo.constant dense<[2, 3, 2]> : tensor<3xi64>
+    %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %output_dimensions) {
+      broadcast_dimensions = array<i64: 2, 1>,
+      known_expanding_dimensions = array<i64: 0>,
+      known_non_expanding_dimensions = array<i64: 1>
+    } : (tensor<1x3xi64>, tensor<3xi64>) -> tensor<2x3x2xi64>
+    ```
   }];
+
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_DimensionTensor:$output_dimensions,
@@ -2750,14 +2753,16 @@ def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
     Example:
     ```mlir
     %result = "mhlo.gather"(%operand, %start_indices) {
-      dimension_numbers = #mhlo.gather<
-        offset_dims = [2, 3],
-        collapsed_slice_dims = [0],
-        start_index_map = [0, 2],
-        index_vector_dim = 2>,
+      dimension_numbers = #stablehlo.gather<
+        offset_dims = [3, 4],
+        collapsed_slice_dims = [1],
+        operand_batching_dims = [0],
+        start_indices_batching_dims = [1],
+        start_index_map = [2, 1],
+        index_vector_dim = 3>,
       slice_sizes = dense<[0, 2, 2]> : tensor<3xi64>,
       indices_are_sorted = false
-    } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+    } : (tensor<2x3x4x2xi64>, tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi64>
     ```
   }];
 
@@ -2862,16 +2867,17 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
   let summary = "DynamicReshape operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
+    This operation is functionally identical to
+    [reshape](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reshape)
+    op, but the result shape is specified dynamically via `output_shape`.
 
-    Informally, this operation does the same thing as ReshapeOp except that the
-    result shape is specified dynamically via `output_shape`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reshape
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_reshape
 
     Example:
     ```mlir
-    %0 = mhlo.dynamic_reshape %arg0, %shape : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+    %output_shape = mhlo.constant dense<[3, 2]> : tensor<2xi64>
+    %result = mhlo.dynamic_reshape %operand, %output_shape : (tensor<2x3xi64>, tensor<2xi64>) -> tensor<3x2xi64>
     ```
   }];
 
@@ -2906,13 +2912,15 @@ def MHLO_ScatterOp: MHLO_Op<"scatter",
        mhlo.return %0 : tensor<i32>
    }) {
      scatter_dimension_numbers = #mhlo.scatter<
-       update_window_dims = [2,3],
-       inserted_window_dims = [0],
-       scatter_dims_to_operand_dims = [1, 0],
-       index_vector_dim = 2>,
+       update_window_dims = [3, 4],
+       inserted_window_dims = [1],
+       input_batching_dims = [0],
+       scatter_indices_batching_dims = [1],
+       scatter_dims_to_operand_dims = [2, 1],
+       index_vector_dim = 3>,
      indices_are_sorted = false,
      unique_indices = false
-   } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>, tensor<2x3x2x2xi32>) -> tensor<3x4x2xi32>
+   } : (tensor<2x3x4x2xi64>, tensor<2x2x3x2xi64>, tensor<2x2x3x2x2xi64>) -> tensor<2x3x4x2xi64>
    ```
   }];
   let arguments = (ins
@@ -3803,7 +3811,7 @@ def MHLO_DynamicGatherOp: MHLO_Op<"dynamic_gather",
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_IntTensor:$start_indices,
-    MHLO_IntTensor:$slice_sizes,
+    MHLO_Static1DIntTensor:$slice_sizes,
     MHLO_GatherDimensionNumbers:$dimension_numbers,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted
   );
@@ -3849,61 +3857,50 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_ComputeReshapeShapeOp :
-    MHLO_Op<"compute_reshape_shape", [Pure]> {
-  let summary = "ComputeReshapeShape operation";
-  let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
+// WARNING: This op was ported from CHLO and is currently only used by
+// KernelGen. Please do not add new uses of this op.
+def MHLO_MinimumBroadcastShapesOp : CppDeprecated<"Do not use this op outside of KernelGen">,
+    MHLO_Op<"minimum_broadcast_shapes", [Pure]> {
+  string summary = "Minimizes the rank of two or more shapes to be broadcasted";
 
-    Informally, this operation computes an output_shape for DynamicReshapeOp
-    from the `num_elements` number of elements in an operand of DynamicReshapeOp
-    and the `dynamic_shape` shape provided to TF's reshape:
-    https://www.tensorflow.org/api_docs/python/tf/reshape
+  string description = [{
+    Given two or more 1D tensors representing shapes, returns one 1D tensor for
+    each operand, where operand `i` corresponds to output `i`.
 
-    For example, for `num_elements = 12` and `dynamic_shape = [2, -1]`,
-    the `result` is going to be `[2, 6]`. If operands are not valid (e.g. if
-    dimensions do not evenly divide the number of elements, or if there are
-    multiple -1 values in dimensions), this leads to undefined behavior.
+    The returned tensors have the property that they specify a shape which is a
+    reshape of the corresponding input shape, and the broadcasted output shape
+    (using shape::BroadcastOp) of the returned shapes is a reshape of the
+    broadcasted output shape of the input shapes. Among all possibilities with
+    this property, the one is chosen which minimizes the rank of each returned
+    shape.
 
-    Example:
+    The general idea of this op is that it can be used for ops which have a
+    broadcasting semantic to operate on shapes with a possibly smaller rank
+    while preserving equivalence of the computed values. After computing the
+    result of the op using reshaped operands, the result can be reshaped to the
+    result that would have been originally computed.
+
+    Here is an example with two input shapes:
+
     ```mlir
-    %result = mhlo.compute_reshape_shape %num_elements, %dynamic_shape
-           : (index, tensor<2xi32>) -> tensor<2xi32>
+    mhlo.minimum_broadcast_shapes [1, 2, 3, 1, 2, 1],
+                                     [1, 1, 1, 2, 3] -> [6, 2, 1], [2, 3]
     ```
+
+    The broadcasted output shape of the operands is [1, 2, 3, 1, 2, 3], the
+    broadcasted output shape of the outputs is [6, 2, 3]. These two shapes are
+    reshapes of each other, and also each output is a reshape of the
+    corresponding input.
   }];
 
-  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
-  let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
+  let arguments = (ins Variadic<1DTensorOf<[Index]>>:$shapes);
+  let results = (outs Variadic<1DTensorOf<[Index]>>:$results);
+
+  let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
+
+  let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;
-
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
-}
-
-def MHLO_CstrReshapableOp :
-    MHLO_Op<"cstr_reshapable", [Pure]> {
-  let summary = "CstrReshapable operation";
-  let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
-
-    Informally, this operation creates a witness on the constraint that
-    ComputeReshapeShape would succeed with the provided operands.
-
-    Example:
-    ```mlir
-    %result = mhlo.cstr_reshapable %num_elements, %dynamic_shape
-           : (index, tensor<3xi32>) -> !shape.witness
-    ```
-  }];
-
-  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
-  let results = (outs Shape_WitnessType:$result);
-
-  let hasCustomHLOConverter = 1;
-
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

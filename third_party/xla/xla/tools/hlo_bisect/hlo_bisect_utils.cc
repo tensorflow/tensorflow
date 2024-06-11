@@ -109,7 +109,8 @@ absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
   }
   LOG(INFO) << input_file << " is not HloProto. Trying HLO text.\n";
   std::string hlo_string;
-  Status to_string_status = tsl::ReadFileToString(env, input_file, &hlo_string);
+  absl::Status to_string_status =
+      tsl::ReadFileToString(env, input_file, &hlo_string);
   if (!to_string_status.ok()) {
     LOG(ERROR) << input_file << " problem in reading file to string: "
                << to_string_status.message();
@@ -130,9 +131,9 @@ absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
 }
 
 // Outputs the given HloModule as HloProto to the given file.
-Status DumpHloModule(HloModule* module, const std::string& file_name,
-                     absl::string_view dir_path,
-                     absl::string_view output_format) {
+absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
+                           absl::string_view dir_path,
+                           absl::string_view output_format) {
   HloProto proto = MakeHloProto(*module);
   if (output_format == "hlo") {
     tsl::Env* env = tsl::Env::Default();
@@ -155,7 +156,7 @@ Status DumpHloModule(HloModule* module, const std::string& file_name,
     LOG(FATAL) << "Unexpected output format: " << output_format;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -347,7 +348,7 @@ void RunBisect(std::unique_ptr<BisectRunner> runner, bool all_computations,
   CHECK(bisect_status.ok()) << bisect_status.status().message();
 
   std::unique_ptr<HloModule> new_module = std::move(bisect_status.value());
-  Status dump_status =
+  absl::Status dump_status =
       DumpHloModule(new_module.get(), new_module->name() + "_trimmed",
                     dump_path, output_format);
   CHECK(dump_status.ok()) << dump_status.message();
@@ -368,10 +369,10 @@ absl::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
       }
     }
   }
-  Status verified_status = HloVerifier(/*layout_sensitive=*/false,
-                                       /*allow_mixed_precision=*/false)
-                               .Run(module.get())
-                               .status();
+  absl::Status verified_status = HloVerifier(/*layout_sensitive=*/false,
+                                             /*allow_mixed_precision=*/false)
+                                     .Run(module.get())
+                                     .status();
   if (!verified_status.ok()) {
     LOG(ERROR) << "Failed to verify hlo module " << verified_status.message();
     return verified_status;

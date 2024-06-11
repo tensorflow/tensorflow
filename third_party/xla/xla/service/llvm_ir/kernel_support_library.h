@@ -48,29 +48,29 @@ class KernelSupportLibrary {
   //     for (i64 i = `start` + `step`; i < `end`; i += `step`)
   //       `for_body_generator(/*ind_var=*/i, /*is_first_iteration=*/false)`;
   //   }
-  Status ForWithStatus(
+  absl::Status ForWithStatus(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
-      const std::function<Status(llvm::Value* ind_var,
-                                 bool is_first_iteration)>& for_body_generator);
+      const std::function<absl::Status(
+          llvm::Value* ind_var, bool is_first_iteration)>& for_body_generator);
 
   void For(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
-    CHECK_EQ(OkStatus(),
-             ForWithStatus(
-                 name, start, end, step,
-                 [&](llvm::Value* ind_var, bool is_first_iteration) -> Status {
-                   for_body_generator(ind_var, is_first_iteration);
-                   return OkStatus();
-                 }));
+    CHECK_EQ(absl::OkStatus(),
+             ForWithStatus(name, start, end, step,
+                           [&](llvm::Value* ind_var,
+                               bool is_first_iteration) -> absl::Status {
+                             for_body_generator(ind_var, is_first_iteration);
+                             return absl::OkStatus();
+                           }));
   }
 
-  Status ForWithStatus(
+  absl::Status ForWithStatus(
       absl::string_view name, int64_t start, int64_t end, int64_t step,
-      const std::function<Status(
+      const std::function<absl::Status(
           llvm::Value* ind_var, bool is_first_iteration)>& for_body_generator) {
     return ForWithStatus(name, /*start=*/b_->getInt64(start),
                          /*end=*/b_->getInt64(end),
@@ -90,29 +90,32 @@ class KernelSupportLibrary {
   //
   //   for (i64 i = `start`; i < `end`; i += `step`)
   //     `for_body_generator(/*ind_var=*/i)`;
-  Status ForWithStatus(
+  absl::Status ForWithStatus(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
-      const std::function<Status(llvm::Value* ind_var)>& for_body_generator);
+      const std::function<absl::Status(llvm::Value* ind_var)>&
+          for_body_generator);
 
   void For(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
-    CHECK_EQ(OkStatus(), ForWithStatus(name, start, end, step,
-                                       [&](llvm::Value* ind_var) -> Status {
-                                         for_body_generator(ind_var);
-                                         return OkStatus();
-                                       }));
+    CHECK_EQ(absl::OkStatus(),
+             ForWithStatus(name, start, end, step,
+                           [&](llvm::Value* ind_var) -> absl::Status {
+                             for_body_generator(ind_var);
+                             return absl::OkStatus();
+                           }));
   }
 
-  Status ForWithStatus(
+  absl::Status ForWithStatus(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       int64_t step,
-      const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
+      const std::function<absl::Status(llvm::Value* ind_var)>&
+          for_body_generator) {
     return ForWithStatus(name, start, end,
                          llvm::ConstantInt::get(start->getType(), step),
-                         [&](llvm::Value* indvar) -> Status {
+                         [&](llvm::Value* indvar) -> absl::Status {
                            return for_body_generator(indvar);
                          });
   }
@@ -125,9 +128,10 @@ class KernelSupportLibrary {
         for_body_generator);
   }
 
-  Status ForWithStatus(
+  absl::Status ForWithStatus(
       absl::string_view name, int64_t start, int64_t end, int64_t step,
-      const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
+      const std::function<absl::Status(llvm::Value* ind_var)>&
+          for_body_generator) {
     return ForWithStatus(name, /*start=*/b_->getInt64(start),
                          /*end=*/b_->getInt64(end),
                          /*step=*/b_->getInt64(step), for_body_generator);
@@ -148,17 +152,16 @@ class KernelSupportLibrary {
   //   else
   //      `false_block_generator()`;
   // The else is skipped if false_block_generator is null.
-  Status IfWithStatus(
+  absl::Status IfWithStatus(
       absl::string_view name, llvm::Value* condition,
-      const std::function<Status()>& true_block_generator,
-      const std::function<Status()>& false_block_generator = nullptr);
+      const std::function<absl::Status()>& true_block_generator,
+      const std::function<absl::Status()>& false_block_generator = nullptr);
 
-  Status IfWithStatus(
+  absl::Status IfWithStatus(
       llvm::Value* condition,
-      const std::function<Status()>& true_block_generator,
-      const std::function<Status()>& false_block_generator = []() -> Status {
-        return OkStatus();
-      }) {
+      const std::function<absl::Status()>& true_block_generator,
+      const std::function<absl::Status()>& false_block_generator =
+          []() -> absl::Status { return absl::OkStatus(); }) {
     return IfWithStatus("", condition, true_block_generator,
                         false_block_generator);
   }
@@ -177,16 +180,16 @@ class KernelSupportLibrary {
           name, condition,
           [&]() {
             true_block_generator();
-            return OkStatus();
+            return absl::OkStatus();
           },
           [&]() {
             false_block_generator();
-            return OkStatus();
+            return absl::OkStatus();
           }));
     } else {
       TF_CHECK_OK(IfWithStatus(name, condition, [&]() {
         true_block_generator();
-        return OkStatus();
+        return absl::OkStatus();
       }));
     }
   }

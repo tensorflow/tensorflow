@@ -20,12 +20,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
@@ -45,8 +45,8 @@ int64_t ShapeSize(const Shape& shape) {
 
 class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
  protected:
-  Status Initialize(const HloModule* module,
-                    float pipeline_overhead_window_size_mib = 0.0) {
+  absl::Status Initialize(const HloModule* module,
+                          float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
     options_.async_copy_bandwidth_bytes_per_second = 32;
@@ -59,14 +59,19 @@ class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
     TF_RETURN_IF_ERROR(
         module->entry_computation()->Accept(hlo_cost_analysis_.get()));
+    hlo_cost_analysis_costs_ =
+        std::make_unique<memory_space_assignment::HloCostAnalysisCosts>(
+            *hlo_cost_analysis_);
     TF_ASSIGN_OR_RETURN(
         cost_analysis_,
-        CostAnalysis::Create(*hlo_cost_analysis_, options_, *module));
-    return OkStatus();
+        CostAnalysis::Create(*hlo_cost_analysis_costs_, options_, *module));
+    return absl::OkStatus();
   }
 
   CostAnalysisOptions options_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
+  std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
+      hlo_cost_analysis_costs_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
 };
 

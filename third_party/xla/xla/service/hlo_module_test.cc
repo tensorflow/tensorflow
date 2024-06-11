@@ -817,7 +817,7 @@ static absl::StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
     DeviceAssignmentProto device_assignment_proto;
     DeviceAssignment device_assignment(/*replica_count=*/3,
                                        /*computation_count=*/2);
-    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    device_assignment.Serialize(&device_assignment_proto);
     proto.mutable_static_device_assignment()->Swap(&device_assignment_proto);
   }
   // Shardable Value Update Pairs

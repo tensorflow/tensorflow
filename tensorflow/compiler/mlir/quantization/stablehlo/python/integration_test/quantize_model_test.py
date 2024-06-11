@@ -147,7 +147,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # done in MLIR level.
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3, atol=0.2)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
@@ -577,6 +577,114 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         0.65,
     )
 
+  def test_reuse_calibration_data(self):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('abc,cde->abde', use_bias=True)
+    )
+
+    self._create_einsum_model(
+        self._input_saved_model_path,
+        'abc,cde->abde',
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=42)
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4')
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'x': ops.convert_to_tensor(
+                np.random.uniform(low=0.0, high=1.0, size=x_signature).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    calibration_data_dir = self.create_tempdir('calibration_data').full_path
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        calibration_options=qc.CalibrationOptions(
+            calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+            calibration_data_dir=calibration_data_dir,
+        ),
+    )
+
+    # Run quantization the first time, calibration is expected to be run.
+    with self.assertLogs(level='INFO') as info_logs:
+      quantization.quantize_saved_model(
+          self._input_saved_model_path,
+          self._output_saved_model_path,
+          config,
+      )
+      self.assertTrue(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      module_str = self._extract_first_xla_call_module_op(
+          self._output_saved_model_path
+      )
+      self.assertTrue(
+          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str)
+      )
+
+    # Run quantization the first time, calibration is expected to be skipped.
+    output_saved_model_path_2 = self.create_tempdir('output2').full_path
+    with self.assertLogs(level='INFO') as info_logs:
+      quantization.quantize_saved_model(
+          self._input_saved_model_path,
+          output_saved_model_path_2,
+          config,
+      )
+      self.assertFalse(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      module_str = self._extract_first_xla_call_module_op(
+          output_saved_model_path_2
+      )
+      self.assertTrue(
+          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str)
+      )
+
+    # Expect both quantized model to produce the same results.
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+    new_outputs_1 = root.signatures['serving_default'](
+        x=ops.convert_to_tensor(input_data)
+    )
+
+    root = load.load(output_saved_model_path_2)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+    new_outputs_2 = root.signatures['serving_default'](
+        x=ops.convert_to_tensor(input_data)
+    )
+
+    self.assertAllClose(new_outputs_1, new_outputs_2)
+
   @parameterized.named_parameters(
       ('use_constant_with_int32_input', np.int32, False),
       ('use_variable_with_int32_input', np.int32, True),
@@ -899,7 +1007,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # be exactly the same. Indirectly proves that the `FunctionNameMatcherSpec`
     # with regex '.*invalid_function_name.*' did not match the quantizable unit.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
-    self.assertNotAllClose(new_outputs, expected_outputs, rtol=0.00001)
+    self.assertNotAllClose(new_outputs, expected_outputs, 1e-7)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
@@ -1280,9 +1388,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply op for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(

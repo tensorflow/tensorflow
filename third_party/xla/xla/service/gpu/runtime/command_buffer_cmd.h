@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_
 #define XLA_SERVICE_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -46,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -193,6 +194,11 @@ class CommandBufferCmd {
                               const RecordParams& record_params,
                               se::CommandBuffer* command_buffer) = 0;
 
+  // For some commands need to force update on Record even the input device
+  // pointers do not change, e.g. command that has state that can be changed by
+  // CPU code.
+  virtual bool force_update() { return false; }
+
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
   virtual BufferUsageVector buffers() = 0;
@@ -310,6 +316,12 @@ class CommandBufferCmdSequence {
 
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
+
+  bool force_update() const {
+    return absl::c_any_of(commands_, [](const CommandInfo& cmd_info) {
+      return cmd_info.cmd->force_update();
+    });
+  }
 
  private:
   struct CommandInfo {
@@ -574,6 +586,8 @@ class IfCmd : public CommandBufferCmd {
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
 
+  bool force_update() override;
+
   BufferUsageVector buffers() override;
 
  private:
@@ -597,6 +611,8 @@ class IfElseCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 
@@ -622,6 +638,8 @@ class CaseCmd : public CommandBufferCmd {
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
 
+  bool force_update() override;
+
   BufferUsageVector buffers() override;
 
  private:
@@ -645,6 +663,8 @@ class ForCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 
@@ -670,6 +690,8 @@ class WhileCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 
@@ -710,6 +732,73 @@ class GemmCmd : public TracedCommandBufferCmd {
   const BufferAllocation::Slice workspace_;
   // Whether to run deterministically.
   const bool deterministic_;
+};
+
+//===----------------------------------------------------------------------===//
+// CublasLtCmd
+//===----------------------------------------------------------------------===//
+
+class CublasLtCmd : public TracedCommandBufferCmd {
+ public:
+  CublasLtCmd(ExecutionStreamId execution_stream_id, GemmConfig gemm_config,
+              se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+              BufferAllocation::Slice a_buffer,
+              BufferAllocation::Slice b_buffer,
+              BufferAllocation::Slice c_buffer,
+              BufferAllocation::Slice d_buffer,
+              BufferAllocation::Slice bias_buffer /* may be null */,
+              BufferAllocation::Slice aux_buffer /* may be null */,
+              BufferAllocation::Slice a_scale_buffer /* may be null */,
+              BufferAllocation::Slice b_scale_buffer /* may be null */,
+              BufferAllocation::Slice c_scale_buffer /* may be null */,
+              BufferAllocation::Slice d_scale_buffer /* may be null */,
+              BufferAllocation::Slice d_amax_buffer /* may be null */,
+              BufferAllocation::Slice workspace_buffer);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
+      const stream_executor::Stream* stream);
+
+  absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm> GetMatmulAlgorithm(
+      const se::gpu::BlasLt::MatmulPlan* plan, int64_t max_workspace);
+
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      se::gpu::BlasLt::MatmulPlanPtr>
+      matmul_plans_cache_;
+
+  absl::flat_hash_map<const se::gpu::BlasLt::MatmulPlan*,
+                      se::gpu::BlasLt::MatmulAlgorithm>
+      matmul_algorithm_cache_;
+
+  se::gpu::BlasLt::MatmulPlan* plan_;
+  se::gpu::BlasLt::MatmulAlgorithm algorithm_;
+
+  const GemmConfig gemm_config_;
+  const se::gpu::BlasLt::Epilogue epilogue_;
+  const int64_t algorithm_idx_;
+  const BufferAllocation::Slice a_buffer_;
+  const BufferAllocation::Slice b_buffer_;
+  const BufferAllocation::Slice c_buffer_;
+  const BufferAllocation::Slice d_buffer_;
+  const BufferAllocation::Slice bias_buffer_;
+  const BufferAllocation::Slice aux_buffer_;
+  const BufferAllocation::Slice a_scale_buffer_;
+  const BufferAllocation::Slice b_scale_buffer_;
+  const BufferAllocation::Slice c_scale_buffer_;
+  const BufferAllocation::Slice d_scale_buffer_;
+  const BufferAllocation::Slice d_amax_buffer_;
+  const BufferAllocation::Slice workspace_buffer_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -816,6 +905,10 @@ class CustomCallCmd : public CommandBufferCmd {
 // 'from_stream_id' to the execution scope created from the
 // 'execution_stream_id', e.g. Async operator lowered to command buffer requires
 // a barrier from the launching stream to the async operator's execution stream.
+//
+// In other words, all future commands added to `execution_stream_id` are
+// guaranteed to begin executing only after all already-added commands in
+// `from_stream_id` have completed.
 //===----------------------------------------------------------------------===//
 
 class BarrierCmd : public CommandBufferCmd {
@@ -830,14 +923,14 @@ class BarrierCmd : public CommandBufferCmd {
   BufferUsageVector buffers() override;
 
  private:
-  ExecutionStreamId from_stream_id_;
+  const ExecutionStreamId from_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-class CollectiveCmd : public TracedCommandBufferCmd {
+class CollectiveCmd : public CommandBufferCmd {
  public:
   CollectiveCmd(ExecutionStreamId execution_stream_id,
                 ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
@@ -846,7 +939,14 @@ class CollectiveCmd : public TracedCommandBufferCmd {
   absl::Status Prepare(const Thunk::PrepareParams& params,
                        Thunk::ResourceRequests& resource_requests) final;
 
+  bool force_update() override { return true; }
+
   bool IsNestedCommandBuffer() const final { return true; }
+
+  absl::Status AddTracedCommandBuffer(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
   virtual AsyncStreamKind GetAsyncStreamKind() = 0;
 

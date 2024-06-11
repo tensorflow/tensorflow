@@ -811,6 +811,27 @@ ops.NotDifferentiable("StopGradient")
 
 @ops.RegisterGradient("Reshape")
 def _ReshapeGrad(op: ops.Operation, grad):
+  """Defines the gradient for `array_ops.reshape()`."""
+  input_shape = op.inputs[0].shape
+  if input_shape.rank is not None and not input_shape.is_fully_defined():
+    # If only one dimension is undefined, we can use a wildcard dimension in
+    # the argument to `reshape()` to avoid creating a data dependency via
+    # a dynamic `shape()` operation.
+    input_shape_as_list = input_shape.as_list()
+    undefined_dims = []
+    has_zero_dim = False
+    for i, dim in enumerate(input_shape_as_list):
+      if dim is None:
+        undefined_dims.append(i)
+      elif dim == 0:
+        # When the tensor has zero elements, the wildcard dimension
+        # is underspecified, and `reshape()` will arbitrarily set the unknown
+        # to `1`, triggering shape errors downstream.
+        has_zero_dim = True
+    if len(undefined_dims) == 1 and not has_zero_dim:
+      input_shape_as_list[undefined_dims[0]] = -1
+      return [array_ops.reshape(_IndexedSlicesToTensorNoWarning(grad),
+                                input_shape_as_list), None]
   return [
       array_ops.reshape(
           _IndexedSlicesToTensorNoWarning(grad), array_ops.shape(op.inputs[0])),

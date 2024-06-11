@@ -104,6 +104,9 @@ class IotaTileAssignment {
 
   std::string ToString() const;
 
+  // Materializes array representation of IotaTileAssignment.
+  Array<int64_t> ToArray() const;
+
  private:
   friend class TileAssignment;
   static constexpr int kPerDimBytes = sizeof(int64_t);
@@ -202,8 +205,9 @@ class TileAssignment {
   void Each(
       absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const;
 
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, int64_t)> f) const;
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
+      const;
 
   // Returns a tile assignment reshaped to the given dimensions.
   // REQUIRES: new shape has the same number of elements.

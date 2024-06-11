@@ -756,10 +756,6 @@ tf_xla_py_strict_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/287111047): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [

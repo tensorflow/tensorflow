@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -78,7 +79,7 @@ struct ParsedProfileOutputLine {
          << parsed_line.trops << "'";
 }
 
-Status ParseOneProfileOutputLine(
+absl::Status ParseOneProfileOutputLine(
     const std::string& line, bool expect_hlo,
     absl::flat_hash_map<std::string, ParsedProfileOutputLine>* parsed_results,
     absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
@@ -119,7 +120,7 @@ Status ParseOneProfileOutputLine(
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsExtraMetricProfileOutputLine(const std::string& line) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/tests/filecheck.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -80,7 +80,7 @@ TEST_F(CpuNoAliasTest, Concat) {
       std::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(),
       [](LogicalBuffer::Color) { return /*alignment=*/1; });
-  ASSERT_EQ(status_or_buffer_assn.status(), OkStatus());
+  ASSERT_EQ(status_or_buffer_assn.status(), absl::OkStatus());
 
   llvm::LLVMContext context;
   llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.value(),

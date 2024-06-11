@@ -197,6 +197,21 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI64) {
                                                         7, -2, 9}));
 }
 
+TEST(DynamicUpdateSliceOpTest, SimpleTestI64Indices) {
+  DynamicUpdateSliceOpModel m({TensorType_INT64, {3, 3}},
+                              {TensorType_INT64, {2, 1}},
+                              {TensorType_INT64, {2}});
+  m.SetInput<int64_t>({1, 2, 3,  //
+                       4, 5, 6,  //
+                       7, 8, 9});
+  m.SetUpdate<int64_t>({-1, -2});
+  m.SetStartIndices<int64_t>({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({1, 2, 3,   //
+                                                        4, -1, 6,  //
+                                                        7, -2, 9}));
+}
+
 TEST(DynamicUpdateSliceOpTest, BoundaryTest) {
   DynamicUpdateSliceOpModel m({TensorType_FLOAT32, {3, 3}},
                               {TensorType_FLOAT32, {2, 2}},

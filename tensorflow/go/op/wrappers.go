@@ -19382,6 +19382,17 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 	return op.Output(0)
 }
 
+// GatherNdAttr is an optional argument to GatherNd.
+type GatherNdAttr func(optionalAttr)
+
+// GatherNdBadIndicesPolicy sets the optional bad_indices_policy attribute to value.
+// If not specified, defaults to ""
+func GatherNdBadIndicesPolicy(value string) GatherNdAttr {
+	return func(m optionalAttr) {
+		m["bad_indices_policy"] = value
+	}
+}
+
 // Gather slices from `params` into a Tensor with shape specified by `indices`.
 //
 // `indices` is a K-dimensional integer tensor, best thought of as a
@@ -19406,9 +19417,15 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 //
 //	indices.shape[:-1] + params.shape[indices.shape[-1]:]
 //
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, a 0 is stored in the
-// corresponding output value.
+// If `indices` contains any out-of-bound indices, depending on
+// `bad_indices_policy`, the op will either return an error or ignore the
+// out-of-bound indices. `bad_indices_policy` can be one of the following values:
+//  1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+//     historically on CPU and GPU we handle errors in different ways, and for
+//     backward compatibility we keep the default behavior.
+//  2. "ERROR": raises error; GPU does not support this value.
+//  3. "IGNORE": ignore error and set the corresponding output to 0;
+//     supported on both CPU and GPU.
 //
 // Some examples below.
 //
@@ -19508,15 +19525,20 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 //
 // Returns Values from `params` gathered from indices given by `indices`, with
 // shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.
-func GatherNd(scope *Scope, params tf.Output, indices tf.Output) (output tf.Output) {
+func GatherNd(scope *Scope, params tf.Output, indices tf.Output, optional ...GatherNdAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "GatherNd",
 		Input: []tf.Input{
 			params, indices,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19562,6 +19584,10 @@ func GatherV2BatchDims(value int64) GatherV2Attr {
 // Note that on CPU, if an out of bound index is found, an error is returned.
 // On GPU, if an out of bound index is found, a 0 is stored in the
 // corresponding output value.
+//
+// Note that on TPU, if any dimension of `params` is of size 0 then the output will
+// be the expected shape filled with zeros. On CPU and GPU an error will be
+// returned.
 //
 // See also `tf.batch_gather` and `tf.gather_nd`.
 //
@@ -19854,6 +19880,22 @@ func GetSessionTensor(scope *Scope, handle tf.Output, dtype tf.DataType) (value 
 			handle,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op returns the TPU task ID from TPU topology.
+//
+// This op is to return the TPU task ID from TPU topology.
+//
+// Returns The TPU task ID from TPU topology.
+func GetTpuTaskId(scope *Scope) (tpu_task_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GetTpuTaskId",
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -42812,6 +42854,17 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 	return op.Output(0)
 }
 
+// ScatterNdAttr is an optional argument to ScatterNd.
+type ScatterNdAttr func(optionalAttr)
+
+// ScatterNdBadIndicesPolicy sets the optional bad_indices_policy attribute to value.
+// If not specified, defaults to ""
+func ScatterNdBadIndicesPolicy(value string) ScatterNdAttr {
+	return func(m optionalAttr) {
+		m["bad_indices_policy"] = value
+	}
+}
+
 // Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
 // Scatter sparse `updates` according to individual values at the specified
@@ -42902,8 +42955,14 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
 //	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 //
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, the index is ignored.
+// If `indices` contains any out-of-bound indices, depending on
+// `bad_indices_policy`, the op will either return an error or ignore the
+// out-of-bound indices. `bad_indices_policy` can be one of the following values:
+//  1. "" or "DEFAULT": raises on CPU and ignore on GPU. This is because
+//     historically on CPU and GPU we handle errors in different ways, and for
+//     backward compatibility we keep the default behavior.
+//  2. "ERROR": raises error; GPU does not support this value.
+//  3. "IGNORE": ignore the bad indices; supported on both CPU and GPU.
 //
 // Arguments:
 //
@@ -42913,15 +42972,20 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
-func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output) (output tf.Output) {
+func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output, optional ...ScatterNdAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "ScatterNd",
 		Input: []tf.Input{
 			indices, updates, shape,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -57776,6 +57840,28 @@ func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (value
 		return
 	}
 	return values
+}
+
+// An op to update the task ID and global core array.
+//
+// This op is to update the task ID and global core array.
+//
+// Arguments:
+//
+//	tpu_task_id_to_shard_id: An array of int32 that maps TPU task ID to shard ID.
+//
+// Returns the created operation.
+func UpdateTaskIdAndGlobalCoreArray(scope *Scope, tpu_task_id_to_shard_id []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "UpdateTaskIdAndGlobalCoreArray",
+		Input: []tf.Input{
+			tf.OutputList(tpu_task_id_to_shard_id),
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // UpperBoundAttr is an optional argument to UpperBound.

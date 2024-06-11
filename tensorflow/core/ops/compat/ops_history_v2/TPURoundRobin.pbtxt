@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPURoundRobin"
   output_arg {
     name: "device_ordinal"

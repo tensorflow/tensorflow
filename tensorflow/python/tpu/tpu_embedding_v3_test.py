@@ -321,10 +321,17 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
           feature_config=feature_config,
           optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
     self.assertLen(mid_level_api.embedding_tables, 1)
 
@@ -581,10 +588,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       optimizer = tpu_embedding_v2_utils.SGD(learning_rate=1.0)
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
-          feature_config=feature_config, optimizer=optimizer
+          feature_config=feature_config,
+          optimizer=optimizer,
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
       mid_level_api.build()
     random1 = np.random.uniform(size=(16, self.embedding_dim)).astype(
@@ -669,6 +684,9 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
             optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
         )
     )
+    self.assertEqual(
+        feature_config.table.dim, 127, 'Unexpected update to FeatureConfig'
+    )
 
     sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
         disable_table_stacking=False,
@@ -693,7 +711,9 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
       return strategy.run(step, args=(data,))
 
     result = test_fn()
-
+    self.assertEqual(
+        feature_config.table.dim, 127, 'Unexpected update to FeatureConfig'
+    )
     mid_level_api_cpu = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config,
         optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
@@ -705,6 +725,27 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
         nest.flatten(result[0]), nest.flatten(cpu_result)
     ):
       self.assertAllEqual(per_feature_result, per_feature_result_cpu)
+
+  def test_raise_error_when_weight_decay_is_set(self):
+    feature_config = tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched', output_shape=[16]
+    )
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+
+    with self.assertRaises(NotImplementedError):
+      with strategy.scope():
+        tpu_embedding_v3.TPUEmbeddingV2(
+            feature_config=feature_config,
+            optimizer=tpu_embedding_v2_utils.SGD(
+                learning_rate=1.0,
+                weight_decay_factor=0.1,
+                multiply_weight_decay_factor_by_learning_rate=True,
+            ),
+        )
 
 
 if __name__ == '__main__':

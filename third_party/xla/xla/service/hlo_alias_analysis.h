@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -103,7 +103,7 @@ class HloAliasAnalysis {
   explicit HloAliasAnalysis(const HloModule* module);
 
   // Verify various invariants of the alias analysis.
-  Status Verify() const;
+  absl::Status Verify() const;
 
   const HloModule* module_;
 

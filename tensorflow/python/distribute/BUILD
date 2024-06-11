@@ -664,6 +664,7 @@ cuda_py_strict_test(
         ":multi_process_runner",
         ":multi_worker_test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

@@ -56,7 +56,7 @@ std::string TestDataPath() {
 }
 
 static constexpr char kCompilationStreamz[] =
-    "/tensorflow/core/tf_mlir_bridge_first_phase_count";
+    "/tensorflow/core/tf_mlir_bridge_first_phase_v2_count";
 
 class FunctionClusterTensorflowDialectTest : public ::testing::Test {
  public:

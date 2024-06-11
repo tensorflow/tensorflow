@@ -38,10 +38,12 @@ class CubSortRunnerInterface {
                            se::DeviceMemoryBase input_values,
                            se::DeviceMemoryBase output_keys,
                            se::DeviceMemoryBase output_values,
-                           se::DeviceMemoryBase scratch, bool descending) = 0;
+                           se::DeviceMemoryBase scratch, bool descending,
+                           int64_t batch_size, se::Stream* stream) = 0;
   virtual absl::Status Run(const Thunk::ExecuteParams& params,
                            const class CubSortThunk* thunk) = 0;
-  virtual absl::StatusOr<int64_t> GetScratchSize(int64_t num_items) = 0;
+  virtual absl::StatusOr<int64_t> GetScratchSize(int64_t num_items,
+                                                 int64_t batch_size) = 0;
 
   static absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
       PrimitiveType type, std::optional<PrimitiveType> value_type);
@@ -53,7 +55,8 @@ class CubSortThunk : public Thunk {
                std::optional<PrimitiveType> value_type,
                absl::InlinedVector<BufferAllocation::Slice, 2> operands,
                absl::InlinedVector<BufferAllocation::Slice, 2> results,
-               BufferAllocation::Slice scratch, bool descending);
+               BufferAllocation::Slice scratch, bool descending,
+               int64_t batch_size);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);
@@ -63,6 +66,7 @@ class CubSortThunk : public Thunk {
   BufferAllocation::Slice result(int i) const { return results_[i]; }
   BufferAllocation::Slice scratch() const { return scratch_; }
   bool descending() const { return descending_; }
+  int64_t batch_size() const { return batch_size_; }
 
  private:
   std::unique_ptr<CubSortRunnerInterface> runner_;
@@ -70,15 +74,8 @@ class CubSortThunk : public Thunk {
   absl::InlinedVector<BufferAllocation::Slice, 2> results_;
   BufferAllocation::Slice scratch_;
   bool descending_;
+  int64_t batch_size_;
 };
-
-absl::Status RunCubSort(PrimitiveType type,
-                        std::optional<PrimitiveType> value_type,
-                        se::DeviceMemoryBase input_keys,
-                        se::DeviceMemoryBase input_values,
-                        se::DeviceMemoryBase output_keys,
-                        se::DeviceMemoryBase output_values,
-                        se::DeviceMemoryBase scratch, bool descending);
 
 }  // namespace gpu
 }  // namespace xla

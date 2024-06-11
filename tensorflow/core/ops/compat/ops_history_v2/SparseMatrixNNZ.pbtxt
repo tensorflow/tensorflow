@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseMatrixNNZ"
   input_arg {
     name: "sparse_matrix"

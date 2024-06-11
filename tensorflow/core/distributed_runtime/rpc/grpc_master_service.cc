@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 

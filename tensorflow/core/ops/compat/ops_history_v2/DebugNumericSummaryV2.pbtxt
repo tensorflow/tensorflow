@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DebugNumericSummaryV2"
   input_arg {
     name: "input"

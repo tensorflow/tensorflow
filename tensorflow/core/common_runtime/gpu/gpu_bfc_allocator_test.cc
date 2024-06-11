@@ -512,18 +512,6 @@ class GPUBFCAllocatorPrivateMethodsTest
     }
   }
 
-  void TestLog2FloorNonZeroSlow() {
-    GPUBFCAllocator a(GetParam()(1ull << 32), 1 /* total_memory */, "GPU_0_bfc",
-                      {});
-    EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
-    EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
-    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
-    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(3));
-    EXPECT_EQ(9, a.Log2FloorNonZeroSlow(1023));
-    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1024));
-    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1025));
-  }
-
   void TestForceAllowGrowth() {
     // Unset flag value uses provided option.
     unsetenv("TF_FORCE_GPU_ALLOW_GROWTH");
@@ -562,10 +550,6 @@ class GPUBFCAllocatorPrivateMethodsTest
 };
 
 TEST_P(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
-
-TEST_P(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
-  TestLog2FloorNonZeroSlow();
-}
 
 TEST_P(GPUBFCAllocatorPrivateMethodsTest, ForceAllowGrowth) {
   TestForceAllowGrowth();

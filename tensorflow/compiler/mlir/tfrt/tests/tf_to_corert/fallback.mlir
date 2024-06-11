@@ -15,7 +15,7 @@
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: {{.*}} !tfrt.chain
-// CHECK-SAME: [[serialized:%.*]]: !corert.tensorhandle
+// CHECK-SAME: [[serialized:%.*]]: !tfrt_fallback.tf_tensor
 func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) attributes {tf.entry_function = {inputs = "input0", outputs = "ParseExample/ParseExampleV2"}} {
   %dense_default_0 = "tf.Const"() {device = "/device:CPU:0", dtype = f32, value = dense<[]> : tensor<0xf32>} : () -> tensor<0xf32>
   %dense_default_1 = "tf.Const"() {device = "/device:CPU:0", dtype = f32, value = dense<[]> : tensor<0xf32>} : () -> tensor<0xf32>
@@ -24,10 +24,8 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
   %ragged_keys = "tf.Const"() {device = "/device:CPU:0", dtype = !tf_type.string, value = dense<""> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
   %sparse_keys = "tf.Const"() {device = "/device:CPU:0", dtype = !tf_type.string, value = dense<""> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
 
-  // CHECK: [[fallback_serialized:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[serialized]]
-  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:CPU:0"
   // CHECK: [[outputs:%.*]]:8 = tfrt_fallback_async.executeop key(0) cost({{.*}}) device("/device:CPU:0") "tf.ParseExampleV2"
-  // CHECK-SAME: ([[fallback_serialized]]
+  // CHECK-SAME: ([[serialized]]
   // CHECK-NOT: device
   // CHECK-SAME: Tdense = [f32, f32]
   // CHECK-SAME: dense_shapes = [#corert.shape<>, #corert.shape<>]
@@ -44,9 +42,7 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
     } : (tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xf32>, tensor<0xf32>)
     -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>, tensor<32xf32>, tensor<32xf32>)
 
-  // CHECK: [[result:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[outputs]]#0
-  // CHECK-SAME: device = "/device:CPU:0"
-  // CHECK: tfrt.return {{.*}}, [[result]]
+  // CHECK: tfrt.return {{.*}}, [[outputs]]#0
   func.return %outputs#0 : tensor<?x2xi64>
 }
 

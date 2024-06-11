@@ -80,6 +80,10 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     const CommandBufferCmdSequence& commands,
     const Thunk::ExecuteParams& params) {
+  if (commands.force_update()) {
+    return true;
+  }
+
   bool should_update = false;
   const BufferAllocations* allocs = params.buffer_allocations;
 
@@ -149,13 +153,17 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr);
+      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
+  //
+  // If command buffer in any other state we check it is has to be updated, i.e.
+  // if captured pointers changed or command buffer has commands that require
+  // update on each call.
   if (cmd_buffer->command_buffer->state() ==
           se::CommandBuffer::State::kCreate &&
       cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
@@ -181,6 +189,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << params.executor->device_ordinal() << " in "
             << (end_micros - start_micros)
             << " μs; num_commands=" << commands_.size();
+    cmd_buffer->num_executions = 0;
   }
 
   return absl::OkStatus();
@@ -265,7 +274,9 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
+  TF_ASSIGN_OR_RETURN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       executor,
       std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));

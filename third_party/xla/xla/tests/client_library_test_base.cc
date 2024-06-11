@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -181,7 +182,8 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
+absl::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -204,10 +206,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     const xla::XlaComputation& computation, const Literal& /*expected*/,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -218,8 +220,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   // This is a recursive function. It's an std::function instead of a lambda
   // because it needs to capture itself. The index is the index of the argument
   // to try all layouts for.
-  std::function<Status(int64_t)> choose;
-  choose = [&, this](int64_t index) -> Status {
+  std::function<absl::Status(int64_t)> choose;
+  choose = [&, this](int64_t index) -> absl::Status {
     if (index < arguments.size()) {
       // Try out all layouts for the operand.
       TF_ASSIGN_OR_RETURN(auto literal,
@@ -232,7 +234,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::vector<int64_t> minor_to_major(literal.shape().rank());
@@ -250,7 +252,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         layout_strings.pop_back();
       } while (
           std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Every argument has an assigned layout.
@@ -264,7 +266,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       absl::StrAppend(&error_message, str, " ");
     }
     verify_output(actual, error_message);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   return choose(0);
@@ -293,7 +295,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   return ExecuteAndTransfer(computation, arguments, shape_with_layout);
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in,
     const Shape* shape_with_layout) {
@@ -352,10 +354,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in, ErrorSpec error,
     const Shape* shape_with_layout) {
@@ -411,7 +413,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(

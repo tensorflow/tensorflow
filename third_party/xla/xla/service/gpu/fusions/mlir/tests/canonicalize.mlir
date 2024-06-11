@@ -83,3 +83,65 @@ func.func @fold_operands(%d0: index) -> index {
 // CHECK-LABEL: func.func @fold_operands
 // CHECK-SAME:      %[[ARG_0:.*]]: index)
 // CHECK:         xla_gpu.apply_indexing #[[$MAP]](%[[ARG_0]] in [0, 10])
+
+// -----
+
+func.func @fold_operands_and_results(%arg0: index, %arg1: index)
+  -> (index, index) {
+  %0:2 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (0, d1)>
+    (%arg0 in [0, 4], %arg1 in [0, 5])
+  return %0#0, %0#1 : index, index
+}
+
+// CHECK-LABEL: func.func @fold_operands_and_results
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index)
+// CHECK-NEXT: %[[C0:.*]] = arith.constant 0
+// CHECK-NEXT: return %[[C0]], %[[ARG_1]] : index, index
+
+// -----
+
+func.func @fold_sequence(%arg0: index, %arg1: index) -> index {
+  %0 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (d0 + d1)>
+    (%arg0 in [0, 5], %arg1 in [0, 4])
+  %1 = xla_gpu.apply_indexing affine_map<(d0) -> (d0 mod 100 + 42)>
+    (%0 in [0, 10000])
+  func.return %1 : index
+}
+
+// CHECK: #[[$MAP:.*]] = affine_map<(d0, d1) -> (d0 + d1 + 42)>
+// CHECK-LABEL: func.func @fold_sequence
+// CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
+// CHECK-NEXT:  xla_gpu.apply_indexing #[[$MAP]]
+// CHECK-SAME:      (%[[ARG0]] in [0, 5], %[[ARG1]] in [0, 4])
+
+// -----
+
+func.func @fold_sequence_sym(%arg0: index, %arg1: index) -> index {
+  %0 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (d0 + d1)>
+    (%arg0 in [0, 5], %arg1 in [0, 4])
+  %1 = xla_gpu.apply_indexing affine_map<()[s0] -> (s0 mod 100 + 42)>
+    [%0 in [0, 10000]]
+  func.return %1 : index
+}
+
+// CHECK: #[[$MAP:.*]] = affine_map<(d0, d1) -> (d0 + d1 + 42)>
+// CHECK-LABEL: func.func @fold_sequence_sym
+// CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
+// CHECK-NEXT:  xla_gpu.apply_indexing #[[$MAP]]
+// CHECK-SAME:      (%[[ARG0]] in [0, 5], %[[ARG1]] in [0, 4])
+
+// -----
+
+func.func @fold_sequence_shared_operands(%arg0: index, %arg1: index) -> index {
+  %0 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (d0 + d1)>
+    (%arg0 in [0, 5], %arg1 in [0, 4])
+  %1 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (d0 + d1)>
+    (%arg1 in [0, 4], %0 in [0, 10000])
+  func.return %1 : index
+}
+
+// CHECK: #[[$MAP:.*]] = affine_map<(d0, d1) -> (d0 * 2 + d1)>
+// CHECK-LABEL: func.func @fold_sequence_shared_operands
+// CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
+// CHECK-NEXT:  xla_gpu.apply_indexing #[[$MAP]]
+// CHECK-SAME:      (%[[ARG1]] in [0, 4], %[[ARG0]] in [0, 5])

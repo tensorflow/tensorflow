@@ -16,20 +16,19 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
@@ -53,9 +52,7 @@ class Env;
 // reported by the user via `agent->ReportError()`.
 //
 // Possible service errors:
-//    - Internal: Coordination service is not enabled.
-//                        If it was previously accessible, coordination service
-//                        has been shut down.
+//    - Internal: Coordination service has shut down or has not been enabled.
 //    - Aborted: Incarnation mismatch during heartbeat (either remote
 //                       task or coordination service has restarted).
 //    - Unavailable: Heartbeat timeout from remote task (failed,
@@ -101,6 +98,7 @@ class CoordinationServiceAgent {
   //   - register itself as a task to the service
   //   - start a thread to periodically send heartbeat message with the service
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
   //   - InvalidArgument: Unexpected task registration
   //   - Aborted: Duplicate task registration (agent will retry connecting until
@@ -110,6 +108,7 @@ class CoordinationServiceAgent {
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
   virtual absl::Status WaitForAllTasks(
@@ -137,6 +136,7 @@ class CoordinationServiceAgent {
   // Note that the error payload will set `is_reported_error` to true, to
   // distinguish user-specified errors from internal service or RPC failures.
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
   //   - InvalidArgument: Unexpected task request
   virtual absl::Status ReportError(const absl::Status& error) = 0;
@@ -148,6 +148,7 @@ class CoordinationServiceAgent {
   // the barrier times out, this agent will still disconnect, while an error is
   // reported to other agents that did not reach the barrier on time.
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: Task was in error state (note: agent is still
   //                         shut down forcefully).
@@ -155,6 +156,7 @@ class CoordinationServiceAgent {
 
   // Disconnect from the service, and clean up the internal error status.
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task is not in error state/has already
   //       disconnected.
@@ -196,6 +198,10 @@ class CoordinationServiceAgent {
   virtual absl::Status InsertKeyValue(std::string_view key,
                                       std::string_view value) = 0;
 
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value,
+                                      bool allow_overwrite) = 0;
+
   // Delete config keys in the coordination service.
   virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 
@@ -234,7 +240,8 @@ class CoordinationServiceAgent {
   //      first WaitAtBarrier() + timeout duration.
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Aborted: Service is shutting down.
-  //   - Internal: Any participating task is in ERROR state.
+  //   - Internal: Any participating task is in ERROR state, or service has shut
+  //     down.
   //   - InvalidArgument: (1) Conflicting tasks specified by different agents
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
@@ -254,6 +261,7 @@ class CoordinationServiceAgent {
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
   // Possible service errors:
+  //   - Internal: Coordination service has shut down.
   //   - FailedPrecondition: Barrier has already been passed.
   virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
   virtual void CancelBarrierAsync(std::string_view barrier_id,

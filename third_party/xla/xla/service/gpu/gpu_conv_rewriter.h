@@ -29,16 +29,16 @@ namespace gpu {
 // Rewrites plain convolutions, backwards-filter convolutions, and
 // backwards-input convolutions into CustomCall HLOs that call into
 // Cudnn/Miopen.
-// For integer convolution, it requires the following pattern:
-// conv<InputT=int32_t, ResultT=int32_t>(
-//   convert<int32_t>(int8_x), convert<int32_t>(int8_y))
-// We transform it to:
-// custom_call<int32_t>(int8_x, int8_y, target=cudnnForwardConvolution)
-// Note that this pattern is necessary but not sufficient to map convolutions
-// to CuDNN. More patterns will be matched in cudnn_fused_conv_rewriter.
+//
+// This pass does not fuse other ops into the convolution. Instead, specific
+// patterns of ops will be matched and fused into the custom call in
+// CudnnFusedConvRewriter.
 
 class GpuConvRewriter : public HloModulePass {
  public:
+  explicit GpuConvRewriter(const se::GpuComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {};
+
   absl::string_view name() const override { return "gpu-conv-rewriter"; }
 
   static bool ConvIsLowerable(HloInstruction* conv);
@@ -47,6 +47,9 @@ class GpuConvRewriter : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

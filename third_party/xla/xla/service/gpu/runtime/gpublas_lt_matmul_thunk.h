@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 
@@ -50,6 +50,25 @@ class CublasLtMatmulThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+
+  GemmConfig config() const { return gemm_config_; }
+  se::gpu::BlasLt::Epilogue epilogue() const { return epilogue_; }
+  int64_t algorithm_idx() const { return algorithm_idx_; }
+
+  BufferAllocation::Slice a_buffer() const { return a_buffer_; }
+  BufferAllocation::Slice b_buffer() const { return b_buffer_; }
+  BufferAllocation::Slice c_buffer() const { return c_buffer_; }
+  BufferAllocation::Slice d_buffer() const { return d_buffer_; }
+  BufferAllocation::Slice bias_buffer() const { return bias_buffer_; }
+  BufferAllocation::Slice aux_buffer() const { return aux_buffer_; }
+  BufferAllocation::Slice a_scale_buffer() const { return a_scale_buffer_; }
+  BufferAllocation::Slice b_scale_buffer() const { return b_scale_buffer_; }
+  BufferAllocation::Slice c_scale_buffer() const { return c_scale_buffer_; }
+  BufferAllocation::Slice d_scale_buffer() const { return d_scale_buffer_; }
+  BufferAllocation::Slice d_amax_buffer() const { return d_amax_buffer_; }
+  std::optional<const BufferAllocation::Slice> workspace() const {
+    return workspace_buffer_;
+  }
 
  private:
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(

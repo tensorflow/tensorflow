@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -236,10 +236,10 @@ static constexpr int kPipelinedParentNodeIdx = 1;
 // If a group forms a cycle with another group, records the other group as a
 // complement group.
 struct P2PGroup {
-  Status RecordP2POpForUnpipelinedGroup(HloSendRecvInstruction* p2p) {
+  absl::Status RecordP2POpForUnpipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind != kUnpipelined) {
       return Internal("Expected unpipelined group");
@@ -248,13 +248,13 @@ struct P2PGroup {
     if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RecordP2POpForPipelinedGroup(HloSendRecvInstruction* p2p) {
+  absl::Status RecordP2POpForPipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind == kUnpipelined) {
       if (nodes[kPipelinedParentNodeIdx].computation != nullptr) {
@@ -266,13 +266,13 @@ struct P2PGroup {
     if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RecordWhileOpToPipelinedGroup(HloInstruction* while_op) {
+  absl::Status RecordWhileOpToPipelinedGroup(HloInstruction* while_op) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind == kUnpipelined) {
       return Internal("Expected pipelined group");
@@ -281,7 +281,7 @@ struct P2PGroup {
     if (!node.RecordWhileOp(while_op)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Finds the pipeline stream from the frontend attribute of the Send/Recv in
@@ -304,7 +304,7 @@ struct P2PGroup {
 
   // Records the other group that forms a cycle with this group, assuming that
   // we handle only two groups that form a cycle.
-  Status RecordComplementGroup(P2PGroupMap& p2p_group_map) {
+  absl::Status RecordComplementGroup(P2PGroupMap& p2p_group_map) {
     CHECK(!complement_group_channel.has_value() && runtime_stream == kStream1);
     for (auto& [channel, p2p_group] : p2p_group_map) {
       if (&p2p_group == this ||
@@ -329,7 +329,7 @@ struct P2PGroup {
         p2p_group.complement_group_channel = GetChannel();
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the parent computation assuming this is a kPipelined group.
@@ -417,19 +417,19 @@ bool MayInvokeCollectiveOp(
 // Send operand of the while-op, we assume these two P2P groups belong to the
 // same pipelined P2P sequence. Adds the WhileOp to the pipelined group
 // representation in this case.
-Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
-                                     P2PInComputation& p2p_in_computation,
-                                     P2PGroupMap& p2p_group_map) {
+absl::Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
+                                           P2PInComputation& p2p_in_computation,
+                                           P2PGroupMap& p2p_group_map) {
   if (while_op->while_init()->opcode() != HloOpcode::kTuple) {
     // A while-init should contain the loop index variable. So if a while-init
     // is not a tuple, it only contains the loop index variable and shouldn't
     // contain any pipelined Send operand.
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloComputation* body = while_op->called_computations()[0];
   auto p2p_in_while = p2p_in_computation.find(body);
   if (p2p_in_while == p2p_in_computation.end()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   int pipelined_group = 0;
   // Check whether the while-op init contains a token from a Send result.
@@ -452,18 +452,18 @@ Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
     }
     TF_RETURN_IF_ERROR(group->second.RecordWhileOpToPipelinedGroup(while_op));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status OrderBefore(HloInstruction* i1, HloInstruction* i2) {
+absl::Status OrderBefore(HloInstruction* i1, HloInstruction* i2) {
   TF_RETURN_IF_ERROR(i1->AddControlDependencyTo(i2));
   VLOG(10) << "Add control predecessor " << i2->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to enforce this ordering:
 //   recv => send => recv-done => send-done.
-Status ConnectP2P1NodeChain(const P2PGroupNode& node) {
+absl::Status ConnectP2P1NodeChain(const P2PGroupNode& node) {
   HloRecvDoneInstruction* recv_done = node.recv_done;
   HloRecvInstruction* recv = node.recv;
   HloSendDoneInstruction* send_done = node.send_done;
@@ -471,20 +471,20 @@ Status ConnectP2P1NodeChain(const P2PGroupNode& node) {
   TF_RETURN_IF_ERROR(OrderBefore(recv, send));
   TF_RETURN_IF_ERROR(OrderBefore(send, recv_done));
   TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For an unpipelined Send-Recv chain, adds control dependence to enforce this
 // ordering:
 //   recv => send => recv-done => send-done.
-Status ConnectUnpipelinedP2P(const P2PGroup& p2p_group) {
+absl::Status ConnectUnpipelinedP2P(const P2PGroup& p2p_group) {
   return ConnectP2P1NodeChain(p2p_group.GetChild());
 }
 
 // For a single pipelined Send-Recv chain in a while-body, adds control
 // dependence toenforce this ordering:
 //   recv => send => recv-done => send-done
-Status ConnectPipelined1P2PChild(const P2PGroup& p2p_group) {
+absl::Status ConnectPipelined1P2PChild(const P2PGroup& p2p_group) {
   return ConnectP2P1NodeChain(p2p_group.GetChild());
 }
 
@@ -492,8 +492,8 @@ Status ConnectPipelined1P2PChild(const P2PGroup& p2p_group) {
 // enforce this ordering:
 //   recv.0 => send.0 => recv.1 => send.1 =>
 //   recv-done.0 => recv-done.1 => send-done.0 => send-done.1
-Status ConnectP2P2NodeChain(const P2PGroupNode& node0,
-                            const P2PGroupNode& node1) {
+absl::Status ConnectP2P2NodeChain(const P2PGroupNode& node0,
+                                  const P2PGroupNode& node1) {
   HloSendRecvInstruction* recv_done0 = node0.recv_done;
   HloRecvInstruction* recv0 = node0.recv;
   HloSendRecvInstruction* send_done0 = node0.send_done;
@@ -513,15 +513,15 @@ Status ConnectP2P2NodeChain(const P2PGroupNode& node0,
 
   TF_RETURN_IF_ERROR(OrderBefore(send1, recv_done0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For a pipelined Send-Recv chain with two channel groups forming a cycle in a
 // while-body computation, we enforce this ordering:
 //   recv.0 => send.0 => recv.1 => send.1 =>
 //   recv-done.0 => recv-done.1 => send-done.0 => send-done.1
-Status ConnectPipelined2P2PChild(const P2PGroup& p2p_group,
-                                 const P2PGroupMap& p2p_group_map) {
+absl::Status ConnectPipelined2P2PChild(const P2PGroup& p2p_group,
+                                       const P2PGroupMap& p2p_group_map) {
   return ConnectP2P2NodeChain(
       p2p_group.GetComplementGroup(p2p_group_map)->GetChild(),
       p2p_group.GetChild());
@@ -530,7 +530,7 @@ Status ConnectPipelined2P2PChild(const P2PGroup& p2p_group,
 // For a pipelined Send-Recv chain with one group in the while-body calling
 // computation, we enforce this ordering:
 //   recv => send => recv-done => send-done
-Status ConnectPipelined1P2PParent(const P2PGroup& p2p_group) {
+absl::Status ConnectPipelined1P2PParent(const P2PGroup& p2p_group) {
   return ConnectP2P1NodeChain(p2p_group.GetParent());
 }
 
@@ -538,8 +538,8 @@ Status ConnectPipelined1P2PParent(const P2PGroup& p2p_group) {
 // in the while-body calling computation, we enforce this ordering:
 //   recv.0 => send.0 => recv.1 => send.1 => =>
 //   recv-done.0 => recv-done.1 => send-done.0 => send-done.1
-Status ConnectPipelined2P2PParent(const P2PGroup& p2p_group,
-                                  const P2PGroupMap& p2p_group_map) {
+absl::Status ConnectPipelined2P2PParent(const P2PGroup& p2p_group,
+                                        const P2PGroupMap& p2p_group_map) {
   return ConnectP2P2NodeChain(
       p2p_group.GetComplementGroup(p2p_group_map)->GetParent(),
       p2p_group.GetParent());
@@ -550,8 +550,8 @@ Status ConnectPipelined2P2PParent(const P2PGroup& p2p_group,
 // enforece this ordering:
 //   recv.0 => send.0 => recv.1 => send.1 =>
 //   recv-done.0 => recv-done.1 => send-done.0 => send-done.1
-Status ConnectUnpipelined2P2P(const P2PGroup& p2p_group,
-                              const P2PGroupMap& p2p_group_map) {
+absl::Status ConnectUnpipelined2P2P(const P2PGroup& p2p_group,
+                                    const P2PGroupMap& p2p_group_map) {
   CHECK(p2p_group.runtime_stream == kStream1);
   return ConnectP2P2NodeChain(
       p2p_group.GetComplementGroup(p2p_group_map)->GetChild(),
@@ -562,7 +562,7 @@ Status ConnectUnpipelined2P2P(const P2PGroup& p2p_group,
 // groups them by channel IDs, records pipeline decision for groups and connects
 // groups that form a cycle for pipelining. Also records whether the computation
 // invokes collective operation directly or indirectly.
-Status GatherP2PGroupsAndCollectiveInfo(
+absl::Status GatherP2PGroupsAndCollectiveInfo(
     const HloComputation* computation, P2PInComputation& p2p_in_computation,
     P2PGroupMap& p2p_group_map,
     CollectiveInComputation& collective_in_computation) {
@@ -660,7 +660,7 @@ Status GatherP2PGroupsAndCollectiveInfo(
     TF_RETURN_IF_ERROR(p2p_group.RecordComplementGroup(p2p_group_map));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For a given computation, adds control dependence to chain a pipelined or
@@ -728,15 +728,15 @@ absl::StatusOr<std::pair<int, const P2PGroup*>> ConnectP2PChain(
   return std::make_pair(num_p2p_chains, pipelined_group);
 }
 
-Status OrderBefore(HloReachabilityMap* reachability, HloInstruction* a,
-                   HloInstruction* b) {
+absl::Status OrderBefore(HloReachabilityMap* reachability, HloInstruction* a,
+                         HloInstruction* b) {
   VLOG(10) << "OrderBefore " << a->ToString() << " " << b->ToString();
   if (!reachability->IsReachable(a, b)) {
     TF_RETURN_IF_ERROR(a->AddControlDependencyTo(b));
     VLOG(10) << "add control predecessor " << b->ToString();
     reachability->UpdateReachabilityThroughInstruction(b);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to linearize other collective ops with respect to
@@ -748,7 +748,7 @@ Status OrderBefore(HloReachabilityMap* reachability, HloInstruction* a,
 //      Recv-Done.1 => Send-Done.1 (pipelined 2)
 // We intend to schedule collective ops ordered before the beginning of such a
 // chain or after the ending of such a chain.
-Status LinearizeCollectivesWithOtherP2P(
+absl::Status LinearizeCollectivesWithOtherP2P(
     const P2PGroupMap& p2p_group_map, const P2PGroup& group,
     const CollectiveInComputation& collective_in_computation,
     const std::vector<HloInstruction*>::iterator& chain_start_iter,
@@ -829,13 +829,13 @@ Status LinearizeCollectivesWithOtherP2P(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to linearize other collective ops with respect to
 // the given pipelined P2P chain in the computation for the pipelined
 // while-loop. All Collective ops should be scheduled before the chain.
-Status LinearizeCollectivesWithPipelinedP2PChild(
+absl::Status LinearizeCollectivesWithPipelinedP2PChild(
     const P2PGroupMap& p2p_group_map, const P2PGroup& group,
     const CollectiveInComputation& collective_in_computation,
     HloComputation* computation, HloReachabilityMap* reachability) {
@@ -881,7 +881,7 @@ Status LinearizeCollectivesWithPipelinedP2PChild(
     TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

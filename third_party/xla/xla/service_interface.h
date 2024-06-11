@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_INTERFACE_H_
 #define XLA_SERVICE_INTERFACE_H_
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -31,53 +31,57 @@ class ServiceInterface {
   ServiceInterface() {}
   virtual ~ServiceInterface() = default;
 
-  // TODO(b/31824348): Convert to use StatusOr.
-  virtual Status TransferToClient(const TransferToClientRequest* arg,
-                                  TransferToClientResponse* result) = 0;
+  // TODO(b/31824348): Convert to use absl::StatusOr.
+  virtual absl::Status TransferToClient(const TransferToClientRequest* arg,
+                                        TransferToClientResponse* result) = 0;
 
-  virtual Status TransferToServer(const TransferToServerRequest* arg,
-                                  TransferToServerResponse* result) = 0;
+  virtual absl::Status TransferToServer(const TransferToServerRequest* arg,
+                                        TransferToServerResponse* result) = 0;
 
-  virtual Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                                  TransferToInfeedResponse* result) = 0;
+  virtual absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                                        TransferToInfeedResponse* result) = 0;
 
-  virtual Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                                     TransferFromOutfeedResponse* result) = 0;
+  virtual absl::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) = 0;
 
-  virtual Status ResetDevice(const ResetDeviceRequest* arg,
-                             ResetDeviceResponse* result) = 0;
+  virtual absl::Status ResetDevice(const ResetDeviceRequest* arg,
+                                   ResetDeviceResponse* result) = 0;
 
-  virtual Status Compile(const CompileRequest* arg,
-                         CompileResponse* result) = 0;
+  virtual absl::Status Compile(const CompileRequest* arg,
+                               CompileResponse* result) = 0;
 
-  virtual Status Execute(const ExecuteRequest* arg,
-                         ExecuteResponse* result) = 0;
+  virtual absl::Status Execute(const ExecuteRequest* arg,
+                               ExecuteResponse* result) = 0;
 
-  virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
-                                      ExecuteParallelResponse* result) = 0;
+  virtual absl::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg,
+      ExecuteParallelResponse* result) = 0;
 
-  virtual Status DeconstructTuple(const DeconstructTupleRequest* arg,
-                                  DeconstructTupleResponse* result) = 0;
+  virtual absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
+                                        DeconstructTupleResponse* result) = 0;
 
-  virtual Status GetComputationGraphStats(
+  virtual absl::Status GetComputationGraphStats(
       const ComputationGraphStatsRequest* arg,
       ComputationStatsResponse* result) = 0;
 
-  virtual Status GetShape(const GetShapeRequest* arg,
-                          GetShapeResponse* result) = 0;
+  virtual absl::Status GetShape(const GetShapeRequest* arg,
+                                GetShapeResponse* result) = 0;
 
-  virtual Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
-                                     CreateChannelHandleResponse* result) = 0;
+  virtual absl::Status CreateChannelHandle(
+      const CreateChannelHandleRequest* arg,
+      CreateChannelHandleResponse* result) = 0;
 
-  virtual Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                  GetDeviceHandlesResponse* result) = 0;
+  virtual absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                        GetDeviceHandlesResponse* result) = 0;
 
-  virtual Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
-                                      ComputeConstantResponse* result) = 0;
+  virtual absl::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg,
+      ComputeConstantResponse* result) = 0;
 
   // Methods used by GlobalData.
-  virtual Status Unregister(const UnregisterRequest* arg,
-                            UnregisterResponse* result) = 0;
+  virtual absl::Status Unregister(const UnregisterRequest* arg,
+                                  UnregisterResponse* result) = 0;
 };
 
 }  // namespace xla

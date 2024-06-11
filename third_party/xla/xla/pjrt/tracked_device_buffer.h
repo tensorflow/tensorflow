@@ -68,7 +68,7 @@ class BufferSequencingEvent {
  public:
   explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
       : thread_pool_(thread_pool),
-        defined_status_(tsl::MakeUnconstructedAsyncValueRef<Status>()) {}
+        defined_status_(tsl::MakeUnconstructedAsyncValueRef<absl::Status>()) {}
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
   // be called at most once. Unblocks any other host threads that are blocked in
@@ -84,7 +84,7 @@ class BufferSequencingEvent {
   // Same as WaitForEventOnStream, but takes a raw platform-specific
   // stream. Currently on implemented for CUDA and ROCM GPU, where stream is a
   // GpuStreamHandle (e.g. a cudaStream_t).
-  Status WaitForEventOnExternalStream(std::intptr_t stream);
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns true if the event is known to have occurred by the tail of
   // 'stream'. If RecordOnStream has not yet been called, blocks the calling
@@ -130,7 +130,7 @@ class BufferSequencingEvent {
     return defined_status_.IsConcrete();
   }
 
-  void SetDefinedStatus(Status status) {
+  void SetDefinedStatus(absl::Status status) {
     {
       absl::MutexLock lock(&mu_);
       defined_status_.emplace(status);
@@ -139,7 +139,7 @@ class BufferSequencingEvent {
     this->ExecuteFutureTasks();
   }
 
-  Status GetDefinedStatus() {
+  absl::Status GetDefinedStatus() {
     absl::MutexLock lock(&mu_);
     CHECK(defined_status_.IsConcrete());
     return defined_status_.get();

@@ -23,17 +23,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -644,7 +641,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
     return true;
   };
 
-  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+  absl::Status error_status = ShapeUtil::ForEachIndexWithStatus(
       shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
       increment_func);
 
@@ -1203,6 +1200,20 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   layout->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
   EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
+}
+
+TEST(XlaShapeUtilTest, ZeroSize) {
+  // Verify that if any one dimension is 0 we have a zero byte buffer.
+  std::vector<std::vector<int64_t>> test_cases = {
+      {0, 64, 128}, {128, 0, 64}, {64, 128, 0},
+      {0, 63, 127}, {127, 0, 63}, {63, 127, 0},
+  };
+  for (const auto& dimensions : test_cases) {
+    xla::Shape int4_shape = xla::ShapeUtil::MakeShape(xla::S4, dimensions);
+    int4_shape.mutable_layout()->set_element_size_in_bits(4);
+    EXPECT_EQ(xla::ShapeUtil::ArrayDataSize(int4_shape), 0);
+    EXPECT_EQ(xla::ShapeUtil::ArraySize(int4_shape), 0);
+  }
 }
 
 TEST(ShapeUtilTest, DecomposeBitcastToReshape) {

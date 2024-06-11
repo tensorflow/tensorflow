@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include <atomic>
+#include <memory>
+#include <variant>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -97,17 +99,17 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
 ResourceMgr::ResourceAndName::ResourceAndName() : name(nullptr) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(const string& name)
-    : name(absl::make_unique<string>(name)) {}
+    : name(std::make_unique<string>(name)) {}
 
 core::RefCountPtr<ResourceBase> ResourceMgr::ResourceAndName::GetResource()
     const {
-  if (absl::holds_alternative<core::RefCountPtr<ResourceBase>>(resource)) {
+  if (std::holds_alternative<core::RefCountPtr<ResourceBase>>(resource)) {
     ResourceBase* ptr =
-        absl::get<core::RefCountPtr<ResourceBase>>(resource).get();
+        std::get<core::RefCountPtr<ResourceBase>>(resource).get();
     ptr->Ref();
     return core::RefCountPtr<ResourceBase>(ptr);
-  } else if (absl::holds_alternative<core::WeakPtr<ResourceBase>>(resource)) {
-    return absl::get<core::WeakPtr<ResourceBase>>(resource).GetNewRef();
+  } else if (std::holds_alternative<core::WeakPtr<ResourceBase>>(resource)) {
+    return std::get<core::WeakPtr<ResourceBase>>(resource).GetNewRef();
   } else {
     return nullptr;
   }
@@ -287,7 +289,7 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
   TF_RETURN_IF_ERROR(PopResourceAndName(
       container, type_hash_code, resource_name, type_name, resource_and_name));
 
-  if (absl::holds_alternative<core::WeakPtr<ResourceBase>>(
+  if (std::holds_alternative<core::WeakPtr<ResourceBase>>(
           resource_and_name.resource)) {
     return errors::Internal(
         "Cannot delete an unowned Resource ", container, "/", resource_name,

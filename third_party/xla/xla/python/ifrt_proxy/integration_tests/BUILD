@@ -76,11 +76,21 @@ ifrt_proxy_cc_test(
 )
 
 ifrt_proxy_cc_test(
+    name = "remap_impl_test_tfrt_cpu",
+    size = "small",
+    srcs = [],
+    deps = [
+        ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
+        "//xla/python/ifrt:remap_impl_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ifrt_proxy_cc_test(
     name = "mock_array_test",
     size = "small",
     srcs = ["mock_array_test.cc"],
     deps = [
-        "//xla:status",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",

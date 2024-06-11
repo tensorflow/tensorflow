@@ -208,12 +208,12 @@ cc_library(
         "transforms/deduplicate_if_result_pass.cc",
         "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
-        "transforms/lower_bound_batch_threads.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",
         "transforms/optimize_tf_control_flow_side_effect.cc",
         "transforms/passes.cc",
+        "transforms/reconfig_batch_op.cc",
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
@@ -408,10 +408,7 @@ cc_library(
     hdrs = ["translate/tfrt_compile_options.h"],
     compatible_with = get_compatible_with_portable(),  # copybara: comment
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/strings",
-    ],
+    deps = ["//tensorflow/core/protobuf:for_core_protos_cc"],
 )
 
 cc_library(
@@ -667,6 +664,7 @@ cc_library(
     hdrs = ["transforms/tpu_passes.h"],
     visibility = [":friends"] + if_google([
         "//learning/brain/tfrt/ifrt/pjrt/__subpackages__",
+        "//learning/serving/servables/tfrt:__subpackages__",
     ]),
     deps = [
         ":fallback_converter",

@@ -87,6 +87,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -95,7 +96,6 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
@@ -677,7 +677,7 @@ int64_t TransposePlan::OutputNumElems() const {
 }
 
 // Parses and validates a tiling specification, and populates `tiling`.
-static Status ParseTilingSpecification(
+static absl::Status ParseTilingSpecification(
     int ndim, absl::Span<int64_t const> tiling_spec,
     absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
@@ -694,12 +694,12 @@ static Status ParseTilingSpecification(
   if (ndim == 1) {
     // Tiling doesn't do anything for a rank-1 array, except add padding. Since
     // we're not going to touch any padding elements, we can ignore it.
-    return OkStatus();
+    return absl::OkStatus();
   }
   int offset = ndim;
   offset -= tiling_spec.size();
   absl::c_copy(tiling_spec, tiling.begin() + offset);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function that builds a plan.
@@ -894,7 +894,7 @@ void TransposePlan::BuildPlanNodes(
   }
 }
 
-StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
+absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     const Options& o) {
   auto is_negative = [](int d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
@@ -1360,7 +1360,7 @@ TransposePlanCache::TransposePlanCache(int capacity)
 
 TransposePlanCache::~TransposePlanCache() = default;
 
-StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
+absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     const TransposePlan::Options& o) {
   TransposePlanCacheKey key;
   key.elem_size_in_bytes = o.elem_size_in_bytes;
@@ -1388,7 +1388,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   return cache_.GetOrCreateIfAbsent(
       key,
       [&](const TransposePlanCacheKey& key)
-          -> StatusOr<std::shared_ptr<TransposePlan>> {
+          -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));

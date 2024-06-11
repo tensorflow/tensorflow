@@ -22,8 +22,6 @@ def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
     pass
 
-ORC_JIT_MEMORY_MAPPER_TARGETS = []
-
 def xla_py_test_deps():
     return []
 
@@ -79,20 +77,15 @@ def xla_cc_test(name, deps = [], **kwargs):
         **kwargs
     )
 
-def auto_sharding_deps():
-    return [Label("//xla/hlo/experimental/auto_sharding:auto_sharding_impl")]
-
-def auto_sharding_solver_deps():
-    return [Label("//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl")]
-
-def xla_export_hlo_deps():
-    return []
-
 def xla_nvml_deps():
     return ["@local_config_cuda//cuda:nvml_headers"]
 
 def xla_cub_deps():
     return ["@local_config_cuda//cuda:cub_headers"]
 
-def xla_symbol_repository_deps():
+def xla_internal(targets, otherwise = []):
+    _ = targets  # buildifier: disable=unused-variable
+    return otherwise
+
+def tests_build_defs_bzl_deps():
     return []

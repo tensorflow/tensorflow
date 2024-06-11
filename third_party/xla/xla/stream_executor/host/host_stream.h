@@ -26,16 +26,16 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream_interface.h"
+#include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
 
-class HostStream : public StreamInterface {
+class HostStream : public StreamCommon {
  public:
-  HostStream();
+  explicit HostStream(StreamExecutor* executor);
   ~HostStream() override;
 
   // Enqueue a task that reports a status when finished. Tasks that fail do not

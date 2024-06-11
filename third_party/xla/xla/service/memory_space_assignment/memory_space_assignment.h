@@ -175,6 +175,7 @@ Useful logging and error messages
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -187,7 +188,6 @@ Useful logging and error messages
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
-#include "xla/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -297,7 +297,7 @@ class MemorySpaceAssignment {
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
-  Status VerifyAndExportHeapSimulatorTrace();
+  absl::Status VerifyAndExportHeapSimulatorTrace();
 
  protected:
   // Main driver of the memory space assignment pass.
@@ -307,8 +307,9 @@ class MemorySpaceAssignment {
 
   // Finds an AllocationSequence for placing buffers in alternate memory using
   // the MsaAlgorithm algorithm. Must be set before Process() is called.
-  virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
-                                        const HloAliasAnalysis& alias_analysis);
+  virtual absl::Status FindAllocationSequence(
+      const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis);
 
   const Options& options() const { return options_; }
 
@@ -337,20 +338,20 @@ class MemorySpaceAssignment {
  private:
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
-  Status Process(const HloLiveRange& hlo_live_range);
+  absl::Status Process(const HloLiveRange& hlo_live_range);
 
   // Process() might have altered the computation graph by inserting kTuple and
   // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
   // tuple simplification operation (e.g., given GetTupleElement(Tuple(a, b),
   // 1), simply forwards b). Runs to fixed point.
-  Status SimplifyGraph();
+  absl::Status SimplifyGraph();
 
   // FixSchedule inserts asynchronous copies in the schedule.
-  Status FixSchedule();
+  absl::Status FixSchedule();
 
   // Export the alternate memory assignments to the PresetAssignments and color
   // the HLO graph with the determined memory spaces.
-  Status ExportAndColorBuffers();
+  absl::Status ExportAndColorBuffers();
 
   // Schedules asynchronous copies and ensures that the CopyStarts and their
   // corresponding CopyDones follow the same order.
@@ -359,12 +360,6 @@ class MemorySpaceAssignment {
   // Remove the positions and chunks associated with the instruction from
   // alternate_memory_assignments_.
   void RemoveAssignmentForInstruction(const HloInstruction* instruction);
-
-  // Returns the estimated elapsed duration of the hlo module in seconds. It
-  // uses the 'allocations' argument to determine the location (default memory
-  // or alternate memory) of each operand and output of an instruction.
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
 
   HloModule* module_;
   const Options& options_;

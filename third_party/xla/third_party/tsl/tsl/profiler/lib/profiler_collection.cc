@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

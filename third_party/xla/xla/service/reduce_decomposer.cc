@@ -20,11 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -33,7 +33,7 @@ namespace {
 // Enforces property that all inputs to variadic reduction have same layout.
 class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction* hlo) override {
+  absl::Status HandleReduce(HloInstruction* hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
     std::vector<HloInstruction*> new_inputs;
     bool changed = false;
@@ -61,7 +61,7 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -70,11 +70,11 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
   explicit ReduceDecomposerVisitor(HloPredicate custom_layout_allowed)
       : custom_layout_allowed_(std::move(custom_layout_allowed)) {}
 
-  Status HandleReduce(HloInstruction* hlo) override {
+  absl::Status HandleReduce(HloInstruction* hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
     auto shape = reduce->shape();
     if (custom_layout_allowed_ && custom_layout_allowed_(reduce)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::vector<Shape> expected_shapes(reduce->input_count());
@@ -107,7 +107,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
       if (!shape.IsTuple()) {
         auto copy = MakeCopyHlo(r_prime, shape);
         TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::vector<HloInstruction*> copies;
@@ -119,7 +119,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
       auto out = MaybeMakeTuple(copies);
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

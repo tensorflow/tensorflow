@@ -163,10 +163,10 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   // Removes an embedded computation.
-  Status RemoveEmbeddedComputation(HloComputation* to_remove);
+  absl::Status RemoveEmbeddedComputation(HloComputation* to_remove);
 
   // Removes unused computations.
-  Status RemoveUnusedComputations();
+  absl::Status RemoveUnusedComputations();
 
   // Marks duplicate fusions with the same name to be able to group them for
   // analysis purposes (e.g. through Xprof).
@@ -524,7 +524,7 @@ class HloModule {
   int unique_id() const { return unique_id_; }
 
   // Sets the schedule of the module to the given schedule.
-  Status set_schedule(HloSchedule schedule);
+  absl::Status set_schedule(HloSchedule schedule);
 
   // Clears the schedule of the module.
   void clear_schedule() { schedule_.reset(); }
@@ -558,7 +558,7 @@ class HloModule {
     computation->UniquifyName(&computation_name_uniquer_);
   }
 
-  Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
+  absl::Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for
   // SPMD.
@@ -611,13 +611,14 @@ class HloModule {
         CrossProgramPrefetchInfo{parameter, index, alt_memory_offset});
   }
 
-  Status SetCrossProgramPrefetchOffset(int64_t prefetch_index, int64_t offset) {
+  absl::Status SetCrossProgramPrefetchOffset(int64_t prefetch_index,
+                                             int64_t offset) {
     TF_RET_CHECK(prefetch_index < cross_program_prefetches_.size());
     auto& [parameter, index, optional_offset] =
         cross_program_prefetches_[prefetch_index];
     TF_RET_CHECK(!optional_offset.has_value());
     optional_offset = offset;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of program arguments to be prefetch across programs.

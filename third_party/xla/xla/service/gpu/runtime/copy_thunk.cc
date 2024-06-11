@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -79,10 +78,10 @@ absl::Status CopyThunk::ExecuteOnStream(const ExecuteParams& params) {
 // and return the event in order to do RecordEvent() for async memcpy.
 absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
                                              const HloInstruction* instr,
-                                             se::Event&& event) {
+                                             std::unique_ptr<se::Event> event) {
   Key key = {executor, instr};
   absl::MutexLock lock(&mutex_);
-  VLOG(3) << "Emplace event " << event.implementation();
+  VLOG(3) << "Emplace event " << event.get();
   if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
       inserted) {
     return absl::OkStatus();
@@ -92,12 +91,12 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
 
 // Retrieve a completion event started by copy-start instruction
 // `instr`, and remove the event from the collection.
-absl::StatusOr<se::Event> CopyThunk::AsyncEvents::Extract(
+absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
     se::StreamExecutor* executor, const HloInstruction* instr) {
   Key key = {executor, instr};
   absl::MutexLock lock(&mutex_);
   if (auto event = events_.extract(key)) {
-    VLOG(3) << "Extract event " << event.mapped().implementation();
+    VLOG(3) << "Extract event " << event.mapped().get();
     return std::move(event.mapped());
   }
   return absl::InternalError("Async copy event was not found!");
@@ -133,14 +132,10 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   }
   VLOG(2) << "Memcpy D2H from the other stream";
   se::StreamExecutor* executor = params.stream->parent();
-  se::Event event(executor);
-  if (!event.Init()) {
-    return absl::InternalError(
-        "Failed to initialize copy operation async completion event!");
-  }
+  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&event));
-  VLOG(3) << "Emplace events: " << event.implementation()
+  TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
+  VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
@@ -175,14 +170,10 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   }
   VLOG(2) << "Memcpy H2D from the other stream";
   se::StreamExecutor* executor = params.stream->parent();
-  se::Event event(executor);
-  if (!event.Init()) {
-    return absl::InternalError(
-        "Failed to initialize copy operation async completion event!");
-  }
+  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&event));
-  VLOG(3) << "Emplace events: " << event.implementation()
+  TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
+  VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
@@ -202,9 +193,9 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "CopyDone thunk between a host and a device for: "
           << copy_start_instr_->ToString();
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(se::Event event,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
-  return params.stream->WaitFor(&event);
+  return params.stream->WaitFor(event.get());
 }
 
 }  // namespace gpu

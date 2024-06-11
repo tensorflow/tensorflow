@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "GetStatsFromListOfSparseCoreCooTensors"
   input_arg {
     name: "row_ids_list"

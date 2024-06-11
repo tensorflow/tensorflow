@@ -23,11 +23,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -77,12 +80,14 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace nanobind {
 namespace detail {
@@ -139,7 +144,7 @@ static std::string UniquifyName(const std::string& name) {
 }
 
 // Converts a computation to a serialized HloModuleProto.
-StatusOr<nb::bytes> GetComputationSerializedProto(
+absl::StatusOr<nb::bytes> GetComputationSerializedProto(
     const XlaComputation& computation) {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(computation.proto(), &result)) {
@@ -149,7 +154,7 @@ StatusOr<nb::bytes> GetComputationSerializedProto(
 }
 
 // Converts a hlo module to a serialized HloModuleProto.
-StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
+absl::StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(module.ToProto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
@@ -158,7 +163,7 @@ StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
 }
 
 // Converts a serialized HloModuleProto into a HloModule.
-StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
+absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
     const nb::bytes& bytes) {
   HloModuleProto proto;
   proto.ParseFromArray(bytes.c_str(), bytes.size());
@@ -170,7 +175,7 @@ StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
   return std::shared_ptr<HloModule>(std::move(module));
 }
 
-StatusOr<std::shared_ptr<HloModule>> GetHloModule(
+absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                       HloModule::CreateModuleConfigFromProto(
@@ -182,7 +187,7 @@ StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 }
 
 // Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(
+absl::StatusOr<std::string> GetComputationHloText(
     const XlaComputation& computation, bool print_large_constants = false) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
@@ -193,7 +198,7 @@ StatusOr<std::string> GetComputationHloText(
 }
 
 // Converts a computation to HLO dot graph form.
-StatusOr<std::string> GetComputationHloDotGraph(
+absl::StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
@@ -203,14 +208,14 @@ StatusOr<std::string> GetComputationHloDotGraph(
 }
 
 // Hashes the HLO module.
-StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
+absl::StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithDenseLayout that fails gracefully on
 // invalid input.
-StatusOr<Shape> MakeShapeWithDenseLayout(
+absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims,
     std::optional<absl::Span<const int64_t>> minor_to_major,
     std::optional<const std::vector<bool>> dynamic_dimensions) {
@@ -255,7 +260,7 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
 // transpose_perm=[0,1,2] (no transpose)
 // PartitionSpec('B', 'A', 'C') corresponds to reshape_dims=[4,2,2],
 // transpose_perm=[1,0,2] (swap A and B)
-StatusOr<HloSharding> IotaTileHelper(
+absl::StatusOr<HloSharding> IotaTileHelper(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
     absl::Span<const int> transpose_perm,
     absl::Span<const OpSharding::Type> subgroup_types) {
@@ -291,30 +296,81 @@ StatusOr<HloSharding> IotaTileHelper(
                    subgroup_types);
 }
 
-// Registers a 'fn_capsule' as a custom call target.
-// 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object.
-// 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
+// Registers a 'fn' as a custom call target.
+//
+// `fn` must be a custom call implementation function pointer (XLA_FFI_Handler*
+// when implemented as FFI handler) encapsulated in a PyCapsule object or a
+// a dictionary of function pointers (also encapsulated in a PyCapsule).
+//
+// See XLA_FFI_ExecutionStage documentation for more details about the
+// custom execution stages.
 absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
-                                        nb::capsule capsule,
+                                        nb::object fn,
                                         const std::string& platform,
-                                        int api_version) {
-  switch (api_version) {
-    case 0:
-      CustomCallTargetRegistry::Global()->Register(
-          fn_name, static_cast<void*>(capsule.data()), platform);
-      return absl::OkStatus();
-    case 1:
-      ffi::Ffi::RegisterStaticHandler(xla::ffi::GetXlaFfiApi(), fn_name,
-                                      platform,
-                                      reinterpret_cast<XLA_FFI_Handler*>(
-                                          static_cast<void*>(capsule.data())));
-      return absl::OkStatus();
-    default:
-      return absl::UnimplementedError(absl::StrFormat(
-          "API version %d is not supported by RegisterCustomCallTarget. "
-          "Supported versions are 0 and 1.",
-          api_version));
+                                        int api_version,
+                                        XLA_FFI_Handler_Traits traits) {
+  // Register legacy custom call target (untyped void* API).
+  if (api_version == 0) {
+    if (traits != 0) {
+      return absl::InvalidArgumentError(
+          "Custom call target registration with traits is not supported for "
+          "api_version=0");
+    }
+
+    nb::capsule capsule;
+    if (!nb::try_cast<nb::capsule>(fn, capsule)) {
+      return absl::InvalidArgumentError(
+          "Custom call target registration with api_version=0 requires a "
+          "PyCapsule fn object");
+    }
+
+    CustomCallTargetRegistry::Global()->Register(
+        fn_name, static_cast<void*>(capsule.data()), platform);
+    return absl::OkStatus();
   }
+
+  // Register XLA FFI handler (typed API with explicit function signatures).
+  if (api_version == 1) {
+    nb::capsule capsule;
+    if (nb::try_cast<nb::capsule>(fn, capsule)) {
+      return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
+          xla::ffi::GetXlaFfiApi(), fn_name, platform,
+          reinterpret_cast<XLA_FFI_Handler*>(
+              static_cast<void*>(capsule.data()))));
+    }
+
+    nb::dict bundle;
+    if (nb::try_cast<nb::dict>(fn, bundle)) {
+      auto handler = [&](const char* name) -> absl::StatusOr<XLA_FFI_Handler*> {
+        if (!bundle.contains(name)) return nullptr;
+
+        nb::capsule capsule;
+        if (!nb::try_cast<nb::capsule>(bundle[name], capsule)) {
+          return absl::InvalidArgumentError(
+              "Custom call target registration with api_version=1 requires a "
+              "PyCapsule fn object for all dict keys");
+        }
+
+        return reinterpret_cast<XLA_FFI_Handler*>(capsule.data());
+      };
+
+      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * prepare, handler("prepare"));
+      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * initialize, handler("initialize"));
+      TF_ASSIGN_OR_RETURN(XLA_FFI_Handler * execute, handler("execute"));
+
+      return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
+          xla::ffi::GetXlaFfiApi(), fn_name, platform,
+          XLA_FFI_Handler_Bundle{prepare, initialize, execute}, traits));
+    }
+
+    return absl::InvalidArgumentError(
+        "Unsupported custom call target type for api_version=1");
+  }
+
+  return absl::UnimplementedError(absl::StrFormat(
+      "API version %d is not supported by RegisterCustomCallTarget. "
+      "Supported versions are 0 and 1.",
+      api_version));
 }
 
 template <typename T, typename Container>
@@ -390,7 +446,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                       [](PrimitiveType type, nb::sequence dims_seq,
                          std::optional<nb::sequence> layout_seq,
                          std::optional<std::vector<bool>> dynamic_dimensions)
-                          -> StatusOr<Shape> {
+                          -> absl::StatusOr<Shape> {
                         std::vector<int64_t> dims =
                             SequenceToVector<int64_t>(dims_seq);
                         if (layout_seq) {
@@ -412,7 +468,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
               [](nb_dtype dtype, nb::sequence dims_seq,
                  std::optional<nb::sequence> layout_seq,
                  std::optional<std::vector<bool>> dynamic_dimensions)
-                  -> StatusOr<Shape> {
+                  -> absl::StatusOr<Shape> {
                 PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
                 std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
                 if (layout_seq) {
@@ -617,24 +673,24 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
    public:
     ComputationWrapper(const HloComputation* comp,
                        const std::shared_ptr<HloModule> module)
-        : comp{comp}, module{module} {}
-    absl::string_view name() const { return comp->name(); }
+        : comp_(comp), module_(module) {}
+    absl::string_view name() const { return comp_->name(); }
     void render_html(const std::string& filename) {
       std::string html = xla::ValueOrThrow(RenderGraph(
-          *comp, /*label=*/"", comp->parent()->config().debug_options(),
+          *comp_, /*label=*/"", comp_->parent()->config().debug_options(),
           RenderedGraphFormat::kHtml, HloRenderOptions()));
       xla::ThrowIfError(tsl::WriteStringToFile(
           tsl::Env::Default(), absl::StrCat(filename, ".html"), html));
     }
 
    private:
-    const HloComputation* comp;
+    const HloComputation* comp_;
     // The module owns the computations: if its destructor is called, the
     // computations are freed. To prevent that from happening in cases where the
     // module Python object goes out of scope and gets garbage collected before
     // the computations, we keep a shared_ptr to the module that originated the
     // computation.
-    const std::shared_ptr<HloModule> module;
+    const std::shared_ptr<HloModule> module_;
   };
 
   nb::class_<ComputationWrapper> hlo_computation_class(m, "HloComputation");
@@ -715,7 +771,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   m.def(
       "hlo_module_cost_analysis",
       xla::ValueOrThrowWrapper([](PyClient* client, const HloModule& module)
-                                   -> StatusOr<nb::dict> {
+                                   -> absl::StatusOr<nb::dict> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -728,14 +784,15 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         return ret;
       }));
   m.def("hlo_module_from_text",
-        xla::ValueOrThrowWrapper([](const std::string& hlo_module_text)
-                                     -> StatusOr<std::shared_ptr<HloModule>> {
-          auto hlo_module =
-              xla::ParseAndReturnUnverifiedModule(hlo_module_text);
-          TF_RETURN_IF_ERROR(hlo_module.status());
-          std::shared_ptr<HloModule> result(std::move(*hlo_module));
-          return result;
-        }));
+        xla::ValueOrThrowWrapper(
+            [](const std::string& hlo_module_text)
+                -> absl::StatusOr<std::shared_ptr<HloModule>> {
+              auto hlo_module =
+                  xla::ParseAndReturnUnverifiedModule(hlo_module_text);
+              TF_RETURN_IF_ERROR(hlo_module.status());
+              std::shared_ptr<HloModule> result(std::move(*hlo_module));
+              return result;
+            }));
 
   nb::class_<XlaOp> xla_op_class(m, "XlaOp");
 
@@ -765,7 +822,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def(
           "get_program_shape",
           [](const XlaBuilder& builder,
-             std::optional<XlaOp> root) -> StatusOr<ProgramShape> {
+             std::optional<XlaOp> root) -> absl::StatusOr<ProgramShape> {
             return root ? builder.GetProgramShape(*root)
                         : builder.GetProgramShape();
           },
@@ -790,7 +847,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_static(
           "create",
           xla::ValueOrThrowWrapper([](nb::ndarray<int, nb::ndim<2>> array)
-                                       -> StatusOr<DeviceAssignment> {
+                                       -> absl::StatusOr<DeviceAssignment> {
             if (array.ndim() != 2) {
               return InvalidArgument(
                   "Argument to DeviceAssignment constructor must be a "
@@ -808,16 +865,18 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("replica_count", &DeviceAssignment::replica_count)
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString)
-      .def("serialize", xla::ValueOrThrowWrapper([](const DeviceAssignment& da)
-                                                     -> StatusOr<nb::bytes> {
-             DeviceAssignmentProto proto;
-             TF_RETURN_IF_ERROR(da.Serialize(&proto));
-             std::string result;
-             if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-               return Unknown("Failed to serialize the DeviceAssignmentProto.");
-             }
-             return nb::bytes(result.data(), result.size());
-           }));
+      .def("serialize",
+           xla::ValueOrThrowWrapper(
+               [](const DeviceAssignment& da) -> absl::StatusOr<nb::bytes> {
+                 DeviceAssignmentProto proto;
+                 da.Serialize(&proto);
+                 std::string result;
+                 if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+                   return Unknown(
+                       "Failed to serialize the DeviceAssignmentProto.");
+                 }
+                 return nb::bytes(result.data(), result.size());
+               }));
 
   nb::class_<CompileOptions> compile_options(m, "CompileOptions");
   compile_options
@@ -919,18 +978,18 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   // Custom-call targets.
   m.def(
       "register_custom_call_target",
-      [](nb::object fn_name_py, nb::capsule capsule,
-         const std::string& platform, const int api_version) {
+      [](nb::object fn_name_py, nb::object fn, const std::string& platform,
+         int api_version, XLA_FFI_Handler_Traits traits) {
         std::string fn_name;
         if (!nb::try_cast<std::string>(fn_name_py, fn_name)) {
           nb::bytes bytes = nb::cast<nb::bytes>(fn_name_py);
           fn_name = std::string(bytes.c_str(), bytes.size());
         }
         xla::ThrowIfError(PyRegisterCustomCallTarget(
-            fn_name, std::move(capsule), platform, api_version));
+            fn_name, std::move(fn), platform, api_version, traits));
       },
-      nb::arg("fn_name"), nb::arg("capsule"), nb::arg("platform"),
-      nb::arg("api_version") = 0);
+      nb::arg("fn_name"), nb::arg("fn"), nb::arg("platform"),
+      nb::arg("api_version") = 0, nb::arg("traits") = 0);
 
   m.def(
       "custom_call_targets",
@@ -943,8 +1002,17 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
 
         for (const auto& [name, registration] :
              ffi::StaticRegisteredHandlers(platform)) {
-          targets[nb::str(name.data(), name.size())] =
-              nb::capsule(reinterpret_cast<void*>(registration.handler));
+          nb::dict bundle;
+          auto export_handler = [&](std::string_view name, XLA_FFI_Handler* h) {
+            if (h != nullptr) {
+              bundle[nb::str(name.data(), name.size())] =
+                  nb::capsule(reinterpret_cast<void*>(h));
+            }
+          };
+          export_handler("prepare", registration.bundle.prepare);
+          export_handler("initialize", registration.bundle.initialize);
+          export_handler("execute", registration.bundle.execute);
+          targets[nb::str(name.data(), name.size())] = std::move(bundle);
         }
         return targets;
       },
@@ -1077,6 +1145,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_dump_hlo_pipeline_re,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_dump_hlo_pipeline_re(value);
+                   })
+      .def_prop_rw("xla_gpu_dump_autotune_logs_to",
+                   &DebugOptions::xla_gpu_dump_autotune_logs_to,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_dump_autotune_logs_to(value);
                    });
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")

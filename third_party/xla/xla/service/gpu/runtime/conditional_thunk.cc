@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/variant_visitor.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"

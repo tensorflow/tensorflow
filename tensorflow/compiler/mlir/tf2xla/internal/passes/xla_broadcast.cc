@@ -16,18 +16,24 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -38,6 +44,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
 
@@ -161,13 +169,59 @@ Value CreateAllReduce(ReplicateOp replicate, OpBuilder& builder,
                                         mode);
 }
 
+// Creates a missing attribute error message.
+std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
+  return llvm::formatv("requires attribute '{0}'", attribute).str();
+}
+
+LogicalResult GetTpuDeviceAssignment(
+    ClusterOp cluster, ReplicateOp replicate, mlir::ModuleOp module,
+    absl::StatusOr<TPUDeviceAssignment>& status_or_tpu_device_assignment) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(module, &devices))) return failure();
+
+  uint32_t num_replicas = replicate.getN();
+
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kNumCoresPerReplicaAttr));
+  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
+
+  auto topology_attr = cluster->getAttrOfType<StringAttr>("topology");
+  if (!topology_attr)
+    return cluster.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kTopologyAttr));
+
+  auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
+                                             tensorflow::kDeviceAssignmentAttr)
+                                   .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+  if (!status_or_device_coodinates.ok())
+    return cluster.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().message();
+
+  status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), num_replicas, num_cores_per_replica,
+          topology_attr.getValue(), status_or_device_coodinates.value());
+  return success();
+}
+
 // Move a broadcast into the XLA cluster, converting it to an XlaAllReduce. This
 // skips if the element type is not known to be valid for XlaAllReduce.
 LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
                                      OpBuilder& inner_builder,
                                      ClusterOp cluster, ReplicateOp replicate,
                                      llvm::DenseMap<Value, Value>& orig_to_new,
-                                     Value val_bcast) {
+                                     Value val_bcast, mlir::ModuleOp module) {
   Attribute zero_attr;
   DenseIntElementsAttr shape_attr;
   if (!GetDummyParams(builder, val_bcast, zero_attr, shape_attr))
@@ -175,10 +229,31 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   llvm::SmallVector<Value, 4> inputs;
   inputs.push_back(val_bcast);
   uint32_t num_replicas = replicate.getN();
-  for (uint32_t i = 1; i < num_replicas; ++i) {
-    inputs.push_back(
-        CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr));
+
+  absl::StatusOr<TPUDeviceAssignment> status_or_tpu_device_assignment;
+  if (failed(GetTpuDeviceAssignment(cluster, replicate, module,
+                                    status_or_tpu_device_assignment))) {
+    return failure();
   }
+  if (!status_or_tpu_device_assignment.ok())
+    return cluster.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().message();
+
+  llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
+      tpu_devices = status_or_tpu_device_assignment.value().tpu_devices;
+
+  std::unordered_map<std::string, Value> host_to_fill;
+
+  for (uint32_t replica = 1; replica < num_replicas; ++replica) {
+    std::string host = tpu_devices[replica][0].host;
+    if (host_to_fill.find(host) == host_to_fill.end()) {
+      host_to_fill[host] =
+          CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr);
+    }
+    inputs.push_back(host_to_fill[host]);
+  }
+
   BlockArgument block_arg;
   if (failed(AppendReplicatedInput(builder, replicate, inputs,
                                    val_bcast.getType(), block_arg))) {
@@ -202,10 +277,22 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
 // Move all suitable broadcasts across replicas to the `cluster` into the
 // `cluster`.
 LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
-                                         ReplicateOp replicate) {
+                                         ReplicateOp replicate,
+                                         mlir::ModuleOp module) {
   // TODO(b/325153657): Fix tpu_rewrite_pass so the parallel_execute case does
   //                    not need to be skipped.
   if (cluster->getParentOfType<ParallelExecuteOp>()) return success();
+
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kNumCoresPerReplicaAttr));
+  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
+
+  // TODO(b/329483850): Support spmd ICI weight distribution so when num of core
+  // per replica > 1, it does not need to be skipped.
+  if (num_cores_per_replica != 1) return success();
 
   llvm::SetVector<Value> bcasts;
   cluster->walk([&](Operation* op) {
@@ -225,7 +312,7 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
 
   for (Value bcast : bcasts) {
     if (failed(MoveBroadcastToCluster(builder, inner_builder, cluster,
-                                      replicate, orig_to_new, bcast))) {
+                                      replicate, orig_to_new, bcast, module))) {
       return failure();
     }
   }
@@ -245,9 +332,11 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
 
 void XlaBroadcast::runOnOperation() {
   FuncOp func = getOperation();
+  mlir::ModuleOp module = func->getParentOfType<mlir::ModuleOp>();
+  if (!module) return signalPassFailure();
   func.walk([&](ClusterOp cluster) {
     if (auto replicate = cluster->getParentOfType<ReplicateOp>()) {
-      if (failed(MoveAllBroadcastsToCluster(cluster, replicate))) {
+      if (failed(MoveAllBroadcastsToCluster(cluster, replicate, module))) {
         return signalPassFailure();
       }
     }

@@ -39,8 +39,6 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 
-using absl::OkStatus;
-using absl::Status;
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
 using tsl::ReadBoolFromEnvVar;
@@ -55,13 +53,13 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   ~GpuTracer() override {}
 
   // GpuTracer interface:
-  Status Start() override;
-  Status Stop() override;
-  Status CollectData(XSpace* space) override;
+  absl::Status Start() override;
+  absl::Status Stop() override;
+  absl::Status CollectData(XSpace* space) override;
 
  private:
-  Status DoStart();
-  Status DoStop();
+  absl::Status DoStart();
+  absl::Status DoStop();
 
   enum State {
     kNotStarted,
@@ -77,7 +75,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   std::unique_ptr<CuptiTraceCollector> cupti_collector_;
 };
 
-Status GpuTracer::DoStart() {
+absl::Status GpuTracer::DoStart() {
   if (!cupti_tracer_->IsAvailable()) {
     return tsl::errors::Unavailable("Another profile session running.");
   }
@@ -156,48 +154,48 @@ Status GpuTracer::DoStart() {
                                           start_gputime_ns);
 
   cupti_tracer_->Enable(options_, cupti_collector_.get());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuTracer::Start() {
-  Status status = DoStart();
+absl::Status GpuTracer::Start() {
+  absl::Status status = DoStart();
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     profiling_state_ = State::kStartedError;
     return status;
   }
 }
 
-Status GpuTracer::DoStop() {
+absl::Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuTracer::Stop() {
+absl::Status GpuTracer::Stop() {
   if (profiling_state_ == State::kStartedOk) {
-    Status status = DoStop();
+    absl::Status status = DoStop();
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuTracer::CollectData(XSpace* space) {
+absl::Status GpuTracer::CollectData(XSpace* space) {
   VLOG(2) << "Collecting data to XSpace from GpuTracer.";
   switch (profiling_state_) {
     case State::kNotStarted:
       VLOG(1) << "No trace data collected, session wasn't started";
-      return OkStatus();
+      return absl::OkStatus();
     case State::kStartedOk:
       return tsl::errors::FailedPrecondition(
           "Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, profiler failed to start";
-      return OkStatus();
+      return absl::OkStatus();
     case State::kStoppedError:
       VLOG(1) << "No trace data collected";
-      return OkStatus();
+      return absl::OkStatus();
     case State::kStoppedOk: {
       std::string cupti_error = CuptiTracer::ErrorIfAny();
       if (!cupti_error.empty()) {
@@ -211,7 +209,7 @@ Status GpuTracer::CollectData(XSpace* space) {
         uint64_t end_gpu_ns = CuptiTracer::GetTimestamp();
         cupti_collector_->Export(space, end_gpu_ns);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);

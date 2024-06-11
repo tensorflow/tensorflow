@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/test_helpers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -52,7 +53,8 @@ absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
       device_ordinal, size, retry_on_failure, memory_space);
 }
 
-Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
+absl::Status TestAllocator::Deallocate(int device_ordinal,
+                                       se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     absl::MutexLock lock(&count_mutex_);

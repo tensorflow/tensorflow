@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_PLUGIN_PLUGIN_TRACER_H_
 #define XLA_BACKENDS_PROFILER_PLUGIN_PLUGIN_TRACER_H_
 
+#include "absl/status/status.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
-#include "xla/status.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -33,11 +33,11 @@ class PluginTracer : public tsl::profiler::ProfilerInterface {
                         const tensorflow::ProfileOptions& options);
   ~PluginTracer() override;
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(tensorflow::profiler::XSpace* space) override;
+  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
  private:
   const PLUGIN_Profiler_Api* profiler_api_;

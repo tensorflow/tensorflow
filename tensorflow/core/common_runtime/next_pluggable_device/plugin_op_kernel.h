@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -108,11 +109,10 @@ class PluginOpKernelContext {
 
   virtual int NumInputs() const = 0;
 
-  virtual Status GetInput(int index, Tensor* tensor) const = 0;
+  virtual absl::Status GetInput(int index, const Tensor** tensor) const = 0;
 
-  // This method is not marked const because CPluginOpKernel need to do some
-  // extra bookkeeping work.
-  virtual Status GetInput(const char* name, const Tensor** tensor) = 0;
+  virtual absl::Status GetInput(const char* name,
+                                const Tensor** tensor) const = 0;
 
   virtual Status GetInputRange(std::string_view name,
                                std::pair<int, int>* range) const = 0;

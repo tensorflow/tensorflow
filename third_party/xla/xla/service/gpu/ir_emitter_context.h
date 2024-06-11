@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -60,12 +61,14 @@ class IrEmitterContext {
  public:
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
+                   const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
                    bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
+        execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
@@ -79,6 +82,9 @@ class IrEmitterContext {
   const HloModule& hlo_module() const { return *hlo_module_; }
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
+  }
+  const ExecutionStreamAssignment& execution_stream_assignment() const {
+    return *execution_stream_assignment_;
   }
   absl::string_view platform_name() const { return platform_name_; }
   const se::DeviceDescription& gpu_device_info() const {
@@ -123,6 +129,7 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
+  const ExecutionStreamAssignment* execution_stream_assignment_;
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
