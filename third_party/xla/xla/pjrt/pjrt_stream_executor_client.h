@@ -998,7 +998,9 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return compile_options_;
   }
 
-  absl::StatusOr<std::string> FingerprintExecutable() const override;
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
+    return fingerprint_;
+  };
 
  protected:
   bool parameter_is_tupled_arguments() const {
@@ -1077,6 +1079,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
+  std::string fingerprint_;
 };
 
 }  // namespace xla
