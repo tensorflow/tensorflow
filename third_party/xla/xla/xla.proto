@@ -805,7 +805,9 @@ message DebugOptions {
 
   bool xla_gpu_shard_autotuning = 304;
 
-  // Next id: 305
+  bool xla_gpu_enable_approx_costly_collectives = 305;
+
+  // Next id: 306
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

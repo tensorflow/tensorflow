@@ -18,6 +18,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/types/span.h"
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"

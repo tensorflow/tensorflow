@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/lite:array",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -76,7 +77,6 @@ cc_test(
     deps = [
         ":list_ops_lib",
         ":test_util",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
@@ -108,6 +108,7 @@ cc_test(
     deps = [
         ":list_ops_lib",
         ":tensor_array",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
