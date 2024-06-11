@@ -3657,6 +3657,7 @@ xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
     backends = ["gpu"],
+    env = if_rocm_is_configured({"AMD_SERIALIZE_KERNEL": "3"}),
     deps = [
         ":backend_configs_cc",
         ":horizontal_loop_fusion",
