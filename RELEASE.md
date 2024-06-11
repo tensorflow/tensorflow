@@ -2,6 +2,11 @@
 
 ## TensorFlow
 
+### Breaking Changes
+
+* GPU
+    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation) has been removed from TF binary distributions (Python wheels).
+
 ### Major Features and Improvements
 
 *   Add `is_cpu_target_available`, which indicates whether or not TensorFlow was built with support for a given CPU target. This can be useful for skipping target-specific tests if a target is not supported.
@@ -33,13 +38,6 @@
     * Add `compute_sparse_core_stats` for sparse core users to profile the  data with this API to get the `max_ids` and `max_unique_ids`. These numbers will be needed to configure the sparse core embedding mid level api.
     * Remove the `preprocess_features` method since that's no longer needed.
 
-## Keras
-
-### Breaking Changes
-
-* GPU
-    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation) has been removed from TF binary distributions (Python wheels).
-
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -49,8 +47,6 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
 # Release 2.16.0
 
 ## TensorFlow
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 *   TensorFlow Windows Build:
 
@@ -63,9 +59,6 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
         before
 
 ### Breaking Changes
-
-*   <DOCUMENT BREAKING CHANGES HERE>
-*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
 *   `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be
     set if `profiler` arg is set to `True`.
@@ -104,17 +97,10 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
 
 ### Known Caveats
 
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
 *  Full aarch64 Linux and Arm64 macOS wheels are now published to the
   `tensorflow` pypi repository and no longer redirect to a separate package.
 
 ### Major Features and Improvements
-
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 *  Support for Python 3.12 has been added.
 *  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now
@@ -198,12 +184,6 @@ Abdulaziz Aloqeely, Ahmad-M-Al-Khateeb, Akhil Goel, akhilgoe, Alexander Pivovaro
 *  `keras.optimizers.Adam`
     * Added the option to set adaptive epsilon to match implementations with Jax
       and PyTorch equivalents.
-
-### Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 
 ## Thanks to our Contributors
 
