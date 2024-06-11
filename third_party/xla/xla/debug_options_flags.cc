@@ -70,6 +70,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
+  opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_debug_buffer_assignment_show_max(15);
 #ifdef ENABLE_MKL
@@ -849,6 +850,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "debug_options "
       "are written to the --xla_dump_to dir, or, if no dir is specified, to "
       "stdout. Ignored unless xla_dump_hlo_as_text is true."));
+  flag_list->push_back(
+      tsl::Flag("xla_dump_large_constants",
+                bool_setter_for(&DebugOptions::set_xla_dump_large_constants),
+                debug_options->xla_dump_large_constants(),
+                "Dumps HLO modules including large constants before and after "
+                "optimizations. debug_options are written to the --xla_dump_to "
+                "dir, or, if no dir is specified, to stdout. Ignored unless "
+                "xla_dump_hlo_as_text is true."));
   flag_list->push_back(
       tsl::Flag("xla_dump_hlo_as_proto",
                 bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),

@@ -700,21 +700,24 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
+                                                string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, TimestampFor(module),
-                      name, opts);
+    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr,
+                             TimestampFor(module), name, opts);
   }
+  return {};
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module,
-                            const BufferAssignment& buffer_assn,
-                            string_view name) {
+std::vector<std::string> DumpHloModuleIfEnabled(
+    const HloModule& module, const BufferAssignment& buffer_assn,
+    string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
   }
+  return {};
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
