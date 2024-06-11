@@ -1891,39 +1891,42 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       subshape().element_type());
 }
 
-bool LiteralBase::operator==(const LiteralBase& other) const {
+bool LiteralBase::Equal(const LiteralBase& other, bool layout_sensitive) const {
   // Checking the structure of tuple literals. Checks for dense arrays are
   // performed below.
   if (!ShapeUtil::EqualStructure(shape(), other.shape())) {
     return false;
   }
 
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        const Piece& other_piece = other.piece(index);
-        const Shape& subshape = piece.subshape();
-        const Shape& other_subshape = other_piece.subshape();
-        if (subshape.element_type() != other_subshape.element_type()) {
-          return false;
-        }
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
-        if (subshape.rank() != other_subshape.rank()) {
-          return false;
-        }
+  return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
+                                                  const Piece& piece) {
+    const Piece& other_piece = other.piece(index);
+    const Shape& subshape = piece.subshape();
+    const Shape& other_subshape = other_piece.subshape();
+    if (subshape.element_type() != other_subshape.element_type()) {
+      return false;
+    }
+    if (!piece.subshape().IsArray()) {
+      return true;
+    }
+    if (subshape.rank() != other_subshape.rank()) {
+      return false;
+    }
+    if (layout_sensitive && (subshape.layout() != other_subshape.layout())) {
+      return false;
+    }
 
-        for (int64_t i = 0; i < subshape.rank(); ++i) {
-          if (piece.GetDynamicSize(i) != other_piece.GetDynamicSize(i)) {
-            return false;
-          }
-        }
+    for (int64_t i = 0; i < subshape.rank(); ++i) {
+      if (piece.GetDynamicSize(i) != other_piece.GetDynamicSize(i)) {
+        return false;
+      }
+    }
 
-        if (!piece.EqualElements(other_piece)) {
-          return false;
-        }
-        return true;
-      });
+    if (!piece.EqualElements(other_piece)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 template <typename NativeT>

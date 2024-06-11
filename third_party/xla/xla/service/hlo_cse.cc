@@ -49,7 +49,7 @@ struct ConstantKey {
            (kIsLayoutSensitive ? Shape::Equal()
                                : Shape::Equal().IgnoreLayout())(
                lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal() == rhs.hlo->literal();
+           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive);
   }
   HloConstantInstruction* hlo;
   int64_t domain;
