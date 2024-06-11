@@ -455,6 +455,7 @@ build:win_clang_xla --host_platform=//tools/toolchains/win:x64_windows-clang-cl
 build:win_clang_xla --compiler=clang-cl
 build:win_clang_xla --linkopt=/FORCE:MULTIPLE
 build:win_clang_xla --host_linkopt=/FORCE:MULTIPLE
+test:win_clang_xla --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
 test:win_clang_xla --linkopt=/FORCE:MULTIPLE
 test:win_clang_xla --host_linkopt=/FORCE:MULTIPLE
 
