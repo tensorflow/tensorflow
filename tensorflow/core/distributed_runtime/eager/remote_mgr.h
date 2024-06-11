@@ -85,11 +85,11 @@ class RemoteMgr {
   uint64 next_op_id_ TF_GUARDED_BY(next_id_mutex_) = 1;
 
  private:
-  // Returns the op_id and output_num if the given local TensorHandle exists in
-  // remote_tensor_handle_map_.
-  Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                               const bool wait_until_ready, int64_t* op_id,
-                               int32* output_num)
+  // Checks if the given local `TensorHandle` has a different entry in
+  // `remote_tensor_handle_map_` for its `op_id` and `output_num`. It should
+  // not.
+  Status ValidateRemoteTensorHandle(const tensorflow::TensorHandle* handle,
+                                    int64_t op_id, int32 output_num)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 
   Status GetTensorHandleImpl(const RemoteTensorHandleInternal& remote_handle,

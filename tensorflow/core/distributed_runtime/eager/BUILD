@@ -120,8 +120,10 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
     ] + tf_grpc_cc_dependencies(),
@@ -192,6 +194,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:error_payloads",
+        "@com_google_absl//absl/time",
     ],
 )
 

@@ -125,18 +125,15 @@ Status RemoteMgr::GetMirroredResourceShape(
   return absl::OkStatus();
 }
 
-Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                                        const bool wait_until_ready,
-                                        int64_t* op_id, int32* output_num) {
-  TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
-                                           op_id, output_num));
+Status RemoteMgr::ValidateRemoteTensorHandle(
+    const tensorflow::TensorHandle* handle, int64_t op_id, int32 output_num) {
   tensorflow::TensorHandle* h;
   TF_RETURN_IF_ERROR(
-      GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
+      GetTensorHandleImpl(RemoteTensorHandleInternal(op_id, output_num), &h));
   if (handle != h) {
     return WithErrorSourcePayload(errors::Internal(
-        "Found two different tensor handles with the same op_id:", *op_id,
-        " and output_num:", *output_num));
+        "Found two different tensor handles with the same op_id:", op_id,
+        " and output_num:", output_num));
   }
   return absl::OkStatus();
 }
@@ -177,9 +174,20 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
     LOG(ERROR)
         << "Failed to get remote address for tensor handle with given device "
         << device->name() << " error " << status.message();
-    tf_shared_lock l(remote_tensor_handle_mu_);
+    DCHECK(in->Type() == TensorHandle::REMOTE);
+    // `device` passed as an argument to this function may or may not be the
+    // same as the device associated with the handle, `in->device()`. It could
+    // be used to obtain the `op_id` and `output_num` for the given handle by
+    // using its mirrors. But if this handle is not present in the other
+    // device's mirrors, then we could have to use `in->device()` anyway. By
+    // adding this check, the only other reason `RemoteAddress` can fail with
+    // `in->device()` is if the handle is poisoned.
     TF_RETURN_IF_ERROR(
-        GetRemoteTensorHandle(in, wait_until_ready, &op_id, &output_num));
+        in->RemoteAddress(in->device(), wait_until_ready, &op_id, &output_num));
+    {
+      tf_shared_lock l(remote_tensor_handle_mu_);
+      TF_RETURN_IF_ERROR(ValidateRemoteTensorHandle(in, op_id, output_num));
+    }
   }
   out->Clear();
   out->set_op_id(op_id);
