@@ -205,6 +205,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 
+  // Use fast path that doesn't use embedded evaluators in reduce.
+  void set_reduce_use_fast_path(bool value) { use_fast_path_reduce_ = value; }
+
   // Handles evaluation of a custom-call op.
   // Operand literals are provided in |operands| and implementations must
   // populate |output| before returning.
@@ -435,6 +438,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;
+
+  // Use fast path that doesn't use embedded evaluators in reduce.
+  bool use_fast_path_reduce_ = true;
 
  private:
   template <typename ReturnT, typename NativeT>

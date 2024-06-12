@@ -4251,7 +4251,7 @@ static absl::StatusOr<bool> PerformReductionStep(
 }
 
 static absl::StatusOr<bool> GenerateReduceOutputElement(
-    bool is_tuple, absl::Span<const int64_t> output_index,
+    bool is_tuple, bool use_fast_path, absl::Span<const int64_t> output_index,
 
     absl::Span<const Literal* const> init_values,
     absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
@@ -4261,7 +4261,8 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
     absl::Span<const int64_t> arg_dim_steps,
     absl::Span<const int64_t> arg_dim_counts,
     absl::Span<const int64_t> result_to_arg_index) {
-  bool use_fast_add = ShapeUtil::ElementIsFloating(init_values[0]->shape()) &&
+  bool use_fast_add = use_fast_path &&
+                      ShapeUtil::ElementIsFloating(init_values[0]->shape()) &&
                       IsScalarAdd(function) && !is_tuple;
 
   const Shape& arg_shape = input_args[0]->shape();
@@ -4399,8 +4400,8 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
       output_shape, [&](absl::Span<const int64_t> output_index, int thread_id) {
         return GenerateReduceOutputElement(
-            is_tuple, output_index, init_values, input_args,
-            absl::Span<Literal>(results), function,
+            is_tuple, use_fast_path_reduce_, output_index, init_values,
+            input_args, absl::Span<Literal>(results), function,
             embedded_evaluators[thread_id + 1].get(), arg_dim_steps,
             arg_dim_counts, result_to_arg_index);
       }));
