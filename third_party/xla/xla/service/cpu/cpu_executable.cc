@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -357,7 +359,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       runtime::GetXfeedManager(run_options->device_ordinal()),
       run_options->intra_op_thread_pool()};
 
-  absl::Status executed = thunks_->Execute(execute_params);
+  auto executed_event = thunks_->Execute(execute_params);
+  tsl::BlockUntilReady(executed_event);
 
   if (run_options->execution_profile()) {
     uint64_t end_ns = tsl::Env::Default()->NowNanos();
@@ -371,7 +374,9 @@ absl::Status CpuExecutable::ExecuteThunks(
     }
   }
 
-  return executed;
+  return ABSL_PREDICT_FALSE(executed_event.IsError())
+             ? executed_event.GetError()
+             : absl::OkStatus();
 }
 
 absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(

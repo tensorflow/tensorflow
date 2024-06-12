@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -227,10 +226,13 @@ TEST(ThunkExecutorTest, Execute) {
   BufferAllocations allocations(buffers);
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
-  TF_ASSERT_OK(executor.Execute(params, [&](ThunkExecutor::Task task) {
+  auto execute_event = executor.Execute(params, [&](ThunkExecutor::Task task) {
     trace.push_back("<TaskRunner>");
     task();
-  }));
+  });
+
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsConcrete());
 
   EXPECT_THAT(trace, ElementsAre("<TaskRunner>", "b", "a", "c"));
   EXPECT_THAT(data, ElementsAre(2, 2, 2, 2, 2,                 // slice0
@@ -354,12 +356,15 @@ TEST_P(ThunkExecutorStressTest, Execute) {
 
   BufferAllocations allocations(g->buffers);
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, device()};
-  absl::Status executed = executor.Execute(params, task_runner());
+
+  auto execute_event = executor.Execute(params, task_runner());
+  tsl::BlockUntilReady(execute_event);
 
   if (inject_errors) {
-    EXPECT_EQ(executed, absl::InternalError("Injected error"));
+    ASSERT_TRUE(execute_event.IsError());
+    EXPECT_EQ(execute_event.GetError(), absl::InternalError("Injected error"));
   } else {
-    EXPECT_EQ(executed, absl::OkStatus());
+    ASSERT_TRUE(execute_event.IsConcrete());
     EXPECT_EQ(g->dst, g->expected);
   }
 }
@@ -383,7 +388,9 @@ static void BM_SyncThunkExecutor(benchmark::State& state) {
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
   for (auto _ : state) {
-    CHECK_OK(e.Execute(params, nullptr));
+    auto execute_event = e.Execute(params, nullptr);
+    tsl::BlockUntilReady(execute_event);
+    CHECK(execute_event.IsConcrete());
   }
 }
 
@@ -401,9 +408,11 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, &device};
 
   for (auto _ : state) {
-    CHECK_OK(e.Execute(params, [&](ThunkExecutor::Task task) {
+    auto execute_event = e.Execute(params, [&](ThunkExecutor::Task task) {
       thread_pool.Schedule(ToCopyableTask(std::move(task)));
-    }));
+    });
+    tsl::BlockUntilReady(execute_event);
+    CHECK(execute_event.IsConcrete());
   }
 }
 

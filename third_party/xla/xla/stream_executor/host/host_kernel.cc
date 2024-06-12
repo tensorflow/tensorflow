@@ -189,7 +189,7 @@ void HostKernelExecuteState::Notify(absl::Status status) {
   // Check if it was the last notification and kernel launch is done.
   bool is_done = counter_.load(std::memory_order_relaxed) == 1 ||
                  counter_.fetch_sub(1, std::memory_order_relaxed) == 1;
-  if (!is_done) return;
+  if (ABSL_PREDICT_TRUE(!is_done)) return;
 
   // In the unlikely event of a kernel error, forward it to the launch event.
   if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {

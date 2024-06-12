@@ -93,10 +93,11 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
                                           TaskRunner runner)
     : executor(executor),
       runner(std::move(runner)),
-      abort(false),
       counters(executor->nodes_defs().size()),
       nodes(executor->nodes_defs().size()),
-      done(executor->sink().size()) {
+      abort(false),
+      pending_sink_nodes(executor->sink().size()),
+      execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()) {
   for (NodeId id = 0; id < nodes.size(); ++id) {
     const NodeDef& node_def = executor->node_def(id);
     counters[id].store(node_def.in_edges.size(), std::memory_order_release);
@@ -104,26 +105,29 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
   }
 }
 
-absl::Status ThunkExecutor::Execute(const Thunk::ExecuteParams& params,
-                                    TaskRunner runner) {
-  ReadyQueue ready_queue(source_.begin(), source_.end());
-  if (ready_queue.empty()) return absl::OkStatus();
-
-  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
-  Execute(state.get(), params, std::move(ready_queue));
-
-  tsl::profiler::TraceMe trace("ThunkExecutor::Execute (wait for done)");
-  state->done.Wait();
-
-  // If execution was aborted, forward error to the caller.
-  if (state->abort.load(std::memory_order_relaxed)) {
-    absl::MutexLock lock(&state->abort_mutex);
-    CHECK(!state->abort_status.ok())  // Crash Ok
-        << "Abort status must be set if execution is aborted";
-    return state->abort_status;
+tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
+    const Thunk::ExecuteParams& params, TaskRunner runner) {
+  // Short-circuit execution of trivial thunk sequences.
+  if (ABSL_PREDICT_FALSE(thunk_sequence_.empty())) {
+    return Thunk::OkExecuteEvent();
+  }
+  if (ABSL_PREDICT_FALSE(thunk_sequence_.size() == 1)) {
+    return thunk_sequence_[0]->Execute(params);
   }
 
-  return absl::OkStatus();
+  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
+  Execute(state.get(), params, ReadyQueue(source_.begin(), source_.end()));
+
+  // Move execute state to the execute event callback to ensure that it is kept
+  // alive while thunk executor has pending tasks.
+  auto execute_event = state->execute_event;
+  execute_event.AndThen([state = std::move(state)] {
+    CHECK_EQ(state->pending_sink_nodes.load(std::memory_order_acquire), 0)
+        << "All sink nodes must be completed before execute_event is marked "
+           "available.";
+  });
+
+  return execute_event;
 }
 
 void ThunkExecutor::Execute(ExecuteState* state,
@@ -180,15 +184,15 @@ void ThunkExecutor::Execute(ExecuteState* state,
 }
 
 void ThunkExecutor::ProcessOutEdges(
-    ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> execute_event,
+    ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
     Node& node, ReadyQueue& ready_queue) {
   // If thunk execution failed, mark execution as aborted and record the error.
   // We still continue processing the nodes DAG to eventually mark sink nodes
   // completed as it's easier than to add a special abort handling logic.
-  if (ABSL_PREDICT_FALSE(execute_event.IsError())) {
+  if (ABSL_PREDICT_FALSE(node_event.IsError())) {
     absl::MutexLock lock(&state->abort_mutex);
     state->abort = true;
-    state->abort_status.Update(execute_event.GetError());
+    state->abort_status.Update(node_event.GetError());
   }
 
   // Load `is_sink` before dropping node counters because otherwise it might
@@ -204,8 +208,29 @@ void ThunkExecutor::ProcessOutEdges(
     if (cnt == 1) ready_queue.push_back(out_edge);
   }
 
-  // Drop done counter if the node is a sink.
-  if (ABSL_PREDICT_FALSE(is_sink)) state->done.DecrementCount();
+  // Drop the pending sink nodes counter if the node is a sink.
+  if (ABSL_PREDICT_FALSE(is_sink)) {
+    // Check if it was the last sink node and thunk executor is done. We update
+    // the counter using `std::memory_order_acq_rel` to ensure that the
+    // remaining memory writes are visible to the consumer of execute event.
+    bool is_done =
+        state->pending_sink_nodes.fetch_sub(1, std::memory_order_acq_rel) == 1;
+    if (ABSL_PREDICT_TRUE(!is_done)) return;
+
+    // In the unlikely event of an execution error during thunk execution,
+    // forward it to the caller via the execute event.
+    if (ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))) {
+      auto take_error = [&] {
+        absl::MutexLock lock(&state->abort_mutex);
+        CHECK(!state->abort_status.ok())  // Crash Ok
+            << "Abort status must be set if execution is aborted";
+        return std::move(state->abort_status);
+      };
+      state->execute_event.SetError(take_error());
+    } else {
+      state->execute_event.SetStateConcrete();
+    }
+  }
 }
 
 std::string ThunkExecutor::ToString() const {

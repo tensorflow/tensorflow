@@ -1592,11 +1592,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
           run_options.intra_op_thread_pool()};
 
-      TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(
+      auto execute_event = cpu_executable->thunks().Execute(
           execute_params, [&](cpu::ThunkExecutor::Task task) {
             client_->eigen_intraop_device()->getPool()->Schedule(
                 cpu::ToCopyableTask(std::move(task)));
-          }));
+          });
+
+      tsl::BlockUntilReady(execute_event);
+      if (execute_event.IsError()) return execute_event.GetError();
 
     } else {
       return Internal("CpuExecutable has no compute function or thunks.");
@@ -1707,11 +1710,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                 &cpu_executable->host_kernels(), &allocations,
                 cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
                 run_options.intra_op_thread_pool()};
-            status = cpu_executable->thunks().Execute(
+
+            auto execute_event = cpu_executable->thunks().Execute(
                 execute_params, [&](cpu::ThunkExecutor::Task task) {
                   eigen_device->getPool()->Schedule(
                       cpu::ToCopyableTask(std::move(task)));
                 });
+
+            tsl::BlockUntilReady(execute_event);
+            status = execute_event.IsError() ? execute_event.GetError()
+                                             : absl::OkStatus();
 
           } else {
             status =
