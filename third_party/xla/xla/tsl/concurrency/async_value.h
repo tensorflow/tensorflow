@@ -497,14 +497,20 @@ struct AsyncPayload {
   // the payload data is constructed), it will destruct the payload data when
   // the AsyncValue enters the error state (e.g., on AsyncValue::SetError()).
   //
-  // However, for the payload types that inherit from `KeepOnError`, AsyncValue
-  // exhibits a different behavior: the payload value if constructed, will be
-  // kept valid when the AsyncValue goes into the error state.
-  struct KeepOnError {};
+  // However, for the payload types that inherit from
+  // `KeepAsyncValuePayloadOnError`, AsyncValue exhibits a different behavior:
+  // the payload value if constructed, will be kept valid when the AsyncValue
+  // goes into the error state.
+  struct KeepAsyncValuePayloadOnError {};
 };
 
 namespace internal {
 
+// TODO(ezhulenev): Remove backward-compatible alias after migrating all users.
+using KeepAsyncValuePayloadOnError = AsyncPayload::KeepAsyncValuePayloadOnError;
+
+// Subclass for storing the concrete payload of the AsyncValue.
+//
 // Async value itself is a container that either holds `absl::Status` (in error
 // state) or a concrete value of type `T` (in concrete state). Async value that
 // holds an `absl::Status` or `absl::StatusOr<T>` is typically a bad idea, and
@@ -603,8 +609,8 @@ class ConcreteAsyncValue : public AsyncValue {
   friend class AsyncValue;
 
   // Data and error layout when the payload does not inherit from
-  // AsyncPayload::KeepOnError. This type destructs the payload value on error.
-  // It never keeps both data and error alive at the same time.
+  // KeepAsyncValuePayloadOnError. This type destructs the payload value on
+  // error. It never keeps both data and error alive at the same time.
   class DataOrError {
    public:
     DataOrError() {}
@@ -657,8 +663,8 @@ class ConcreteAsyncValue : public AsyncValue {
   };
 
   // Data and error layout when the payload inherits from
-  // AsyncPayload::KeepOnError. This type does to destruct the payload value on
-  // error. It may keep both data and error alive at the same time.
+  // KeepAsyncValuePayloadOnError. This type does to destruct the payload value
+  // on error. It may keep both data and error alive at the same time.
   class DataAndError {
    public:
     explicit DataAndError(absl::Status status) { SetError(std::move(status)); }
@@ -703,9 +709,9 @@ class ConcreteAsyncValue : public AsyncValue {
     std::unique_ptr<absl::Status> error_;
   };
 
-  using DataStoreT =
-      std::conditional_t<std::is_base_of_v<AsyncPayload::KeepOnError, T>,
-                         DataAndError, DataOrError>;
+  using DataStoreT = std::conditional_t<
+      std::is_base_of_v<AsyncPayload::KeepAsyncValuePayloadOnError, T>,
+      DataAndError, DataOrError>;
   alignas(AsyncValue::kDataOffset) DataStoreT data_store_;
 
   void Destroy() { data_store_.Destroy(state()); }
