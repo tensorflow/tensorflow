@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_allocation.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
@@ -138,6 +139,9 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
   MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<tsl::RCReference<DeviceAllocation>>,
+              AllocateDevices,
+              (absl::string_view name, AttributeMap constraints), (final));
   MOCK_METHOD(int, device_count, (), (const, final));
   MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
