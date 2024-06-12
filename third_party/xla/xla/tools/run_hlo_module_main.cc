@@ -187,21 +187,8 @@ int main(int argc, char** argv) {
     const int iteration_count = opts.iterations;
     xla::RunHloModuleLiterals input_literals_proto;
     if (!opts.input_literals_file.empty()) {
-      if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
-                                      opts.input_literals_file,
-                                      &input_literals_proto)
-               .ok()) {
-        // Fallback to trying to read RunHloModuleIterationLiterals
-        xla::RunHloModuleIterationLiterals iteration_literals_proto;
-        if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
-                                        opts.input_literals_file,
-                                        &iteration_literals_proto)
-                 .ok()) {
-          LOG(QFATAL) << "Failed to deserialize input literals from file "
-                      << opts.input_literals_file << "\n";
-        }
-        *input_literals_proto.add_iterations() = iteration_literals_proto;
-      }
+      ReadInputLiteralsFromFile(opts.input_literals_file,
+                                &input_literals_proto);
     }
 
     for (int i = 1; i <= iteration_count; ++i) {
