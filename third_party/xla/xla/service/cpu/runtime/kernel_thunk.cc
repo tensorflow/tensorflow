@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -106,29 +105,20 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
     kernel_ptr_.store(kernel_ptr);
   }
 
-  // TODO(ezhulenev): Instead of using HostKernel directly we should be going
-  // through the stream executor APIs.
   se::host::HostKernel kernel(buffers_data.size(), kernel_ptr, nullptr);
 
-  if (params.intra_op_threadpool == nullptr) {
-    TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
-
-  } else {
-    tsl::AsyncValueRef<se::host::HostKernel::LaunchEvent> event =
-        kernel.Launch(thread_dim_, buffers_data, [&](auto task) {
-          params.intra_op_threadpool->getPool()->Schedule(
-              ToCopyableTask(std::move(task)));
-        });
-
-    // TODO(ezhulenev): We have to be async all the way throughout all the
-    // levels of XLA:CPU runtime as we don't want to repeat inter/intra op
-    // threadpool mistakes of TensorFlow. Figure out how to propagate async
-    // events to ThunkExecutor.
-    tsl::BlockUntilReady(event);
-
-    if (event.IsError()) return event.GetError();
+  // If intra-op thread pool is not nullptr, we launch HostKernel in async mode
+  // by scheduling tasks into it. HostKernel launch completion will
+  // automatically signal KernelThunk execute completion.
+  if (params.intra_op_threadpool) {
+    return kernel.Launch(thread_dim_, buffers_data,
+                         [&params](se::host::HostKernel::Task task) {
+                           params.intra_op_threadpool->getPool()->Schedule(
+                               ToCopyableTask(std::move(task)));
+                         });
   }
 
+  TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
   return OkExecuteEvent();
 }
 
