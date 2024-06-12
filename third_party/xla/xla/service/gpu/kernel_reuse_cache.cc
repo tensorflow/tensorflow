@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/kernel_arguments.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -84,6 +85,60 @@ std::string GetComputationFingerprint(
                       fused_computation->ToString(print_options));
 }
 
+absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
+  for (const auto& [name, entry] : proto.entries()) {
+    std::optional<se::ClusterDim> cluster_dim;
+    if (entry.has_cluster_dim()) {
+      cluster_dim =
+          se::ClusterDim{entry.cluster_dim().x(), entry.cluster_dim().y(),
+                         entry.cluster_dim().z()};
+    }
+    TF_RET_CHECK(
+        cache_
+            .insert(
+                {entry.fingerprint(),
+                 Entry{name,
+                       LaunchDimensions{
+                           entry.launch_dimensions().num_blocks(),
+                           entry.launch_dimensions().num_threads_per_block()},
+                       cluster_dim, entry.shmem_bytes(), entry.binary()}})
+            .second);
+  }
+
+  return absl::OkStatus();
+}
+
+CompilationCacheProto KernelReuseCache::Export() const {
+  CompilationCacheProto proto;
+  for (const auto& [fingerprint, cache_entry] : cache_) {
+    if (!hits_.contains(fingerprint)) {
+      VLOG(5) << "Not exporting unused " << cache_entry.kernel_name;
+      continue;
+    }
+    auto [it, inserted] = proto.mutable_entries()->emplace(
+        cache_entry.kernel_name, CompilationCacheEntryProto{});
+    CHECK(inserted) << cache_entry.kernel_name;
+    CompilationCacheEntryProto& proto_entry = it->second;
+    proto_entry.set_fingerprint(fingerprint);
+    LaunchDimensionsProto launch_dimensions_proto;
+    launch_dimensions_proto.set_num_blocks(
+        cache_entry.launch_dimensions.num_blocks());
+    launch_dimensions_proto.set_num_threads_per_block(
+        cache_entry.launch_dimensions.num_threads_per_block());
+    *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
+    if (cache_entry.cluster_dim.has_value()) {
+      ClusterDimProto cluster_dim_proto;
+      cluster_dim_proto.set_x(cache_entry.cluster_dim->x);
+      cluster_dim_proto.set_y(cache_entry.cluster_dim->y);
+      cluster_dim_proto.set_z(cache_entry.cluster_dim->z);
+      *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
+    }
+    proto_entry.set_shmem_bytes(cache_entry.shmem_bytes);
+    proto_entry.set_binary(cache_entry.binary);
+  }
+  return proto;
+}
+
 std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
@@ -101,6 +156,7 @@ std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     std::string fingerprint,
     const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
+  hits_.insert(fingerprint);
   auto it = cache_.find(fingerprint);
   if (it != cache_.end()) {
     return {&it->second, /*was_cached=*/true};
