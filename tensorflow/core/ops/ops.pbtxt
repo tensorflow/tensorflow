@@ -18234,6 +18234,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "force_synchronous"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalMatchingFilesDataset"
@@ -27293,6 +27300,13 @@ op {
   }
   attr {
     name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "force_synchronous"
     type: "bool"
     default_value {
       b: false
