@@ -456,6 +456,7 @@ cc_library(
         "convert_launch_func_to_tf_call.cc",
         "convert_tf_control_flow_to_scf.cc",
         "convert_to_legacy_compile_and_replicate_attributes.cc",
+        "decompose_optionals.cc",
         "decompose_reduce_dataset.cc",
         "decompose_resource_ops_pass.cc",
         "device_attribute_to_launch.cc",
