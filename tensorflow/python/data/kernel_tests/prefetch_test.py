@@ -25,7 +25,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
@@ -37,6 +39,34 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testBufferSize(self, buffer_size):
     dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
     self.assertDatasetProduces(dataset, expected_output=range(10))
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(buffer_size=[0, 1, 2, 42])))
+  def testPrefetching(self, buffer_size):
+    dataset = dataset_ops.Dataset.range(1000)
+
+    calls = 0
+
+    @script_ops.eager_py_func(Tout=[dtypes.int64])
+    def map_fn(x):
+      nonlocal calls
+      calls += 1
+      return x
+
+    dataset = dataset.map(map_fn)
+    dataset = dataset.prefetch(buffer_size=buffer_size)
+    it = iter(dataset)
+    for _ in range(10):
+      next(it)
+
+    # Wait for the prefetch buffer to fill up.
+    while calls != 10+buffer_size:
+      time.sleep(0.1)
+    # Wait some extra time to make sure the prefetch buffer isn't fetching more
+    # elements than it should.
+    time.sleep(0.5)
+    self.assertEqual(calls, 10+buffer_size)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

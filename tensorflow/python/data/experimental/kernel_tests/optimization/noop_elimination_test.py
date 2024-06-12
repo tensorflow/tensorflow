@@ -54,7 +54,7 @@ def _test_combinations():
       ("SkipN", lambda ds: ds.skip(5), "FiniteSkip"),
       ("Repeat1", lambda ds: ds.repeat(1), None),
       ("RepeatN", lambda ds: ds.repeat(10), "FiniteRepeat[0]"),
-      ("Prefetch0", lambda ds: ds.prefetch(0), None),
+      ("Prefetch0", lambda ds: ds.prefetch(0), "Prefetch"),
       ("PrefetchN", lambda ds: ds.prefetch(1), "Prefetch"),
       ("Take-1", lambda ds: ds.take(-1), None),
       ("TakeN", lambda ds: ds.take(2), "FiniteTake"),
