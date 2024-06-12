@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -50,10 +51,12 @@ limitations under the License.
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "xla/debug_options_flags.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/statusor.h"
+#include "xla/service/spmd/shardonnay/constants.h"
+#include "xla/service/spmd/shardonnay/utils.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
 
@@ -199,9 +202,10 @@ void UpgradeStablehlo(mlir::ModuleOp module) {
 absl::Status MlirToXlaComputation(mlir::ModuleOp module,
                                   XlaComputation& xla_computation,
                                   bool use_tuple_args, bool return_tuple) {
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
+  mlir::MLIRContext* context = module->getContext();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
-    mlir::PassManager pm(module->getContext());
+    mlir::PassManager pm(context);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass());
@@ -223,6 +227,15 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
   }
 
   HloProto proto;
+  // TODO(b/345414638): Delete when we move Shardonnay as the first pass in the
+  // XLA pipeline.
+  if (use_tuple_args && GetDebugOptionsFromFlags().xla_use_shardonnay()) {
+    // Shardonnay can't handle tuple args when round-tripping. So delay using
+    // tuples until after Shardonnay is run.
+    sdy::addFrontendAttribute(module, sdy::kUseTupleArgs,
+                              mlir::StringAttr::get(context, "t"));
+    use_tuple_args = false;
+  }
   TF_RETURN_IF_ERROR(
       ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple));
 
