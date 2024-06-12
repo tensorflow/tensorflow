@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -503,6 +504,11 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         memory_space.get());
     owned_memory_spaces_.push_back(std::move(memory_space));
+    const size_t basePinnedId = devices.size();
+    auto pinned = std::make_unique<PinnedHostMemorySpace>(basePinnedId, device);
+    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
+        pinned.get());
+    owned_memory_spaces_.push_back(std::move(pinned));
   }
   for (const std::unique_ptr<PjRtMemorySpace>& memory_space :
        owned_memory_spaces_) {
