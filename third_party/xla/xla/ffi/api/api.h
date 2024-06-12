@@ -88,6 +88,63 @@ limitations under the License.
 #define XLA_FFI_PREDICT_TRUE(x) (x)
 #endif
 
+//===----------------------------------------------------------------------===//
+// Builtin enum pretty printing
+//===----------------------------------------------------------------------===//
+
+inline std::ostream& operator<<(std::ostream& os,
+                                const XLA_FFI_DataType dtype) {
+  switch (dtype) {
+    case XLA_FFI_DataType_INVALID:
+      return os << "INVALID";
+    case XLA_FFI_DataType_PRED:
+      return os << "PRED";
+    case XLA_FFI_DataType_S8:
+      return os << "S8";
+    case XLA_FFI_DataType_S16:
+      return os << "S16";
+    case XLA_FFI_DataType_S32:
+      return os << "S32";
+    case XLA_FFI_DataType_S64:
+      return os << "S64";
+    case XLA_FFI_DataType_U8:
+      return os << "U8";
+    case XLA_FFI_DataType_U16:
+      return os << "U16";
+    case XLA_FFI_DataType_U32:
+      return os << "U32";
+    case XLA_FFI_DataType_U64:
+      return os << "U64";
+    case XLA_FFI_DataType_F16:
+      return os << "F16";
+    case XLA_FFI_DataType_F32:
+      return os << "F32";
+    case XLA_FFI_DataType_F64:
+      return os << "F64";
+    case XLA_FFI_DataType_BF16:
+      return os << "BF16";
+    case XLA_FFI_DataType_C64:
+      return os << "C64";
+    case XLA_FFI_DataType_C128:
+      return os << "C128";
+    case XLA_FFI_DataType_TOKEN:
+      return os << "TOKEN";
+  }
+}
+
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
+  switch (type) {
+    case XLA_FFI_AttrType_ARRAY:
+      return os << "array";
+    case XLA_FFI_AttrType_DICTIONARY:
+      return os << "dictionary";
+    case XLA_FFI_AttrType_SCALAR:
+      return os << "scalar";
+    case XLA_FFI_AttrType_STRING:
+      return os << "string";
+  }
+}
+
 namespace xla::ffi {
 
 // Forward declare template defined below.
@@ -1341,59 +1398,6 @@ class Handler : public Ffi {
 //===----------------------------------------------------------------------===//
 // Builtin attributes decoding
 //===----------------------------------------------------------------------===//
-
-inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
-  switch (type) {
-    case XLA_FFI_AttrType_ARRAY:
-      return os << "array";
-    case XLA_FFI_AttrType_DICTIONARY:
-      return os << "dictionary";
-    case XLA_FFI_AttrType_SCALAR:
-      return os << "scalar";
-    case XLA_FFI_AttrType_STRING:
-      return os << "string";
-  }
-}
-
-inline std::ostream& operator<<(std::ostream& os,
-                                const XLA_FFI_DataType dtype) {
-  switch (dtype) {
-    case XLA_FFI_DataType_INVALID:
-      return os << "INVALID";
-    case XLA_FFI_DataType_PRED:
-      return os << "PRED";
-    case XLA_FFI_DataType_S8:
-      return os << "S8";
-    case XLA_FFI_DataType_S16:
-      return os << "S16";
-    case XLA_FFI_DataType_S32:
-      return os << "S32";
-    case XLA_FFI_DataType_S64:
-      return os << "S64";
-    case XLA_FFI_DataType_U8:
-      return os << "U8";
-    case XLA_FFI_DataType_U16:
-      return os << "U16";
-    case XLA_FFI_DataType_U32:
-      return os << "U32";
-    case XLA_FFI_DataType_U64:
-      return os << "U64";
-    case XLA_FFI_DataType_F16:
-      return os << "F16";
-    case XLA_FFI_DataType_F32:
-      return os << "F32";
-    case XLA_FFI_DataType_F64:
-      return os << "F64";
-    case XLA_FFI_DataType_BF16:
-      return os << "BF16";
-    case XLA_FFI_DataType_C64:
-      return os << "C64";
-    case XLA_FFI_DataType_C128:
-      return os << "C128";
-    case XLA_FFI_DataType_TOKEN:
-      return os << "TOKEN";
-  }
-}
 
 #define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                \
   template <>                                                         \
