@@ -100,6 +100,24 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
       return false;
     }
 
+    // If callee and caller call the same third function, inline. We have no
+    // guarantee that the indices are the same, but there is a good chance they
+    // are (or if the callee gets inlined as well, there will be CSE
+    // opportunities).
+    // This is duct tape to work around the limitations of our partitioner.
+    // Ideally, the partitioner would be aware of the actual indexing and create
+    // the partitions based on it (i.e., the case where the indices are the same
+    // would never happen).
+    llvm::SmallDenseSet<llvm::StringRef> callee_calls;
+    for (auto call : region->getOps<PureCallOp>()) {
+      callee_calls.insert(call.getCallee());
+    }
+    for (auto call : call->getParentRegion()->getOps<PureCallOp>()) {
+      if (callee_calls.contains(call.getCallee())) {
+        return true;
+      }
+    }
+
     constexpr int kMaxOperationsToInline = 8;
     int num_ops = 0;
     region->front().walk([&](mlir::Operation* op) { ++num_ops; });
