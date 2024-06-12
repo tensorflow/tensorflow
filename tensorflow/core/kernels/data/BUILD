@@ -1455,6 +1455,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:utils",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
