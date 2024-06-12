@@ -424,27 +424,6 @@ Client::DeconstructTuple(const GlobalData& data) {
   return std::move(handles);
 }
 
-absl::StatusOr<ComputationStats> Client::GetComputationStats(
-    const XlaComputation& computation,
-    const DebugOptions& debug_options) const {
-  ComputationGraphStatsRequest request;
-
-  // TODO(b/74197823): Find a way to avoid the copy of the hlo proto.
-  *request.mutable_computation() = computation.proto();
-  *request.mutable_debug_options() = debug_options;
-  ComputationStatsResponse response;
-
-  VLOG(1) << "making computation graph stats request";
-  absl::Status s = stub_->GetComputationGraphStats(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  CHECK(response.has_stats());
-  return response.stats();
-}
-
 absl::StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
@@ -465,27 +444,6 @@ absl::StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   }
 
   return Shape(response.shape());
-}
-
-absl::StatusOr<std::string> Client::ExecutionStatsAsString(
-    const XlaComputation& computation, const ExecutionProfile& profile) {
-  TF_ASSIGN_OR_RETURN(
-      auto computation_stats,
-      GetComputationStats(computation, GetDebugOptionsFromFlags()));
-  int64_t total_flops =
-      computation_stats.flop_count() + computation_stats.transcendental_count();
-  if (profile.compute_time_ns() > 0) {
-    int64_t nanoseconds = profile.compute_time_ns();
-    int64_t cycle_count = profile.compute_cycle_count();
-    double gflops = total_flops / nanoseconds;
-    return absl::StrCat(
-        "[Execution Statistics] flop count: ", computation_stats.flop_count(),
-        ", transcendental count: ", computation_stats.transcendental_count(),
-        ", compute execution time: ", nanoseconds, " nsec",
-        ", compute cycles: ", cycle_count, ", performance: ", gflops,
-        "gflop/s");
-  }
-  return std::string("[Execution Statistics] not available.");
 }
 
 absl::StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

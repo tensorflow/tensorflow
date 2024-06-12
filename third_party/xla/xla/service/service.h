@@ -159,11 +159,6 @@ class Service : public ServiceInterface {
   absl::Status GetShape(const GetShapeRequest* arg,
                         GetShapeResponse* result) override;
 
-  // Retrieves the statistics of a computation.
-  absl::Status GetComputationGraphStats(
-      const ComputationGraphStatsRequest* arg,
-      ComputationStatsResponse* result) override;
-
   // Creates a unique channel handle that can be used for Send/Recv
   // instructions.
   absl::Status CreateChannelHandle(

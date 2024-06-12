@@ -1074,15 +1074,6 @@ message ResetDeviceRequest {
 
 message ResetDeviceResponse {}
 
-message ComputationGraphStatsRequest {
-  HloModuleProto computation = 1;
-  DebugOptions debug_options = 2;
-}
-
-message ComputationStatsResponse {
-  ComputationStats stats = 1;
-}
-
 message CreateChannelHandleRequest {
   ChannelHandle.ChannelType channel_type = 1;
 }

@@ -202,11 +202,6 @@ class Client {
   absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(
       const GlobalData& data);
 
-  // Retrieves the statistics of the given computation.
-  absl::StatusOr<ComputationStats> GetComputationStats(
-      const XlaComputation& computation,
-      const DebugOptions& debug_options) const;
-
   // Returns the Shape of the given array specified by 'data'. The shape
   // includes the Layout of the array as it is stored on the service.
   absl::StatusOr<Shape> GetShape(const GlobalData& data);
@@ -230,11 +225,6 @@ class Client {
   ServiceInterface* stub() { return stub_; }
 
  private:
-  // Returns the execution statistics (e.g., gflop/s) as a string from the
-  // ExecutionProfile returned from an execution of the computation.
-  absl::StatusOr<std::string> ExecutionStatsAsString(
-      const XlaComputation& computation, const ExecutionProfile& profile);
-
   absl::StatusOr<ChannelHandle> CreateChannelHandleByType(
       ChannelHandle::ChannelType type);
 

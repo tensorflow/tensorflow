@@ -1128,38 +1128,6 @@ absl::Status Service::GetShape(const GetShapeRequest* arg,
   return absl::OkStatus();
 }
 
-absl::Status Service::GetComputationGraphStats(
-    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
-  if (!arg->has_computation()) {
-    return InvalidArgument("Computations may not be empty.");
-  }
-  if (!arg->computation().has_host_program_shape()) {
-    return InvalidArgument("Program shape may not be empty.");
-  }
-
-  HloModuleConfig config(ProgramShape{arg->computation().host_program_shape()});
-  config.set_debug_options(arg->debug_options());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      CreateModuleFromProto(arg->computation(), config));
-  UpdateEntryComputationLayout(
-      module.get(),
-      std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                execute_backend_->compiler(), std::placeholders::_1));
-  DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-
-  // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis(
-      execute_backend_->compiler()->ShapeSizeBytesFunction());
-
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
-
-  ComputationStats stats;
-  stats.set_flop_count(analysis.flop_count());
-  stats.set_transcendental_count(analysis.transcendental_count());
-  *result->mutable_stats() = stats;
-  return absl::OkStatus();
-}
-
 DeviceHandle Service::SingleComputationDeviceHandle() const {
   DeviceHandle device_handle;
   device_handle.set_handle(0);

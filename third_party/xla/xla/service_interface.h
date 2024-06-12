@@ -61,10 +61,6 @@ class ServiceInterface {
   virtual absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
                                         DeconstructTupleResponse* result) = 0;
 
-  virtual absl::Status GetComputationGraphStats(
-      const ComputationGraphStatsRequest* arg,
-      ComputationStatsResponse* result) = 0;
-
   virtual absl::Status GetShape(const GetShapeRequest* arg,
                                 GetShapeResponse* result) = 0;
 
