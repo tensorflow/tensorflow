@@ -76,11 +76,6 @@ void TpuExecutor::DeallocateStream(Stream* stream) {
   tpu_platform().mutex().Unlock();
 }
 
-bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
-  return ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
-      executor_, get_stream(dependent), get_stream(other));
-}
-
 absl::Status TpuExecutor::RecordEvent(Stream* stream,
                                       ::stream_executor::Event* event) {
   StatusHelper status;

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -50,6 +51,13 @@ HostStream::~HostStream() {
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
   parent()->DeallocateStream(this);
+}
+
+absl::Status HostStream::WaitFor(Stream* other) {
+  auto event = std::make_shared<absl::Notification>();
+  static_cast<HostStream*>(other)->EnqueueTask([event]() { event->Notify(); });
+  EnqueueTask([event]() { event->WaitForNotification(); });
+  return absl::OkStatus();
 }
 
 absl::Status HostStream::WaitFor(Event* event) {

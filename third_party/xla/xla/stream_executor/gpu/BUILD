@@ -329,6 +329,7 @@ gpu_only_cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

@@ -82,6 +82,7 @@ cc_library(
     deps = [
         ":host_event",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",

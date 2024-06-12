@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -53,6 +54,21 @@ Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
   handle.stream = gpu_stream_;
   return handle;
+}
+
+absl::Status GpuStream::WaitFor(Stream* other) {
+  GpuStream* other_gpu = AsGpuStream(other);
+  GpuEventHandle other_completed_event = *(other_gpu->completed_event());
+  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(),
+                                            other_completed_event,
+                                            AsGpuStreamValue(other_gpu)));
+
+  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(),
+                                   AsGpuStreamValue(this),
+                                   other_completed_event)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Couldn't wait for stream.");
 }
 
 absl::Status GpuStream::WaitFor(Event* event) {

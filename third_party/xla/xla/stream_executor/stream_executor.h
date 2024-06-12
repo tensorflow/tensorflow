@@ -274,10 +274,6 @@ class StreamExecutor {
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 
-  // Causes dependent to not begin execution until other has finished its
-  // last-enqueued work.
-  virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
-
   // Causes the host code to synchronously wait for operations enqueued
   // onto stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.

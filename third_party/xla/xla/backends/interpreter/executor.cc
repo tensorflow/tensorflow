@@ -78,21 +78,6 @@ bool XlaInterpreterExecutor::HostCallback(
   return true;
 }
 
-bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
-                                                    Stream *other) {
-  AsExecutorStream(dependent)->EnqueueTaskWithStatus(
-      [other]() { return other->BlockHostUntilDone(); });
-  absl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
-  if (status.ok()) {
-    return true;
-  }
-
-  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
-  // to throw away error information here.
-  LOG(WARNING) << "CreateStreamDependency: error on stream: " << status;
-  return false;
-}
-
 absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }

@@ -131,7 +131,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
   }
 
   void DeallocateStream(Stream *stream) override {}
-  bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
   absl::Status BlockHostUntilDone(Stream *stream) override;
 

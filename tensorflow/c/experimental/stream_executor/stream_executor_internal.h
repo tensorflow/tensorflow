@@ -185,8 +185,12 @@ class CStream : public StreamCommon {
     return status;
   }
 
-  absl::Status WaitFor(Stream* stream) override {
-    return StreamCommon::WaitFor(stream);
+  absl::Status WaitFor(Stream* other) override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    SP_Stream other_handle = static_cast<CStream*>(other)->Handle();
+    stream_executor_->create_stream_dependency(device_, stream_handle_,
+                                               other_handle, c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
   absl::Status WaitFor(Event* event) override {
     SP_Event event_handle = static_cast<CEvent*>(event)->Handle();

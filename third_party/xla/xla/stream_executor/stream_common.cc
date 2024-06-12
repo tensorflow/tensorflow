@@ -147,16 +147,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
              << sub_stream;
 }
 
-absl::Status StreamCommon::WaitFor(Stream *other) {
-  if (this == other) {
-    return absl::InternalError("stream cannot wait for itself");
-  }
-  if (parent_->CreateStreamDependency(this, other)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("stream cannot wait for other");
-}
-
 absl::Status StreamCommon::Memcpy(void *host_dst,
                                   const DeviceMemoryBase &gpu_src,
                                   uint64_t size) {

@@ -778,21 +778,6 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
   cuda_stream->Destroy();
 }
 
-bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
-  CUevent other_completed_event = *AsGpuStream(other)->completed_event();
-  bool ok = GpuDriver::RecordEvent(context_, other_completed_event,
-                                   AsGpuStreamValue(other))
-                .ok();
-  if (!ok) {
-    LOG(ERROR) << "failed to record completion event; "
-                  "therefore, failed to create inter-stream dependency";
-    return false;
-  }
-
-  return GpuDriver::WaitStreamOnEvent(context_, AsGpuStreamValue(dependent),
-                                      other_completed_event);
-}
-
 absl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
   return GpuDriver::SynchronizeStream(context_, AsGpuStreamValue(stream));
 }
