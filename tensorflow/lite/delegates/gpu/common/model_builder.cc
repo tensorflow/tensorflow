@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
+#include "tensorflow/lite/tools/versioning/jet_gpu_compatibility.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -317,7 +317,7 @@ class BatchedMatMulOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -400,7 +400,7 @@ class CastOperationParser : public TFLiteOperationParser {
         return absl::OkStatus();
       }
     }
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -489,7 +489,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     //   RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, idx));
     // }
     // TODO(eignasheva): add axis checking.
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -614,7 +614,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 6));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -848,7 +848,7 @@ class CumsumOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -878,7 +878,7 @@ class DensifyOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -905,7 +905,7 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 6));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -982,7 +982,7 @@ class DepthToSpaceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1007,7 +1007,7 @@ class DequantizeOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1086,7 +1086,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
         return absl::UnimplementedError("Not supported logical op case.");
       }
     }
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1283,7 +1283,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 9));
     // TODO(eignasheva): check input shape
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1385,7 +1385,7 @@ class GatherOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1416,7 +1416,7 @@ class HardSwishOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode*, const TfLiteRegistration*,
@@ -1462,7 +1462,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1581,7 +1581,7 @@ class OneHotOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1606,7 +1606,7 @@ class PackOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1734,7 +1734,7 @@ class PadOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1792,7 +1792,7 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
  public:
@@ -1850,7 +1850,7 @@ class ReduceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1910,7 +1910,7 @@ class QuantizeOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -1978,7 +1978,7 @@ class ResamplerOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2008,7 +2008,7 @@ class ReshapeOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
     // TODO(eignasheva): add shape checking
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2039,7 +2039,7 @@ class Resize2DOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2115,7 +2115,7 @@ class SelectV2OperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2191,7 +2191,7 @@ class SliceOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2318,7 +2318,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2352,7 +2352,7 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     // TODO(impjdi): Dims check.
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2376,7 +2376,7 @@ class SplitOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2418,7 +2418,7 @@ class SplitVOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2462,7 +2462,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     // Although we support up to v4, we do not support boolean inputs
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2652,7 +2652,7 @@ class TileOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2673,7 +2673,7 @@ class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   // TFLite's TRANSPOSE_CONV expects 3-4 input tensors (output shape, weights,
@@ -2720,7 +2720,7 @@ class TransposeConvCustomOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2755,7 +2755,7 @@ class TransposeOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     // Although we support up to v4, we do not support boolean inputs
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2868,7 +2868,7 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2946,7 +2946,7 @@ class SpaceToBatchOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2989,7 +2989,7 @@ class MeanOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    return CheckJetGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
