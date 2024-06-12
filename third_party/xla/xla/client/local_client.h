@@ -104,7 +104,8 @@ class LocalExecutable {
   absl::StatusOr<T> AsyncCallAndBlockHostUntilDone(
       absl::Span<Shape const* const> argument_shapes,
       const ExecutableRunOptions& run_options,
-      std::function<StatusOr<T>(const ExecutableRunOptions&)> async_callback) {
+      std::function<absl::StatusOr<T>(const ExecutableRunOptions&)>
+          async_callback) {
     TF_ASSIGN_OR_RETURN(auto options_and_stream,
                         RunHelper(argument_shapes, run_options));
     ExecutableRunOptions options = options_and_stream.first.run_options();

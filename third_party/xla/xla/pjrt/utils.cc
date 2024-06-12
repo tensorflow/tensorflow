@@ -137,7 +137,7 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
 absl::Status ParseDeviceAssignmentCompileOptions(
     bool compile_portable_executable, ExecutableBuildOptions* build_options,
-    std::function<StatusOr<DeviceAssignment>(int, int)>
+    std::function<absl::StatusOr<DeviceAssignment>(int, int)>
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
     std::shared_ptr<DeviceAssignment>* device_assignment) {
@@ -533,7 +533,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
 static absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
     const Shape& sharded_shape,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   if (unsharded_shape.IsToken() || unsharded_shape.IsOpaque()) {
     return unsharded_shape;
@@ -574,7 +574,7 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     std::vector<LayoutMode> out_layout_modes,
     const std::vector<MemorySpaceColor>& arg_memory_spaces,
     const std::vector<MemorySpaceColor>& out_memory_spaces,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   // Compute sharded argument and output shapes.
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
@@ -683,7 +683,7 @@ LayoutModesToXla(const XlaComputation& computation,
                  std::vector<LayoutMode> out_layout_modes,
                  const std::vector<MemorySpaceColor>& arg_memory_spaces,
                  const std::vector<MemorySpaceColor>& out_memory_spaces,
-                 std::function<StatusOr<Shape>(Shape)>
+                 std::function<absl::StatusOr<Shape>(Shape)>
                      choose_compact_layout_for_shape_function,
                  ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
@@ -710,7 +710,7 @@ LayoutModesToXla(const XlaComputation& computation,
 
 absl::Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
-    std::function<StatusOr<Shape>(Shape)>
+    std::function<absl::StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
     std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,

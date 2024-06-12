@@ -685,7 +685,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     void SetState(State state) { state_ = state; }
 
     // Sets buffer_ and status_. Called by parent_ to initialize the hold.
-    void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
+    void Acquire(
+        absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
     // Releases the contents of *this, so *this can subsequently be
     // deleted without releasing the parent's hold. Should be passed to the
     // appropriate constructor of another ScopedHold, e.g., when a hold must be

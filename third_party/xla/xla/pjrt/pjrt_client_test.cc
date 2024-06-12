@@ -42,20 +42,20 @@ namespace {
 class TestClientFactory {
  public:
   void Register(
-      std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+      std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
   }
 
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
     absl::MutexLock lock(&mu_);
     return factory_;
   }
 
  private:
   mutable absl::Mutex mu_;
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory_
       ABSL_GUARDED_BY(mu_);
 };
 
@@ -71,7 +71,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
 }  // namespace
 
 void RegisterTestClientFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
   GetGlobalTestClientFactory().Register(std::move(factory));
 }
 

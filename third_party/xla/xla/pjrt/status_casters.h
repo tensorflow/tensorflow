@@ -139,7 +139,7 @@ struct ThrowIfErrorWrapper<absl::Status(Args...) const, C> {
 
 // Utilities for `StatusOr`.
 template <typename T>
-T ValueOrThrow(StatusOr<T> v) {
+T ValueOrThrow(absl::StatusOr<T> v) {
   if (!v.ok()) {
     throw xla::XlaRuntimeError(v.status());
   }
