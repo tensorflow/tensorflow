@@ -19,9 +19,17 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/advisor/checker.h"
+#include "tensorflow/core/profiler/internal/tfprof_node.h"
+#include "tensorflow/core/profiler/internal/tfprof_stats.h"
+#include "tensorflow/core/profiler/tfprof_options.pb.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
