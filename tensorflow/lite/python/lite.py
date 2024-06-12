@@ -1382,7 +1382,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete functions are specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1461,7 +1461,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete functions are specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1657,7 +1657,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """Constructor for TFLiteConverter.
 
     Args:
-      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+      funcs: List of TensorFlow Concrete Functions. The list should not contain
         duplicate elements.
       trackable_obj: tf.AutoTrackable object associated with `funcs`. A
         reference to this object needs to be maintained so that Variables do not
@@ -1804,7 +1804,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete functions are specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1947,7 +1947,7 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
 @_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
-  """Converts a TensorFlow model into TensorFlow Lite model.
+  """Converts a TensorFlow model into a TensorFlow Lite model.
 
   Attributes:
     optimizations: Experimental flag, subject to change. Set of optimizations to
@@ -1961,23 +1961,23 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       integer quantization, i.e, if `tf.int8` is the only supported type in
       `target_spec.supported_types`. Refer to `tf.lite.RepresentativeDataset`.
       (default None)
-    target_spec: Experimental flag, subject to change. Specifications of target
+    target_spec: Experimental flag, subject to change. Specifications of the target
       device, including supported ops set, supported types and a set of user's
       defined TensorFlow operators required in the TensorFlow Lite runtime.
       Refer to `tf.lite.TargetSpec`.
     inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization and quantization aware training. (default tf.float32,
+      (tf.int8 and tf.uint8) are currently only supported for post-training
+      integer quantization and quantization-aware training. (default tf.float32,
       must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization and quantization aware training. (default
+      types (tf.int8 and tf.uint8) are currently only supported for post-
+      training integer quantization and quantization-aware training. (default
       tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When False, any unknown operation is an error. When True, custom ops are
-      created for any op that is unknown. The developer needs to provide these
+      created for any unknown op. The developer needs to provide these
       to the TensorFlow Lite runtime with a custom resolver. (default False)
-    exclude_conversion_metadata: Whether not to embed the conversion metadata
+    exclude_conversion_metadata: Whether or not to embed the conversion metadata
       into the converted model. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion. (default True)
@@ -2017,7 +2017,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """Constructor for TFLiteConverter.
 
     Args:
-      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
+      funcs: List of TensorFlow Concrete Functions. The list should not contain
         duplicate elements.
       trackable_obj: tf.AutoTrackable object associated with `funcs`. A
         reference to this object needs to be maintained so that Variables do not
@@ -2032,8 +2032,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """Creates a TFLiteConverter object from ConcreteFunctions.
 
     Args:
-      funcs: List of TensorFlow ConcreteFunctions. The list should not contain
-        duplicate elements. Currently converter can only convert a single
+      funcs: List of TensorFlow Concrete Functions. The list should not contain
+        duplicate elements. Currently, converter can only convert a single
         ConcreteFunction. Converting multiple functions is under development.
       trackable_obj:   An `AutoTrackable` object (typically `tf.module`)
         associated with `funcs`. A reference to this object needs to be
@@ -2204,13 +2204,13 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete functions are specified.
         Multiple concrete functions are specified.
-        Input shape is not specified.
+        The input shape is not specified.
         Invalid quantization parameters.
     """
     return super(TFLiteConverterV2, self).convert()
