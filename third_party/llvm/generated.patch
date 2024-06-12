@@ -1,20 +1,373 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-@@ -378,6 +378,7 @@
-     name = "rint_test_template",
-     hdrs = ["RIntTest.h"],
-     deps = [
-+        "//libc:__support_cpp_algorithm",
-         "//libc:__support_fputil_fenv_impl",
-         "//libc:__support_fputil_fp_bits",
-         "//libc:hdr_fenv_macros",
-@@ -416,6 +417,7 @@
-     name = "round_to_integer_test_template",
-     hdrs = ["RoundToIntegerTest.h"],
-     deps = [
-+        "//libc:__support_cpp_algorithm",
-         "//libc:__support_fputil_fenv_impl",
-         "//libc:__support_fputil_fp_bits",
-         "//libc:hdr_math_macros",
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+--- a/clang/lib/CodeGen/CGDebugInfo.cpp
++++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+@@ -5746,78 +5746,6 @@
+   Var->addDebugInfo(GVE);
+ }
+ 
+-void CGDebugInfo::EmitPseudoVariable(CGBuilderTy &Builder,
+-                                     llvm::Instruction *Value, QualType Ty) {
+-  // Only when -g2 or above is specified, debug info for variables will be
+-  // generated.
+-  if (CGM.getCodeGenOpts().getDebugInfo() <=
+-      llvm::codegenoptions::DebugLineTablesOnly)
+-    return;
+-
+-  llvm::DebugLoc SaveDebugLoc = Builder.getCurrentDebugLocation();
+-  if (!SaveDebugLoc.get())
+-    return;
+-
+-  llvm::DIFile *Unit = SaveDebugLoc->getFile();
+-  llvm::DIType *Type = getOrCreateType(Ty, Unit);
+-
+-  // Check if Value is already a declared variable and has debug info, in this
+-  // case we have nothing to do. Clang emits declared variable as alloca, and
+-  // it is loaded upon use, so we identify such pattern here.
+-  if (llvm::LoadInst *Load = dyn_cast<llvm::LoadInst>(Value)) {
+-    llvm::Value *Var = Load->getPointerOperand();
+-    // There can be implicit type cast applied on a variable if it is an opaque
+-    // ptr, in this case its debug info may not match the actual type of object
+-    // being used as in the next instruction, so we will need to emit a pseudo
+-    // variable for type-casted value.
+-    auto DeclareTypeMatches = [&](auto *DbgDeclare) {
+-      return DbgDeclare->getVariable()->getType() == Type;
+-    };
+-    if (any_of(llvm::findDbgDeclares(Var), DeclareTypeMatches) ||
+-        any_of(llvm::findDVRDeclares(Var), DeclareTypeMatches))
+-      return;
+-  }
+-
+-  // Find the correct location to insert a sequence of instructions to
+-  // materialize Value on the stack.
+-  auto SaveInsertionPoint = Builder.saveIP();
+-  if (llvm::InvokeInst *Invoke = dyn_cast<llvm::InvokeInst>(Value))
+-    Builder.SetInsertPoint(Invoke->getNormalDest()->begin());
+-  else if (llvm::Instruction *Next = Value->getIterator()->getNextNode())
+-    Builder.SetInsertPoint(Next);
+-  else
+-    Builder.SetInsertPoint(Value->getParent());
+-  llvm::DebugLoc DL = Value->getDebugLoc();
+-  if (DL.get())
+-    Builder.SetCurrentDebugLocation(DL);
+-  else if (!Builder.getCurrentDebugLocation().get())
+-    Builder.SetCurrentDebugLocation(SaveDebugLoc);
+-
+-  llvm::AllocaInst *PseudoVar = Builder.CreateAlloca(Value->getType());
+-  Address PseudoVarAddr(PseudoVar, Value->getType(),
+-                        CharUnits::fromQuantity(PseudoVar->getAlign()));
+-  llvm::LoadInst *Load = Builder.CreateLoad(PseudoVarAddr);
+-  Value->replaceAllUsesWith(Load);
+-  Builder.SetInsertPoint(Load);
+-  Builder.CreateStore(Value, PseudoVarAddr);
+-
+-  // Emit debug info for materialized Value.
+-  unsigned Line = Builder.getCurrentDebugLocation().getLine();
+-  unsigned Column = Builder.getCurrentDebugLocation().getCol();
+-  llvm::DILocalVariable *D = DBuilder.createAutoVariable(
+-      LexicalBlockStack.back(), "", nullptr, 0, Type, false,
+-      llvm::DINode::FlagArtificial);
+-  llvm::DILocation *DIL =
+-      llvm::DILocation::get(CGM.getLLVMContext(), Line, Column,
+-                            LexicalBlockStack.back(), CurInlinedAt);
+-  SmallVector<uint64_t> Expr;
+-  DBuilder.insertDeclare(PseudoVar, D, DBuilder.createExpression(Expr), DIL,
+-                         Load);
+-
+-  Builder.restoreIP(SaveInsertionPoint);
+-  Builder.SetCurrentDebugLocation(SaveDebugLoc);
+-}
+-
+ void CGDebugInfo::EmitGlobalAlias(const llvm::GlobalValue *GV,
+                                   const GlobalDecl GD) {
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/CodeGen/CGDebugInfo.h
+--- a/clang/lib/CodeGen/CGDebugInfo.h
++++ b/clang/lib/CodeGen/CGDebugInfo.h
+@@ -530,12 +530,6 @@
+   /// Emit information about an external variable.
+   void EmitExternalVariable(llvm::GlobalVariable *GV, const VarDecl *Decl);
+ 
+-  /// Emit a pseudo variable and debug info for an intermediate value if it does
+-  /// not correspond to a variable in the source code, so that a profiler can
+-  /// track more accurate usage of certain instructions of interest.
+-  void EmitPseudoVariable(CGBuilderTy &Builder, llvm::Instruction *Value,
+-                          QualType Ty);
+-
+   /// Emit information about global variable alias.
+   void EmitGlobalAlias(const llvm::GlobalValue *GV, const GlobalDecl Decl);
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExprScalar.cpp b/clang/lib/CodeGen/CGExprScalar.cpp
+--- a/clang/lib/CodeGen/CGExprScalar.cpp
++++ b/clang/lib/CodeGen/CGExprScalar.cpp
+@@ -1937,26 +1937,7 @@
+     }
+   }
+ 
+-  llvm::Value *Result = EmitLoadOfLValue(E);
+-
+-  // If -fdebug-info-for-profiling is specified, emit a pseudo variable and its
+-  // debug info for the pointer, even if there is no variable associated with
+-  // the pointer's expression.
+-  if (CGF.CGM.getCodeGenOpts().DebugInfoForProfiling && CGF.getDebugInfo()) {
+-    if (llvm::LoadInst *Load = dyn_cast<llvm::LoadInst>(Result)) {
+-      if (llvm::GetElementPtrInst *GEP =
+-              dyn_cast<llvm::GetElementPtrInst>(Load->getPointerOperand())) {
+-        if (llvm::Instruction *Pointer =
+-                dyn_cast<llvm::Instruction>(GEP->getPointerOperand())) {
+-          QualType Ty = E->getBase()->getType();
+-          if (!E->isArrow())
+-            Ty = CGF.getContext().getPointerType(Ty);
+-          CGF.getDebugInfo()->EmitPseudoVariable(Builder, Pointer, Ty);
+-        }
+-      }
+-    }
+-  }
+-  return Result;
++  return EmitLoadOfLValue(E);
+ }
+ 
+ Value *ScalarExprEmitter::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-ptr-to-ptr.cpp b/clang/test/CodeGenCXX/debug-info-ptr-to-ptr.cpp
+--- a/clang/test/CodeGenCXX/debug-info-ptr-to-ptr.cpp
++++ b/clang/test/CodeGenCXX/debug-info-ptr-to-ptr.cpp
+@@ -1,120 +0,0 @@
+-// Test debug info for intermediate value of a chained pointer deferencing
+-// expression when the flag -fdebug-info-for-pointer-type is enabled.
+-// RUN: %clang_cc1 -emit-llvm -triple x86_64-linux-gnu %s -fdebug-info-for-profiling -debug-info-kind=constructor -o - | FileCheck %s
+-
+-class A {
+-public:
+-  int i;
+-  char c;
+-  void *p;
+-  int arr[3];
+-};
+-
+-class B {
+-public:
+-  A* a;
+-};
+-
+-class C {
+-public:
+-  B* b;
+-  A* a;
+-  A arr[10];
+-};
+-
+-// CHECK-LABEL: define dso_local noundef i32 @{{.*}}func1{{.*}}(
+-// CHECK:         [[A_ADDR:%.*]] = getelementptr inbounds %class.B, ptr {{%.*}}, i32 0, i32 0, !dbg [[DBG1:![0-9]+]]
+-// CHECK-NEXT:    [[A:%.*]] = load ptr, ptr [[A_ADDR]], align {{.*}}, !dbg [[DBG1]]
+-// CHECK-NEXT:    [[PSEUDO1:%.*]] = alloca ptr, align {{.*}}, !dbg [[DBG1]]
+-// CHECK-NEXT:    store ptr [[A]], ptr [[PSEUDO1]], align {{.*}}, !dbg [[DBG1]]
+-// CHECK-NEXT:    call void @llvm.dbg.declare(metadata ptr [[PSEUDO1]], metadata [[META1:![0-9]+]], metadata !DIExpression()), !dbg [[DBG1]]
+-// CHECK-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[PSEUDO1]], align {{.*}}, !dbg [[DBG1]]
+-// CHECK-NEXT:    {{%.*}} = getelementptr inbounds %class.A, ptr [[TMP1]], i32 0, i32 0,
+-int func1(B *b) {
+-  return b->a->i;
+-}
+-
+-// Should generate a pseudo variable when pointer is type-casted.
+-// CHECK-LABEL: define dso_local noundef ptr @{{.*}}func2{{.*}}(
+-// CHECK:         call void @llvm.dbg.declare(metadata ptr [[B_ADDR:%.*]], metadata [[META2:![0-9]+]], metadata !DIExpression())
+-// CHECK-NEXT:    [[B:%.*]] = load ptr, ptr [[B_ADDR]],
+-// CHECK-NEXT:    [[PSEUDO1:%.*]] = alloca ptr,
+-// CHECK-NEXT:    store ptr [[B]], ptr [[PSEUDO1]],
+-// CHECK-NEXT:    call void @llvm.dbg.declare(metadata ptr [[PSEUDO1]], metadata [[META3:![0-9]+]], metadata !DIExpression())
+-// CHECK-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[PSEUDO1]],
+-// CHECK-NEXT:    {{%.*}} = getelementptr inbounds %class.B, ptr [[TMP1]], i32 0,
+-A* func2(void *b) {
+-  return ((B*)b)->a;
+-}
+-
+-// Should not generate pseudo variable in this case.
+-// CHECK-LABEL: define dso_local noundef i32 @{{.*}}func3{{.*}}(
+-// CHECK:    call void @llvm.dbg.declare(metadata ptr [[B_ADDR:%.*]], metadata [[META4:![0-9]+]], metadata !DIExpression())
+-// CHECK:    call void @llvm.dbg.declare(metadata ptr [[LOCAL1:%.*]], metadata [[META5:![0-9]+]], metadata !DIExpression())
+-// CHECK-NOT: call void @llvm.dbg.declare(metadata ptr
+-int func3(B *b) {
+-  A *local1 = b->a;
+-  return local1->i;
+-}
+-
+-// CHECK-LABEL: define dso_local noundef signext i8 @{{.*}}func4{{.*}}(
+-// CHECK:         [[A_ADDR:%.*]] = getelementptr inbounds %class.C, ptr {{%.*}}, i32 0, i32 1
+-// CHECK-NEXT:    [[A:%.*]] = load ptr, ptr [[A_ADDR]],
+-// CHECK-NEXT:    [[PSEUDO1:%.*]] = alloca ptr,
+-// CHECK-NEXT:    store ptr [[A]], ptr [[PSEUDO1]],
+-// CHECK-NEXT:    call void @llvm.dbg.declare(metadata ptr [[PSEUDO1]], metadata [[META6:![0-9]+]], metadata !DIExpression())
+-// CHECK-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[PSEUDO1]],
+-// CHECK-NEXT:    {{%.*}} = getelementptr inbounds %class.A, ptr [[TMP1]], i32 0, i32 0,
+-// CHECK:         [[CALL:%.*]] = call noundef ptr @{{.*}}foo{{.*}}(
+-// CHECK-NEXT:    [[PSEUDO2:%.*]] = alloca ptr,
+-// CHECK-NEXT:    store ptr [[CALL]], ptr [[PSEUDO2]]
+-// CHECK-NEXT:    call void @llvm.dbg.declare(metadata ptr [[PSEUDO2]], metadata [[META6]], metadata !DIExpression())
+-// CHECK-NEXT:    [[TMP2:%.*]] = load ptr, ptr [[PSEUDO2]]
+-// CHECK-NEXT:    [[I1:%.*]] = getelementptr inbounds %class.A, ptr [[TMP2]], i32 0, i32 1
+-char func4(C *c) {
+-  extern A* foo(int x);
+-  return foo(c->a->i)->c;
+-}
+-
+-// CHECK-LABEL: define dso_local noundef signext i8 @{{.*}}func5{{.*}}(
+-// CHECK:         call void @llvm.dbg.declare(metadata ptr {{%.*}}, metadata [[META7:![0-9]+]], metadata !DIExpression())
+-// CHECK:         call void @llvm.dbg.declare(metadata ptr {{%.*}}, metadata [[META8:![0-9]+]], metadata !DIExpression())
+-// CHECK:         [[A_ADDR:%.*]] = getelementptr inbounds %class.A, ptr {{%.*}}, i64 {{%.*}},
+-// CHECK-NEXT:    [[PSEUDO1:%.*]] = alloca ptr,
+-// CHECK-NEXT:    store ptr [[A_ADDR]], ptr [[PSEUDO1]],
+-// CHECK-NEXT:    call void @llvm.dbg.declare(metadata ptr [[PSEUDO1]], metadata [[META9:![0-9]+]], metadata !DIExpression())
+-// CHECK-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[PSEUDO1]],
+-// CHECK-NEXT:    {{%.*}} = getelementptr inbounds %class.A, ptr [[TMP1]], i32 0, i32 1,
+-char func5(void *arr, int n) {
+-  return ((A*)arr)[n].c;
+-}
+-
+-// CHECK-LABEL: define dso_local noundef i32 @{{.*}}func6{{.*}}(
+-// CHECK:         call void @llvm.dbg.declare(metadata ptr {{%.*}}, metadata [[META10:![0-9]+]], metadata !DIExpression())
+-// CHECK:         call void @llvm.dbg.declare(metadata ptr {{%.*}}, metadata [[META11:![0-9]+]], metadata !DIExpression())
+-int func6(B &b) {
+-  return reinterpret_cast<A&>(b).i;
+-}
+-
+-// CHECK-DAG: [[META_A:![0-9]+]] = distinct !DICompositeType(tag: DW_TAG_class_type, name: "A",
+-// CHECK-DAG: [[META_AP:![0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: [[META_A]],
+-// CHECK-DAG: [[META_B:![0-9]+]] = distinct !DICompositeType(tag: DW_TAG_class_type, name: "B",
+-// CHECK-DAG: [[META_BP:![0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: [[META_B]],
+-// CHECK-DAG: [[META_C:![0-9]+]] = distinct !DICompositeType(tag: DW_TAG_class_type, name: "C",
+-// CHECK-DAG: [[META_CP:![0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: [[META_C]],
+-// CHECK-DAG: [[META_VP:![0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null,
+-// CHECK-DAG: [[META_I32:![0-9]+]] = !DIBasicType(name: "int", size: 32,
+-// CHECK-DAG: [[META_BR:![0-9]+]] = !DIDerivedType(tag: DW_TAG_reference_type, baseType: [[META_B]],
+-
+-// CHECK-DAG: [[DBG1]] = !DILocation(line: 34, column: 13,
+-// CHECK-DAG: [[META1]] = !DILocalVariable(scope: {{.*}}, type: [[META_AP]], flags: DIFlagArtificial)
+-// CHECK-DAG: [[META2]] = !DILocalVariable(name: "b", arg: 1, scope: {{.*}}, file: {{.*}}, line: 46, type: [[META_VP]])
+-// CHECK-DAG: [[META3]] = !DILocalVariable(scope: {{.*}}, type: [[META_BP]], flags: DIFlagArtificial)
+-// CHECK-DAG: [[META4]] = !DILocalVariable(name: "b", arg: 1, scope: {{.*}}, file: {{.*}}, line: 55, type: [[META_BP]])
+-// CHECK-DAG: [[META5]] = !DILocalVariable(name: "local1", scope: {{.*}}, file: {{.*}}, line: 56, type: [[META_AP]])
+-// CHECK-DAG: [[META6]] = !DILocalVariable(scope: {{.*}}, type: [[META_AP]], flags: DIFlagArtificial)
+-// CHECK-DAG: [[META7]] = !DILocalVariable(name: "arr", arg: 1, scope: {{.*}}, file: {{.*}}, line: 88, type: [[META_VP]])
+-// CHECK-DAG: [[META8]] = !DILocalVariable(name: "n", arg: 2, scope: {{.*}}, file: {{.*}}, line: 88, type: [[META_I32]])
+-// CHECK-DAG: [[META9]] = !DILocalVariable(scope: {{.*}}, type: [[META_AP]], flags: DIFlagArtificial)
+-// CHECK-DAG: [[META10]] = !DILocalVariable(name: "b", arg: 1, scope: {{.*}}, file: {{.*}}, line: 95, type: [[META_BR]])
+-// CHECK-DAG: [[META11]] = !DILocalVariable(scope: {{.*}}, type: [[META_AP]], flags: DIFlagArtificial)
+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
+--- a/libcxx/include/__memory/shared_ptr.h
++++ b/libcxx/include/__memory/shared_ptr.h
+@@ -404,7 +404,7 @@
+ };
+ 
+ template <class _Dp, class _Tp>
+-using __shared_ptr_nullptr_deleter_ctor_reqs = _And<is_move_constructible<_Dp>, __well_formed_deleter<_Dp, nullptr_t> >;
++using __shared_ptr_nullptr_deleter_ctor_reqs = _And<is_move_constructible<_Dp>, __well_formed_deleter<_Dp, _Tp*> >;
+ 
+ #if defined(_LIBCPP_ABI_ENABLE_SHARED_PTR_TRIVIAL_ABI)
+ #  define _LIBCPP_SHARED_PTR_TRIVIAL_ABI __attribute__((__trivial_abi__))
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
+@@ -32,17 +32,16 @@
+ // LWG 3233. Broken requirements for shared_ptr converting constructors
+ // https://cplusplus.github.io/LWG/issue3233
+ static_assert( std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, test_deleter<int> >::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, bad_deleter>::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_nullptr_deleter>::value, "");
++static_assert(!std::is_constructible<std::shared_ptr<int>, std::nullptr_t, bad_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_move_deleter>::value, "");
+ 
+ #if TEST_STD_VER >= 17
+-static_assert( std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, test_deleter<int> >::value, "");
++static_assert(std::is_constructible<std::shared_ptr<int[]>, std::nullptr_t, test_deleter<int[]> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, bad_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_nullptr_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_move_deleter>::value, "");
+ 
+-static_assert( std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, test_deleter<int> >::value, "");
++static_assert(std::is_constructible<std::shared_ptr<int[5]>, std::nullptr_t, test_deleter<int[5]> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, bad_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_nullptr_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_move_deleter>::value, "");
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
+@@ -33,17 +33,21 @@
+ // LWG 3233. Broken requirements for shared_ptr converting constructors
+ // https://cplusplus.github.io/LWG/issue3233
+ static_assert( std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
++static_assert(!std::is_constructible<std::shared_ptr<int>, std::nullptr_t, bad_deleter, test_allocator<int> >::value,
++              "");
+ static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+ 
+ #if TEST_STD_VER >= 17
+-static_assert( std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
++static_assert(
++    std::is_constructible<std::shared_ptr<int[]>, std::nullptr_t, test_deleter<int[]>, test_allocator<int> >::value,
++    "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+ 
+-static_assert( std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
++static_assert(
++    std::is_constructible<std::shared_ptr<int[5]>, std::nullptr_t, test_deleter<int[5]>, test_allocator<int> >::value,
++    "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
+@@ -115,6 +115,14 @@
+     }
+ #endif // TEST_STD_VER >= 11
+ 
++#if TEST_STD_VER >= 14
++    {
++      // See https://github.com/llvm/llvm-project/pull/93071#issuecomment-2158494851
++      auto deleter = [](auto pointer) { delete pointer; };
++      std::shared_ptr<int> p(new int, deleter);
++    }
++#endif
++
+   test_function_type();
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
+@@ -165,5 +165,13 @@
+                                              test_allocator<Derived[4]> >::value, "");
+     }
+ 
++#if TEST_STD_VER >= 14
++    {
++      // See https://github.com/llvm/llvm-project/pull/93071#issuecomment-2158494851
++      auto deleter = [](auto pointer) { delete pointer; };
++      std::shared_ptr<int> p(new int, deleter, std::allocator<int>());
++    }
++#endif
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -439,6 +439,7 @@
+         ":IR",
+         ":Pass",
+         ":Support",
++        ":config",
+         "//llvm:Support",
+     ],
+     includes = ["include"],
+@@ -1009,6 +1010,7 @@
+         ":CAPIInterfaces",
+         ":MLIRBindingsPythonHeadersAndDeps",
+         ":Support",
++        ":config",
+         "//llvm:Support",
+         "@local_config_python//:python_headers",
+         "@pybind11",
