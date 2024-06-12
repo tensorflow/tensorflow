@@ -165,7 +165,7 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
       continue;
     }
 
-    // If thunk execution is completed process out edges in the current thread.
+    // If thunk execution is completed, process out edges in the current thread.
     CHECK(execute_event.IsConcrete());  // TODO(ezhulenev): Add error handling.
     ProcessOutEdges(state, node, ready_queue);
   }

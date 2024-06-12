@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_kernel.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -23,6 +25,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -42,6 +45,12 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace stream_executor::host {
+
+static auto ToCopyableTask(HostKernel::Task task) {
+  return [shared_task = std::make_shared<decltype(task)>(std::move(task))] {
+    (*shared_task)();
+  };
+}
 
 static SE_HOST_KernelError* AddI32(const SE_HOST_KernelCallFrame* call_frame) {
   SE_HOST_KernelArg& lhs = call_frame->args[0];
@@ -194,6 +203,59 @@ TEST(HostKernelTest, JitAddition) {
   EXPECT_EQ(out, expected);
 }
 
+TEST(HostKernelTest, LaunchAsync) {
+  auto* no_op = +[](const SE_HOST_KernelCallFrame*) {
+    return static_cast<SE_HOST_KernelError*>(nullptr);
+  };
+
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
+
+  std::atomic<size_t> num_tasks = 0;
+
+  HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
+    num_tasks.fetch_add(1, std::memory_order_relaxed);
+    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+  };
+
+  HostKernel host_kernel(/*arity=*/0, no_op);
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4), {}, std::move(runner));
+
+  tsl::BlockUntilReady(event);
+  EXPECT_TRUE(event.IsConcrete());
+  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
+}
+
+TEST(HostKernelTest, LaunchAsyncError) {
+  // SE_HOST_KernelError type is not defined so we simply return a non-nullptr
+  // pointer to signal error to the runtime.
+  auto* maybe_error = +[](const SE_HOST_KernelCallFrame* call_frame) {
+    if (call_frame->thread->x == 2 && call_frame->thread->z == 2) {
+      return reinterpret_cast<SE_HOST_KernelError*>(0xDEADBEEF);
+    }
+    return static_cast<SE_HOST_KernelError*>(nullptr);
+  };
+
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
+
+  std::atomic<size_t> num_tasks = 0;
+
+  HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
+    num_tasks.fetch_add(1, std::memory_order_relaxed);
+    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+  };
+
+  HostKernel host_kernel(/*arity=*/0, maybe_error);
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4), {}, std::move(runner));
+
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsError());
+  EXPECT_TRUE(absl::StrContains(event.GetError().message(),
+                                "Failed to call host kernel:"));
+  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
@@ -202,12 +264,6 @@ TEST(HostKernelTest, JitAddition) {
 // only interested on how fast we can launch kernel tasks.
 static SE_HOST_KernelError* NoOp(const SE_HOST_KernelCallFrame*) {
   return nullptr;
-}
-
-static auto ToCopyableTask(absl::AnyInvocable<void()> task) {
-  return [shared_task = std::make_shared<decltype(task)>(std::move(task))] {
-    (*shared_task)();
-  };
 }
 
 static void BM_HostKernelSyncLaunch(benchmark::State& state) {

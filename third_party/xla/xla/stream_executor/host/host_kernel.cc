@@ -22,8 +22,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -68,6 +71,9 @@ class HostKernelExecuteState
                          ThreadDim thread_dims,
                          absl::Span<const DeviceMemoryBase> buffers);
 
+  // Notify of a completion of a host kernel task.
+  void Notify(absl::Status status);
+
   // Calls a task with index `task_index` synchronously.
   void CallSync(uint64_t task_index);
 
@@ -88,6 +94,10 @@ class HostKernelExecuteState
   SE_HOST_Kernel* kernel_;
   SE_HOST_KernelThreadDim thread_dims_;
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
+
+  std::atomic<bool> abort_;
+  absl::Mutex mutex_;
+  absl::Status status_ ABSL_GUARDED_BY(mutex_);
 
   std::atomic<int64_t> counter_;
   tsl::AsyncValueRef<LaunchEvent> event_;
@@ -138,7 +148,7 @@ tsl::AsyncValueRef<LaunchEvent> HostKernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
     TaskRunner task_runner) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
-  DCHECK_GT(num_tasks, 0) << "Number of tasks must be positive";
+  CHECK_GT(num_tasks, 0) << "Number of tasks must be positive";  // Crash Ok
 
   // Short-circuit launch with a single task and run it in the caller thread.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
@@ -165,29 +175,57 @@ HostKernelExecuteState::HostKernelExecuteState(
       kernel_(function->kernel()),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(ConvertBuffersToKernelArgs(buffers)),
+      abort_(false),
       counter_(num_tasks_),
       event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
 
+void HostKernelExecuteState::Notify(absl::Status status) {
+  if (ABSL_PREDICT_FALSE(!status.ok())) {
+    absl::MutexLock lock(&mutex_);
+    status_.Update(std::move(status));
+    abort_.store(true, std::memory_order_relaxed);
+  }
+
+  // Check if it was the last notification and kernel launch is done.
+  bool is_done = counter_.load(std::memory_order_relaxed) == 1 ||
+                 counter_.fetch_sub(1, std::memory_order_relaxed) == 1;
+  if (!is_done) return;
+
+  // In the unlikely event of a kernel error, forward it to the launch event.
+  if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
+    absl::MutexLock lock(&mutex_);
+    event_.SetError(std::move(status_));
+  } else {
+    event_.SetStateConcrete();
+  }
+}
+
 void HostKernelExecuteState::CallSync(uint64_t task_index) {
-  DCHECK_LT(task_index, num_tasks_) << "Task index out of range";
+  CHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
+
+  if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
+    Notify(absl::OkStatus());
+    return;
+  }
 
   SE_HOST_KernelThread kernel_thread = Delinearize(task_index);
   SE_HOST_KernelCallFrame call_frame = {&thread_dims_, &kernel_thread,
                                         args_.size(), args_.data()};
 
   SE_HOST_KernelError* error = (*kernel_)(&call_frame);
-  CHECK(error == nullptr) << "Failed to call host kernel";
 
-  // Maybe notify event of an execution completion.
-  if (counter_.load(std::memory_order_relaxed) == 1 ||
-      counter_.fetch_sub(1, std::memory_order_relaxed) == 1) {
-    event_.SetStateConcrete();
+  if (ABSL_PREDICT_TRUE(error == nullptr)) {
+    Notify(absl::OkStatus());
+  } else {
+    Notify(absl::InternalError(
+        absl::StrFormat("Failed to call host kernel: x=%d, y=%d, z=%d",
+                        kernel_thread.x, kernel_thread.y, kernel_thread.z)));
   }
 }
 
 void HostKernelExecuteState::CallAsync(uint64_t start_index,
                                        uint64_t end_index) {
-  CHECK_LT(start_index, end_index) << "Invalid task index range";
+  CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
   while (end_index - start_index > 1) {
     uint64_t mid_index = (start_index + end_index) / 2;
     task_runner_([self = tsl::FormRef(this), mid_index, end_index] {
