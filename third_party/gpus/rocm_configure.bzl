@@ -192,10 +192,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
     # Add HIP headers (needs to match $HIP_PATH)
-    inc_dirs.append(rocm_config.rocm_paths["HIP"] + "/hip/include")
+    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
     if int(rocm_config.rocm_version_number) >= 50200:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
-        inc_dirs.append(rocm_config.rocm_paths["HIP"] + "/include/hip")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
         inc_dirs.append(rocm_config.rocm_paths["ROCPRIM"] + "/include/rocprim")
         inc_dirs.append(rocm_config.rocm_paths["ROCSOLVER"] + "/include/rocsolver")
         inc_dirs.append(rocm_config.rocm_paths["ROCBLAS"] + "/include/rocblas")
@@ -358,7 +358,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("amdhip64", rocm_config.rocm_paths["HIP"]),
+            ("amdhip64", rocm_config.rocm_toolkit_path),
             ("rocblas", rocm_config.rocm_paths["ROCBLAS"]),
             (hipfft_or_rocfft, rocm_config.rocm_paths[hipfft_or_rocfft.upper()]),
             ("hiprand", rocm_config.rocm_paths["HIPRAND"]),
@@ -772,11 +772,11 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_paths["HIP"] + "/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_path}": rocm_config.rocm_paths["HSA"] + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
-            "%{hip_runtime_path}": rocm_config.rocm_paths["HIP"] + "/lib",
+            "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
