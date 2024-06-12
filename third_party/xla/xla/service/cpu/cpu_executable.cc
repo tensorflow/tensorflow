@@ -354,7 +354,8 @@ absl::Status CpuExecutable::ExecuteThunks(
 
   Thunk::ExecuteParams execute_params = {
       &*host_kernels_, &allocations,
-      runtime::GetXfeedManager(run_options->device_ordinal())};
+      runtime::GetXfeedManager(run_options->device_ordinal()),
+      run_options->intra_op_thread_pool()};
 
   absl::Status executed = thunks_->Execute(execute_params);
 
