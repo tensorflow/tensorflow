@@ -4691,7 +4691,9 @@ xla_test(
         "gpu_a100",
         "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     shard_count = 10,
     deps = [
         ":backend_configs_cc",
@@ -4728,6 +4730,8 @@ xla_test(
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
