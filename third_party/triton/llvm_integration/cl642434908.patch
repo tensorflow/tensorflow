@@ -1,0 +1,25 @@
+==== triton/lib/Dialect/TritonGPU/Transforms/Pipeliner/PipelineExpander.cpp#6 - /google/src/cloud/ecg/mlir_0fb216fb2fbb49c1fe90c1c3267873a100b1c356_1718149567/triton/lib/Dialect/TritonGPU/Transforms/Pipeliner/PipelineExpander.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonGPU/Transforms/Pipeliner/PipelineExpander.cpp	2024-05-14 17:02:29.000000000 -0700
++++ triton/lib/Dialect/TritonGPU/Transforms/Pipeliner/PipelineExpander.cpp	2024-06-11 18:53:21.000000000 -0700
+@@ -26,10 +26,10 @@
+ #include "mlir/Dialect/SCF/Utils/Utils.h"
+ #include "mlir/IR/IRMapping.h"
+ #include "mlir/IR/PatternMatch.h"
+-#include "mlir/Support/MathExtras.h"
+ #include "mlir/Transforms/RegionUtils.h"
+ #include "llvm/ADT/MapVector.h"
+ #include "llvm/Support/Debug.h"
++#include "llvm/Support/MathExtras.h"
+ 
+ #include "PipelineExpander.h"
+ 
+@@ -131,7 +131,7 @@
+     int64_t ubImm = upperBoundCst.value();
+     int64_t lbImm = lowerBoundCst.value();
+     int64_t stepImm = stepCst.value();
+-    int64_t numIteration = ceilDiv(ubImm - lbImm, stepImm);
++    int64_t numIteration = llvm::divideCeilSigned(ubImm - lbImm, stepImm);
+     if (numIteration > maxStage) {
+       dynamicLoop = false;
+     } else if (!options.supportDynamicLoops) {
