@@ -1084,6 +1084,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":low_bit_utils",
         ":stateful_ops_utils",
+        ":string_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
@@ -1099,7 +1100,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:private_common",
         "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
@@ -1506,6 +1506,15 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "string_utils",
+    srcs = ["utils/string_utils.cc"],
+    hdrs = ["utils/string_utils.h"],
+    deps = [
+        "@com_google_absl//absl/status",
     ],
 )
 
