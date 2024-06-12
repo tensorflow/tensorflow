@@ -19,13 +19,10 @@ limitations under the License.
 
 #include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
-
-using ::testing::EqualsProto;
 
 TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
   const std::string text_proto = R"(
@@ -53,7 +50,7 @@ TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
   HloModuleConfig::AssignProtoShardableValueUpdatePairs(
       output_proto.mutable_shardable_value_update_pairs(),
       config.shardable_value_update_pairs());
-  EXPECT_THAT(input_proto, EqualsProto(output_proto));
+  EXPECT_EQ(input_proto.SerializeAsString(), output_proto.SerializeAsString());
 }
 
 }  // namespace
