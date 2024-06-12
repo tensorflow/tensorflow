@@ -4466,6 +4466,39 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
 }
 
+TEST_P(SpmdPartitioningTest, TestWhileFrontendAttributes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+LoopCond {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(5), sharding={manual}
+  ROOT lt = pred[] compare(x, const), direction=LT, sharding={manual}
+}
+
+Inc {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(1), sharding={manual}
+  ROOT add = s32[] add(x, const), sharding={manual}
+}
+
+ENTRY entry {
+  zero = s32[] parameter(0), sharding={manual}
+  ROOT while = s32[] while(zero), body=Inc, condition=LoopCond,
+    sharding={manual}, frontend_attributes={_xla_other_attribute="xyz"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->frontend_attributes().map().at("_xla_other_attribute"),
+            "xyz");
+  EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
+}
+
 TEST_P(SpmdPartitioningTest, SelectAndScatter_RetinaNet) {
   absl::string_view hlo_string = R"(
 HloModule module

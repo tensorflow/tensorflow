@@ -4059,12 +4059,12 @@ absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
                                                 next_channel_id_, logger_,
                                                 call_graph_)
                          .status());
-  SetPartitionedHlo(hlo, [&] {
-    return b_.AddInstruction(HloInstruction::CreateWhile(
-        MakePartitionedShape(hlo->shape(), sharding), hlo->while_condition(),
-        hlo->while_body(),
-        GetPartitionedHlo(hlo->operand(0)).Reshard(sharding).hlo()));
-  });
+  HloInstruction* whileOp = b_.AddInstruction(HloInstruction::CreateWhile(
+      MakePartitionedShape(hlo->shape(), sharding), hlo->while_condition(),
+      hlo->while_body(),
+      GetPartitionedHlo(hlo->operand(0)).Reshard(sharding).hlo()));
+  hlo->SetupDerivedInstruction(whileOp);
+  SetPartitionedHlo(hlo, [&] { return whileOp; });
   return absl::OkStatus();
 }
 
