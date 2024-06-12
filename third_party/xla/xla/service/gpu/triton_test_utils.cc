@@ -18,23 +18,33 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
+#include "xla/service/float_normalization.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
@@ -110,6 +120,25 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     return absl::InternalError("FileCheck failed.");
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<bool> TritonSupportTest::ApplyFloatNormalization(
+    HloModule* module) {
+  const GpuFloatSupport bf16_support(GetCudaComputeCapability(), BF16);
+  HloPassPipeline pipeline("hlo float normalization");
+  pipeline.AddPass<FloatNormalization>(&bf16_support);
+  return pipeline.Run(module);
+}
+
+std::string TritonSupportTestParamsToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
+        data) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  std::tie(data_type, opcode) = data.param;
+  return absl::StrCat(
+      primitive_util::LowercasePrimitiveTypeName(data_type), "_",
+      absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
 }
 
 }  // namespace xla::gpu

@@ -17,12 +17,18 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
 
 #include <cstdint>
-#include <memory>
+#include <string>
+#include <tuple>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/IR/LLVMContext.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -65,6 +71,24 @@ class TritonFilecheckTest : public TritonTest {
       std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
       absl::string_view filecheck_pattern);
 };
+
+class TritonSupportTest : public TritonFilecheckTest {
+ public:
+  absl::StatusOr<bool> ApplyFloatNormalization(HloModule* module);
+
+ protected:
+  llvm::LLVMContext llvm_ctx_;
+  llvm::Module llvm_module_{"module", llvm_ctx_};
+  mlir::MLIRContext mlir_context_;
+  TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
+};
+
+class TritonSupportTestWithParam : public TritonSupportTest,
+                                   public ::testing::WithParamInterface<
+                                       std::tuple<PrimitiveType, HloOpcode>> {};
+
+std::string TritonSupportTestParamsToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>& data);
 
 }  //  namespace xla::gpu
 
