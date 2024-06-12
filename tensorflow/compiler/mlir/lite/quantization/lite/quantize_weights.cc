@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
@@ -43,8 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/stderr_reporter.h"
 
 namespace mlir {
 namespace lite {
@@ -81,7 +81,6 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
 // quantization API
 TfLiteStatus QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const tflite::Model* input_model,
-    tflite::ErrorReporter* error_reporter,
     const tflite::TensorType& inference_type,
     const absl::flat_hash_set<std::string>& denylisted_ops,
     const CustomOpMap& custom_op_map, int64_t minimum_elements_for_weights,
@@ -135,9 +134,8 @@ TfLiteStatus QuantizeWeights(
 
   if (!(quant_specs.inference_type == tensorflow::DT_HALF ||
         quant_specs.inference_type == tensorflow::DT_QINT8)) {
-    error_reporter->Report(
-        "Couldn't apply dynamic range quantization since unsupported "
-        "inference_type is passed.");
+    LOG(ERROR) << "Couldn't apply dynamic range quantization since unsupported "
+                  "inference_type is passed.";
     return kTfLiteError;
   }
 
@@ -153,7 +151,7 @@ TfLiteStatus QuantizeWeights(
 
   if (failed(pm.run(module.get()))) {
     absl::string_view err = statusHandler.ConsumeStatus().message();
-    error_reporter->Report("Failed to quantize: %s", err);
+    LOG(ERROR) << "Failed to quantize: " << err;
     return kTfLiteError;
   }
 
@@ -165,7 +163,7 @@ TfLiteStatus QuantizeWeights(
   options.toco_flags.set_allow_custom_ops(true);
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &result)) {
-    error_reporter->Report("Failed to export MLIR to flatbuffer.");
+    LOG(ERROR) << "Failed to export MLIR to flatbuffer.";
     return kTfLiteError;
   }
   builder->PushFlatBuffer(reinterpret_cast<const uint8_t*>(result.data()),
@@ -178,9 +176,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const tflite::Model* input_model,
                              int64_t weights_min_num_elements,
                              bool use_hybrid_evaluation) {
-  tflite::StderrReporter error_reporter;
   return QuantizeWeights(
-      builder, input_model, &error_reporter,
+      builder, input_model,
       /*inference_type=*/tflite::TensorType_INT8,
       /*denylisted_ops=*/{},
       /*custom_op_map=*/{},
@@ -195,7 +192,6 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const tflite::Model* input_model,
                              BufferType quant_type,
                              bool use_updated_hybrid_scheme) {
-  tflite::StderrReporter error_reporter;
   tflite::TensorType inference_type;
   switch (quant_type) {
     case BufferType::QUANTIZED_FLOAT16:
@@ -204,7 +200,7 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
     default:
       inference_type = tflite::TensorType_INT8;
   }
-  return QuantizeWeights(builder, input_model, &error_reporter, inference_type,
+  return QuantizeWeights(builder, input_model, inference_type,
                          /*denylisted_ops=*/{},
                          /*custom_op_map=*/{},
                          /*minimum_elements_for_weights=*/1024,
@@ -219,14 +215,13 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const CustomOpMap& custom_op_map,
                              bool use_updated_hybrid_scheme,
                              const BuiltinOperatorSet& op_denylist) {
-  tflite::StderrReporter error_reporter;
   const tflite::TensorType inference_type = tflite::TensorType_INT8;
 
   absl::flat_hash_set<std::string> mlir_op_denylist;
   TfLiteBuiltinOpToMlir(op_denylist, mlir_op_denylist);
 
   return QuantizeWeights(
-      builder, input_model, &error_reporter, inference_type,
+      builder, input_model, inference_type,
       /*denylisted_ops=*/mlir_op_denylist,
       /*custom_op_map=*/custom_op_map,
       /*minimum_elements_for_weights=*/weights_min_num_elements,

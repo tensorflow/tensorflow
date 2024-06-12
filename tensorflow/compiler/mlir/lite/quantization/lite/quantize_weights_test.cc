@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 #include "tsl/platform/logging.h"
 
@@ -221,9 +220,8 @@ TEST_F(QuantizeWeightsTest, QuantizationSucceeds) {
 TEST_F(QuantizeWeightsTest, QuantizationFails) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
-  tflite::StderrReporter error_reporter;
-  auto status = QuantizeWeights(&builder, model_, &error_reporter,
-                                TensorType_UINT8, {}, {});
+  auto status =
+      QuantizeWeights(&builder, model_, TensorType_UINT8, {}, {}, 1024);
   EXPECT_EQ(status, kTfLiteError);
 }
 
