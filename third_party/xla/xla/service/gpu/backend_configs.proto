@@ -154,6 +154,13 @@ message CuDnnFusionConfig {
   int64 plan_id = 1;
 }
 
+// Block-level parameters for a fusion.
+message BlockLevelFusionConfig {
+  // The output tile sizes of the associated instruction. The length of this
+  // field is expected to be the rank of the output shape.
+  repeated int64 output_tile_sizes = 1;
+}
+
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -169,6 +176,10 @@ message FusionBackendConfig {
   // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
+
+  // Only valid when kind == "__triton_fusion" for now. Code generation of such
+  // fusions will fail if this field is not set.
+  BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
   CustomFusionConfig custom_fusion_config = 4;

@@ -621,10 +621,21 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:name_uniquer",
+        "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_hlo_computation_test",
+    srcs = ["tiled_hlo_computation_test.cc"],
+    deps = [
+        ":tiled_hlo_computation",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
