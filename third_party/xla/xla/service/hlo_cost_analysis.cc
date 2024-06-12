@@ -226,10 +226,9 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
             } else if (fusion_is_simple && fusion_user->opcode() ==
                                                HloOpcode::kDynamicUpdateSlice) {
               size += handle_dynamic_update_slice(user, fusion_user);
-            } else {
-              auto nested_size =
-                  FusionParameterReadBytes(user->fused_parameter(idx));
-              size += nested_size;
+            } else if (!seen_trivial_user) {
+              seen_trivial_user = true;
+              size += FusionParameterReadBytes(user->fused_parameter(idx));
             }
           }
         }

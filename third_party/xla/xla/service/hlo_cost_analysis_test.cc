@@ -956,6 +956,40 @@ ENTRY temp {
             fusion_analysis.bytes_accessed(*fusion_root));
 }
 
+TEST_F(FusionCostAnalysis, NestedFusionFeedsMultipleUsers) {
+  absl::string_view hlo_text = R"(
+HloModule temp, is_scheduled=true
+
+fused_computation.1 {
+  tmp_0 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} parameter(0)
+  tmp_1 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} fusion(bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_0), kind=kOutput, calls=
+  {
+    tmp_0 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} parameter(0)
+    ROOT tmp_4 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} add(bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_0, bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_0)
+  }
+  tmp_2 = bf16[]{:T(256)} constant(0)
+  tmp_3 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} reduce-window(bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_1, bf16[]{:T(256)} tmp_2), window={size=1x1x1x1023 pad=0_0x0_0x0_0x511_511}, to_apply=
+  {
+    tmp_0 = bf16[]{:T(256)} parameter(0)
+    tmp_1 = bf16[]{:T(256)} parameter(1)
+    ROOT tmp_2 = bf16[]{:T(256)} add(bf16[]{:T(256)} tmp_0, bf16[]{:T(256)} tmp_1)
+  }
+  ROOT tmp_4 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} divide(bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_1, bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} tmp_3)
+}
+
+ENTRY temp {
+  tmp_0 = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} parameter(0)
+  ROOT result = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} fusion(tmp_0), kind=kLoop, calls=fused_computation.1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  auto* fusion_root = fusion_module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
+  EXPECT_EQ(1073741824, fusion_analysis.bytes_accessed(*fusion_root));
+}
+
 TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
 
