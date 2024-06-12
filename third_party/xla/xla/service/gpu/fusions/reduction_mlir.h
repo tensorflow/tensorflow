@@ -15,30 +15,42 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
+
+using HloValueMap =
+    absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<mlir::Value>>;
 
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
 class MlirReductionFusion : public MlirFusionEmitterBase {
  public:
-  explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
+  explicit MlirReductionFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override = 0;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
@@ -49,6 +61,9 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   const ReductionGroups& GetGroups() const { return groups_; }
 
  protected:
+  struct EmitterState;
+  friend struct EmitterState;
+
   absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
@@ -59,21 +74,22 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 
- private:
-  struct EmitterState;
-  friend struct EmitterState;
+  llvm::SmallVector<mlir::Value> EvaluateEpilogue(
+      mlir::ImplicitLocOpBuilder& b, const HloValueMap& results,
+      llvm::SmallVector<mlir::Value> outputs, EmitterState& state, int group_id,
+      mlir::MLIRContext* ctx, mlir::Value vector_index = nullptr) const;
+
+  virtual int GetRowsPerWarp() const = 0;
+
+  virtual llvm::SmallVector<mlir::Value> EmitReduction(
+      int group_id, EmitterState& state) const = 0;
 
   Shape GetReduceOperandShape() const {
     return first_reduce_->operand(0)->shape();
   }
 
-  int GetRowsPerWarp() const;
-
   void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
                             mlir::MLIRContext* ctx) const;
-
-  llvm::SmallVector<mlir::Value> EmitReduction(int group_id,
-                                               EmitterState& state) const;
 
   // The reduction heroes for each reduction group.
   std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
@@ -93,11 +109,41 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   absl::InlinedVector<int64_t, 4> num_threads_;
   absl::InlinedVector<int64_t, 4> num_blocks_;
 
-  bool is_row_reduction_;
   bool is_race_free_;
   ReductionGroups groups_;
   const HloInstruction* first_reduce_;
 };
+
+class MlirRowReductionFusion : public MlirReductionFusion {
+ public:
+  explicit MlirRowReductionFusion(const HloFusionAnalysis& analysis);
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
+
+ protected:
+  int GetRowsPerWarp() const override;
+
+  llvm::SmallVector<mlir::Value> EmitReduction(
+      int group_id, EmitterState& state) const override;
+};
+
+class MlirColumnReductionFusion : public MlirReductionFusion {
+ public:
+  explicit MlirColumnReductionFusion(const HloFusionAnalysis& analysis);
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
+
+ protected:
+  int GetRowsPerWarp() const override;
+
+  llvm::SmallVector<mlir::Value> EmitReduction(
+      int group_id, EmitterState& state) const override;
+};
+
+std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(
+    const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla

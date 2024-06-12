@@ -30,9 +30,10 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::SizeIs;
 
-using MlirReductionTest = MlirEmitterTestBase<MlirReductionFusion>;
+using MlirRowReductionTest = MlirEmitterTestBase<MlirRowReductionFusion>;
+using MlirColumnReductionTest = MlirEmitterTestBase<MlirColumnReductionFusion>;
 
-TEST_F(MlirReductionTest, VariadicRowReduce) {
+TEST_F(MlirRowReductionTest, VariadicRowReduce) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -62,7 +63,7 @@ TEST_F(MlirReductionTest, VariadicRowReduce) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, RowReduceEpilogue) {
+TEST_F(MlirRowReductionTest, RowReduceEpilogue) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -92,7 +93,7 @@ TEST_F(MlirReductionTest, RowReduceEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, RowReduceMOFEpilogue) {
+TEST_F(MlirRowReductionTest, RowReduceMOFEpilogue) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -136,7 +137,7 @@ TEST_F(MlirReductionTest, RowReduceMOFEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, RowReduceMOFGroups) {
+TEST_F(MlirRowReductionTest, RowReduceMOFGroups) {
   constexpr auto kHloString = R"(
     %add_f32 {
       %x = f32[] parameter(0)
@@ -167,60 +168,7 @@ TEST_F(MlirReductionTest, RowReduceMOFGroups) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, ColumnReduction) {
-  constexpr auto kHloString = R"(
-    HloModule Test, is_scheduled=true
-
-    Add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-    fused_computation {
-      param_0 = f32[13,1051,321] parameter(0)
-      param_1 = f32[] parameter(1)
-      ROOT reduce = f32[13,321] reduce(param_0, param_1), dimensions={1}, to_apply=Add
-    }
-    ENTRY main {
-      a = f32[13,1051,321] parameter(0)
-      c = f32[] constant(0)
-      ROOT fusion = f32[13,321] fusion(a, c), kind=kInput, calls=fused_computation
-    })";
-  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: xla_gpu.pure_call @Add_add
-    // CHECK: allocate_shared
-    // CHECK: predicated_insert
-    // CHECK: sync_threads
-    // CHECK: predicated_extract
-    // CHECK: shuffle_reduce
-    // CHECK: predicated_insert
-  )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
-}
-
-TEST_F(MlirReductionTest, SmallColumnReduction) {
-  constexpr auto kHloString = R"(
-    HloModule Test, is_scheduled=true
-
-    Add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-    fused_computation {
-      param_0 = f32[3,128,4] parameter(0)
-      param_1 = f32[] parameter(1)
-      ROOT reduce = f32[3,4] reduce(param_0, param_1), dimensions={1}, to_apply=Add
-    }
-    ENTRY main {
-      a = f32[3,128,4] parameter(0)
-      c = f32[] constant(0)
-      ROOT fusion = f32[3,4] fusion(a, c), kind=kInput, calls=fused_computation
-    })";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
-}
-
-TEST_F(MlirReductionTest, F64RowReduction) {
+TEST_F(MlirRowReductionTest, F64RowReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -246,7 +194,7 @@ TEST_F(MlirReductionTest, F64RowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, MultiRowReduction) {
+TEST_F(MlirRowReductionTest, MultiRowReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -273,7 +221,7 @@ TEST_F(MlirReductionTest, MultiRowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, NonPowerOfTwoRowReduction) {
+TEST_F(MlirRowReductionTest, NonPowerOfTwoRowReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -310,7 +258,7 @@ TEST_F(MlirReductionTest, NonPowerOfTwoRowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, MixedIndexing) {
+TEST_F(MlirRowReductionTest, MixedIndexing) {
   constexpr auto kHloString = R"(
     HloModule module
     add {
@@ -334,7 +282,7 @@ TEST_F(MlirReductionTest, MixedIndexing) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, NonTrivialEpilogue) {
+TEST_F(MlirRowReductionTest, NonTrivialEpilogue) {
   constexpr auto kHloString = R"(
     HloModule module
     add {
@@ -366,7 +314,7 @@ TEST_F(MlirReductionTest, NonTrivialEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, SideOutput) {
+TEST_F(MlirRowReductionTest, SideOutput) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -398,7 +346,7 @@ TEST_F(MlirReductionTest, SideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, UnsignedSideOutput) {
+TEST_F(MlirRowReductionTest, UnsignedSideOutput) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -423,7 +371,7 @@ TEST_F(MlirReductionTest, UnsignedSideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, BroadcastSideOutput) {
+TEST_F(MlirRowReductionTest, BroadcastSideOutput) {
   constexpr auto kHloString = R"(
     %add {
       p0 = f32[] parameter(0)
@@ -448,7 +396,7 @@ TEST_F(MlirReductionTest, BroadcastSideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, VariadicMOF) {
+TEST_F(MlirRowReductionTest, VariadicMOF) {
   constexpr auto kHloString = R"(
     %reducer1 {
       p0 = f32[] parameter(0)
@@ -483,56 +431,7 @@ TEST_F(MlirReductionTest, VariadicMOF) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirReductionTest, ColumnReductionVectorization) {
-  constexpr auto kHloString = R"(
-    HloModule Test, is_scheduled=true
-    Add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-    fused_computation {
-      param_0 = f32[2048,16384] parameter(0)
-      param_1 = f32[] parameter(1)
-      ROOT reduce = f32[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
-    }
-    ENTRY main {
-      a = f32[2048,16384] parameter(0)
-      c = f32[] constant(0)
-      ROOT fusion = f32[16384] fusion(a, c), kind=kInput, calls=fused_computation
-    })";
-  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: vector<2xf32>
-  )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
-}
-
-TEST_F(MlirReductionTest, ColumnReductionVectorization_v4) {
-  constexpr auto kHloString = R"(
-    HloModule Test, is_scheduled=true
-    Add {
-      lhs = s16[] parameter(0)
-      rhs = s16[] parameter(1)
-      ROOT add = s16[] add(lhs, rhs)
-    }
-    fused_computation {
-      param_0 = s16[2048,16384] parameter(0)
-      param_1 = s16[] parameter(1)
-      ROOT reduce = s16[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
-    }
-    ENTRY main {
-      a = s16[2048,16384] parameter(0)
-      c = s16[] constant(0)
-      ROOT fusion = s16[16384] fusion(a, c), kind=kInput, calls=fused_computation
-    })";
-  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: vector<4xi16>
-  )"));
-  // We don't use RunAndCompareNoHloPasses because the interpreter is too slow
-  // for this input.
-}
-
-TEST_F(MlirReductionTest, ThreadIndexingOutputLayout) {
+TEST_F(MlirRowReductionTest, ThreadIndexingOutputLayout) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule module
 
@@ -556,7 +455,7 @@ TEST_F(MlirReductionTest, ThreadIndexingOutputLayout) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-  MlirReductionFusion fusion(analysis);
+  MlirRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -577,7 +476,7 @@ TEST_F(MlirReductionTest, ThreadIndexingOutputLayout) {
       )"));
 }
 
-TEST_F(MlirReductionTest, TwoGroups) {
+TEST_F(MlirRowReductionTest, TwoGroups) {
   auto module = ParseAndReturnVerifiedModule(R"(
     add {
       p0 = f32[] parameter(0)
@@ -602,14 +501,14 @@ TEST_F(MlirReductionTest, TwoGroups) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-  MlirReductionFusion fusion(analysis);
+  MlirRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.GetGroups().grouped_roots,
               ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
                           ElementsAre(&analysis.fusion_root(1).instruction())));
 }
 
-TEST_F(MlirReductionTest, OneGroup) {
+TEST_F(MlirRowReductionTest, OneGroup) {
   auto module = ParseAndReturnVerifiedModule(R"(
     %add {
       %p0 = c128[] parameter(0)
@@ -634,7 +533,7 @@ TEST_F(MlirReductionTest, OneGroup) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  MlirReductionFusion mlir_fusion(analysis);
+  MlirRowReductionFusion mlir_fusion(analysis);
   EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
 }
 
@@ -655,7 +554,109 @@ constexpr absl::string_view kColumnVectorizationTemplate = R"(
       ROOT %fusion = $0[192,1536] fusion(p0, p1), kind=kInput, calls=fusion
     })";
 
-TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
+TEST_F(MlirColumnReductionTest, ColumnReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[13,1051,321] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[13,321] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[13,1051,321] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[13,321] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: xla_gpu.pure_call @Add_add
+    // CHECK: allocate_shared
+    // CHECK: predicated_insert
+    // CHECK: sync_threads
+    // CHECK: predicated_extract
+    // CHECK: shuffle_reduce
+    // CHECK: predicated_insert
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirColumnReductionTest, SmallColumnReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[3,128,4] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[3,4] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[3,128,4] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[3,4] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirColumnReductionTest, ColumnReductionVectorization) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[2048,16384] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[2048,16384] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[16384] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: vector<2xf32>
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirColumnReductionTest, ColumnReductionVectorization_v4) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+    Add {
+      lhs = s16[] parameter(0)
+      rhs = s16[] parameter(1)
+      ROOT add = s16[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = s16[2048,16384] parameter(0)
+      param_1 = s16[] parameter(1)
+      ROOT reduce = s16[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
+    }
+    ENTRY main {
+      a = s16[2048,16384] parameter(0)
+      c = s16[] constant(0)
+      ROOT fusion = s16[16384] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: vector<4xi16>
+  )"));
+  // We don't use RunAndCompareNoHloPasses because the interpreter is too slow
+  // for this input.
+}
+
+TEST_F(MlirColumnReductionTest, ThreadIndexingColumn_v2) {
   auto module = ParseAndReturnVerifiedModule(
                     absl::Substitute(kColumnVectorizationTemplate, "f32"))
                     .value();
@@ -663,7 +664,7 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  MlirReductionFusion fusion(analysis);
+  MlirColumnReductionFusion fusion(analysis);
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
@@ -688,7 +689,7 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v2) {
       )"));
 }
 
-TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
+TEST_F(MlirColumnReductionTest, ThreadIndexingColumn_v4) {
   auto module = ParseAndReturnVerifiedModule(
                     absl::Substitute(kColumnVectorizationTemplate, "f16"))
                     .value();
@@ -696,7 +697,7 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  MlirReductionFusion fusion(analysis);
+  MlirColumnReductionFusion fusion(analysis);
 
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
@@ -722,7 +723,7 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_v4) {
       )"));
 }
 
-TEST_F(MlirReductionTest, ThreadIndexingColumn_Complex) {
+TEST_F(MlirColumnReductionTest, ThreadIndexingColumn_Complex) {
   // Verifies that we do not use the vectorized indexing for complex types.
   auto module = ParseAndReturnVerifiedModule(
                     absl::Substitute(kColumnVectorizationTemplate, "c64"))
@@ -731,7 +732,7 @@ TEST_F(MlirReductionTest, ThreadIndexingColumn_Complex) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  MlirReductionFusion fusion(analysis);
+  MlirColumnReductionFusion fusion(analysis);
 
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),

@@ -176,7 +176,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
       if (check_mlir_emitters(/*required_level=*/4)) {
-        return std::make_unique<MlirReductionFusion>(analysis);
+        return CreateMlirReductionFusion(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
