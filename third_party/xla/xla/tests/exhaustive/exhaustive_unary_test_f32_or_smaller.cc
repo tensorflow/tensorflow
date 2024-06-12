@@ -18,16 +18,19 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <random>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "xla/client/lib/math.h"
 #include "xla/client/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
+#include "xla/types.h"
 #include "xla/util.h"
 
 #ifdef __FAST_MATH__
@@ -212,6 +215,9 @@ class Exhaustive32BitOrLessUnaryTest
     return !IsGpu(platform) && !IsCpu(platform);
   }
   int EupVersion() const { return eup_version_; }
+  bool IsPreV5Tpu(const std::string& platform) const {
+    return IsTpu(platform) && eup_version_ < 2;
+  }
   bool IsPreV6Tpu(const std::string& platform) const {
     return IsTpu(platform) && eup_version_ < 3;
   }
@@ -659,6 +665,82 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
   fesetround(FE_TONEAREST);
   Run(RoundNearestEven, std::nearbyint, error_spec_gen);
   fesetround(curr_direction);
+})
+
+template <typename NativeT>
+double reciprocal_abs_error(NativeT val) {
+  double abs_err = 0.0;
+
+  // For subnormals, we need to set absolute error to the smallest positive
+  // representable value due to hardware implementations that truncate
+  // subnormals to zero.
+  bool is_subnormal_output =
+      std::numeric_limits<NativeT>::denorm_min() <= std::abs(1 / val) &&
+      std::abs(1 / val) <= std::numeric_limits<NativeT>::min();
+  if (is_subnormal_output) {
+    abs_err = std::numeric_limits<NativeT>::min();
+  }
+
+  return abs_err;
+}
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Reciprocal, {
+  ErrorSpecGen error_spec_gen =
+      +[](NativeT) { return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0}; };
+  if (IsCpu(platform_)) {
+    error_spec_gen = +[](NativeT val) {
+      return ErrorSpec{.abs_err = reciprocal_abs_error(val), .rel_err = 0.0};
+    };
+  }
+  if (IsGpu(platform_)) {
+    error_spec_gen = +[](NativeT val) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = reciprocal_abs_error(val), .rel_err = eps};
+    };
+  }
+  if (IsTpu(platform_)) {
+    error_spec_gen = +[](NativeT val) {
+      auto abs_err = reciprocal_abs_error(val);
+      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
+        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, xla::half>()) {
+        // N.B.: Does not require absolute error.
+        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, float>()) {
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = abs_err, .rel_err = eps};
+      }
+    };
+  }
+  if (IsPreV6Tpu(platform_)) {
+    error_spec_gen = +[](NativeT val) {
+      auto abs_err = reciprocal_abs_error(val);
+      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
+        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, xla::half>()) {
+        // N.B.: Does not require absolute error.
+        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, float>()) {
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = abs_err, .rel_err = 34 * eps};
+      }
+    };
+  }
+  if (IsPreV5Tpu(platform_)) {
+    error_spec_gen = +[](NativeT val) {
+      auto abs_err = reciprocal_abs_error(val);
+      if constexpr (std::is_same<NativeT, xla::bfloat16>()) {
+        return ErrorSpec{.abs_err = abs_err, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, xla::half>()) {
+        // N.B.: Does not require absolute error.
+        return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0};
+      } else if constexpr (std::is_same<NativeT, float>()) {
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = abs_err, .rel_err = 136 * eps};
+      }
+    };
+  }
+  Run(Reciprocal, +[](float x) { return 1 / x; }, error_spec_gen);
 })
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
