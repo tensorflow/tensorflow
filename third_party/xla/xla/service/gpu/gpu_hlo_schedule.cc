@@ -71,6 +71,12 @@ namespace gpu {
 
 namespace {
 
+// A threshold for which we consider AR to be costly perf-wise.
+static constexpr int64_t kCostlyAllReduceThreshold = 30 * 1024 * 1024;
+
+// Multiplier which we apply to expand the base cost for the costly AR.
+static constexpr int64_t kCostlyAllReduceMultiplier = 4;
+
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
@@ -550,8 +556,9 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
   explicit GpuLatencyEstimator(
+      int64_t pointer_size,
       GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
-      : ApproximateLatencyEstimator(func) {}
+      : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
   TimeCost NodeCost(const HloInstruction* instr) const override {
     if (IsNopInstruction(*instr)) {
       return 0.0;
@@ -582,12 +589,32 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
         return ApproximateLatencyEstimator::kHighLatency * 10;
       }
 
+      bool enable_approx_collectives =
+          from.GetInstr()
+              .GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_enable_approx_costly_collectives();
+      bool is_all_reduce =
+          from.GetInstr().opcode() == HloOpcode::kAllReduceStart;
+      bool collective_size_exceeds_threshold =
+          GetSizeOfShape(from.GetInstr().shape(), pointer_size_) >
+          kCostlyAllReduceThreshold;
+      if (enable_approx_collectives && is_all_reduce &&
+          collective_size_exceeds_threshold) {
+        return ApproximateLatencyEstimator::kHighLatency *
+               kCostlyAllReduceMultiplier;
+      }
+
       return ApproximateLatencyEstimator::kHighLatency;
     }
     // Every other instruction we consider synchronous, which means the
     // latency between each of them is always one unit.
     return ApproximateLatencyEstimator::kLowLatency;
   }
+
+ private:
+  int64_t pointer_size_;
 };
 
 tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
@@ -828,7 +855,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
-  auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
+  auto gpu_latency_estimator =
+      std::make_unique<GpuLatencyEstimator>(pointer_size);
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
   std::optional<tensorflow::profiler::ProfiledInstructionsProto> profile =

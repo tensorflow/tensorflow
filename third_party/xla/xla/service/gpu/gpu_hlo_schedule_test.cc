@@ -338,6 +338,62 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
+TEST_F(GpuHloScheduleTest, LHSCostModelCostlyAR) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = bf16[] parameter(0)
+    y = bf16[] parameter(1)
+    ROOT apply_op = bf16[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = bf16[32505856] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
+    dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
+    dot3 = f32[32,32]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$gemm"
+    dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
+    dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
+    dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
+
+    ar-start = bf16[32505856] all-reduce-start(p0), to_apply=apply_op
+    ar-done = bf16[32505856] all-reduce-done(ar-start)
+
+    ROOT t = (bf16[32505856], f32[32,32]) tuple(ar-done, dot6)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  std::vector<int64_t> count_between_pairs;
+  bool in_between = false;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*entry)->instructions()) {
+    if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      in_between = true;
+      count_between_pairs.push_back(0);
+    } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      in_between = false;
+    } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+      count_between_pairs.back()++;
+    }
+  }
+
+  EXPECT_EQ(count_between_pairs.size(), 1);
+  // We pack in 7 medium cost operations into the costly AR.
+  // By default we pack in at most 5.
+  EXPECT_EQ(count_between_pairs[0], 7);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
 TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
   const char* hlo_text = R"(
   HloModule AsyncAR

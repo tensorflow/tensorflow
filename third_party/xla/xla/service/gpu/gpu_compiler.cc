@@ -870,6 +870,12 @@ absl::Status RunCollectiveOptimizationPasses(
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_gather()) {
+    // TODO(b/346702380): This constraint relaxation breaks some near-optimal
+    // schedules for async LHS. This is just the mitigation, the proper fix is
+    // to add a heuristic to the LHS scheduler which would prefer paths with
+    // more costly collectives first.
+    bool acceptable_loop_invariant_op_in_chain =
+        !debug_options.xla_gpu_enable_approx_costly_collectives();
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -885,7 +891,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*should_allow_control_dependencies=*/false,
         /*postprocess_backward_peeled_op=*/std::nullopt,
         /*postprocess_backward_rotated_op=*/std::nullopt,
-        /*acceptable_loop_invariant_op_in_chain=*/true};
+        acceptable_loop_invariant_op_in_chain,
+    };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
