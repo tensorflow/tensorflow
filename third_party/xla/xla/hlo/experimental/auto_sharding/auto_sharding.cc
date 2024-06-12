@@ -1541,13 +1541,14 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               operand_shape = operand->shape().tuple_shapes(ins->tuple_index());
             }
 
-            if (input_sharding.has_value()) {
-              input_sharding = *input_sharding;
-            } else if (existing_sharding.Validate(operand_shape).ok()) {
-              input_sharding = existing_sharding;
-            } else {
-              input_sharding = HloSharding::Replicate();
+            if (!input_sharding) {
+              if (existing_sharding.Validate(operand_shape).ok()) {
+                input_sharding = existing_sharding;
+              } else {
+                input_sharding = HloSharding::Replicate();
+              }
             }
+
             CHECK(input_sharding.has_value());
 
             input_shardings.push_back(*input_sharding);
