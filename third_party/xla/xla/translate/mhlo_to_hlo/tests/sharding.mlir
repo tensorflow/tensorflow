@@ -172,3 +172,51 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32>) 
   }
   func.return %0#1, %0#2 : tensor<4xf32>, tensor<4xf32>
 }
+
+// -----
+
+// CHECK-LABEL: HloModule main
+
+// CHECK:      %region_0.5 (arg_tuple.6: (s32[], f32[4], f32[4])) -> (s32[], f32[4], f32[4]) {
+// CHECK-NEXT:   %arg_tuple.6 = (s32[], f32[4], f32[4]) parameter(0)
+// CHECK-SAME:     sharding={{\{}}{manual}, {manual}, {manual}}
+// CHECK-NEXT:   %get-tuple-element.7 = s32[] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.6), index=0, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.8 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.6), index=1, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.9 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.6), index=2, sharding={manual}
+// CHECK-NEXT:   %add.10 = f32[4] add(f32[4] %get-tuple-element.8, f32[4] %get-tuple-element.9)
+// CHECK-NEXT:   ROOT %tuple.11 = (s32[], f32[4], f32[4]) tuple(s32[] %get-tuple-element.7, f32[4] %add.10, f32[4] %get-tuple-element.9)
+// CHECK-SAME:     sharding={{\{}}{manual}, {manual}, {manual}}
+
+// CHECK:      %region_1.12 (arg_tuple.13: (s32[], f32[4], f32[4])) -> pred[] {
+// CHECK-NEXT:   %arg_tuple.13 = (s32[], f32[4], f32[4]) parameter(0)
+// CHECK-SAME:     sharding={{\{}}{manual}, {manual}, {manual}}
+// CHECK-NEXT:   %get-tuple-element.15 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.13), index=1, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.16 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.13), index=2, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.14 = s32[] get-tuple-element((s32[], f32[4], f32[4]) %arg_tuple.13), index=0, sharding={manual}
+// CHECK-NEXT:   ROOT %compare.17 = pred[] compare(s32[] %get-tuple-element.14, s32[] %get-tuple-element.14), direction=LT
+
+// CHECK:      ENTRY %main.23 (Arg_0.1: s32[], Arg_1.2: f32[4], Arg_2.3: f32[4]) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %Arg_0.1 = s32[] parameter(0)
+// CHECK-NEXT:   %Arg_1.2 = f32[4] parameter(1)
+// CHECK-NEXT:   %Arg_2.3 = f32[4] parameter(2)
+// CHECK-NEXT:   %tuple.4 = (s32[], f32[4], f32[4]) tuple(s32[] %Arg_0.1, f32[4] %Arg_1.2, f32[4] %Arg_2.3)
+// CHECK-SAME:     sharding={{\{}}{manual}, {manual}, {manual}}
+// CHECK-NEXT:   %while.18 = (s32[], f32[4], f32[4]) while((s32[], f32[4], f32[4]) %tuple.4), condition=%region_1.12, body=%region_0.5
+// CHECK-SAME:     sharding={{\{}}{manual}, {manual}, {manual}}
+// CHECK-NEXT:   %get-tuple-element.19 = s32[] get-tuple-element((s32[], f32[4], f32[4]) %while.18), index=0, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.20 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %while.18), index=1, sharding={manual}
+// CHECK-NEXT:   %get-tuple-element.21 = f32[4] get-tuple-element((s32[], f32[4], f32[4]) %while.18), index=2, sharding={manual}
+// CHECK-NEXT:   ROOT %tuple.22 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.20, f32[4] %get-tuple-element.21)
+
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0:3 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %arg1, %iterArg_1 = %arg2) : tensor<i32>, tensor<4xf32>, tensor<4xf32>
+    attributes {mhlo.sharding = "{manual}"}
+    cond {
+    %1 = mhlo.compare LT, %iterArg, %iterArg : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    mhlo.return %1 : tensor<i1>
+  } do {
+    %1 = mhlo.add %iterArg_0, %iterArg_1 : tensor<4xf32>
+    mhlo.return %iterArg, %1, %iterArg_1 : tensor<i32>, tensor<4xf32>, tensor<4xf32>
+  }
+  func.return %0#1, %0#2 : tensor<4xf32>, tensor<4xf32>
+}

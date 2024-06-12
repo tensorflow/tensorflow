@@ -681,18 +681,21 @@ std::optional<xla::OpSharding> CreateTupleSharding(
 // either:
 // - an empty vector if `op_sharding` is `std::nullopt`.
 // - the tuple shardings in `op_sharding` if it has type TUPLE.
-// - otherwise, returns a vector with `op_sharding` itself.
+// - otherwise, returns a vector of size `num_results` filled with
+//   `op_sharding`.
 llvm::SmallVector<std::optional<xla::OpSharding>> GetResultShardings(
-    std::optional<xla::OpSharding> op_sharding) {
+    std::optional<xla::OpSharding> op_sharding, int64_t num_results) {
   if (!op_sharding) {
     return {};
   }
   llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings;
+  res_shardings.reserve(num_results);
   if (op_sharding->type() == xla::OpSharding::TUPLE) {
+    assert(op_sharding->tuple_shardings_size() == num_results);
     res_shardings.assign(op_sharding->tuple_shardings().begin(),
                          op_sharding->tuple_shardings().end());
   } else {
-    res_shardings.push_back(op_sharding);
+    res_shardings.append(num_results, op_sharding);
   }
   return res_shardings;
 }
@@ -2661,8 +2664,7 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // If the results of the while op have a sharding, we use those shardings for
   // the corresponding arguments and return shardings in the body and condition.
   llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings =
-      GetResultShardings(ctx.builder->sharding());
-  assert(res_shardings.empty() || res_shardings.size() == op->getNumResults());
+      GetResultShardings(ctx.builder->sharding(), op->getNumResults());
   if (failed(ctx.converter->LowerRegionAsComputation(
           &op.getBody(), &body, std::nullopt, /*ensure_single_arg=*/true,
           /*arg_shardings=*/res_shardings, /*ret_shardings=*/res_shardings)) ||
