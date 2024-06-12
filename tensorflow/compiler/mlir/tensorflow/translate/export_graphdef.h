@@ -49,6 +49,7 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library.
+ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertMlirToGraph instead.")
 Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,

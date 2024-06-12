@@ -245,6 +245,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TranslateLib",
         "@local_tsl//tsl/platform:protobuf",
