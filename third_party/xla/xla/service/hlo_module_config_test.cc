@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
@@ -25,19 +26,6 @@ namespace xla {
 namespace {
 
 using ::testing::EqualsProto;
-
-template <typename MessageType>
-absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
-  MessageType parsed_proto;
-  tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
-                                                   text_proto.size());
-  if (!parser.Parse(&input_stream, &parsed_proto)) {
-    return tsl::errors::InvalidArgument("Could not parse text proto: ",
-                                        text_proto);
-  }
-  return parsed_proto;
-}
 
 TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
   const std::string text_proto = R"(

@@ -101,6 +101,7 @@ xla_cc_test(
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:test_utils",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
