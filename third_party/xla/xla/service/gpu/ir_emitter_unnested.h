@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -111,8 +112,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<ThunkSequence> ConsumeThunkSequence() {
-    return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
+    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                             std::move(thunk_sequence_));
   }
 
   // Emits code for the given HLO computation.

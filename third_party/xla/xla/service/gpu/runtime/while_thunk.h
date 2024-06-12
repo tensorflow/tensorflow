@@ -53,8 +53,8 @@ class WhileThunk : public Thunk {
   // Constructs a WhileThunk to compute while instruction 'hlo'.
   WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
-             std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-             std::unique_ptr<ThunkSequence> body_thunk_sequence,
+             std::unique_ptr<SequentialThunk> condition_thunk_sequence,
+             std::unique_ptr<SequentialThunk> body_thunk_sequence,
              std::optional<int64_t> trip_count = std::nullopt);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;

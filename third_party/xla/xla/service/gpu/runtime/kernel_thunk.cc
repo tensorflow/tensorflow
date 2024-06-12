@@ -70,7 +70,7 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
   }
 }
 
-std::string KernelThunk::ToStringExtra(int indent) const {
+std::string KernelThunk::ToString(int indent) const {
   return absl::StrFormat(
       ", kernel = %s, launch dimensions = %s, cluster_dim = %s", kernel_name_,
       launch_dimensions_.ToString(),
@@ -178,7 +178,7 @@ CustomKernelThunk::CustomKernelThunk(
   }
 }
 
-std::string CustomKernelThunk::ToStringExtra(int indent) const {
+std::string CustomKernelThunk::ToString(int indent) const {
   return custom_kernel_.ToString();
 }
 

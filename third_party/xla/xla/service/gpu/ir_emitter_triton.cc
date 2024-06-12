@@ -95,6 +95,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -2721,6 +2722,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
           "capability 8.0) and up, but got compute capability ", ccCuda.major,
           ".", ccCuda.minor, "."));
     }
+  }
+
+  // TODO(b/344841434): Remove this once we fixed compile-time regressions on
+  // multiple benchmarks. We need to disable this for now, since it is
+  // significantly slowing down folks that are trying to run them.
+  auto debug_options = GetDebugOptionsFromFlags();
+  if (!debug_options.xla_gpu_enable_triton_hopper()) {
+    tsl::setenv("DISABLE_MMA_V3", "true", true /*overwrite*/);
   }
 
   TF_ASSIGN_OR_RETURN(auto triton_module,
