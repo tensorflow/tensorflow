@@ -63,15 +63,20 @@ AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
 template <typename T, typename... Args>
 AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
 
-// RCReference<AsyncValue> wrapper.
+// AsyncValueRef<T> is an asynchronous container for a payload of type `T` or an
+// error of type `absl::Status`. It is similar to an `absl::StatusOr<T>`, but
+// does not require immediate value or error to be constructed. It is a promise
+// that at some point in the future it will become concrete and will hold a
+// payload of type `T` or an error of type `absl::Status`.
 //
-// AsyncValueRef<T> is an alias for RCReference<AsyncValue> that carries payload
-// type information. The user does not need to pass the payload data type to
-// get() or emplace().
+//  - Prefer `AsyncValueRef<Chain>` to `AsyncValueRef<absl::Status>`.
+//    Instead of a `Chain` it can be any other empty struct to signal that only
+//    the potential error is important.
 //
-// Like RCReference<AsyncValue>, it represents one reference on the underlying
-// AsyncValue. When a callee returns an AsyncValueRef to a caller, the callee
-// also transfers their ownership of a reference on the underlying AsyncValue.
+//  - Prefer `AsyncValueRef<T>` to `AsyncValueRef<absl::StatusOr<T>>`.
+//    Similar to the `absl::StatusOr<T>` async value will be either in error
+//    state holding an `absl::Status` error, or in concrete state holding a
+//    value of type `T`.
 template <typename T>
 class AsyncValueRef {
  public:
@@ -79,26 +84,42 @@ class AsyncValueRef {
   using value_type = T;
 
   AsyncValueRef() = default;
-  AsyncValueRef(std::nullptr_t) {}  // NOLINT
+
+  AsyncValueRef(const AsyncValueRef&) = default;
+  AsyncValueRef& operator=(const AsyncValueRef&) = default;
+
+  AsyncValueRef(AsyncValueRef&&) = default;
+  AsyncValueRef& operator=(AsyncValueRef&&) = default;
 
   explicit AsyncValueRef(RCReference<AsyncValue> value)
       : value_(std::move(value)) {}
 
-  // Support implicit conversion from AsyncValueRef<Derived> to
-  // AsyncValueRef<Base>.
-  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef(AsyncValueRef<Derived>&& u)  // NOLINT
-      : value_(u.ReleaseRCRef()) {}
+  template <typename Derived,
+            internal::DerivedFrom<Derived, AsyncValue>* = nullptr>
+  explicit AsyncValueRef(RCReference<Derived> value)
+      : AsyncValueRef(RCReference<AsyncValue>(std::move(value))) {}
 
-  // Support implicit construction from absl::Status.
+  // Support implicit construction from nullptr to empty async value ref.
+  AsyncValueRef(std::nullptr_t) {}  // NOLINT
+
+  // Support implicit construction from immediate value.
+  AsyncValueRef(T value)  // NOLINT
+      : AsyncValueRef(MakeAvailableAsyncValueRef<T>(std::move(value))) {}
+
+  // Support implicit construction from immediate Status error convertible to
+  // absl::Status (only if payload type is not absl::Status, otherwise we
+  // always pass absl::Status to payload constructor for consistency with
+  // absl::StatusOr<absl::Status>).
   template <typename Status,
-            std::enable_if_t<std::is_same_v<Status, absl::Status>>* = nullptr>
-  AsyncValueRef(Status status)  // NOLINT
-      : AsyncValueRef(MakeErrorAsyncValueRef(std::move(status))) {
-    static_assert(
-        std::is_base_of_v<AsyncValueTraits::AllowImplicitStatusConstruction, T>,
-        "Payload must explicitly opt-in implicit status construction");
-  }
+            std::enable_if_t<std::is_convertible_v<Status, absl::Status> &&
+                             !std::is_same_v<T, absl::Status>>* = nullptr>
+  AsyncValueRef(Status&& status)  // NOLINT
+      : AsyncValueRef(MakeErrorAsyncValueRef(std::forward<Status>(status))) {}
+
+  // Support implicit conversion from an async value of a derived type.
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef(AsyncValueRef<Derived> derived)  // NOLINT
+      : value_(derived.ReleaseRCRef()) {}
 
   // Support implicit construction from RCReference<ErrorAsyncValue>.
   AsyncValueRef(RCReference<ErrorAsyncValue> value)  // NOLINT

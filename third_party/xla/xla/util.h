@@ -55,13 +55,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
 
-namespace tsl {
-// Forward declare AsyncValueRef to enable implicit conversion from XLA errors
-// to error async values.
-template <typename T>
-class AsyncValueRef;
-}  // namespace tsl
-
 namespace xla {
 
 // Converts the unsigned integer n into a mixed-radix representation with the
@@ -253,11 +246,6 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
 #define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
   operator absl::Status() const { return status; }                       \
-  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
-  template <typename T>                                                  \
-  operator tsl::AsyncValueRef<T>() const {                               \
-    return status;                                                       \
-  }                                                                      \
   }                                                                      \
   ;                                                                      \
   /*Deduction guide to make variadic arguments play nice with default */ \

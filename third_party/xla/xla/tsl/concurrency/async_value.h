@@ -23,11 +23,9 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <memory>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -494,7 +492,7 @@ void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
 //===----------------------------------------------------------------------===//
 
 // Traits for customizing AsyncValue behavior for different payload types.
-struct AsyncValueTraits {
+struct AsyncPayload {
   // Under the normal behavior, if an AsyncValue is in kConstructed state (i.e.
   // the payload data is constructed), it will destruct the payload data when
   // the AsyncValue enters the error state (e.g., on AsyncValue::SetError()).
@@ -504,34 +502,19 @@ struct AsyncValueTraits {
   // the payload value if constructed, will be kept valid when the AsyncValue
   // goes into the error state.
   struct KeepAsyncValuePayloadOnError {};
-
-  // If async value payload inherits from this type, we allow implicit
-  // AsyncValueRef<T> construction from `absl::Status` as an error async value.
-  struct AllowImplicitStatusConstruction {};
 };
 
 namespace internal {
 
 // TODO(ezhulenev): Remove backward-compatible alias after migrating all users.
-using KeepAsyncValuePayloadOnError =
-    AsyncValueTraits::KeepAsyncValuePayloadOnError;
+using KeepAsyncValuePayloadOnError = AsyncPayload::KeepAsyncValuePayloadOnError;
 
+// Subclass for storing the concrete payload of the AsyncValue.
+//
 // Async value itself is a container that either holds `absl::Status` (in error
 // state) or a concrete value of type `T` (in concrete state). Async value that
-// holds a status is typically a bad idea, and should be expressed as a plain
-// async value.
-//
-// Example:
-//  - Prefer `AsyncValueRef<Chain>` to `AsyncValueRef<absl::Status>`.
-//    Instead of a `Chain` it can be any other empty struct to signal that only
-//    the potential error is important.
-//
-//  - Prefer `AsyncValueRef<T>` to `AsyncValueRef<absl::StatusOr<T>>`.
-//    Similar to the `absl::StatusOr<T>` async value will be either in error
-//    state holding an `absl::Status` error, or in concrete state holding a
-//    value of type `T`.
-//
-// Subclass for storing the payload of the AsyncValue
+// holds an `absl::Status` or `absl::StatusOr<T>` is typically a bad idea, and
+// should be expressed as a plain async value of type `T`.
 template <typename T>
 class ConcreteAsyncValue : public AsyncValue {
  public:
@@ -727,7 +710,7 @@ class ConcreteAsyncValue : public AsyncValue {
   };
 
   using DataStoreT = std::conditional_t<
-      std::is_base_of_v<AsyncValueTraits::KeepAsyncValuePayloadOnError, T>,
+      std::is_base_of_v<AsyncPayload::KeepAsyncValuePayloadOnError, T>,
       DataAndError, DataOrError>;
   alignas(AsyncValue::kDataOffset) DataStoreT data_store_;
 
