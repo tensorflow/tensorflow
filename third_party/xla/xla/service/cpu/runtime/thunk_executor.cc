@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -55,8 +55,8 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
   }
 
   // Sanity check that all vectors are empty or all vectors are non-empty.
-  CHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
-        (source_.empty() && sink_.empty() && thunk_sequence_.empty()));
+  DCHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
+         (source_.empty() && sink_.empty() && thunk_sequence_.empty()));
 }
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
@@ -93,6 +93,7 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
                                           TaskRunner runner)
     : executor(executor),
       runner(std::move(runner)),
+      abort(false),
       counters(executor->nodes_defs().size()),
       nodes(executor->nodes_defs().size()),
       done(executor->sink().size()) {
@@ -109,19 +110,27 @@ absl::Status ThunkExecutor::Execute(const Thunk::ExecuteParams& params,
   if (ready_queue.empty()) return absl::OkStatus();
 
   auto state = std::make_unique<ExecuteState>(this, std::move(runner));
-  TF_RETURN_IF_ERROR(Execute(state.get(), params, std::move(ready_queue)));
+  Execute(state.get(), params, std::move(ready_queue));
 
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute (wait for done)");
   state->done.Wait();
 
+  // If execution was aborted, forward error to the caller.
+  if (state->abort.load(std::memory_order_relaxed)) {
+    absl::MutexLock lock(&state->abort_mutex);
+    CHECK(!state->abort_status.ok())  // Crash Ok
+        << "Abort status must be set if execution is aborted";
+    return state->abort_status;
+  }
+
   return absl::OkStatus();
 }
 
-absl::Status ThunkExecutor::Execute(ExecuteState* state,
-                                    const Thunk::ExecuteParams& params,
-                                    ReadyQueue ready_queue) {
+void ThunkExecutor::Execute(ExecuteState* state,
+                            const Thunk::ExecuteParams& params,
+                            ReadyQueue ready_queue) {
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
-  if (ready_queue.empty()) return absl::OkStatus();
+  if (ready_queue.empty()) return;  // Nothing to execute.
 
   bool has_runner = state->runner != nullptr;
 
@@ -130,7 +139,7 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
     Node& node = state->nodes[id];
 
     int64_t cnt = node.counter->load(std::memory_order_acquire);
-    DCHECK_EQ(cnt, 0) << "Node counter must be 0";
+    CHECK_EQ(cnt, 0) << "Node counter must be 0";  // Crash Ok
 
     // TODO(ezhulenev): Benchmark other strategies of work distribution, i.e. we
     // can offload only second half of the ready queue if it grows above some
@@ -142,39 +151,46 @@ absl::Status ThunkExecutor::Execute(ExecuteState* state,
       ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
       ready_queue.erase(ready_queue.begin() + i + 1, ready_queue.end());
       state->runner([&params, state, tail = std::move(tail)]() mutable {
-        // TODO(ezhulenev): Add proper error handling.
-        CHECK_OK(state->executor->Execute(state, params, std::move(tail)));
+        state->executor->Execute(state, params, std::move(tail));
       });
     }
 
-    // Execute thunk for the given node id.
+    // Execute thunk for the given node id. If execution is aborted, we keep
+    // processing the nodes DAG without executing thunks.
     Thunk& thunk = *state->executor->thunk_sequence_[id];
-    auto execute_event = thunk.Execute(params);
+    auto execute_event = state->abort.load(std::memory_order_relaxed)
+                             ? Thunk::OkExecuteEvent()
+                             : thunk.Execute(params);
 
     // If thunk execution is not completed yet, attach a continuation to the
-    // event and resume execution on the continuation thread.
+    // event and resume execution on the continuation thread (ready queue
+    // processing will continue on a thread that marked event completed).
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
-      execute_event.AndThen([&, state](absl::Status status) mutable {
-        CHECK_OK(status);  // TODO(ezhulenev): Add proper error handling.
-
+      execute_event.AndThen([&, state, execute_event = execute_event.AsPtr()] {
         ReadyQueue ready_queue;
-        ProcessOutEdges(state, node, ready_queue);
-        // TODO(ezhulenev): Add proper error handling.
-        CHECK_OK(Execute(state, params, std::move(ready_queue)));
+        ProcessOutEdges(state, execute_event, node, ready_queue);
+        Execute(state, params, std::move(ready_queue));
       });
-      continue;
+    } else {
+      // If thunk execution is completed, process out edges in the current
+      // thread and keep working on the ready queue.
+      ProcessOutEdges(state, execute_event.AsPtr(), node, ready_queue);
     }
-
-    // If thunk execution is completed, process out edges in the current thread.
-    CHECK(execute_event.IsConcrete());  // TODO(ezhulenev): Add error handling.
-    ProcessOutEdges(state, node, ready_queue);
   }
-
-  return absl::OkStatus();
 }
 
-void ThunkExecutor::ProcessOutEdges(ExecuteState* state, Node& node,
-                                    ReadyQueue& ready_queue) {
+void ThunkExecutor::ProcessOutEdges(
+    ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> execute_event,
+    Node& node, ReadyQueue& ready_queue) {
+  // If thunk execution failed, mark execution as aborted and record the error.
+  // We still continue processing the nodes DAG to eventually mark sink nodes
+  // completed as it's easier than to add a special abort handling logic.
+  if (ABSL_PREDICT_FALSE(execute_event.IsError())) {
+    absl::MutexLock lock(&state->abort_mutex);
+    state->abort = true;
+    state->abort_status.Update(execute_event.GetError());
+  }
+
   // Load `is_sink` before dropping node counters because otherwise it might
   // race with NodeDef destructor.
   bool is_sink = node.out_edges->empty();
@@ -184,12 +200,12 @@ void ThunkExecutor::ProcessOutEdges(ExecuteState* state, Node& node,
     Node& out_node = state->nodes[out_edge];
 
     int64_t cnt = out_node.counter->fetch_sub(1, std::memory_order_release);
-    DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
+    CHECK_GE(cnt, 1) << "Node counter can't drop below 0";  // Crash Ok
     if (cnt == 1) ready_queue.push_back(out_edge);
   }
 
   // Drop done counter if the node is a sink.
-  if (is_sink) state->done.DecrementCount();
+  if (ABSL_PREDICT_FALSE(is_sink)) state->done.DecrementCount();
 }
 
 std::string ThunkExecutor::ToString() const {

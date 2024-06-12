@@ -22,14 +22,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -95,19 +98,25 @@ class ThunkExecutor {
     ThunkExecutor* executor;
     TaskRunner runner;
 
+    std::atomic<bool> abort;
+    absl::Mutex abort_mutex;
+    absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
+
     absl::FixedArray<std::atomic<int64_t>> counters;
     absl::InlinedVector<Node, 32> nodes;
     absl::BlockingCounter done;
   };
 
   // Executes nodes in the ready queue with given thunk parameters.
-  absl::Status Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
-                       ReadyQueue ready_queue);
+  void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
+               ReadyQueue ready_queue);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
-  // nodes that are ready to execute.
-  void ProcessOutEdges(ExecuteState* state, Node& node,
-                       ReadyQueue& ready_queue);
+  // nodes that are ready to execute. If `event` is in error state, aborts the
+  // execution and records the error status to forward it to the caller.
+  void ProcessOutEdges(ExecuteState* state,
+                       tsl::AsyncValuePtr<Thunk::ExecuteEvent> execute_event,
+                       Node& node, ReadyQueue& ready_queue);
 
   ThunkSequence thunk_sequence_;
   std::vector<NodeDef> nodes_defs_;

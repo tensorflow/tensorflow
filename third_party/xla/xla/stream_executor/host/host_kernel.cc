@@ -96,8 +96,8 @@ class HostKernelExecuteState
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
 
   std::atomic<bool> abort_;
-  absl::Mutex mutex_;
-  absl::Status status_ ABSL_GUARDED_BY(mutex_);
+  absl::Mutex abort_mutex_;
+  absl::Status abort_status_ ABSL_GUARDED_BY(abort_mutex_);
 
   std::atomic<int64_t> counter_;
   tsl::AsyncValueRef<LaunchEvent> event_;
@@ -181,9 +181,9 @@ HostKernelExecuteState::HostKernelExecuteState(
 
 void HostKernelExecuteState::Notify(absl::Status status) {
   if (ABSL_PREDICT_FALSE(!status.ok())) {
-    absl::MutexLock lock(&mutex_);
-    status_.Update(std::move(status));
+    absl::MutexLock lock(&abort_mutex_);
     abort_.store(true, std::memory_order_relaxed);
+    abort_status_.Update(std::move(status));
   }
 
   // Check if it was the last notification and kernel launch is done.
@@ -193,8 +193,8 @@ void HostKernelExecuteState::Notify(absl::Status status) {
 
   // In the unlikely event of a kernel error, forward it to the launch event.
   if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
-    absl::MutexLock lock(&mutex_);
-    event_.SetError(std::move(status_));
+    absl::MutexLock lock(&abort_mutex_);
+    event_.SetError(std::move(abort_status_));
   } else {
     event_.SetStateConcrete();
   }
