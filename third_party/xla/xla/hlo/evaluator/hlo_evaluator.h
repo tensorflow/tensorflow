@@ -162,7 +162,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // {A = x, C = y}, this evaluates op(x, B, y).
   absl::StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
-      const absl::flat_hash_map<const HloInstruction*, const Literal*>&
+      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
           substitutions);
 
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
