@@ -31,5 +31,23 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
                         [](int64_t stride) { return stride == 1; });
 }
 
+using Interval = std::pair<int64_t, int64_t>;
+void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
+                                         std::string attr_name,
+                                         std::vector<Interval> intervals) {
+  std::string intervals_str =
+      "{" +
+      absl::StrJoin(intervals, ",",
+                    [](std::string* out, Interval item) {
+                      absl::StrAppend(out, "{", item.first, ",", item.second,
+                                      "}");
+                    }) +
+      "}";
+  FrontendAttributes attributes;
+  attributes.CopyFrom(instr->frontend_attributes());
+  (*attributes.mutable_map())[attr_name] = intervals_str;
+  instr->set_frontend_attributes(attributes);
+}
+
 }  // namespace hlo_instruction_utils
 }  // namespace xla

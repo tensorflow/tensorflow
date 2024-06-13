@@ -24,6 +24,13 @@ namespace hlo_instruction_utils {
 // all dimensions.
 bool IsUnstridedSlice(const HloInstruction* hlo);
 
+// Adds or updates the attributes for an instruction. If the attribute is
+// already present, then it is overwritten. Otherwise, this is added as another
+// attribute.
+void AddOrUpdateVectorOfPairsAsAttribute(
+    HloInstruction* instr, std::string attr_name,
+    std::vector<std::pair<int64_t, int64_t>> intervals);
+
 }  // namespace hlo_instruction_utils
 }  // namespace xla
 
