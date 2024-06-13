@@ -220,6 +220,34 @@ bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
 
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
+    const HloInstruction* pad) {
+  VLOG(2) << "Emit Pad host kernel.";
+
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(pad));
+
+  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
+  llvm_ir::IrArray padvalue_array = kernel_prototype.arguments[1];
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+
+  llvm::LLVMContext& ctx = module_->getContext();
+  llvm::IRBuilder<> b(ctx);
+  llvm::BasicBlock& start_bb = kernel_prototype.function->getEntryBlock();
+  start_bb.getTerminator()->eraseFromParent();
+  b.SetInsertPoint(&start_bb);
+
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandlePad(
+      ctx, const_cast<HloInstruction*>(pad), kernel_prototype.function, &b,
+      operand_array, padvalue_array, output_array));
+  b.CreateRet(
+      llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(ctx)));
+
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit elemental host kernel: " << instr->name();

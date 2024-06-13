@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsX86.h"
@@ -2333,6 +2335,77 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
+  return absl::OkStatus();
+}
+
+absl::Status IrEmitter::HandlePad(llvm::LLVMContext& context,
+                                  HloInstruction* pad,
+                                  llvm::Function* kernel_function,
+                                  llvm::IRBuilder<>* b,
+                                  const llvm_ir::IrArray& operand_array,
+                                  const llvm_ir::IrArray& padding_value_array,
+                                  const llvm_ir::IrArray& output_array) {
+  CHECK_EQ(pad->operand_count(), 2);
+
+  // CPU backend does not properly handle negative padding but this is ok
+  // because negative padding should be removed by the algebraic simplifier.
+  for (auto& padding_dimension : pad->padding_config().dimensions()) {
+    if (padding_dimension.edge_padding_low() < 0 ||
+        padding_dimension.edge_padding_high() < 0) {
+      return InternalStrCat(
+          "Encountered negative padding in IrEmitter on CPU. "
+          "This should have been eliminated at the HLO level. ",
+          pad->ToString());
+    }
+  }
+
+  const HloInstruction* padding_value = pad->operand(1);  // TODO: just Shape?
+  const auto index_type = b->getInt64Ty();
+  const auto index = llvm_ir::IrArray::Index(index_type);
+  llvm::Value* padding_value_addr = padding_value_array.EmitArrayElementAddress(
+      index, b, "padding_value_addr", true, nullptr);
+  const llvm_ir::ElementGenerator element_generator =
+      [this, b, padding_value,
+       padding_value_addr](const llvm_ir::IrArray::Index& target_index) {
+        return b->CreateLoad(IrShapeType(padding_value->shape()),
+                             padding_value_addr);
+      };
+
+  // First, fill in the padding value to all output elements.
+  auto le = llvm_ir::LoopEmitter(element_generator, output_array, b);
+  TF_RETURN_IF_ERROR(le.EmitLoop(IrName(pad /*, "initialize"*/), index_type));
+
+  // Create a loop to iterate over the operand elements and update the output
+  // locations where the operand elements should be stored.
+  llvm_ir::ForLoopNest loops(IrName(pad, "assign"), b);
+  const llvm_ir::IrArray::Index operand_index =
+      loops.AddLoopsForShape(pad->operand(0)->shape(), "operand");
+
+  SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b);
+
+  // Load an element from the operand.
+  llvm::Value* operand_data =
+      operand_array.EmitReadArrayElement(operand_index, b);
+
+  // Compute the output index the operand element should be assigned to.
+  // output_index := edge_padding_low + operand_index * (interior_padding + 1)
+  const PaddingConfig& padding_config = pad->padding_config();
+  std::vector<llvm::Value*> output_multi_index;
+  for (size_t i = 0; i < operand_index.size(); ++i) {
+    llvm::Value* offset = b->CreateMul(
+        operand_index[i],
+        b->getInt64(padding_config.dimensions(i).interior_padding() + 1));
+    llvm::Value* index = b->CreateAdd(
+        offset, b->getInt64(padding_config.dimensions(i).edge_padding_low()));
+    output_multi_index.push_back(index);
+  }
+
+  // Store the operand element to the computed output location.
+  llvm_ir::IrArray::Index output_index(
+      output_multi_index, output_array.GetShape(), operand_index.GetType());
+  output_array.EmitWriteArrayElement(output_index, operand_data, b);
+
+  SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b);
   return absl::OkStatus();
 }
 

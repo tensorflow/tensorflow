@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -232,6 +233,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                       const llvm_ir::IrArray& operand_array,
                                       const llvm_ir::IrArray& source_array,
                                       const llvm_ir::IrArray& output_array);
+  absl::Status HandlePad(llvm::LLVMContext& context, HloInstruction* pad,
+                         llvm::Function* kernel_function, llvm::IRBuilder<>* b,
+                         const llvm_ir::IrArray& operand_array,
+                         const llvm_ir::IrArray& padding_value_array,
+                         const llvm_ir::IrArray& output_array);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
@@ -378,6 +384,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status EmitTargetElementLoop(
       HloInstruction* target_op, absl::string_view desc,
       const llvm_ir::ElementGenerator& element_generator);
+  absl::Status EmitTargetElementLoop(
+      HloInstruction* target_op, absl::string_view desc,
+      const llvm_ir::ElementGenerator& element_generator,
+      llvm::Value* target_op_address, llvm_ir::IrArray target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the

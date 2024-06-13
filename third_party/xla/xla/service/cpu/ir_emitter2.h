@@ -112,6 +112,9 @@ class IrEmitter2 {
   // Returns all the kernels emitted so far via this emitter.
   absl::Span<const KernelInfo> kernels() const { return kernels_; }
 
+  // Emits a host kernel for the pad instruction.
+  absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
+
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
       const HloInstruction* instr);

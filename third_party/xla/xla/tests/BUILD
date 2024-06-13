@@ -1900,6 +1900,7 @@ xla_test(
 xla_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
