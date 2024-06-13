@@ -56,10 +56,11 @@ std::string GetMlirModulePath(absl::string_view module_name) {
 IfrtServingExecutableTestHelper::IfrtServingExecutableTestHelper(
     tsl::test_util::MockServingDeviceSelector* device_selector)
     : device_selector_(device_selector) {
-  core_selector_ = std::make_unique<IfrtServingCoreSelector>(device_selector_);
   auto client_or = xla::ifrt::test_util::GetClient();
   TF_CHECK_OK(client_or.status());
   client_ = std::move(client_or.value());
+  core_selector_ = std::make_unique<IfrtServingCoreSelector>(
+      device_selector_, client_->addressable_device_count());
 
   thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), tsl::ThreadOptions(), "IfrtSharding",

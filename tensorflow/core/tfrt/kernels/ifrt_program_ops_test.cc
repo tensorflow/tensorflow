@@ -60,18 +60,6 @@ using tensorflow::test::AsTensor;
 using tensorflow::test::TensorEq;
 using ::testing::Return;
 
-const bool kUnused =
-    (xla::ifrt::test_util::RegisterClientFactory(
-         []() -> absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> {
-           xla::CpuClientOptions options;
-           options.cpu_device_count = 4;
-           TF_ASSIGN_OR_RETURN(auto pjrt_client,
-                               xla::GetTfrtCpuClient(options));
-           return std::shared_ptr<xla::ifrt::Client>(
-               xla::ifrt::PjRtClient::Create(std::move(pjrt_client)));
-         }),
-     true);
-
 class IfrtCallOpTest : public OpsTestBase {
  protected:
   Status Init(int64_t program_id, int num_inputs, DataType input_type,
@@ -111,7 +99,10 @@ TEST_F(IfrtCallOpTest, Basic) {
 
   AddInputFromArray<int32_t>(TensorShape({1, 3}), {1, 2, 3});
   AddInputFromArray<int32_t>(TensorShape({3, 1}), {1, 2, 3});
-  TF_ASSERT_OK(RunOpKernel());
+  // Run warmup execution plus one for core selection.
+  for (int i = 0; i < helper.num_cores() + 1; ++i) {
+    TF_ASSERT_OK(RunOpKernel());
+  }
   Tensor expected_out = AsTensor<int32_t>({14}, TensorShape({1, 1}));
   EXPECT_THAT(*GetOutput(0), TensorEq(expected_out));
 }

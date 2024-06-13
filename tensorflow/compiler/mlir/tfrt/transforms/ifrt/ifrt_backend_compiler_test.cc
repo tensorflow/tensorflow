@@ -88,7 +88,8 @@ TEST(IfrtBackendCompilerTest, Basic) {
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
   tsl::test_util::MockServingDeviceSelector mock_serving_device_selector;
-  IfrtServingCoreSelector core_selector(&mock_serving_device_selector);
+  IfrtServingCoreSelector core_selector(&mock_serving_device_selector,
+                                        client->addressable_device_count());
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
       "IfrtModelContext", client, &core_selector, &GetThreadPool(),

@@ -30,7 +30,9 @@ cc_library(
     srcs = ["ifrt_serving_core_selector.cc"],
     hdrs = ["ifrt_serving_core_selector.h"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/framework:serving_device_selector",
     ],
 )
@@ -454,13 +456,11 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":ifrt_restore_tensor_registry",
-        ":ifrt_serving_core_selector",
         ":ifrt_serving_executable",
         ":ifrt_serving_executable_test_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:portable_tensorflow_test_lib",
         "//tensorflow/core:test",
         "//tensorflow/core/common_runtime/eager:core",
@@ -476,7 +476,6 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/framework:serving_device_selector",
         "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
         "@local_xla//xla/python/ifrt",
