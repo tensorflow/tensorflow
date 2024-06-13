@@ -2040,9 +2040,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         {ComputationType::kF64, DataType::kComplexDouble, PrimitiveType::C128,
          PrimitiveType::C128, DataType::kComplexDouble},
     };
-    if (absl::c_linear_search(supported_cublas_type_combinations,
-                              std::make_tuple(compute_type, scale_type, a_dtype,
-                                              b_dtype, output_dtype))) {
+    if (IsCuda(gpu_version_) &&
+        absl::c_linear_search(supported_cublas_type_combinations,
+                              std::tuple{compute_type, scale_type, a_dtype,
+                                         b_dtype, output_dtype})) {
       return true;
     }
     const TypeCombinations supported_hipblas_type_combinations = {
@@ -2078,9 +2079,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
          PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
     };
-    if (absl::c_linear_search(supported_hipblas_type_combinations,
-                              std::make_tuple(compute_type, scale_type, a_dtype,
-                                              b_dtype, output_dtype))) {
+    if (IsRocm(gpu_version_) &&
+        absl::c_linear_search(supported_hipblas_type_combinations,
+                              std::tuple{compute_type, scale_type, a_dtype,
+                                         b_dtype, output_dtype})) {
       return true;
     }
     const TypeCombinations supported_type_combinations = {

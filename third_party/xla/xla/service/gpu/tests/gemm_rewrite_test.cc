@@ -802,6 +802,41 @@ ENTRY AddDotsFunc {
 )");
 }
 
+TEST_P(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
+  // This test should fail if gemm rewriter does not correctly rewrite
+  // F64/C64 dots to cublas-lt or legacy cublas calls
+  {
+    const char* hlo_text = R"(
+HloModule F64_rewrite
+
+ENTRY AddDotsFunc {
+  x = f64[2,2] parameter(0)
+  y = f64[2,2] parameter(1)
+  k = f64[] constant(3.0)
+  k_broadcast = f64[2, 2] broadcast(k), dimensions={}
+  dot_a = f64[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot_a_multiplied = f64[2, 2] multiply(dot_a, k_broadcast)
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+  {
+    const char* hlo_text = R"(
+HloModule C64_rewrite
+
+ENTRY AddDotsFunc {
+  x = c64[2,2] parameter(0)
+  y = c64[2,2] parameter(1)
+  k = c64[] constant((3.0, 3.0))
+  k_broadcast = c64[2, 2] broadcast(k), dimensions={}
+  dot_a = c64[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot_a_multiplied = c64[2, 2] multiply(dot_a, k_broadcast)
+}
+)";
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
+  }
+}
+
 TEST_P(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
   if (!IsCuda() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
     GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM";
