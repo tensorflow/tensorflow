@@ -54,7 +54,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
@@ -3424,18 +3423,6 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
   return success();
 }
 
-namespace {
-
-// Creates an `OpMetadata` with the debug name from the `value`'s
-// `mlir::Location`.
-xla::OpMetadata GetOpNameMetadataFromLocation(Value value) {
-  xla::OpMetadata m;
-  m.set_op_name(mhlo::GetDebugNameFromLocation(value.getLoc()));
-  return m;
-}
-
-}  // namespace
-
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
     bool ensure_single_arg,
@@ -3463,10 +3450,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       return failure();
 
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
-    // TODO(bartchr): we are saving location information on single params
-    // but not tuple params. Do the same for tuple params. To do so, either
-    // fuse all the `mlir::Location`s or join the operation name strings with
-    // ";" (which is essentially the same).
     auto tuple =
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
     builder->ClearSharding();
@@ -3503,10 +3486,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             builder, arg_shardings.empty()
                          ? std::nullopt
                          : CreateTupleSharding(arg_shardings));
-        // TODO(bartchr): we are saving location information on single params
-        // but not tuple params. Do the same for tuple params. To do so, either
-        // fuse all the `mlir::Location`s or join the operation name strings
-        // with ";" (which is essentially the same).
         auto tuple = xla::Parameter(builder, 0,
                                     xla::ShapeUtil::MakeTupleShape(arg_shapes),
                                     "arg_tuple");
@@ -3526,21 +3505,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           }
         }
       } else if (args_size == 1) {
-        // Save the location information as a name. For example JAX will set the
-        // name of the function argument. Want to preserve these for debugging.
         if (implicit_operands) {
-          mlir::Value arg = (*implicit_operands)[0];
-          xla::XlaScopedOpMetadataAssignment op_metadata(
-              builder, GetOpNameMetadataFromLocation(arg));
-          lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
+          lowering[(*implicit_operands)[0]] =
+              xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         } else {
-          mlir::BlockArgument arg = block->getArgument(0);
-          xla::XlaScopedOpMetadataAssignment op_metadata(
-              builder, GetOpNameMetadataFromLocation(arg));
           xla::XlaScopedShardingAssignment scoped_sharding(
               builder,
               arg_shardings.empty() ? std::nullopt : arg_shardings.front());
-          lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
+          lowering[block->getArgument(0)] =
+              xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         }
       } else {
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
@@ -3560,11 +3533,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           // functions with no tuple args.
           builder->SetFrontendAttributes(*fe_attrs[num]);
         }
-        // Save the location information as a name. For example JAX will set the
-        // name of the function argument of these. Want to preserve these for
-        // debugging.
-        xla::XlaScopedOpMetadataAssignment op_metadata(
-            builder, GetOpNameMetadataFromLocation(arg));
         if (entry_args_same_across_replicas.empty()) {
           lowering[arg] =
               xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));

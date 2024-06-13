@@ -55,13 +55,9 @@ using UnaryElementwiseTest = TritonSupportTestWithParam;
 // TODO(b/331636835): updates elementwise op tests to directly emit single op
 // instead of relying on triton gemm kernel.
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -129,13 +125,9 @@ INSTANTIATE_TEST_SUITE_P(
 using BinaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -206,13 +198,9 @@ INSTANTIATE_TEST_SUITE_P(
 using CompareTest = TritonSupportTestWithParam;
 
 TEST_P(CompareTest, IsTritonSupportedCompare) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -263,13 +251,9 @@ INSTANTIATE_TEST_SUITE_P(
 using TernaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -321,13 +305,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 using ReduceConstTest = TritonSupportTestWithParam;
 TEST_P(ReduceConstTest, IsTritonSupportedReduceWithConstInit) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -390,9 +370,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(TritonSupportTest,
        SupportedReduceWithConvertConstantIsCodegenedSuccessfullyWithTriton) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  if (SkipBF16Tests()) {
+    GTEST_SKIP();
   }
   const std::string kHloTest = R"(
 HloModule t
