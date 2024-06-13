@@ -3592,9 +3592,9 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
 
   auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
   auto* hlo_module = b->CreateGlobalStringPtr(hlo->GetModule()->name());
-  auto* hlo_module_id = b->getInt64(hlo->GetModule()->unique_id());
+  auto* program_id = b->getInt64(hlo->GetModule()->unique_id());
   auto* activity_id = b->CreateCall(
-      trace_func, {run_options, hlo_name, hlo_module, hlo_module_id});
+      trace_func, {run_options, hlo_name, hlo_module, program_id});
   activity_id->setName(IrName(hlo, "activity_id"));
   activity_ids_[hlo] = activity_id;
 }

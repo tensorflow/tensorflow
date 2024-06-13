@@ -65,7 +65,7 @@ std::string Thunk::TraceMeEncode() const {
   return tsl::profiler::TraceMeEncode(info_.op_name,
                                       {{"hlo_op", info_.op_name},
                                        {"hlo_module", info_.module_name},
-                                       {"hlo_module_id", info_.module_id}});
+                                       {"program_id", info_.module_id}});
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {

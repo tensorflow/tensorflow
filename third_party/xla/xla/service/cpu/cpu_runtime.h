@@ -110,7 +110,7 @@ extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
 
 extern int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    const char* name, const char* hlo_module, int64_t hlo_module_id);
+    const char* name, const char* hlo_module, int64_t program_id);
 extern void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id);
 
