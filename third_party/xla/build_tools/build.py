@@ -204,7 +204,7 @@ _ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(
 
 
 def nvidia_gpu_build_with_compute_capability(
-    *, type_: BuildType, compute_capability: int
+    *, type_: BuildType, configs: Tuple[str, ...], compute_capability: int
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
@@ -212,7 +212,7 @@ def nvidia_gpu_build_with_compute_capability(
       repo="openxla/xla",
       docker_image=_CUDNN_9_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-      configs=("warnings", "rbe_linux_cuda_nvcc"),
+      configs=configs,
       tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
@@ -220,6 +220,7 @@ def nvidia_gpu_build_with_compute_capability(
           **_DEFAULT_BAZEL_OPTIONS,
       ),
   )
+
 
 _CPU_X86_BUILD = Build(
     type_=BuildType.CPU_X86,
@@ -251,13 +252,17 @@ _CPU_ARM64_BUILD = Build(
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
 )
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU, compute_capability=75
+    type_=BuildType.GPU,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    compute_capability=75,
 )
 
 # NOTE(ddunleavy): compute_cability=80 should really be 89, but I want to catch
 # anything marked as `requires_sm80_only`.
 _GPU_CONTINUOUS_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU_CONTINUOUS, compute_capability=80
+    type_=BuildType.GPU_CONTINUOUS,
+    configs=("warnings", "nvcc_clang"),
+    compute_capability=80,
 )
 
 _JAX_CPU_BUILD = Build(

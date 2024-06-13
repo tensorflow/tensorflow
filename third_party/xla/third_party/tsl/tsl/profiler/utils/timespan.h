@@ -32,7 +32,9 @@ namespace profiler {
 class Timespan {
  public:
   static Timespan FromEndPoints(uint64 begin_ps, uint64 end_ps) {
-    DCHECK_LE(begin_ps, end_ps);
+    if (begin_ps > end_ps) {
+      return Timespan(begin_ps, 0);
+    }
     return Timespan(begin_ps, end_ps - begin_ps);
   }
 

@@ -168,8 +168,6 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
             {condition_instruction, instruction_and_shape_index.shape_index});
       }
     } else if (user->opcode() == HloOpcode::kAsyncStart) {
-      LOG(INFO) << "Instruction " << instruction->name()
-                << " feeds into async-start " << user->name();
       auto operand_indices = user->OperandIndices(instruction);
       CHECK(user->called_computations().size() == 1)
           << "Expect async-start to only have one called computation.";
@@ -178,8 +176,6 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
             user->called_computations().front();
         HloInstruction* parameter_instruction =
             called_computation->parameter_instruction(i);
-        LOG(INFO) << "Which is used by parameter "
-                  << parameter_instruction->name();
         result.push_back(
             {parameter_instruction, instruction_and_shape_index.shape_index});
       }
