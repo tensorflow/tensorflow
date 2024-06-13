@@ -16,10 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_GATHER_DECOMPOSER_H_
 #define XLA_SERVICE_ALL_GATHER_DECOMPOSER_H_
 
+#include <cstdint>
+#include <functional>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
 
