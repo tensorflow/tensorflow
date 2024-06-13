@@ -424,6 +424,7 @@ cc_library(
         ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
         ":batch_scheduler_utils",
+        ":batch_stats",
         ":concat_split_util",
         ":input_split_metadata",
         ":shared_batch_scheduler",
@@ -479,7 +480,9 @@ tf_cc_test(
     srcs = ["batch_resource_base_test.cc"],
     deps = [
         ":batch_resource_base",
+        ":batch_stats",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:cost_constants",
         "//tensorflow/core/common_runtime:cost_measurement",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
