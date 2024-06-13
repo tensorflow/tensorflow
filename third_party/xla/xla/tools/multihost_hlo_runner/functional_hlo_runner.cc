@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -869,15 +870,15 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
 // Runs the executable and may repeat for multiple times.
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::Run(PjRtClient& client, PjRtLoadedExecutable* executable,
-
                          const PerDeviceLiteralVecType& arguments,
-                         const RunningOptions& running_options) {
+                         const RunningOptions& running_options,
+                         std::minstd_rand0* engine) {
   auto create_argument_buffers_on_device = [&client, &executable, &arguments,
-                                            &running_options](
+                                            &running_options, engine](
                                                bool flatten_tupled_arguments) {
     if (arguments.empty()) {
       return CreateArgumentsOnDevice(client, executable, running_options,
-                                     flatten_tupled_arguments);
+                                     flatten_tupled_arguments, engine);
     }
 
     if (flatten_tupled_arguments && arguments.begin()->second.size() == 1 &&
@@ -1139,7 +1140,8 @@ FunctionalHloRunner::RunInternal(
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 FunctionalHloRunner::CreateArgumentsOnDevice(
     PjRtClient& client, const PjRtLoadedExecutable* executable,
-    const RunningOptions& running_options, bool flatten_arguments) {
+    const RunningOptions& running_options, bool flatten_arguments,
+    std::minstd_rand0* engine) {
   if (running_options.module_argument_mode ==
       ModuleArgumentMode::kUninitialized) {
     return CreateUninitializedArgumentsOnDevice(
@@ -1208,14 +1210,22 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
       }
     } else {
       if (flatten_arguments) {
-        TF_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
-                            MakeFakeArguments(my_hlo_module, kUseRandomInputs));
+        TF_ASSIGN_OR_RETURN(
+            LiteralVec tupled_argument_literals,
+            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
+                              /*use_large_range=*/false,
+                              /*treat_gte_as_data_formatting=*/false,
+                              /*max_bits_of_precision=*/std::nullopt, engine));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
-        TF_ASSIGN_OR_RETURN(argument_literals,
-                            MakeFakeArguments(my_hlo_module, kUseRandomInputs));
+        TF_ASSIGN_OR_RETURN(
+            argument_literals,
+            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
+                              /*use_large_range=*/false,
+                              /*treat_gte_as_data_formatting=*/false,
+                              /*max_bits_of_precision=*/std::nullopt, engine));
       }
       if (kUseSharedInputs) {
         break;

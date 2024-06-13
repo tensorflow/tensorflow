@@ -101,7 +101,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt);
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    std::minstd_rand0* engine = nullptr);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing

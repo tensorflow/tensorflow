@@ -606,9 +606,20 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeArguments(module, engine.get(), use_large_range,
+    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+  if (!pseudo_random) {
+    return MakeFakeArguments(module, nullptr, use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  if (engine == nullptr) {
+    auto new_engine =
+        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
+    return MakeFakeArguments(module, new_engine.get(), use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  return MakeFakeArguments(module, engine, use_large_range,
                            treat_gte_as_data_formatting, max_bits_of_precision);
 }
 

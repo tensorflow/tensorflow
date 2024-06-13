@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -311,7 +312,8 @@ class FunctionalHloRunner {
   static absl::StatusOr<PerDeviceLiteralVecType> Run(
       PjRtClient& client, PjRtLoadedExecutable* executable,
       const PerDeviceLiteralVecType& arguments,
-      const RunningOptions& running_options);
+      const RunningOptions& running_options,
+      std::minstd_rand0* engine = nullptr);
 
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       absl::string_view hlo_file);
@@ -371,7 +373,8 @@ class FunctionalHloRunner {
   CreateArgumentsOnDevice(PjRtClient& client,
                           const PjRtLoadedExecutable* executable,
                           const RunningOptions& running_options,
-                          bool flatten_arguments = false);
+                          bool flatten_arguments = false,
+                          std::minstd_rand0* engine = nullptr);
 
   // Creates uninitialized arguments to run the given executable.
   static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
