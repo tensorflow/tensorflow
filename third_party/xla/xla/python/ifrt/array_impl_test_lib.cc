@@ -542,35 +542,74 @@ TEST(ArrayImplTest, CopyToSameDevices) {
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  DeviceList devices(DeviceList::Devices(client->addressable_devices().begin(),
+                                         client->addressable_devices().end()));
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
-  Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
+  std::vector<tsl::RCReference<Array>> shards;
+  for (auto* device : devices) {
+    std::shared_ptr<const Sharding> sharding =
+        SingleDeviceSharding::Create(device, MemoryKind());
+    TF_ASSERT_OK_AND_ASSIGN(shards.emplace_back(),
+                            client->MakeArrayFromHostBuffer(
+                                data.data(), dtype, shape,
+                                /*byte_strides=*/std::nullopt, sharding,
+                                semantics, /*on_done_with_host_buffer=*/{}));
+  }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto array, client->MakeArrayFromHostBuffer(
-                      data.data(), dtype, shape,
-                      /*byte_strides=*/std::nullopt, sharding, semantics,
-                      /*on_done_with_host_buffer=*/{}));
+  // Intentionally use different shardings to verify that each result array has
+  // the correct sharding.
+  std::vector<tsl::RCReference<Array>> arrays;
+  {
+    std::vector<Shape> shapes(shards.size(), shape);
+    std::shared_ptr<const Sharding> sharding =
+        ConcreteSharding::Create(devices, MemoryKind(), shape, shapes);
+    TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
+                            client->AssembleArrayFromSingleDeviceArrays(
+                                shape, sharding, absl::MakeSpan(shards),
+                                ArrayCopySemantics::kAlwaysCopy));
+  }
+  {
+    std::shared_ptr<const Sharding> sharding =
+        ConcreteEvenSharding::Create(devices, MemoryKind(), shape, shape);
+    TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
+                            client->AssembleArrayFromSingleDeviceArrays(
+                                shape, sharding, absl::MakeSpan(shards),
+                                ArrayCopySemantics::kAlwaysCopy));
+  }
 
-  Device* new_device = client->addressable_devices().at(1);
+  DeviceList::Devices new_devices;
+  for (auto it = devices.devices().rbegin(); it != devices.devices().rend();
+       ++it) {
+    new_devices.push_back(*it);
+  }
   TF_ASSERT_OK_AND_ASSIGN(
       auto new_arrays,
-      client->CopyArrays(absl::MakeSpan(&array, 1),
-                         DeviceList(DeviceList::Devices({new_device})),
+      client->CopyArrays(absl::MakeSpan(arrays), DeviceList(new_devices),
                          MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
-  std::vector<float> out_data(6);
-  auto future = new_arrays[0]->CopyToHostBuffer(
-      out_data.data(), /*byte_strides=*/std::nullopt,
-      ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
-  EXPECT_THAT(out_data, ElementsAreArray(data));
+  for (int i = 0; i < arrays.size(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto expected_sharding,
+                            arrays[i]->sharding().WithDeviceAssignment(
+                                DeviceList(new_devices), MemoryKind()));
+    EXPECT_EQ(new_arrays[i]->sharding(), *expected_sharding);
+
+    TF_ASSERT_OK_AND_ASSIGN(auto shards,
+                            arrays[i]->DisassembleIntoSingleDeviceArrays(
+                                ArrayCopySemantics::kAlwaysCopy));
+    for (const auto& shard : shards) {
+      std::vector<float> out_data(6);
+      auto future = shard->CopyToHostBuffer(out_data.data(),
+                                            /*byte_strides=*/std::nullopt,
+                                            ArrayCopySemantics::kAlwaysCopy);
+      TF_ASSERT_OK(future.Await());
+      EXPECT_THAT(out_data, ElementsAreArray(data));
+    }
+  }
 }
 
 TEST(ArrayImplTest, CopyMixedSourceDevices) {
