@@ -368,12 +368,16 @@ MlirRowReductionFusion::MlirRowReductionFusion(
   Shape input_shape = hero_reduction->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(*hero_reduction);
-  auto shape = reduction_dimensions.dimensions;
-
   CHECK(reduction_dimensions.is_row_reduction);
+
+  auto shape = reduction_dimensions.dimensions;
   VLOG(10) << "row reduction " << shape[0] << " " << shape[1] << " "
            << shape[2];
-  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
+  Vector3 reduction_tiling = {
+      std::min(reduction_dimensions
+                   .dimensions[ReductionDimensions::kRowMajorReducedDimension],
+               BatchedReductionRaceFreeBound()),
+      1, 16};
 
   int64_t num_threads_y = 1;
   int64_t rows_per_warp = RowReductionGetRowsPerWarp(
@@ -729,21 +733,14 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
   CHECK(!reduction_dimensions.is_row_reduction);
   VLOG(10) << "column reduction " << shape[0] << " " << shape[1] << " "
            << shape[2];
-  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
-
-  int64_t num_threads_y = WarpSize();
-  int64_t rows_per_warp = 1;
-  int64_t num_threads_x = [&] { return WarpSize(); }();
-
-  int vector_size = GetVectorSize(analysis, reduction_dimensions, num_threads_x,
+  Vector3 reduction_tiling = {1, 128, 1};
+  int vector_size = GetVectorSize(analysis, reduction_dimensions, WarpSize(),
                                   reduction_tiling, /*for_mlir=*/true);
-
-  num_threads_ =
-      absl::InlinedVector<int64_t, 4>{1, num_threads_y, num_threads_x};
-  tiled_shape_ = {shape[0], shape[1], shape[2] / vector_size};
-  tile_sizes_per_thread_ = {
-      reduction_tiling[0], reduction_tiling[1],
-      std::max<int64_t>(reduction_tiling[2] / vector_size, 1)};
+  // The vector dimension is a loop, i.e. we use a symbol for it.
+  num_threads_ = absl::InlinedVector<int64_t, 4>{1, WarpSize(), WarpSize(), 1};
+  tiled_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
+  tile_sizes_per_thread_ = {reduction_tiling[0], reduction_tiling[1],
+                            reduction_tiling[2], vector_size};
   // The indexing map simplifier does not currently handle this correctly,
   // leading to loop bounds that are too large.
   // TODO(jreiffers): Implement tightening of ranges based on constraints
@@ -753,22 +750,11 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
   //   d0 floordiv 32 + s1 * 32 in [0, 63]
   //
   // Tighten the bound of s1 to [0, 1].
-  for (int i = 0; i < num_threads_.size(); ++i) {
+  for (int i = 0; i < num_threads_.size() - 1; ++i) {
     tile_sizes_per_thread_[i] =
         std::min(tile_sizes_per_thread_[i],
                  CeilOfRatio(tiled_shape_[i], num_threads_[i]));
   }
-  if (rows_per_warp > 1) {
-    // If we produce more than one element per thread, that means the reduced
-    // dimension is small and it can't be tiled - we already have more threads
-    // in a warp than the size of the reduced dimension. The code generator
-    // doesn't currently support tiling the kept dimension, because it just
-    // uses the thread ID as the coordinate.
-    tile_sizes_per_thread_[2] = 1;
-  }
-  num_threads_.push_back(1);  // The vector dimension is a loop.
-  tiled_shape_.push_back(vector_size);
-  tile_sizes_per_thread_.push_back(vector_size);
 
   tile_sizes_per_block_.resize(tiled_shape_.size());
   num_blocks_.resize(tiled_shape_.size());
