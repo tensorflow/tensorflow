@@ -56,6 +56,8 @@ class IfrtServingExecutableTestHelper {
     return &ifrt_restore_tensor_registry_;
   }
 
+  int num_cores() const { return client_->addressable_device_count(); }
+
  private:
   static constexpr int kThreadPoolNumThreads = 16;
 

@@ -353,6 +353,7 @@ def main():
             "github/xla/.bazelrc",
         ],
     )
+    sh(["nvidia-smi"])
 
   with build.docker_image.pull_and_run(
       workdir=f"/github/{repo_name}", **_DEFAULT_DOCKER_OPTIONS

@@ -71,6 +71,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
     ],
 )
 

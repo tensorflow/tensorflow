@@ -407,7 +407,8 @@ class KernelTest : public ::testing::Test {
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();
     ifrt_core_selector_ =
         std::make_unique<ifrt_serving::IfrtServingCoreSelector>(
-            serving_device_selector_.get());
+            serving_device_selector_.get(),
+            client_->addressable_device_count());
   }
 
   std::unique_ptr<tsl::test_util::MockServingDeviceSelector>

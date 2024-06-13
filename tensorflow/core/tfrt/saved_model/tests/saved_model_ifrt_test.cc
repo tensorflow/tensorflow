@@ -66,7 +66,8 @@ TEST(SavedModelIfrt, Basic) {
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
   tsl::test_util::MockServingDeviceSelector selector;
-  ifrt_serving::IfrtServingCoreSelector core_selector(&selector);
+  ifrt_serving::IfrtServingCoreSelector core_selector(
+      &selector, client->addressable_device_count());
 
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
