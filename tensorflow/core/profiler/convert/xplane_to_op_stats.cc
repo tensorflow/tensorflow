@@ -180,11 +180,10 @@ void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
   std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
-  bool is_gpu = device_planes.empty();
-  if (is_gpu) {
+  bool is_tpu = !device_planes.empty();
+  if (!is_tpu) {
     device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
   }
-
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -203,7 +202,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      if (is_gpu) {
+      if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
@@ -218,7 +217,13 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     if (options.generate_step_db) {
       StepEvents device_step_events = ConvertDeviceTraceXPlaneToStepEvents(
           use_aggregated_xplane ? aggregated_xplane : *device_trace);
-      CombineStepEvents(device_step_events, &step_events);
+      if (is_tpu) {
+        // In TPU, we take the intersection of step events across cores as well
+        // as hosts.see b/158249775 and cl/331842545.
+        IntersectCombineStepEvents(device_step_events, &step_events);
+      } else {
+        UnionCombineStepEvents(device_step_events, &step_events);
+      }
     }
     if (options.generate_kernel_stats_db) {
       ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
@@ -243,7 +248,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     if (options.generate_step_db && !has_device) {
       StepEvents host_step_events =
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, nullptr);
-      CombineStepEvents(host_step_events, &step_events);
+      UnionCombineStepEvents(host_step_events, &step_events);
     }
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
     auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
@@ -253,17 +258,24 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     }
   }
   if (options.generate_step_db) {
-    StepEvents nonoverlapped_step_events =
-        ToNonOverlappedStepEvents(step_events);
-    *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
-        has_device, options.maybe_drop_incomplete_steps,
-        nonoverlapped_step_events);
-    *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
-        ComputePrecisionStats(nonoverlapped_step_events);
+    if (is_tpu) {
+      *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
+          has_device, options.maybe_drop_incomplete_steps, step_events);
+      *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
+          ComputePrecisionStats(step_events);
+    } else {
+      StepEvents nonoverlapped_step_events =
+          ToNonOverlappedStepEvents(step_events);
+      *op_stats.mutable_step_db() = ConvertStepEventsToStepDb(
+          has_device, options.maybe_drop_incomplete_steps,
+          nonoverlapped_step_events);
+      *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
+          ComputePrecisionStats(nonoverlapped_step_events);
+    }
   }
 
   // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
-  if (is_gpu) {
+  if (!is_tpu) {
     CoreDetails& details =
         (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
     details.set_hostname(Hostname(space));
