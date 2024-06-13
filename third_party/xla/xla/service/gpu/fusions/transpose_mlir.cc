@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
@@ -137,16 +138,14 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
-  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  const auto& hero = analysis_.fusion_hero(root_index);
   if (hero.opcode() != HloOpcode::kTranspose) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     auto map = ComposeIndexingMaps(
         GetIndexing(/*input=*/true, hero.shape(), mlir_context),
-        GetBitcastMap(
-            hero.shape(),
-            analysis_.fusion_roots()[root_index].instruction().shape(),
-            mlir_context));
+        GetBitcastMap(hero.shape(), analysis_.fusion_root(root_index).shape(),
+                      mlir_context));
     map.Simplify();
     return map;
   }
