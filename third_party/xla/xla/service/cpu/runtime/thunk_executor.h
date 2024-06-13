@@ -132,6 +132,12 @@ class ThunkExecutor {
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
                        Node& node, ReadyQueue& ready_queue);
 
+  // Runs a transitive reduction on the NodeDef graph to remove redundant edges.
+  // Returns the number of removed edges.
+  //
+  // See: https://en.wikipedia.org/wiki/Transitive_reduction
+  int64_t TransitiveReduction();
+
   ThunkSequence thunk_sequence_;
   std::vector<NodeDef> nodes_defs_;
 

@@ -54,6 +54,14 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
     }
   }
 
+  // Erase redundant edges between nodes.
+  int64_t num_erased_edges = TransitiveReduction();
+
+  VLOG(2) << absl::StreamFormat(
+      "Constructed ThunkExecutor with %d nodes: #source_nodes=%d "
+      "#sink_nodes=%d, #erased_edges=%d",
+      nodes_defs_.size(), source_.size(), sink_.size(), num_erased_edges);
+
   // Sanity check that all vectors are empty or all vectors are non-empty.
   DCHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
          (source_.empty() && sink_.empty() && thunk_sequence_.empty()));
@@ -231,6 +239,72 @@ void ThunkExecutor::ProcessOutEdges(
       state->execute_event.SetStateConcrete();
     }
   }
+}
+
+int64_t ThunkExecutor::TransitiveReduction() {
+  int64_t num_erased_edges = 0;
+
+  // Erases edge from `from` node to `to` node if it exists.
+  //
+  // TODO(ezhulenev): Out and In-edges are sorted in increasing and decreasing
+  // order respectively. We can use binary search to speed up this function.
+  auto erase_edge = [&](NodeDef& from, NodeDef& to) {
+    auto out_edge_it = absl::c_find(from.out_edges, to.id);
+    auto in_edge_it = absl::c_find(to.in_edges, from.id);
+
+    bool has_out_edge = out_edge_it != from.out_edges.end();
+    bool has_in_edge = in_edge_it != to.in_edges.end();
+
+    DCHECK_EQ(has_out_edge, has_in_edge) << "Edges must be symmetric";
+
+    if (has_out_edge && has_in_edge) {
+      from.out_edges.erase(out_edge_it);
+      to.in_edges.erase(in_edge_it);
+      ++num_erased_edges;
+    }
+  };
+
+  // Keep workspace for DFS traversal between iterations.
+  std::vector<int64_t> stack;
+  std::vector<bool> visited;
+
+  auto add_to_stack = [&](int64_t node_id) {
+    if (!visited[node_id]) {
+      stack.push_back(node_id);
+      visited[node_id] = true;
+    }
+  };
+
+  // For each node we do a DFS traversal and delete redundant edges that
+  // connect source node with the node reachable via DFS.
+  for (int64_t i = 0; i < nodes_defs_.size(); ++i) {
+    NodeDef& source_node = nodes_defs_[i];
+
+    // Clear DFS workspace from previous iteration.
+    stack.clear();
+    visited.assign(nodes_defs_.size(), false);
+
+    // Initialize stack with nodes reachable via immediate out nodes. We don't
+    // need to add source node and immediate out nodes to the visited set
+    // because graph is acyclic and we don't visit them again.
+    for (int64_t out_id : source_node.out_edges) {
+      NodeDef& out_node = nodes_defs_[out_id];
+      for (int64_t start_id : out_node.out_edges) add_to_stack(start_id);
+    }
+
+    // Traverse the graph and delete redundant edges.
+    while (!stack.empty()) {
+      int64_t node_id = stack.back();
+      stack.pop_back();
+
+      NodeDef& node = nodes_defs_[node_id];
+      erase_edge(source_node, node);
+
+      for (int64_t out_id : node.out_edges) add_to_stack(out_id);
+    }
+  }
+
+  return num_erased_edges;
 }
 
 std::string ThunkExecutor::ToString() const {
