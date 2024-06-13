@@ -623,7 +623,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
     // every segment.
     Tensor temp;
     if (input.dtype() == DT_BFLOAT16 || input.dtype() == DT_HALF) {
-      temp = tensorflow::Tensor(DT_FLOAT, output_shape);
+      TensorShape temp_shape = output_shape;
+      OP_REQUIRES_OK(context, temp_shape.SetDimWithStatus(/*d=*/0, /*size=*/1));
+      temp = tensorflow::Tensor(DT_FLOAT, temp_shape);
     }
     auto temp_flat = temp.flat_outer_dims<float>();
 
@@ -665,7 +667,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       }
 
       auto out = output_flat.template chip<0>(out_index);
-      auto temp = temp_flat.template chip<0>(out_index);
+      auto temp = temp_flat.template chip<0>(0);
       const int bad_offset = Reduce<T, Index>(input_flat, indices_vec, start,
                                               end - start, out, temp);
       OP_REQUIRES(context, bad_offset < 0,
