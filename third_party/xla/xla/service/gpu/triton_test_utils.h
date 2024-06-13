@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -27,7 +29,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -73,10 +78,49 @@ class TritonFilecheckTest : public TritonTest {
 };
 
 class TritonSupportTest : public TritonFilecheckTest {
- public:
+ protected:
+  // An HLO module together with a reference to the instruction of interest
+  // that's being tested. See ParseTemplateAndGetInstruction for more details.
+  class TestedInstruction {
+   public:
+    // Returns the HLO module.
+    std::unique_ptr<HloModule>& Module() { return module_; };
+
+    // The fusion instruction that calls the `triton_computation`.
+    const HloFusionInstruction& TritonFusion() {
+      return *Cast<HloFusionInstruction>(
+          module_->entry_computation()->root_instruction());
+    }
+
+    // Returns the `triton_computation`.
+    const HloComputation& TritonComputation() { return *instruction_.parent(); }
+
+    // Returns the instruction within the `triton_computation` that has the
+    // opcode provided to ParseAndGetInstruction.
+    const HloInstruction& Instruction() { return instruction_; }
+
+   private:
+    friend TritonSupportTest;
+
+    TestedInstruction(std::unique_ptr<HloModule> module,
+                      const HloInstruction& instruction)
+        : module_(std::move(module)), instruction_(instruction) {};
+    std::unique_ptr<HloModule> module_;
+    const HloInstruction& instruction_;
+  };
+
+  // Parses the given HLO template and returns the instruction that matches the
+  // given opcode.
+  //
+  // The provided template must contain a computation called
+  // `triton_computation`. If the template contains parameters $0 and $1, they
+  // will be replaced with the data type and opcode respectively.
+  absl::StatusOr<TestedInstruction> ParseTemplateAndGetInstruction(
+      absl::string_view hlo_template, xla::PrimitiveType data_type,
+      xla::HloOpcode opcode);
+
   absl::StatusOr<bool> ApplyFloatNormalization(HloModule* module);
 
- protected:
   llvm::LLVMContext llvm_ctx_;
   llvm::Module llvm_module_{"module", llvm_ctx_};
   mlir::MLIRContext mlir_context_;
