@@ -51,7 +51,10 @@ tf_proto_library(
     srcs = ["hlo.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//xla:xla_data_proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla:xla_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1220,7 +1223,6 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:execution_options_util",
-        "//xla:service_interface",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1229,6 +1231,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/client:xla_computation",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",

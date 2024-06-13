@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
+#include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -50,8 +52,13 @@ limitations under the License.
 namespace xla::cpu {
 
 ThunkEmitter::ThunkEmitter(IrEmitter2* ir_emitter,
-                           const BufferAssignment* buffer_assignment)
-    : ir_emitter_(ir_emitter), buffer_assignment_(buffer_assignment) {}
+                           const BufferAssignment* buffer_assignment,
+                           const TargetMachineFeatures& target_machine_features,
+                           const HloModuleConfig& hlo_module_config)
+    : ir_emitter_(ir_emitter),
+      buffer_assignment_(buffer_assignment),
+      target_machine_features_(target_machine_features),
+      hlo_module_config_(hlo_module_config) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();

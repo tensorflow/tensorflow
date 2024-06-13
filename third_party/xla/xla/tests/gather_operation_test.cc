@@ -778,7 +778,7 @@ XLA_TEST_F(GatherClientLibraryTest,
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   *execution_options.add_device_handles() = devices[0];
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
-  std::vector<xla::Client::XlaComputationInstance> computation_instances = {
+  std::vector<xla::XlaComputationInstance> computation_instances = {
       {computation,
        {operand_arg.get(), indices_arg.get()},
        execution_options,

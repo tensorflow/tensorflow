@@ -102,7 +102,6 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":xla_data_proto",
-        "//xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -262,18 +261,6 @@ xla_cc_test(
         ":test",
         ":types",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "service_interface",
-    srcs = [],
-    hdrs = ["service_interface.h"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":xla_data_proto_cc",
-        ":xla_proto_cc",
-        "@com_google_absl//absl/status",
     ],
 )
 

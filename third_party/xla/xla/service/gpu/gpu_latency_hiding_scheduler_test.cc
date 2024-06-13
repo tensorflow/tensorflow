@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+namespace xla::gpu {
+namespace {
 
-package xla.cpu;
+// TODO(b/346918304): Separate relevant tests from gpu_hlo_schedule_test.cc
+// into broader GPU scheduling related tests vs. tests related to components of
+// GPU LHS.
 
-import "xla/service/cpu/xla_framework.proto";
-import "xla/service/hlo.proto";
-import "xla/xla.proto";
-
-message CompilationResultProto {
-  HloModuleProtoWithConfig hlo_module = 1;
-  BufferAssignmentProto buffer_assignment = 2;
-  string entry_function_name = 3;
-  bytes obj_file = 4;
-}
+}  // namespace
+}  // namespace xla::gpu

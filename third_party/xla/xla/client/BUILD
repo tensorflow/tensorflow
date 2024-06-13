@@ -29,13 +29,12 @@ filegroup(
 
 cc_library(
     name = "global_data",
-    srcs = ["global_data.cc"],
     hdrs = ["global_data.h"],
     deps = [
-        "//xla:service_interface",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/service",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
@@ -77,12 +76,12 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:execution_options_util",
         "//xla:literal",
-        "//xla:service_interface",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/service",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

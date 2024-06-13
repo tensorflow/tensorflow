@@ -1226,7 +1226,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // Thunk emitter is responsible for building a Thunk sequence that will
     // resolved kernels in the compiled LLVM module and execute them together
     // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
-    ThunkEmitter thunk_emitter(&ir_emitter2, assignment.get());
+    ThunkEmitter thunk_emitter(&ir_emitter2, assignment.get(),
+                               target_machine_features, module->config());
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
