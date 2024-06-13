@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -137,6 +138,9 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   //
   // It may fail if the buffer data would be sent from/to an unaddressable
   // device.
+  //
+  // TODO(b/343992694): Remove this API in favor of `Client::CopyArrays`.
+  ABSL_DEPRECATED("Use `Client::CopyArrays` instead")
   virtual absl::StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
