@@ -1117,6 +1117,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   auto llvm_module =
       std::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
+  const DebugOptions& debug_options = module->config().debug_options();
+
   // We collect compiled object files (machine code) so we can export
   // CpuExecutable to an AOT compilation result.
   std::vector<std::string> obj_files;
@@ -1125,7 +1127,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
-      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      debug_options.xla_llvm_disable_expensive_passes(),
       options::SlpVectorizerDisabled(module->config()),
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
@@ -1152,15 +1154,21 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
-      module->config().debug_options().xla_embed_ir_in_executable();
+      debug_options.xla_embed_ir_in_executable();
+
+  // Select a memory scheduler optimized for concurrency vs minimal memory.
+  auto scheduler =
+      debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
+          ? BFSMemoryScheduler
+          : DFSMemoryScheduler;
 
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     ComputationSchedulerToModuleScheduler(
-                                         DFSMemoryScheduler)));
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                     ComputationSchedulerToModuleScheduler(scheduler)));
   TF_RETURN_IF_ERROR(module->set_schedule(schedule));
 
   // Run buffer allocation on the HLO graph.

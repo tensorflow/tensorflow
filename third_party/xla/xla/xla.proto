@@ -117,6 +117,12 @@ message DebugOptions {
   reserved 177;  // Was xla_cpu_use_xla_runtime
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // When true, XLA:CPU uses HLO module scheduler that is optimized for
+  // extracting concurrency at the cost of extra memory: we extend the live
+  // ranges of temporaries to allow XLA runtime to schedule independent
+  // operations in parallel on separate threads.
+  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
   // When true, "unsafe" mathematical optimizations are enabled. These
@@ -809,7 +815,7 @@ message DebugOptions {
 
   string xla_gpu_kernel_cache_file = 306;
 
-  // Next id: 307
+  // Next id: 308
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
