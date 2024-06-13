@@ -584,47 +584,30 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
 
   Value zero = b.create<ma::ConstantIndexOp>(0);
   Value one = b.create<ma::ConstantIndexOp>(1);
-  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
-  Value is_first_lane =
-      b.create<ma::CmpIOp>(ma::CmpIPredicate::eq, lane_id, zero);
   Value thread_id = state.thread_and_block_ids[0];
-  Value cst_true = b.create<ma::ConstantOp>(b.getOneAttr(b.getI1Type()));
-
   auto thread_indexing = GetBitcastMap(
       ShapeUtil::MakeShapeWithDescendingLayout(U8, {Product(num_threads_)}),
-      ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_), ctx);
+      ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
+      b.getContext());
   auto thread_ids =
       mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
 
+  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
   Value warp_id = b.create<ma::DivUIOp>(
       thread_ids[ReductionDimensions::kRowMinorReducedDimension],
       b.create<ma::ConstantIndexOp>(WarpSize()));
+  Value is_first_lane =
+      b.create<ma::CmpIOp>(ma::CmpIPredicate::eq, lane_id, zero);
+
   // The number of results per thread.
   int64_t vector_size = tile_sizes_per_thread_.back();
   Value vector_size_cst = b.create<ma::ConstantIndexOp>(vector_size);
 
   std::vector<int64_t> shared_tile_size;
-  std::function<SmallVector<Value>(Value, ImplicitLocOpBuilder&)>
-      shared_write_indices;
-  std::function<SmallVector<Value>(Value, ImplicitLocOpBuilder&)>
-      shared_read_indices;
-  Value shared_write_condition = cst_true;
-  Value shared_read_condition = cst_true;
   if (GetRowsPerWarp() == 1 && num_warps_row > 1) {
     CHECK_EQ(vector_size, 1);
-    constexpr int kKept = ReductionDimensions::kRowKeptDimension;
-    shared_tile_size = {num_threads_[kKept], num_warps_row};
-    shared_write_condition = is_first_lane;
-    shared_read_condition = b.create<ma::CmpIOp>(
-        ma::CmpIPredicate::ult,
-        thread_ids[ReductionDimensions::kRowMinorReducedDimension],
-        b.create<ma::ConstantIndexOp>(num_warps_row));
-    shared_write_indices = [&](Value, ImplicitLocOpBuilder&) {
-      return SmallVector<Value>{thread_ids[kKept], warp_id};
-    };
-    shared_read_indices = [&](Value, ImplicitLocOpBuilder&) {
-      return SmallVector<Value>{thread_ids[kKept], lane_id};
-    };
+    shared_tile_size = {num_threads_[ReductionDimensions::kRowKeptDimension],
+                        num_warps_row};
   }
 
   HloValueMap inits;
@@ -676,10 +659,11 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
             if (mlir::isa<mlir::VectorType>(value.getType())) {
               value = b.create<mlir::vector::ExtractOp>(value, vector_index);
             }
-            auto indices = shared_write_indices(vector_index, b);
+            SmallVector<Value> indices{
+                thread_ids[ReductionDimensions::kRowKeptDimension], warp_id};
             auto& tile = written[shared_index++];
-            tile = b.create<PredicatedInsertOp>(loc, shared_write_condition,
-                                                value, tile, indices);
+            tile = b.create<PredicatedInsertOp>(loc, is_first_lane, value, tile,
+                                                indices);
           }
         }
         b.create<mlir::scf::YieldOp>(written);
@@ -694,12 +678,18 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
     mlir::ImplicitLocOpBuilder b(loc, body_builder);
     int tile_index = 0;
     HloValueMap hero_values;
+    Value shared_read_condition = b.create<ma::CmpIOp>(
+        ma::CmpIPredicate::ult,
+        thread_ids[ReductionDimensions::kRowMinorReducedDimension],
+        b.create<ma::ConstantIndexOp>(num_warps_row));
     for (auto* hero : reductions) {
       // Load from shared memory.
       SmallVector<Value> reduced;
       for (auto init : inits[hero]) {
-        auto indices = shared_read_indices(vector_index, b);
+        SmallVector<Value> indices{
+            thread_ids[ReductionDimensions::kRowKeptDimension], lane_id};
         // If a warp didn't write anything, use the init values instead.
+
         reduced.push_back(
             b.create<PredicatedExtractOp>(shared_read_condition, init,
                                           synced_tiles[tile_index++], indices)
@@ -906,41 +896,28 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
 
   Value zero = b.create<ma::ConstantIndexOp>(0);
   Value one = b.create<ma::ConstantIndexOp>(1);
-  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
-  Value thread_id = state.thread_and_block_ids[0];
   Value cst_true = b.create<ma::ConstantOp>(b.getOneAttr(b.getI1Type()));
 
+  Value thread_id = state.thread_and_block_ids[0];
   auto thread_indexing = GetBitcastMap(
       ShapeUtil::MakeShapeWithDescendingLayout(U8, {Product(num_threads_)}),
-      ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_), ctx);
+      ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
+      b.getContext());
   auto thread_ids =
       mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
 
+  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
   Value warp_id = b.create<ma::DivUIOp>(
       thread_id, b.create<ma::ConstantIndexOp>(WarpSize()));
+
   // The number of results per thread.
   int64_t vector_size = tile_sizes_per_thread_.back();
   Value vector_size_cst = b.create<ma::ConstantIndexOp>(vector_size);
 
-  std::vector<int64_t> shared_tile_size;
-  std::function<SmallVector<Value>(Value, ImplicitLocOpBuilder&)>
-      shared_write_indices;
-  std::function<SmallVector<Value>(Value, ImplicitLocOpBuilder&)>
-      shared_read_indices;
-  Value shared_write_condition = cst_true;
-  Value shared_read_condition = cst_true;
-  shared_tile_size = {WarpSize(), WarpSize() * vector_size + 1};
+  std::vector<int64_t> shared_tile_size{WarpSize(),
+                                        WarpSize() * vector_size + 1};
   Value lane_id_times_v = b.create<ma::MulIOp>(lane_id, vector_size_cst);
   Value warp_id_times_v = b.create<ma::MulIOp>(warp_id, vector_size_cst);
-  shared_write_indices = [=](Value vector_index,
-                             ImplicitLocOpBuilder& builder) {
-    mlir::Value col = builder.create<ma::AddIOp>(lane_id_times_v, vector_index);
-    return SmallVector<Value>{warp_id, col};
-  };
-  shared_read_indices = [=](Value vector_index, ImplicitLocOpBuilder& builder) {
-    mlir::Value col = builder.create<ma::AddIOp>(warp_id_times_v, vector_index);
-    return SmallVector<Value>{lane_id, col};
-  };
 
   HloValueMap inits;
   const auto& reductions = reduction_heroes_[group_id];
@@ -962,11 +939,6 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
     outputs[state.OutputIndex(root, 0)] = accumulated[root].front();
   }
 
-  if (shared_tile_size.empty()) {
-    return EvaluateEpilogue(b, accumulated, std::move(outputs), state, group_id,
-                            ctx);
-  }
-
   SmallVector<Value> shared_tiles =
       state.AllocateSharedTiles(reductions, shared_tile_size);
   auto write_loop = b.create<mlir::scf::ForOp>(
@@ -981,10 +953,12 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
             if (mlir::isa<mlir::VectorType>(value.getType())) {
               value = b.create<mlir::vector::ExtractOp>(value, vector_index);
             }
-            auto indices = shared_write_indices(vector_index, b);
+            mlir::Value col =
+                b.create<ma::AddIOp>(lane_id_times_v, vector_index);
+            auto indices = {warp_id, col};
             auto& tile = written[shared_index++];
-            tile = b.create<PredicatedInsertOp>(loc, shared_write_condition,
-                                                value, tile, indices);
+            tile = b.create<PredicatedInsertOp>(loc, cst_true, value, tile,
+                                                indices);
           }
         }
         b.create<mlir::scf::YieldOp>(written);
@@ -1003,10 +977,11 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
       // Load from shared memory.
       SmallVector<Value> reduced;
       for (auto init : inits[hero]) {
-        auto indices = shared_read_indices(vector_index, b);
+        Value col = b.create<ma::AddIOp>(warp_id_times_v, vector_index);
+        SmallVector<Value> indices{lane_id, col};
         // If a warp didn't write anything, use the init values instead.
         reduced.push_back(
-            b.create<PredicatedExtractOp>(shared_read_condition, init,
+            b.create<PredicatedExtractOp>(cst_true, init,
                                           synced_tiles[tile_index++], indices)
                 .getResult());
       }

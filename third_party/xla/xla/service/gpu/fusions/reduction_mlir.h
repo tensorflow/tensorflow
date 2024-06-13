@@ -123,7 +123,6 @@ class MlirRowReductionFusion : public MlirReductionFusion {
 
  protected:
   int GetRowsPerWarp() const override;
-
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
 };
@@ -137,7 +136,6 @@ class MlirColumnReductionFusion : public MlirReductionFusion {
 
  protected:
   int GetRowsPerWarp() const override;
-
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
 };
