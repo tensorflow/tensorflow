@@ -36,6 +36,10 @@ Despecializer::Despecializer() : pipeline_("despecializer") {
       SubByteNormalization::REMOVE_ELEMENT_SIZE);
 }
 
+void Despecializer::AddAssumeGatherIndicesInBoundRewriteToCopy() {
+  pipeline_.AddPass<AssumeGatherIndicesInBoundRewriteToCopy>();
+}
+
 void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {
   pipeline_.AddPass<DeconstructReduceWindowToReduceBroadcast>();
 }
@@ -44,6 +48,34 @@ absl::StatusOr<bool> Despecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pipeline_.Run(module, execution_threads);
+}
+
+// AssumeGatherIndicesInBoundRewriteToCopy is needed to handle the
+// "AssumeGatherIndicesInBound" custom-call in a gather fusion.
+// "AssumeGatherIndicesInBound" custom-call is a
+// no-op that allows the compiler to optimize a gather fusion lowering. From a
+// reference platform perspective, i.e., for testing, this custom-call should be
+// a copy since no optimizations are performed and runtime is not the criterion
+// while obtaining reference results.
+absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::vector<HloInstruction*> candidates;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AssumeGatherIndicesInBound")) {
+        candidates.push_back(instruction);
+      }
+    }
+  }
+  for (HloInstruction* gather_indices : candidates) {
+    auto computation = gather_indices->parent();
+    auto copy = computation->AddInstruction(
+        HloInstruction::CreateUnary(gather_indices->shape(), HloOpcode::kCopy,
+                                    gather_indices->mutable_operand(0)));
+    TF_CHECK_OK(computation->ReplaceInstruction(gather_indices, copy));
+  }
+  return !candidates.empty();
 }
 
 absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
