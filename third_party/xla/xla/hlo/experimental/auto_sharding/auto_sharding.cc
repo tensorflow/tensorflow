@@ -366,9 +366,8 @@ void FollowArrayOrTokenStrategyGroup(
 
 std::unique_ptr<StrategyGroup> HandlePartialReduce(
     const HloInstruction* ins, const size_t instruction_id,
-    const bool have_memory_cost, StrategyGroups& strategy_groups,
-    const ClusterEnvironment& cluster_env, StrategyMap& strategy_map,
-    const CallGraph& call_graph) {
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    StrategyMap& strategy_map, const CallGraph& call_graph) {
   absl::StatusOr<int64_t> reduction_dim = GetPartialReduceReductionDim(ins);
   CHECK_OK(reduction_dim);
   const Shape& shape = ins->shape();

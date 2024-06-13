@@ -516,7 +516,6 @@ tpu_py_strict_test(
         "tpu_initialization_test.py",
     ],
     disable_mlir_bridge = False,
-    disable_tfrt = False,
     disable_v3_4chips = False,
     python_version = "PY3",
     srcs_version = "PY3",

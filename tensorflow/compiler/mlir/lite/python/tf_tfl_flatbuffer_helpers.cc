@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -349,7 +350,7 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, SavedModelBundle* saved_model_bundle,
+    std::string* result, std::unique_ptr<SavedModelBundle> saved_model_bundle,
     const PyFunctionLibrary* quantization_py_function_lib) {
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
@@ -374,8 +375,9 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
-      saved_model_tags, model_flags.saved_model_dir(), saved_model_bundle,
-      result, /*serialize_stablehlo_ops=*/false, quantization_py_function_lib);
+      saved_model_tags, model_flags.saved_model_dir(),
+      std::move(saved_model_bundle), result, /*serialize_stablehlo_ops=*/false,
+      quantization_py_function_lib);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

@@ -424,7 +424,7 @@ module {
   }
 
   // CHECK: func private @f_callee(%[[ARG0:.*]]: tensor<0xf32>) -> tensor<0xf32>
-  // CHECK-SAME: tf._input_shapes = [#tf_type.shape<0>]
+  // CHECK-SAME: tf._input_shapes = [#tf_type.shape<00>]
   func.func private @f_callee(%arg0: tensor<0xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<0xf32> attributes {tf._input_shapes = [#tf_type.shape<0>, #tf_type.shape<>]} {
     %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource>) -> tensor<0xf32>
     %1 = "tf.AddV2"(%arg0, %0) : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>

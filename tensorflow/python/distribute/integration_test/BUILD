@@ -73,7 +73,6 @@ tpu_py_strict_test(
     srcs = ["tpu_memory_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = True,
-    disable_tfrt = False,
     disable_v2 = True,
     python_version = "PY3",
     tags = ["no_oss"],

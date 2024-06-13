@@ -1501,10 +1501,6 @@ tpu_py_strict_test(
     name = "config_test_tpu",
     size = "small",
     srcs = ["config_test.py"],
-    # copybara:uncomment_begin
-    # args = ["--tpu_use_tfrt=false"],
-    # copybara:uncomment_end
-    disable_tfrt = True,  # TODO(b/291666911): Update this test to call initialize_tpu_system
     main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.
