@@ -1,5 +1,13 @@
 # Integrate image searchers
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Image search allows searching for similar images in a database of images. It
 works by embedding the search query into a high-dimensional vector representing
 the semantic meaning of the query, followed by similarity search in a

@@ -1,5 +1,13 @@
 # Integrate text searchers
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Text search allows searching for semantically similar text in a corpus. It works
 by embedding the search query into a high-dimensional vector representing the
 semantic meaning of the query, followed by similarity search in a predefined,

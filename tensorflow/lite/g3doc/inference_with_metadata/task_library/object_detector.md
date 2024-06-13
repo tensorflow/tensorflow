@@ -1,5 +1,13 @@
 # Integrate object detectors
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Object detectors can identify which of a known set of objects might be present
 and provide information about their positions within the given image or a video
 stream. An object detector is trained to detect the presence and location of

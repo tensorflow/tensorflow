@@ -23,6 +23,7 @@ upper_tabs:
 
       - heading: "Libraries and tools"
       - title: "Task Library"
+        status: deprecated
         section:
         - title: "Overview"
           path: /lite/inference_with_metadata/task_library/overview
@@ -235,7 +236,7 @@ upper_tabs:
 
       - heading: "Modify models"
       - title: "Model Maker"
-        status: experimental
+        status: deprecated
         section:
         - title: "Overview"
           path: /lite/models/modify/model_maker
@@ -252,7 +253,6 @@ upper_tabs:
           path: /lite/models/modify/model_maker/question_answer
         - title: "Text search"
           path: /lite/models/modify/model_maker/text_searcher
-          status: New
         - heading: "Audio"
         - title: "Audio classification"
           path: /lite/models/modify/model_maker/audio_classification

@@ -81,9 +81,9 @@ absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst,
                                const DeviceMemoryBase& gpu_src, uint64_t size) {
   if (GpuDriver::AsynchronousMemcpyD2D(
           parent_->gpu_context(),
-          reinterpret_cast<GpuDevicePtr>(gpu_dst->opaque()),
-          reinterpret_cast<GpuDevicePtr>(gpu_src.opaque()), size,
-          gpu_stream())) {
+          reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_dst->opaque())),
+          reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())),
+          size, gpu_stream())) {
     return absl::OkStatus();
   }
 
@@ -105,7 +105,8 @@ absl::Status GpuStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                uint64_t size) {
   bool ok = GpuDriver::AsynchronousMemcpyD2H(
       parent_->gpu_context(), host_dst,
-      reinterpret_cast<GpuDevicePtr>(gpu_src.opaque()), size, gpu_stream());
+      reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())), size,
+      gpu_stream());
   // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
   // absl::Status.
   if (!ok) {

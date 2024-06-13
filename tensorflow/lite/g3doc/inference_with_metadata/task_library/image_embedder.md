@@ -1,5 +1,13 @@
 # Integrate image embedders
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Image embedders allow embedding images into a high-dimensional feature vector
 representing the semantic meaning of an image, which can then be compared with
 the feature vector of other images to evaluate their semantic similarity.
