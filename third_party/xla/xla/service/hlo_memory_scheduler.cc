@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_value.h"
@@ -528,7 +531,68 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
                           &memory_by_computation));
   }
   return sequence;
-}  // namespace xla
+}
+
+absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
+    HloComputation* computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_function,
+    const absl::flat_hash_map<const HloComputation*, int64_t>&
+        memory_by_computation,
+    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
+  // Index of HloInstruction in the `computation`.
+  absl::flat_hash_map<const HloInstruction*, int64_t> inst_index;
+
+  // Pending dependencies for each instruction. Indexed by `inst_index`.
+  std::vector<int64_t> inst_deps(computation->instruction_count(), 0);
+
+  // BFS queue.
+  std::queue<HloInstruction*> ready_queue;
+
+  // Drops the pending counter for `inst` and pushes it to the ready queue if
+  // it is ready.
+  auto update_queue = [&](HloInstruction* inst) {
+    int64_t index = inst_index.at(inst);
+    CHECK_GE(--inst_deps[index], 0);
+    if (inst_deps[index] == 0) {
+      ready_queue.push(inst);
+    }
+  };
+
+  // Initialize ready queue with instructions that have no incoming edges.
+  for (HloInstruction* inst : computation->instructions()) {
+    size_t index = inst_index.size();
+    inst_index[inst] = index;
+    inst_deps[index] =
+        inst->unique_operands().size() + inst->control_predecessors().size();
+    if (inst_deps[index] == 0) {
+      ready_queue.push(inst);
+    }
+  }
+
+  // Build the schedule by visiting the ready queue in BFS order.
+  HloInstructionSequence sequence;
+  while (!ready_queue.empty()) {
+    HloInstruction* inst = ready_queue.front();
+    ready_queue.pop();
+
+    for (HloInstruction* user : inst->users()) update_queue(user);
+    for (HloInstruction* succ : inst->control_successors()) update_queue(succ);
+
+    sequence.push_back(inst);
+  }
+
+  CHECK_EQ(sequence.size(), computation->instruction_count());
+  if (peak_memory) {
+    TF_ASSIGN_OR_RETURN(
+        *peak_memory, HeapSimulator::MinimumMemoryForComputation(
+                          *computation, sequence, alias_analysis, size_function,
+                          &memory_by_computation));
+  }
+
+  return sequence;
+}
 
 ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
     const MemorySchedulerAlgorithm& computation_scheduler,

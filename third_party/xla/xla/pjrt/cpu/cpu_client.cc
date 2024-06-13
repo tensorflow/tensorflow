@@ -1598,6 +1598,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                 cpu::ToCopyableTask(std::move(task)));
           });
 
+      tsl::profiler::TraceMe trace(
+          "ThunkExecutor::Execute (wait for completion)");
       tsl::BlockUntilReady(execute_event);
       if (execute_event.IsError()) return execute_event.GetError();
 
@@ -1717,6 +1719,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                       cpu::ToCopyableTask(std::move(task)));
                 });
 
+            tsl::profiler::TraceMe trace(
+                "ThunkExecutor::Execute (wait for completion)");
             tsl::BlockUntilReady(execute_event);
             status = execute_event.IsError() ? execute_event.GetError()
                                              : absl::OkStatus();
