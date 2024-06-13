@@ -59,7 +59,7 @@ bool TritonTest::SkipBF16Tests() {
     auto rcc = device_desc().rocm_compute_capability();
     return !rcc.has_bf16_dtype_support();
   }
-  return GetCudaComputeCapability().IsAtLeast(
+  return !GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
 }
 
