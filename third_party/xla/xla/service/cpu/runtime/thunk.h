@@ -151,7 +151,9 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
   ThunkSequence() = default;
-  explicit ThunkSequence(std::unique_ptr<Thunk> thunk);
+
+  // Returns an empty thunk sequence.
+  static ThunkSequence Empty() { return ThunkSequence(); }
 
   // Returns a thunk sequence that contains a single thunk of type `T`. Uses
   // factory constructor `T::Create()` to create the thunk.
@@ -163,16 +165,13 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
     return ThunkSequence(std::move(thunk));
   }
 
-  // Returns an empty thunk sequence.
-  static ThunkSequence Empty() { return ThunkSequence(); }
-
-  tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
-      const Thunk::ExecuteParams& params);
-
   using BufferUses = Thunk::BufferUses;
   BufferUses buffer_uses() const;
 
   void Append(ThunkSequence other);
+
+ private:
+  explicit ThunkSequence(std::unique_ptr<Thunk> thunk);
 };
 
 }  // namespace xla::cpu

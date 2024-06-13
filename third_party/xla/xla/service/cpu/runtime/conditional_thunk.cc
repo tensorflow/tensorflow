@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -34,17 +36,24 @@ namespace xla::cpu {
 absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::Create(
     Info info, BufferAllocation::Slice branch_index_buffer,
     std::vector<ThunkSequence> branch_sequences) {
+  std::vector<ThunkExecutor> branch_executors;
+  branch_executors.reserve(branch_sequences.size());
+  for (auto& branch_sequence : branch_sequences) {
+    TF_ASSIGN_OR_RETURN(auto branch_executor,
+                        ThunkExecutor::Create(std::move(branch_sequence)));
+    branch_executors.push_back(std::move(branch_executor));
+  }
   return absl::WrapUnique(new ConditionalThunk(std::move(info),
                                                std::move(branch_index_buffer),
-                                               std::move(branch_sequences)));
+                                               std::move(branch_executors)));
 }
 
 ConditionalThunk::ConditionalThunk(Info info,
                                    BufferAllocation::Slice branch_index_buffer,
-                                   std::vector<ThunkSequence> branch_sequences)
+                                   std::vector<ThunkExecutor> branch_executors)
     : Thunk(Kind::kConditional, std::move(info)),
       branch_index_buffer_(branch_index_buffer),
-      branch_sequences_(std::move(branch_sequences)) {}
+      branch_executors_(std::move(branch_executors)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
     const ExecuteParams& params) {
@@ -53,15 +62,15 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_));
 
   VLOG(3) << absl::StreamFormat("Conditional: #branches=%d",
-                                branch_sequences_.size());
+                                branch_executors_.size());
   VLOG(3) << absl::StreamFormat("  branch index: %s (%p)",
                                 branch_index_buffer_.ToString(),
                                 branch_index_data.opaque());
 
   // Default case for out-of-bounds branch index is to execute last branch.
   auto clamp = [&](int32_t branch_index) -> int32_t {
-    return (branch_index < 0 || branch_index >= branch_sequences_.size())
-               ? branch_sequences_.size() - 1
+    return (branch_index < 0 || branch_index >= branch_executors_.size())
+               ? branch_executors_.size() - 1
                : branch_index;
   };
 
@@ -72,14 +81,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
   if (branch_index_buffer_.size() == sizeof(bool)) {
     bool* pred = reinterpret_cast<bool*>(branch_index_data.opaque());
     VLOG(3) << "  loaded pred[] branch index: " << *pred;
-    return branch_sequences_.at(*pred ? 0 : 1).Execute(params);
+    return branch_executors_.at(*pred ? 0 : 1).Execute(params);
   }
 
   // Branch index is s32[].
   if (branch_index_buffer_.size() == sizeof(int32_t)) {
     int32_t* index = reinterpret_cast<int32_t*>(branch_index_data.opaque());
     VLOG(3) << "  loaded s32[] branch index: " << *index;
-    return branch_sequences_.at(clamp(*index)).Execute(params);
+    return branch_executors_.at(clamp(*index)).Execute(params);
   }
 
   return Internal("Unsupported branch index buffer size %d",
@@ -88,11 +97,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
 
 ConditionalThunk::BufferUses ConditionalThunk::buffer_uses() const {
   BufferUses buffer_uses;
-  for (const auto& branch_sequence : branch_sequences_) {
-    for (const auto& thunk : branch_sequence) {
-      BufferUses uses = thunk->buffer_uses();
-      buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
-    }
+  for (const auto& branch_executor : branch_executors_) {
+    BufferUses uses = branch_executor.buffer_uses();
+    buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
   }
   return buffer_uses;
 }

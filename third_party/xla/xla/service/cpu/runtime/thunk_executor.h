@@ -40,6 +40,7 @@ namespace xla::cpu {
 // thunks concurrently in a given thread pool.
 class ThunkExecutor {
  public:
+  using BufferUses = Thunk::BufferUses;
   using ExecuteEvent = Thunk::ExecuteEvent;
 
   // It's up to the caller to provide the task runner that will execute tasks
@@ -79,6 +80,8 @@ class ThunkExecutor {
 
   absl::Span<const NodeId> source() const { return source_; }
   absl::Span<const NodeId> sink() const { return sink_; }
+
+  BufferUses buffer_uses() const { return thunk_sequence_.buffer_uses(); }
 
   std::string ToString() const;
 

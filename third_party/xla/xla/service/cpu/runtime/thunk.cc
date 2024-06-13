@@ -84,17 +84,6 @@ void ThunkSequence::Append(ThunkSequence other) {
   }
 }
 
-tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkSequence::Execute(
-    const Thunk::ExecuteParams& params) {
-  VLOG(2) << "Execute thunk sequence of size " << size();
-  for (auto& thunk : *this) {
-    auto event = thunk->Execute(params);
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) return event.GetError();
-  }
-  return Thunk::OkExecuteEvent();
-}
-
 ThunkSequence::BufferUses ThunkSequence::buffer_uses() const {
   BufferUses buffer_uses;
   for (auto& thunk : *this) {

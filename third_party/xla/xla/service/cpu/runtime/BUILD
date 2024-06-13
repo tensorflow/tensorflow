@@ -131,10 +131,12 @@ cc_library(
     hdrs = ["call_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_executor",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -145,6 +147,7 @@ cc_library(
     hdrs = ["conditional_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_executor",
         "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor",
@@ -335,6 +338,7 @@ cc_library(
     hdrs = ["while_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_executor",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor",
