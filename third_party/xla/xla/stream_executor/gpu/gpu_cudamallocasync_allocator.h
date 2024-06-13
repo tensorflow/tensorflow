@@ -50,26 +50,37 @@ namespace stream_executor {
 //
 // We configure cudaMallocAsync to grow when more memory is needed
 // instead of preallocating everything up front and to keep a local
-// pool up to pool_size bytes that is never released to other processes.
+// pool up to release_threshold bytes that is never released to other processes.
 // So no other process will "steal" the GPU memory already used by the
 // current process. This is to speed up execution and prevent crashes
 // of long-running jobs. Use `reserve_memory=true` if you want to
-// preallocate the full pool_size. You can also use the environment
+// preallocate the full release_threshold. You can also use the environment
 // variable `TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=nb_bytes` to preallocate
 // that amount of memory. `TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1` is a
 // special value that preallocate all what the BFC memory allocator
 // would have allocated. This is useful when benchmarking as it doesn't
 // change when driver allocations are done.
 //
-// Here, the pool_size isn't the absolute max as for [Gpu]BFCAllocator.
+// Here, the release_threshold isn't the absolute max as for [Gpu]BFCAllocator.
 // The pool can grow above that up to the total GPU memory.  But the
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
  public:
+  // API that uses the default memory pool for cuda malloc async
   explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
-                                       size_t pool_size,
+                                       size_t release_threshold,
                                        bool reserve_memory = false,
                                        bool compute_stats = true);
+
+  // Construct the allocator that allows the user to instantiate with a new cuda
+  // memory pool.
+  explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
+                                       bool create_new_pool,
+                                       size_t new_pool_size,
+                                       size_t release_threshold = 0,
+                                       bool reserve_memory = false,
+                                       bool compute_stats = true);
+
   ~GpuCudaMallocAsyncAllocator() override;
   std::string Name() override { return name_; }
   void* AllocateRaw(size_t alignment,
@@ -120,6 +131,8 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   std::string name_;
 
   bool reserve_memory_;
+
+  bool create_new_pool_;
 
   GpuCudaMallocAsyncAllocator(const GpuCudaMallocAsyncAllocator&) = delete;
   void operator=(const GpuCudaMallocAsyncAllocator&) = delete;
