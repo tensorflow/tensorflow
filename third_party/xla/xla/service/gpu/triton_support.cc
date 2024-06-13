@@ -51,22 +51,34 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   return false;
 }
 
-// Data types that are supported by the Triton emitters.
+// Types that are supported by Triton as dot output.
 //
 // BF16 is supported in a sense that all operations on it are implemented
 // through F32 and converts have to be inserted into the HLO graph, but
 // they can be missing during fusion.
-// TODO(b/266862493): Support more data types (F8, F64, etc.).
-bool IsTritonSupportedDataType(PrimitiveType type,
-                               const se::GpuComputeCapability& gpu_version) {
-  switch (type) {
-    case PRED:
-    case S8:
-    case S16:
-    case S32:
+bool IsTritonSupportedDotOutputType(
+    const PrimitiveType t, const se::GpuComputeCapability& gpu_version) {
+  switch (t) {
     case F16:
     case F32:
       return true;
+    case F8E5M2:
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return cc.IsAtLeastAmpere();
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return false;
+                                       }},
+                        gpu_version);
+
+    case F8E4M3FN:
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return cc.IsAtLeastHopper();
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return false;
+                                       }},
+                        gpu_version);
     case BF16:
       return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
                                          return true;
@@ -75,6 +87,24 @@ bool IsTritonSupportedDataType(PrimitiveType type,
                                          return cc.has_bf16_dtype_support();
                                        }},
                         gpu_version);
+    default:
+      return false;
+  }
+};
+
+// Data types that are supported by the Triton emitters.
+// TODO(b/266862493): Support more data types (F8, F64, etc.).
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               const se::GpuComputeCapability& gpu_version) {
+  if (IsTritonSupportedDotOutputType(type, gpu_version)) {
+    return true;
+  }
+  switch (type) {
+    case PRED:
+    case S8:
+    case S16:
+    case S32:
+      return true;
     default:
       return false;
   }
@@ -219,26 +249,9 @@ CodegenDecision CanTritonHandleGEMM(
     }
   }
 
-  auto supported_output_type = [&](const PrimitiveType t) {
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        if (cuda_compute_capability) {
-          return true;
-        }
-        if (rocm_compute_capability) {
-          return rocm_compute_capability->has_bf16_dtype_support();
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-
   // TODO(b/266862493): Support more output types.
-  if (!supported_output_type(dot.shape().element_type())) {
+  if (!IsTritonSupportedDotOutputType(dot.shape().element_type(),
+                                      gpu_version)) {
     return "Unsupported output data type for Dot op.";
   }
 

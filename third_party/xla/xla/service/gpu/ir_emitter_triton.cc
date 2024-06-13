@@ -187,6 +187,13 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
       return b.getI1Type();
     case S8:
       return b.getI8Type();
+    case F8E5M2:
+      return b.getFloat8E5M2Type();
+    case F8E4M3FN:
+      // TODO(b/345700241) Note that we return UZ type as Triton mistakenly uses
+      // this type for F8E4M3FN. The mapping must be changed when it's fixed in
+      // Triton.
+      return b.getFloat8E4M3FNUZType();
     default:
       LOG(FATAL) << "This type is not supported yet: "
                  << primitive_util::LowercasePrimitiveTypeName(t);
@@ -293,8 +300,13 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     // because LLVM doesn't support casts from/to FP8.
     // TODO(b/266862493): Add end-to-end test once FP8 support lands in XLA as
     // we can't test the code below without patching the feature.
-    if (IsFp8Type(src_element_ty) || IsFp8Type(dst_element_ty)) {
+    if (IsFp8Type(src_element_ty)) {
       return b.create<mt::FpToFpOp>(dst_ty, value);
+    }
+    if (IsFp8Type(dst_element_ty)) {
+      return b.create<mt::FpToFpOp>(
+          dst_ty, value,
+          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
     }
 
     if (src_fp_element_ty.getFPMantissaWidth() >
@@ -1324,6 +1336,13 @@ absl::Status UncompilableMatmul(absl::string_view explanation) {
   return s;
 }
 
+bool IsFp8Matmul(const HloDotInstruction* dot_instr) {
+  return absl::c_all_of(std::array<int, 2>{0, 1}, [&](int idx) {
+    return primitive_util::IsF8Type(
+        dot_instr->operand(idx)->shape().element_type());
+  });
+}
+
 class MatMulEmitterHelper {
  public:
   MatMulEmitterHelper(absl::string_view libdevice_path,
@@ -1349,6 +1368,14 @@ class MatMulEmitterHelper {
 
     if (algorithm == PrecisionConfig::ALG_UNSET) {
       Type dot_output_ty = TritonType(b_, dot_instr_->shape().element_type());
+      // The code below assumes that lhs and rhs have the same type. However
+      // it's not always the case with fp8 matmuls, e.g. e4m3×e5m2 is supported
+      // at the hardware level. NVidia GPU currently only supports f32
+      // accumulator for such matmuls.
+      if (IsFp8Matmul(dot_instr_)) {
+        return b_.getF32Type();
+      }
+
       // Data type of dot() immediate inputs.
       Type dot_input_ty = [&] {
         const Type lhs_ty =
@@ -2301,10 +2328,15 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
           IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
               ? mt::InputPrecision::TF32
               : mt::InputPrecision::IEEE;
+      // For fp8 matmuls, disable accumulator promotion, as it's what cublas
+      // does. It may make sense to enable frequent accumulator promotion at
+      // higher matmul precisions set in the config.
+      int max_num_imprecise_acc =
+          IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
       accumulator_next =
           b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
                               /*inputPrecision=*/input_precision,
-                              /*maxNumImpreciseAcc=*/0);
+                              /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
     }
     iter_args_next.push_back(accumulator_next);
 

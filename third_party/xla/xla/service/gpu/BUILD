@@ -1269,6 +1269,7 @@ xla_test(
     srcs = if_gpu_is_configured(["triton_support_test.cc"]),
     backends = [
         "gpu_a100",
+        "gpu_h100",
         "gpu_amd_any",
     ],
     deps = [
@@ -1315,6 +1316,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

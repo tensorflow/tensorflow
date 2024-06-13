@@ -15,8 +15,6 @@ limitations under the License.
 
 // TODO(b/343158720): Simplify the tests in this file after a generic emitter
 // has landed.
-#include "xla/service/gpu/triton_support.h"
-
 #include <memory>
 #include <string>
 #include <tuple>
@@ -24,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/gpu/triton_support.h"
 #include "xla/service/gpu/triton_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -52,63 +52,108 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using DotTest = TritonSupportTestWithParam;
-
-TEST_P(DotTest, IsTritonSupportedDot) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
-    GTEST_SKIP();
+bool CombinationCrashesTriton(
+    PrimitiveType lhs_type, PrimitiveType rhs_type, PrimitiveType output_type,
+    se::CudaComputeCapability cuda_compute_capability) {
+  if (!cuda_compute_capability.IsAtLeastHopper() &&
+      (lhs_type == F8E4M3FN || rhs_type == F8E4M3FN ||
+       output_type == F8E4M3FN)) {
+    return true;
   }
+  return false;
+}
 
-  const std::string kHloTestTemplate = R"(
-triton_computation {
+class DotTest : public TritonSupportTestWithParam {
+ protected:
+  void TestDotWithTypes(PrimitiveType lhs_type, PrimitiveType rhs_type,
+                        PrimitiveType output_type) {
+    if (lhs_type == BF16 && SkipBF16Tests()) {
+      GTEST_SKIP();
+    }
+    const HloOpcode opcode = HloOpcode::kDot;
+    const std::string lhs =
+        primitive_util::LowercasePrimitiveTypeName(lhs_type);
+    const std::string rhs =
+        primitive_util::LowercasePrimitiveTypeName(rhs_type);
+    const std::string output =
+        primitive_util::LowercasePrimitiveTypeName(output_type);
+
+    const std::string kHloTestTemplate = R"(
+triton_gemm___computation {
   parameter_0 = $0[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT dot = $0[92,63]{1,0} $1(parameter_0, parameter_1),
+  parameter_1 = $1[11,63]{1,0} parameter(1)
+  ROOT dot = $2[92,63]{1,0} $3(parameter_0, parameter_1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
   parameter_0 = $0[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT triton_op = $0[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_computation,
+  parameter_1 = $1[11,63]{1,0} parameter(1)
+  ROOT triton_gemm = $2[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_gemm___computation,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
-  // TODO(b/345763510): Change the kind above to "__triton" once dots are
-  // supported.
-  const std::string hlo_test = absl::Substitute(
-      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
-      HloOpcodeString(opcode));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_test));
-  const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
-  const HloComputation* computation = fusion->fused_instructions_computation();
-  ASSERT_TRUE(computation != nullptr);
-  const HloInstruction* instr =
-      hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
-  if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
-    TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
-    // TODO(b/345763510): Change the the line below to a file check on generated
-    // code once dots are supported.
-    EXPECT_TRUE(RunAndCompareNoHloPasses(
-        std::move(module), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
-  } else {
-    const se::DeviceDescription dev_info =
-        TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-    EXPECT_THAT(TritonWrapper(*TritonFusionAnalysis::Execute(*computation),
-                              "test_fn", fusion, GetCudaComputeCapability(),
-                              dev_info, config_, /*output_tile_sizes=*/{},
-                              &llvm_module_, &EmitMatMul, mlir_context_),
-                tsl::testing::StatusIs(
-                    absl::StatusCode::kInternal,
-                    ::testing::HasSubstr("Failed to compile Triton kernel")));
+    const std::string hlo_test = absl::Substitute(
+        kHloTestTemplate, lhs, rhs, output, HloOpcodeString(opcode));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_test));
+    const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+    const HloComputation* computation =
+        fusion->fused_instructions_computation();
+    ASSERT_TRUE(computation != nullptr);
+    const HloInstruction* instr =
+        hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
+    if (IsTritonSupportedInstruction(*instr, GetCudaComputeCapability())) {
+      TF_EXPECT_OK(ApplyFloatNormalization(module.get()));
+      EXPECT_TRUE(RunAndCompareNoHloPasses(
+          std::move(module),
+          ErrorSpec{/*aabs=*/primitive_util::IsF8Type(lhs_type) ? 1.0 : 2e-4,
+                    /*arel=*/2e-4}));
+    } else {
+      if (CombinationCrashesTriton(lhs_type, rhs_type, output_type,
+                                   GetCudaComputeCapability())) {
+        return;
+      }
+      const se::DeviceDescription dev_info =
+          TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      EXPECT_THAT(TritonWrapper(*TritonFusionAnalysis::Execute(*computation),
+                                "test_fn", fusion, GetCudaComputeCapability(),
+                                dev_info, config_, /*output_tile_sizes=*/{},
+                                &llvm_module_, &EmitMatMul, mlir_context_),
+                  tsl::testing::StatusIs(
+                      absl::StatusCode::kInternal,
+                      ::testing::HasSubstr("Failed to compile Triton kernel")));
+    }
+  }
+};
+
+TEST_P(DotTest, IsTritonSupportedExecutesCorrectlyForDot) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  std::tie(data_type, opcode) = GetParam();
+  CHECK_EQ(opcode, HloOpcode::kDot);
+  TestDotWithTypes(data_type, data_type, data_type);
+
+  switch (data_type) {
+    case F8E5M2:
+      TestDotWithTypes(F8E5M2, F8E4M3FN, F32);
+      TestDotWithTypes(F8E5M2, F8E5M2, F16);
+      TestDotWithTypes(F8E5M2, F8E5M2, F32);
+      break;
+    case F8E4M3FN:
+      TestDotWithTypes(F8E4M3FN, F8E5M2, F32);
+      TestDotWithTypes(F8E4M3FN, F8E4M3FN, F16);
+      TestDotWithTypes(F8E4M3FN, F8E4M3FN, F32);
+      break;
+    default:
+      break;
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(DotTestTestSuite, DotTest,
-                         ::testing::Combine(::testing::Values(F16, F32, BF16),
+                         ::testing::Combine(::testing::Values(F16, F32, BF16,
+                                                              F8E5M2, F8E4M3FN),
                                             ::testing::Values(HloOpcode::kDot)),
                          TritonSupportTestParamsToString);
 

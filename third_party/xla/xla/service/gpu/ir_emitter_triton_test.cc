@@ -5498,6 +5498,43 @@ CHECK-NOT:  inputPrecision = tf32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonFilecheckTest, Fp8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
+  }
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0.1 = f8e4m3fn[1600,1600]{1,0} parameter(0)
+  parameter_1.1 = f8e4m3fn[1600,1600]{1,0} parameter(1)
+  transpose.2 = f8e4m3fn[1600,1600]{0,1} transpose(parameter_1.1), dimensions={1,0}
+  ROOT dot.3 = f16[1600,1600]{1,0} dot(parameter_0.1, transpose.2),
+                lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  parameter_1.2 = f8e4m3fn[1600,1600]{1,0} parameter(1)
+  parameter_0.2 = f8e4m3fn[1600,1600]{1,0} parameter(0)
+  ROOT gemm_fusion_dot.2.0 = f16[1600,1600]{1,0} fusion(parameter_0.2, parameter_1.2),
+       kind=kCustom, calls=triton_dot,
+       backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+       "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"32","block_k":"64","split_k":"1",
+          "num_stages":"4","num_warps":"4","num_ctas":"1"}},
+        "force_earliest_schedule":false}
+})";
+
+  TritonGemmConfig config(128, 32, 64, 1, 4, 4);
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
+      hlo_text, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonFilecheckTest, TestGenericEmitterReductionFusion) {
   const std::string kHloText = R"(
 HloModule t
