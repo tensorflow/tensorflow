@@ -40,8 +40,8 @@ namespace xla::cpu {
 // multiple LLVM modules compiled to object files).
 class ThunkEmitter {
  public:
-  ThunkEmitter(IrEmitter2* ir_emitter,
-               const BufferAssignment* buffer_assignment,
+  ThunkEmitter(IrEmitter2& ir_emitter,
+               const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModuleConfig& hlo_module_config);
 
@@ -106,8 +106,8 @@ class ThunkEmitter {
   absl::StatusOr<HostKernelAllocationSlices> GetHostKernelAllocationSlices(
       const HloInstruction* instruction);
 
-  IrEmitter2* ir_emitter_;
-  const BufferAssignment* buffer_assignment_;
+  IrEmitter2& ir_emitter_;
+  const BufferAssignment& buffer_assignment_;
 
   const TargetMachineFeatures& target_machine_features_;
   const HloModuleConfig& hlo_module_config_;
