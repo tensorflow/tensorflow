@@ -7112,22 +7112,16 @@ class Subgraph {
 
     bool dynamically_quantized = (input_tensor.type == kTfLiteFloat32 &&
                                   filter_tensor.type == kTfLiteInt8);
-    if (dynamically_quantized) {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
-          delegate, logging_context, filter_tensor,
-          /*expected_quantized_dimension=*/0, filter_tensor_index, node_index));
-    } else {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
-          delegate, logging_context, filter_tensor, filter_tensor_index,
-          node_index));
-    }
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
+        delegate, logging_context, filter_tensor,
+        /*expected_quantized_dimension=*/0, filter_tensor_index, node_index));
 
     uint32_t xnnpack_tensor_bias = XNN_INVALID_VALUE_ID;  // "No bias".
     if (use_bias) {
       const int bias_tensor_index = node->inputs->data[3];
       if (bias_tensor_index != kTfLiteOptionalTensor) {
         const TfLiteTensor& bias_tensor = tensors[bias_tensor_index];
-        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt32Type(
             delegate, logging_context, bias_tensor, bias_tensor_index,
             node_index));
         TF_LITE_ENSURE_STATUS(
