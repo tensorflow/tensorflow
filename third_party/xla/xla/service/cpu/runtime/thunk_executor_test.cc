@@ -200,6 +200,27 @@ TEST(ThunkExecutorTest, Ordering) {
   EXPECT_THAT(executor.sink(), ElementsAre(2));
 }
 
+TEST(ThunkExecutorTest, TransitiveReduction) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/40);
+
+  ThunkSequence sequence;
+  sequence.push_back(AddI32Thunk::Create("a", {slice}, {slice}));
+  sequence.push_back(AddI32Thunk::Create("b", {slice}, {slice}));
+  sequence.push_back(AddI32Thunk::Create("c", {slice}, {slice}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
+                          ThunkExecutor::Create(std::move(sequence)));
+
+  EXPECT_THAT(executor.source(), ElementsAre(0));
+  EXPECT_THAT(executor.sink(), ElementsAre(2));
+
+  EXPECT_THAT(executor.node_def(0).out_edges, ElementsAre(1));
+  EXPECT_THAT(executor.node_def(1).in_edges, ElementsAre(0));
+  EXPECT_THAT(executor.node_def(1).out_edges, ElementsAre(2));
+  EXPECT_THAT(executor.node_def(2).in_edges, ElementsAre(1));
+}
+
 TEST(ThunkExecutorTest, Execute) {
   BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
 
