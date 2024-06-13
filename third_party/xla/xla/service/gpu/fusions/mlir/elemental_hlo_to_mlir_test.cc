@@ -389,6 +389,33 @@ TEST_F(ElementalHloToMlirTest, Gather) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, GatherWithImplicitVectorDim) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      operand = f32[33,34] parameter(0)
+      indices = s32[1806] parameter(1)
+      ROOT r = f32[1806,7,8] gather(operand, indices), offset_dims={1,2},
+                                 collapsed_slice_dims={}, start_index_map={0},
+                                 index_vector_dim=1, slice_sizes={7,8}
+    })",
+                   R"(
+    // CHECK:      @main_r(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<33x34xf32>,
+    // CHECK-SAME:     %[[ARG1:.*]]: tensor<1806xi32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
+    // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:    %[[C26:.*]] = arith.constant 26
+    // CHECK:        %[[IDX_I32:.*]] = tensor.extract %[[ARG1]][%[[X]]]
+    // CHECK:        %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
+    // CHECK:        %[[CLAMP_HIGH:.*]] = arith.minsi %[[IDX]], %[[C26]]
+    // CHECK:        %[[CLAMPED:.*]] = arith.maxsi %[[CLAMP_HIGH]], %[[C0]]
+    // CHECK:        %[[X_IN:.*]] = arith.addi %[[CLAMPED]], %[[Y]]
+    // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Z]]]
+    // CHECK:        return %[[RET]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, Pad) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {

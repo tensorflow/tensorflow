@@ -174,8 +174,12 @@ bool IsUnsupportedGather(const HloInstruction* instr) {
 
   auto* gather = Cast<HloGatherInstruction>(instr);
   const auto& dims = gather->gather_dimension_numbers();
+  // We allow XLA:GPU's "canonical" gather (2D indices). And the form preferred
+  // by the algebraic simplifier if the second index dimension is degenerate (1D
+  // indices with implicit second dimension).
+  int indices_rank = gather->operand(1)->shape().rank();
   if (dims.index_vector_dim() != 1 || !dims.collapsed_slice_dims().empty() ||
-      gather->operand(1)->shape().rank() != 2) {
+      indices_rank == 0 || indices_rank > 2) {
     return true;
   }
 
@@ -395,14 +399,21 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
   SmallVector<Value> operand_indices(instr->operand(0)->shape().rank(), zero);
 
   // Produce start indices.
-  int num_indices = instr->operand(1)->shape().dimensions(1);
+  // HLO allows the index vector dimension to be implicit, and the algebraic
+  // simplifier prefers this form. Therefore, we need to check the rank of the
+  // indices here and do the implicit reshape in place.
+  const auto& indices_shape = instr->operand(1)->shape();
+  int num_indices = indices_shape.rank() == 1 ? 1 : indices_shape.dimensions(1);
   for (int i = 0; i < num_indices; ++i) {
     auto i_val = i == 0 ? zero : b.create<ConstantIndexOp>(i);
     int64_t slice_size = instr->gather_slice_sizes()[i];
     int64_t input_size = instr->operand(0)->shape().dimensions()[i];
     // Read and clamp index.
-    TF_ASSIGN_OR_RETURN(auto input_index,
-                        operand_provider(instr, 1, {row, i_val}));
+    TF_ASSIGN_OR_RETURN(
+        auto input_index,
+        operand_provider(instr, 1,
+                         indices_shape.rank() == 1 ? ValueRange{row}
+                                                   : ValueRange{row, i_val}));
     TF_RET_CHECK(input_index.size() == 1)
         << "Expected operand to be a single value.";
     operand_indices[i] =

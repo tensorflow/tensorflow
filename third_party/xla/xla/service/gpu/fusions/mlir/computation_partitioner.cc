@@ -225,8 +225,12 @@ PartitionedComputation::PartitionedComputation(
     }
     auto is_bad_gather = [&](const HloInstruction* user) {
       // Don't merge into a gather that would evaluate the index more than once.
+      // The second operand of a gather is the index. If it has rank 1, it is
+      // evaluated once. If it has rank 2, it is evaluated once for each element
+      // of the minor dimension.
       return user->opcode() == HloOpcode::kGather &&
              user->operand_index(instruction) == 1 &&
+             instruction->shape().rank() == 2 &&
              instruction->shape().dimensions(1) > 1;
     };
     auto is_concat = [&](const HloInstruction* user) {
