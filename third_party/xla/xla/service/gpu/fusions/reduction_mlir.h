@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -46,8 +47,7 @@ using HloValueMap =
 // reductions.
 class MlirReductionFusion : public MlirFusionEmitterBase {
  public:
-  explicit MlirReductionFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override = 0;
@@ -109,7 +109,7 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   absl::InlinedVector<int64_t, 4> num_threads_;
   absl::InlinedVector<int64_t, 4> num_blocks_;
 
-  bool is_race_free_;
+  ReductionDimensions reduction_dimensions_;
   ReductionGroups groups_;
   const HloInstruction* first_reduce_;
 };

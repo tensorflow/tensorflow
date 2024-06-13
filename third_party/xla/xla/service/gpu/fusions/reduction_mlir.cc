@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -80,6 +81,46 @@ LaunchDimensions MlirReductionFusion::launch_dimensions() const {
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
           se::ThreadDim(/*x=*/Product(num_threads_),
                         /*y=*/1, /*z=*/1)};
+}
+
+MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
+    : analysis_(analysis) {
+  auto* hero_reduction = analysis.FindHeroReduction();
+  CHECK_NE(hero_reduction, nullptr);
+  Shape input_shape = hero_reduction->operand(0)->shape();
+  reduction_dimensions_ =
+      GetReductionKindAndContiguousComponents(*hero_reduction);
+  VLOG(10) << reduction_dimensions_;
+
+  CHECK(ReductionIsRaceFree(hero_reduction->GetModule()->config(),
+                            reduction_dimensions_))
+      << "Non-race-free reductions should have been decomposed. Did "
+         "tree_reduction_rewriter run?";
+
+  groups_ = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  first_reduce_ = hero_reduction;
+
+  const auto& groups = GetGroups();
+  int num_groups = groups.grouped_roots.size();
+  side_output_roots_.resize(num_groups);
+  reduction_heroes_.resize(num_groups);
+  reduction_roots_.resize(num_groups);
+
+  absl::flat_hash_set<const HloInstruction*> seen_heroes;
+  for (auto [root_adaptor, hero_adaptor, is_reduction, group_id] :
+       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes(),
+                 groups.is_reduction_root, groups.group_id_per_root)) {
+    const HloInstruction* root = &root_adaptor.instruction();
+    const HloInstruction* hero = &hero_adaptor.instruction();
+    if (is_reduction) {
+      if (seen_heroes.insert(hero).second) {
+        reduction_heroes_[group_id].push_back(hero);
+      }
+      reduction_roots_[group_id].push_back(root);
+    } else {
+      side_output_roots_[group_id].push_back(root);
+    }
+  }
 }
 
 void MlirReductionFusion::AddGroupIdConstraint(IndexingMap& map,
@@ -363,18 +404,10 @@ SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
 MlirRowReductionFusion::MlirRowReductionFusion(
     const HloFusionAnalysis& analysis)
     : MlirReductionFusion(analysis) {
-  auto* hero_reduction = analysis.FindHeroReduction();
-  CHECK_NE(hero_reduction, nullptr);
-  Shape input_shape = hero_reduction->operand(0)->shape();
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(*hero_reduction);
-  CHECK(reduction_dimensions.is_row_reduction);
-
-  auto shape = reduction_dimensions.dimensions;
-  VLOG(10) << "row reduction " << shape[0] << " " << shape[1] << " "
-           << shape[2];
+  CHECK(reduction_dimensions_.is_row_reduction);
+  Vector3 shape = reduction_dimensions_.dimensions;
   Vector3 reduction_tiling = {
-      std::min(reduction_dimensions
+      std::min(reduction_dimensions_
                    .dimensions[ReductionDimensions::kRowMajorReducedDimension],
                BatchedReductionRaceFreeBound()),
       1, 16};
@@ -387,7 +420,7 @@ MlirRowReductionFusion::MlirRowReductionFusion(
       return shape[ReductionDimensions::kRowMinorReducedDimension];
     }
     int64_t max_block_size =
-        MinThreadsXRowReduction(hero_reduction->GetModule()->config());
+        MinThreadsXRowReduction(first_reduce_->GetModule()->config());
     return std::min(
         max_block_size,
         RoundUpTo(
@@ -404,8 +437,8 @@ MlirRowReductionFusion::MlirRowReductionFusion(
   // 256. See https://forums.developer.nvidia.com/t/55529
   constexpr int64_t kThreadsPerBlockTarget = 256;
   if (num_threads_x * 2 <= kThreadsPerBlockTarget) {
-    int64_t kept_size =
-        reduction_dimensions.dimensions[ReductionDimensions::kRowKeptDimension];
+    int64_t kept_size = reduction_dimensions_
+                            .dimensions[ReductionDimensions::kRowKeptDimension];
     // Increase the size of the y dimension as long as there's remaining
     // parallelism.
     if (kept_size * num_threads_x <= kThreadsPerBlockTarget) {
@@ -419,8 +452,9 @@ MlirRowReductionFusion::MlirRowReductionFusion(
     }
   }
 
-  int vector_size = GetVectorSize(analysis, reduction_dimensions, num_threads_x,
-                                  reduction_tiling, /*for_mlir=*/true);
+  int vector_size =
+      GetVectorSize(analysis, reduction_dimensions_, num_threads_x,
+                    reduction_tiling, /*for_mlir=*/true);
 
   num_threads_ =
       absl::InlinedVector<int64_t, 4>{1, num_threads_y, num_threads_x};
@@ -475,37 +509,6 @@ MlirRowReductionFusion::MlirRowReductionFusion(
     CHECK_NE(tile_sizes_per_block_[i], 0);
     num_blocks_[i] = CeilOfRatio(tiled_shape_[i], tile_sizes_per_block_[i]);
     CHECK_NE(num_blocks_[i], 0);
-  }
-
-  is_race_free_ = ReductionIsRaceFree(hero_reduction->GetModule()->config(),
-                                      reduction_dimensions);
-  groups_ = GroupDisjointReductions(analysis, /*for_mlir=*/true);
-  first_reduce_ = hero_reduction;
-
-  CHECK(is_race_free_)
-      << "Non-race-free reductions should have been decomposed. Did "
-         "tree_reduction_rewriter run?";
-
-  const auto& groups = GetGroups();
-  int num_groups = groups.grouped_roots.size();
-  side_output_roots_.resize(num_groups);
-  reduction_heroes_.resize(num_groups);
-  reduction_roots_.resize(num_groups);
-
-  absl::flat_hash_set<const HloInstruction*> seen_heroes;
-  for (auto [root_adaptor, hero_adaptor, is_reduction, group_id] :
-       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes(),
-                 groups.is_reduction_root, groups.group_id_per_root)) {
-    const HloInstruction* root = &root_adaptor.instruction();
-    const HloInstruction* hero = &hero_adaptor.instruction();
-    if (is_reduction) {
-      if (seen_heroes.insert(hero).second) {
-        reduction_heroes_[group_id].push_back(hero);
-      }
-      reduction_roots_[group_id].push_back(root);
-    } else {
-      side_output_roots_[group_id].push_back(root);
-    }
   }
 }
 
@@ -723,18 +726,10 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
 MlirColumnReductionFusion::MlirColumnReductionFusion(
     const HloFusionAnalysis& analysis)
     : MlirReductionFusion(analysis) {
-  auto* hero_reduction = analysis.FindHeroReduction();
-  CHECK_NE(hero_reduction, nullptr);
-  Shape input_shape = hero_reduction->operand(0)->shape();
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(*hero_reduction);
-  auto shape = reduction_dimensions.dimensions;
-
-  CHECK(!reduction_dimensions.is_row_reduction);
-  VLOG(10) << "column reduction " << shape[0] << " " << shape[1] << " "
-           << shape[2];
+  CHECK(!reduction_dimensions_.is_row_reduction);
+  auto shape = reduction_dimensions_.dimensions;
   Vector3 reduction_tiling = {1, 128, 1};
-  int vector_size = GetVectorSize(analysis, reduction_dimensions, WarpSize(),
+  int vector_size = GetVectorSize(analysis, reduction_dimensions_, WarpSize(),
                                   reduction_tiling, /*for_mlir=*/true);
   // The vector dimension is a loop, i.e. we use a symbol for it.
   num_threads_ = absl::InlinedVector<int64_t, 4>{1, WarpSize(), WarpSize(), 1};
@@ -763,37 +758,6 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
     CHECK_NE(tile_sizes_per_block_[i], 0);
     num_blocks_[i] = CeilOfRatio(tiled_shape_[i], tile_sizes_per_block_[i]);
     CHECK_NE(num_blocks_[i], 0);
-  }
-
-  is_race_free_ = ReductionIsRaceFree(hero_reduction->GetModule()->config(),
-                                      reduction_dimensions);
-  groups_ = GroupDisjointReductions(analysis, /*for_mlir=*/true);
-  first_reduce_ = hero_reduction;
-
-  CHECK(is_race_free_)
-      << "Non-race-free reductions should have been decomposed. Did "
-         "tree_reduction_rewriter run?";
-
-  const auto& groups = GetGroups();
-  int num_groups = groups.grouped_roots.size();
-  side_output_roots_.resize(num_groups);
-  reduction_heroes_.resize(num_groups);
-  reduction_roots_.resize(num_groups);
-
-  absl::flat_hash_set<const HloInstruction*> seen_heroes;
-  for (auto [root_adaptor, hero_adaptor, is_reduction, group_id] :
-       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes(),
-                 groups.is_reduction_root, groups.group_id_per_root)) {
-    const HloInstruction* root = &root_adaptor.instruction();
-    const HloInstruction* hero = &hero_adaptor.instruction();
-    if (is_reduction) {
-      if (seen_heroes.insert(hero).second) {
-        reduction_heroes_[group_id].push_back(hero);
-      }
-      reduction_roots_[group_id].push_back(root);
-    } else {
-      side_output_roots_[group_id].push_back(root);
-    }
   }
 }
 

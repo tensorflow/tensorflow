@@ -835,6 +835,7 @@ cc_library(
         ":fusion_emitter",
         ":reduction_base",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:hlo_traversal",
