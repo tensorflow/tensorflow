@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -383,9 +384,25 @@ std::string GetDefaultStablehloVersion() {
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
                                       std::optional<int64_t> plugin_version,
                                       absl::string_view target, bool inplace) {
-  // Current PJRT users expect 12 weeks forward compat
-  // VHLO support added in PJRT API v41, flip to send VHLO in near future.
-  return SerializeUsingNativeBytecode(module, plugin_version);
+  // Current PJRT users expect 12 weeks forward compat, VHLO provides this
+  // compat. VHLO support was added in PJRT API v41, and is sent for plugins
+  // v47+ allowing plugins a chance to make any required integration changes.
+  // TODO (b/344930098): Allow VHLO interop and remove the all_stablehlo check
+  bool all_stablehlo = true;
+  module->walk([&](mlir::Operation* op) {
+    if (!llvm::isa<mlir::ModuleOp>(op) &&
+        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect>(
+            op->getDialect())) {
+      all_stablehlo = false;
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (!all_stablehlo ||
+      (plugin_version.has_value() && plugin_version.value() < 47)) {
+    return SerializeUsingNativeBytecode(module, plugin_version);
+  }
+  return SerializeUsingVersionedStablehlo(module, target, inplace);
 }
 
 }  // namespace xla
