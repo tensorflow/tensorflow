@@ -32,10 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -101,8 +103,8 @@ Status SetPerCoreArgShapes(
     }
   } else {
     TF_RET_CHECK(proto_arg.sharding().type() == xla::OpSharding::REPLICATED)
-        << "Unsupported argument sharding: "
-        << " proto_arg=" << proto_arg.DebugString();
+        << "Unsupported argument sharding: " << " proto_arg="
+        << proto_arg.DebugString();
     for (int core = 0; core < per_core_arg_shapes->size(); ++core) {
       (*arg_core_mapping)[arg_index].indices.push_back(
           (*per_core_arg_shapes)[core].size());
@@ -284,23 +286,21 @@ Status AssignReturnValueToCore(
 }
 
 // If the metadata specifies any bounded dynamic shapes in the arg then create
-// the matching Tensor values for the Argument.
+// the matching xla shape  for the Argument.
 Status MaybeBuildBoundedDynamicArgValues(
     const tpu::TPUCompileMetadataProto::Arg& proto_arg,
     const TensorShape& shape, XlaCompiler::Argument& arg) {
   // If any entry in the is_bounded_dynamic_dim list is true then we update the
   // value_bound and value_dynamism fields to indicate that there is dynamism,
   // the bounds, and which dimensions are dynamic.
-  auto is_dynamic_dim = absl::MakeConstSpan(proto_arg.is_bounded_dynamic_dim());
+  std::vector<bool> is_dynamic_dim(proto_arg.is_bounded_dynamic_dim().begin(),
+                                   proto_arg.is_bounded_dynamic_dim().end());
   if (std::any_of(is_dynamic_dim.begin(), is_dynamic_dim.end(),
                   [](bool v) { return v; })) {
-    // Assume that the values in the shape are the maximums.
-    arg.value_bound = Tensor(arg.type, shape);
-    // Build a literal tensor of Bools to hold which Dims are dynamic.
-    auto literal = xla::LiteralUtil::CreateR1(is_dynamic_dim);
-    Tensor dynamism_tensor(DT_BOOL);
-    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &dynamism_tensor));
-    arg.value_dynamism = dynamism_tensor;
+    xla::PrimitiveType primitive_type;
+    TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(arg.type, &primitive_type));
+    arg.shape = xla::ShapeUtil::MakeShape(primitive_type, shape.dim_sizes(),
+                                          is_dynamic_dim);
   }
   return absl::OkStatus();
 }
