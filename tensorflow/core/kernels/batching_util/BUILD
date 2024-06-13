@@ -33,6 +33,28 @@ cc_library(
 )
 
 cc_library(
+    name = "batch_stats",
+    hdrs = ["batch_stats.h"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_stats_test",
+    srcs = ["batch_stats_test.cc"],
+    deps = [
+        ":batch_stats",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "batch_input_task",
     hdrs = ["batch_input_task.h"],
     deps = [
