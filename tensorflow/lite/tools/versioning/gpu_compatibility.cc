@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -436,6 +437,25 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
 }
 
+bool CheckIsBroadcastable(const std::vector<int32_t>* longer_dims,
+                          const std::vector<int32_t>* shorter_dims) {
+  int idx_1 = longer_dims->size() - 1;
+  int idx_2 = shorter_dims->size() - 1;
+  int max_idx = std::max(idx_1, idx_2);
+  int data_1 = 0;
+  int data_2 = 0;
+  for (int i = max_idx; i >= 0; --i) {
+    data_1 = idx_1 < 0 ? 1 : longer_dims->at(idx_1);
+    data_2 = idx_2 < 0 ? 1 : shorter_dims->at(idx_2);
+    if (data_1 != data_2 && data_1 != 1 && data_2 != 1) {
+      return false;
+    }
+    --idx_1;
+    --idx_2;
+  }
+  return true;
+}
+
 absl::Status CheckAddMulBroadcastCompatibility(
     const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1,
     GpuCompatibilityFlags flags) {
@@ -449,22 +469,26 @@ absl::Status CheckAddMulBroadcastCompatibility(
       longer_dims = &input1.dims;
       shorter_dims = &input0.dims;
     }
-    bool is_broadcastable = false;
 
-    if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
-        longer_dims->at(0) == 1) {
-      // Broadcasting 3D to 4D with batch 1 works.
-      is_broadcastable = true;
-    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
-               longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
-               shorter_dims->at(1) == 1) {
-      // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
-      is_broadcastable = true;
-    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
-               longer_dims->at(0) == shorter_dims->at(0) &&
-               longer_dims->at(3) == shorter_dims->at(1)) {
-      // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
-      is_broadcastable = true;
+    bool is_broadcastable = false;
+    if (flags == GpuCompatibilityFlags::kEnhancedBroadcast) {
+      is_broadcastable = CheckIsBroadcastable(longer_dims, shorter_dims);
+    } else {
+      if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
+          longer_dims->at(0) == 1) {
+        // Broadcasting 3D to 4D with batch 1 works.
+        is_broadcastable = true;
+      } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+                 longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
+                 shorter_dims->at(1) == 1) {
+        // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
+        is_broadcastable = true;
+      } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+                 longer_dims->at(0) == shorter_dims->at(0) &&
+                 longer_dims->at(3) == shorter_dims->at(1)) {
+        // Broadcasting 2D [b, c] to 4D [b, x, y, c] works.
+        is_broadcastable = true;
+      }
     }
 
     if (!is_broadcastable) {
