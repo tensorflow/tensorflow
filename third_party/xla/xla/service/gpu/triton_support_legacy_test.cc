@@ -55,13 +55,9 @@ namespace {
 using DotTest = TritonSupportTestWithParam;
 
 TEST_P(DotTest, IsTritonSupportedDot) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  auto [data_type, opcode] = GetParam();
+  if (data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   const std::string kHloTestTemplate = R"(
@@ -147,11 +143,8 @@ class DynamicSliceTest
 
 TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSlice) {
   const DynamicSliceTestParam param(GetParam());
-
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      param.data_type == BF16) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  if (param.data_type == BF16 && SkipBF16Tests()) {
+    GTEST_SKIP();
   }
 
   constexpr absl::string_view kHloTestTemplate =
