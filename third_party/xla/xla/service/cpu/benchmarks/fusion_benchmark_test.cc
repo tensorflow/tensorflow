@@ -62,7 +62,41 @@ static void BM_FusionF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_BcastFusionF32(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule fusion_f32_$d0
+
+    ENTRY e {
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      p1 = f32[] parameter(1)
+      bcast = f32[1,2,1,$d0,256] broadcast(p1), dimensions={}
+      ROOT multiply = f32[1,2,1,$d0,256] multiply(bcast, p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  auto scalar = ShapeUtil::MakeShape(F32, {});
+  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0, &p1};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
 BENCHMARK(BM_FusionF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(16384);
+
+BENCHMARK(BM_BcastFusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)
