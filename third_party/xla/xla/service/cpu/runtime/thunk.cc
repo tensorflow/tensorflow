@@ -42,6 +42,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "all-gather";
     case Kind::kAllReduce:
       return "all-reduce";
+    case Kind::kAllToAll:
+      return "all-to-all";
     case Kind::kCall:
       return "call";
     case Kind::kConditional:

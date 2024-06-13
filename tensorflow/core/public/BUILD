@@ -39,4 +39,5 @@ filegroup(
 cc_library(
     name = "version",
     hdrs = ["version.h"],
+    visibility = ["//visibility:public"],
 )

@@ -2174,6 +2174,7 @@ xla_test(
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/strings",

@@ -257,6 +257,38 @@ cc_library(
 )
 
 cc_library(
+    name = "all_to_all_thunk",
+    srcs = ["all_to_all_thunk.cc"],
+    hdrs = ["all_to_all_thunk.h"],
+    deps = [
+        ":collective_thunk",
+        ":thunk",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/cpu:collectives_interface",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "reduce_scatter_thunk",
     srcs = ["reduce_scatter_thunk.cc"],
     hdrs = ["reduce_scatter_thunk.h"],

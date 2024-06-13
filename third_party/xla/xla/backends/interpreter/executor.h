@@ -90,8 +90,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     delete[] static_cast<char *>(mem);
   }
 
-  absl::Status Memcpy(Stream *stream, void *host_dst,
-                      const DeviceMemoryBase &dev_src, uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
                             uint64_t size) override {
