@@ -34,10 +34,11 @@ bool nb_isinstance(nanobind::handle inst, nanobind::handle cls);
 // Issues a Python deprecation warning. Throws a C++ exception if issuing the
 // Python warning causes a Python exception to be raised.
 template <typename... Args>
-void PythonDeprecationWarning(const absl::FormatSpec<Args...>& format,
+void PythonDeprecationWarning(int stacklevel,
+                              const absl::FormatSpec<Args...>& format,
                               const Args&... args) {
   if (PyErr_WarnEx(PyExc_DeprecationWarning,
-                   absl::StrFormat(format, args...).c_str(), 1) < 0) {
+                   absl::StrFormat(format, args...).c_str(), stacklevel) < 0) {
     throw nanobind::python_error();
   }
 }

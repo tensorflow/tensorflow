@@ -297,6 +297,7 @@ PyType_Slot PyDevice::slots_[] = {
       .def("live_buffers",
            [](nb::handle device) {
              PythonDeprecationWarning(
+                 /*stacklevel=*/1,
                  "Per device live_buffers() is deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
              return nb::list();

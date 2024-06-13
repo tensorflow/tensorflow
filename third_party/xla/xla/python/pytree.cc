@@ -596,6 +596,7 @@ nb::list PyTreeDef::FlattenUpTo(nb::handle xs) const {
       case PyTreeKind::kNone:
         if (!object.is_none()) {
           PythonDeprecationWarning(
+              /*stacklevel=*/3,
               "In a future release of JAX, flatten-up-to will no longer "
               "consider None to be a tree-prefix of non-None values, got: "
               "%s.\n\n"
