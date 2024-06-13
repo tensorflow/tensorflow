@@ -1620,15 +1620,6 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   }
 
   if (IsTrivialElementwise(consumer)) {
-    for (int64_t i = 0; i < consumer->operand_count(); ++i) {
-      if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
-        if (!IsBroadcastPropagatable(consumer->mutable_operand(i), producer)) {
-          VLOG(2) << "Could not propagate through broadcast "
-                  << consumer->operand(i)->ToString();
-          return false;
-        }
-      }
-    }
     return true;
   }
 
