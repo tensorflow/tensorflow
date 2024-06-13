@@ -216,7 +216,7 @@ class BlockedQueue final
       return !(*this == another);
     }
 
-    T& operator*() {
+    T& operator*() const {
       DCHECK(block_ != nullptr);
       DCHECK_GE(index_, block_->start);
       DCHECK_LT(index_, block_->start + Block::kNumSlots);
@@ -224,7 +224,7 @@ class BlockedQueue final
       return block_->slots[index_ - block_->start].value;
     }
 
-    T* operator->() { return &(this->operator*()); }
+    T* operator->() const { return &(this->operator*()); }
 
     Iterator& operator++() {
       DCHECK(queue_ != nullptr);

@@ -388,6 +388,11 @@ TEST(LockFreeQueueTest, Iterator_Basics) {
   EXPECT_EQ(str_it->size(), 6);
   str_it++;
   EXPECT_EQ(str_it, str_queue.end());
+
+  // test const iterator's *() and ->()
+  const auto const_str_it = str_queue.begin();
+  EXPECT_EQ(*const_str_it, std::string("abcd"));
+  EXPECT_EQ(const_str_it->size(), 4);
 }
 
 }  // namespace
