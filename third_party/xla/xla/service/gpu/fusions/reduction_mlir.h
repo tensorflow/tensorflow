@@ -88,9 +88,6 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
     return first_reduce_->operand(0)->shape();
   }
 
-  void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
-                            mlir::MLIRContext* ctx) const;
-
   // The reduction heroes for each reduction group.
   std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
   // The roots that have reduction heroes for each reduction group.
@@ -100,7 +97,7 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   const HloFusionAnalysis& analysis_;
 
   // The number of elements in each dimension.
-  absl::InlinedVector<int64_t, 4> tiled_shape_;
+  absl::InlinedVector<int64_t, 4> input_shape_;
 
   // The number of elements for each dimension of a tile.
   absl::InlinedVector<int64_t, 4> tile_sizes_per_thread_;

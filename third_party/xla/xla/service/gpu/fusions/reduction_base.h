@@ -16,18 +16,12 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_BASE_H_
 
 #include <cstdint>
-#include <optional>
-#include <utility>
 #include <vector>
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -52,6 +46,9 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size);
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
                   int num_threads, Vector3 reduction_tiling, bool for_mlir);
+
+void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
+                          const ReductionGroups& groups);
 
 }  // namespace gpu
 }  // namespace xla

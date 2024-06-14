@@ -257,5 +257,16 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
   return result;
 }
 
+void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
+                          const ReductionGroups& groups) {
+  // Only threads with the right y block index actually do anything for each
+  // particular root.
+  int group_index = groups.group_id_per_root[root_index];
+  map.AddConstraint(
+      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
+                             map.GetMLIRContext()),
+      {group_index, group_index});
+}
+
 }  // namespace gpu
 }  // namespace xla

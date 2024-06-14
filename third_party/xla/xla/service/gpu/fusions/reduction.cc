@@ -1211,7 +1211,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
         GetIndexingMapForTiling(tiling_, ctx),
         GetBitcastMap(tiling_.GetXlaShape(),
                       analysis_.fusion_root(root_index).shape(), ctx));
-    AddGroupIdConstraint(map, root_index, ctx);
+    AddGroupIdConstraint(map, root_index, groups_);
     return map;
   }
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
@@ -1293,7 +1293,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
                       physical_shape, ctx));
   }();
 
-  AddGroupIdConstraint(map, root_index, ctx);
+  AddGroupIdConstraint(map, root_index, groups_);
   return map;
 }
 
@@ -1319,19 +1319,8 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(),
                     hero.operand(hero_operand_index)->shape(), ctx));
-  AddGroupIdConstraint(map, root_index, ctx);
+  AddGroupIdConstraint(map, root_index, groups_);
   return map;
-}
-
-void ReductionInfo::AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
-                                         mlir::MLIRContext* ctx) const {
-  // Only threads with the right y block index actually do anything for each
-  // particular root.
-  int group_index = groups_.group_id_per_root[root_index];
-  map.AddConstraint(
-      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
-                             ctx),
-      {group_index, group_index});
 }
 
 }  // namespace gpu

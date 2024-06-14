@@ -1052,6 +1052,13 @@ HloInstructionIndexing ComputeInputToOutputTransposeOpIndexing(
 
 }  // namespace
 
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          const Shape& output_shape,
+                          mlir::MLIRContext* mlir_context) {
+  return GetBitcastMap(ShapeUtil::MakeShapeWithDescendingLayout(
+                           output_shape.element_type(), input_shape),
+                       output_shape, mlir_context);
+}
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
                           MLIRContext* mlir_context) {
   ShapeUtil::BitcastDecomposition decomposed_bitcast =
