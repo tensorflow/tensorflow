@@ -110,11 +110,12 @@ std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     tsl::PlatformDeviceId platform_device_id, bool create_new_pool,
-    size_t new_pool_size, size_t release_threshold, bool reserve_memory,
-    bool compute_stats)
+    size_t new_pool_size, bool reserve_memory, size_t reserve_memory_size,
+    bool sync_mode, bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
       reserve_memory_(reserve_memory),
-      create_new_pool_(create_new_pool) {
+      create_new_pool_(create_new_pool),
+      sync_mode_(sync_mode) {
   ++number_instantiated_;
 
   // Stop clang from complaining about unused private fields when
@@ -193,7 +194,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
       LOG(FATAL) <<  // Crash OK.
           "Failed to create CUDA pool: " << GetCudaErrorMessage(status);
   } else {
-    pool_size = release_threshold;
+    pool_size = reserve_memory_size;
     if (auto status =
             cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
       LOG(FATAL) <<  // Crash OK.
@@ -204,7 +205,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   VLOG(1) << Name() << " CudaMallocAsync initialized on platform: "
           << platform_device_id.value() << " with pool size of: " << pool_size
           << " this ptr: " << this;
-  uint64_t release_threshold_64 = release_threshold;
+  uint64_t release_threshold_64 = reserve_memory_size;
   if (auto status = cuMemPoolSetAttribute(
           pool_, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD, &release_threshold_64))
     LOG(FATAL) <<  // Crash OK.
@@ -304,9 +305,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     tsl::PlatformDeviceId platform_device_id, size_t release_threshold,
     bool reserve_memory, bool compute_stats)
-    : GpuCudaMallocAsyncAllocator(platform_device_id, false, 0,
-                                  release_threshold, reserve_memory,
-                                  compute_stats) {}
+    : GpuCudaMallocAsyncAllocator(platform_device_id, false, 0, reserve_memory,
+                                  release_threshold, false, compute_stats) {}
 
 GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
@@ -363,6 +363,10 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     return nullptr;
   }
 
+  if (sync_mode_) {
+    cuStreamSynchronize(cuda_stream_);
+  }
+
   // Update stats.
   if (stats_) {
     ++(stats_->num_allocs);
@@ -411,6 +415,10 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
         LOG(ERROR) << "Stats: " << stats_->DebugString();
       }
     }
+  }
+
+  if (sync_mode_) {
+    cuStreamSynchronize(cuda_stream_);
   }
 
   // Updates the stats.

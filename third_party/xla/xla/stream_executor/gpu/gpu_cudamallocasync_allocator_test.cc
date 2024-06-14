@@ -66,6 +66,9 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr2) & 127), 0);
+  allocator.DeallocateRaw(addr1);
+  allocator.DeallocateRaw(addr2);
+  EXPECT_TRUE(stream->ok());
 }
 
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
@@ -79,8 +82,9 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
       /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
       /*create_new_pool*/ true,
       /*new_pool_size*/ 2048,
-      /*release_threshold*/ 0,
       /*reserve_memory*/ true,
+      /*release_threshold*/ 0,
+      /*sync_mode*/ false,
       /*compute_stats*/ true);
   allocator.SetStreamAndPreallocateMemory(
       se::gpu::AsGpuStreamValue(stream.get()));
@@ -89,6 +93,36 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr2) & 127), 0);
+  allocator.DeallocateRaw(addr1);
+  allocator.DeallocateRaw(addr2);
+  EXPECT_TRUE(stream->ok());
+}
+
+TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
+#if CUDA_VERSION < 11030
+  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
+                  "version less than 11030";
+#endif
+  se::StreamExecutor* executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  auto allocator = GpuCudaMallocAsyncAllocator(
+      /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
+      /*create_new_pool*/ true,
+      /*new_pool_size*/ 2048,
+      /*reserve_memory*/ true,
+      /*release_threshold*/ 0,
+      /*sync_mode*/ true,
+      /*compute_stats*/ true);
+  allocator.SetStreamAndPreallocateMemory(
+      se::gpu::AsGpuStreamValue(stream.get()));
+
+  void* addr1 = allocator.AllocateRaw(128, 127);
+  void* addr2 = allocator.AllocateRaw(128, 129);
+  CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
+  CHECK_EQ((reinterpret_cast<uintptr_t>(addr2) & 127), 0);
+  allocator.DeallocateRaw(addr1);
+  allocator.DeallocateRaw(addr2);
+  EXPECT_TRUE(stream->ok());
 }
 
 }  // namespace stream_executor
