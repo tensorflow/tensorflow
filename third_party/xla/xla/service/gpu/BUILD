@@ -1280,6 +1280,7 @@ xla_test(
     srcs = if_gpu_is_configured(["triton_support_legacy_test.cc"]),
     backends = [
         "gpu_a100",
+        "gpu_h100",
         "gpu_amd_any",
     ],
     tags = ["nomac"],
