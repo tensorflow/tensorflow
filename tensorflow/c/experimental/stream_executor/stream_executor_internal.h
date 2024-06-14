@@ -1,4 +1,3 @@
-#include "xla/stream_executor/stream.h"
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,10 +18,18 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 #define TENSORFLOW_C_EXPERIMENTAL_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
+#include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
@@ -218,6 +225,14 @@ class CStream : public StreamCommon {
     SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
     stream_executor_->mem_zero(device_, stream_handle_, &device_mem, size,
                                c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
+  }
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
+    stream_executor_->memset32(device_, stream_handle_, &device_mem, pattern,
+                               size, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 

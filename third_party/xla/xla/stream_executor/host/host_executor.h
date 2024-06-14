@@ -100,8 +100,6 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                       uint8_t pattern, uint64_t size) override;
-  absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32_t pattern, uint64_t size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }

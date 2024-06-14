@@ -58,6 +58,16 @@ Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
   return handle;
 }
 
+absl::Status GpuStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                                 uint64_t size) {
+  CHECK(reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
+        size % 4 == 0);
+  return GpuDriver::AsynchronousMemsetUint32(
+      parent_->gpu_context(),
+      reinterpret_cast<GpuDevicePtr>(location->opaque()), pattern, size / 4,
+      gpu_stream());
+}
+
 absl::Status GpuStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
