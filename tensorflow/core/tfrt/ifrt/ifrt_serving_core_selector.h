@@ -41,8 +41,7 @@ class IfrtServingCoreSelector {
   absl::Mutex mu_;
   // A counter of the number of runs for each program. For a given program, it
   // is used to determine if the core selector should treat the incoming request
-  // as a warmup request to warm up a core. It will stay unchanged after all
-  // cores are warmed up for the given program.
+  // as a warmup request to warm up a core.
   absl::flat_hash_map<int64_t, int64_t> run_counter_ ABSL_GUARDED_BY(mu_);
   int num_cores_;
 };
