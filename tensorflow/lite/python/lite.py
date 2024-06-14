@@ -208,7 +208,7 @@ class TargetSpec:
       when using the SELECT_TF_OPS path. The client is responsible for linking
       these ops into the target runtime.
     experimental_supported_backends: Experimental flag, subject to change. Set
-      containing names of supported backends. Currently, only "GPU" is supported,
+      containing names of supported backends. Currently only "GPU" is supported,
       more options will be available later.
   """
 
@@ -849,7 +849,7 @@ class TFLiteConverterBase:
     if self._experimental_quantization_options:
       logging.warning(
           "Configs from custom methods in experimental_quantization_options"
-          " may not produce a valid tflite model. Note that Currently, this"
+          " may not produce a valid tflite model. Note that currently this"
           " option only supports StableHLO path. Setting this option in TFLite"
           " path will be a no-op."
       )
@@ -1312,7 +1312,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       input_tensors: List of input tensors.
 
     Raise:
-      ValueError: The input shape is not specified. Invalid quantization parameters.
+      ValueError: Input shape is not specified. Invalid quantization parameters.
     """
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
@@ -1443,7 +1443,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       ValueError:
         No concrete function is specified.
         Multiple concrete functions are specified.
-        The input shape is not specified.
+        Input shape is not specified.
         Invalid quantization parameters.
     """
     self._validate_inputs(graph_def, input_tensors)
@@ -1525,7 +1525,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       ValueError:
         No concrete function is specified.
         Multiple concrete functions are specified.
-        The input shape is not specified.
+        Input shape is not specified.
         Invalid quantization parameters.
     """
     graph_def, input_tensors, output_tensors = self._load_saved_model(
@@ -1738,7 +1738,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     Raises:
       ValueError:
         Multiple concrete functions are specified.
-        The input shape is not specified.
+        Input shape is not specified.
         Invalid quantization parameters.
     """
     saved_model_convert_result = self._convert_as_saved_model()
@@ -1914,7 +1914,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
       ValueError:
         No concrete function is specified.
         Multiple concrete functions are specified.
-        The input shape is not specified.
+        Input shape is not specified.
         Invalid quantization parameters.
     """
     if self.experimental_lower_to_saved_model:
@@ -2010,9 +2010,9 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
       )
 
     # TODO(b/197690428): Support multiple functions.
-    # Currently, only support one serving function.
+    # Currently only support one serving function.
     if len(self._serving_funcs) > 1:
-      raise ValueError("Currently, only support single serving function.")
+      raise ValueError("Currently only support single serving function.")
 
     if not isinstance(self._inputs[0], (tuple, list)):
       raise ValueError("The input placeholders are not a dictionary.")
@@ -2077,18 +2077,18 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       defined TensorFlow operators required in the TensorFlow Lite runtime.
       Refer to `tf.lite.TargetSpec`.
     inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are Currently, only supported for post-training
+      (tf.int8 and tf.uint8) are currently only supported for post-training
       integer quantization and quantization-aware training. (default tf.float32,
       must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are Currently, only supported for post-training
+      types (tf.int8 and tf.uint8) are currently only supported for post-training
       integer quantization and quantization-aware training. (default
       tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When False, any unknown operation is an error. When True, custom ops are
-      created for any unknown op. The developer needs to provide these
+      created for any op that is unknown. The developer needs to provide these
       to the TensorFlow Lite runtime with a custom resolver. (default False)
-    exclude_conversion_metadata: Whether or not to embed the conversion metadata
+    exclude_conversion_metadata: Whether not to embed the conversion metadata
       into the converted model. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion. (default True)
@@ -2144,7 +2144,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
     Args:
       funcs: List of TensorFlow ConcreteFunctions. The list should not contain
-        duplicate elements. Currently, converter can only convert a single
+        duplicate elements. Currently converter can only convert a single
         ConcreteFunction. Converting multiple functions is under development.
       trackable_obj:   An `AutoTrackable` object (typically `tf.module`)
         associated with `funcs`. A reference to this object needs to be
@@ -2290,7 +2290,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   )
   def experimental_from_jax(cls, serving_funcs, inputs):
     # Experimental API, subject to changes.
-    # TODO(b/197690428): Currently, only supports single function.
+    # TODO(b/197690428): Currently only supports single function.
     """Creates a TFLiteConverter object from a Jax model with its inputs.
 
     Args:
@@ -2321,7 +2321,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       ValueError:
         No concrete function is specified.
         Multiple concrete functions are specified.
-        The input shape is not specified.
+        Input shape is not specified.
         Invalid quantization parameters.
     """
     return super(TFLiteConverterV2, self).convert()
@@ -2407,7 +2407,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       raise ValueError(
           "The `quantized_input_stats` flag must be defined when either "
           "`inference_type` flag or `inference_input_type` flag is set to "
-          "tf.int8 or tf.uint8. Currently, `inference_type={}` and "
+          "tf.int8 or tf.uint8. Currently `inference_type={}` and "
           "`inference_input_type={}`.".format(
               _get_tf_type_name(converter_kwargs["inference_type"]),
               _get_tf_type_name(converter_kwargs["inference_input_type"]),
@@ -2425,7 +2425,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         Quantization input stats is required but not provided.
     """
 
@@ -2516,7 +2516,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     self._validate_inputs(self._input_tensors, self.quantized_input_stats)
@@ -2739,7 +2739,7 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     return super(TFLiteSavedModelConverter, self).convert()
@@ -2882,7 +2882,7 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     saved_model_convert_result = self._convert_as_saved_model()
@@ -2960,7 +2960,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     if not self._has_valid_tensors():
@@ -3345,7 +3345,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
     Raises:
       ValueError:
-        The input shape is not specified.
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     return super(TFLiteConverter, self).convert()
