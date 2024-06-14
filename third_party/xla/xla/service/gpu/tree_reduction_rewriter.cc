@@ -86,6 +86,39 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
   }
 
+  // We observe larger n_div_k can improve tree reduction performance. Swap k
+  // and n_div_k if possible.
+  bool ShouldSwapInnerAndOuterReducedMinorDimension(uint64_t k,
+                                                    uint64_t n_div_k,
+                                                    uint64_t n,
+                                                    int64_t race_free_bound,
+                                                    bool is_row_reduction) {
+    CHECK(k >= n_div_k);
+    // Keep inner reduction as race free.
+    if (k > race_free_bound) {
+      return false;
+    }
+    // Swapping only affects row reduction vectorization.
+    if (is_row_reduction) {
+      // Rough conditions for row reduction vectorization, not mean that
+      // vectorization will definitely occur.
+      bool maybe_vectorized = n_div_k % 2 == 0 && n % 2 == 0;
+      if (maybe_vectorized) {
+        // Swap if n_div_k is small enough or k dim can be vectorized also.
+        return n_div_k * 2 < k || k % 2 == 0;
+      }
+      // Current reduction emitter only checks reduction input dimensions but
+      // not fusion input dimensions. Due to pad and inner reduction always fuse
+      // into same computation, it may leads to each thread reads multiple non
+      // aligned elements but can not vectorized so that get bad performance.
+      // Don't swap If encountered this situation.
+      return n % 2 == 0 || k % 2 != 0;
+    }
+    // For column reduction, swap to reduce memory store and the launch overhead
+    // of blocks.
+    return true;
+  }
+
   absl::Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
@@ -162,6 +195,17 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     uint64_t padded_n = n + minimum_padding;
+    // We get the best_k, which only need very small padding and may be power of
+    // 2 to accelerate index computation. But we didn't consider whether n_div_k
+    // is the best. We choose one of the {best_k, padded_n / best_k} as the
+    // best_n_div_k so that keep the advantages brought by the best_k
+    // (regardless choose any, padding is same and still has one dimension that
+    // is power of 2) and achieve better performance within optional range.
+    uint64_t best_n_div_k = padded_n / best_k;
+    if (ShouldSwapInnerAndOuterReducedMinorDimension(
+            best_k, best_n_div_k, n, race_free_bound, is_row_reduction)) {
+      std::swap(best_k, best_n_div_k);
+    }
 
     // Pad reduced dimension to the required number of elements.
     bool no_padding_necessary = n == padded_n;
