@@ -34,6 +34,12 @@ using ProfilerDomainHandle = ProfilerDomain*;
 // Get the "TSL" domain if NVTX profiling is enabled, otherwise null
 ProfilerDomainHandle DefaultProfilerDomain();
 
+// Assign a human-readable name to the current thread
+void NameCurrentThread(const char* thread_name);
+
+// Assign a human-readable name to the given local device
+void NameDevice(int device_id, const char* device_name);
+
 // Register a string with the profiler/NVTX implementation for faster use
 StringHandle RegisterString(ProfilerDomainHandle, const std::string&);
 

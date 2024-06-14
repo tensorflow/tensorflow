@@ -256,6 +256,10 @@ class Stream {
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims, const Kernel &k,
                               const KernelArgs &args) = 0;
+
+  // Get/set a name for a stream, which can be shown in profiling tools
+  virtual absl::string_view name() const = 0;
+  virtual void set_name(absl::string_view name) = 0;
 };
 
 template <typename... Params, typename... Args>

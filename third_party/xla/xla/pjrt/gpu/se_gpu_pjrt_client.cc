@@ -88,6 +88,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -1012,6 +1013,20 @@ absl::Status BuildDistributedDevices(
         TF_RET_CHECK(it->second != nullptr);
         local_device = std::move(it->second);
         gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
+        // Assign some descriptive names for profiling tools.
+        auto suffix =
+            absl::StrFormat(":#global=%d,local=%d,process=%d,slice=%d#",
+                            device_proto.global_device_id(),
+                            device_proto.local_device_ordinal(), node.node_id(),
+                            device_proto.slice_index());
+        // Name the device.
+        tsl::profiler::NameDevice(device_proto.local_device_ordinal(),
+                                  ("Xla" + suffix).c_str());
+        // Name the thread that launches work on this device.
+        local_device->execute_thread()->Schedule(
+            [name = "XlaLauncher" + suffix] {
+              tsl::profiler::NameCurrentThread(name.c_str());
+            });
       }
       auto device = std::make_unique<StreamExecutorGpuDevice>(
           device_proto.global_device_id(), std::move(local_device),

@@ -98,6 +98,8 @@ class GpuStream : public StreamCommon {
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
 
+  void set_name(absl::string_view name) override;
+
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
