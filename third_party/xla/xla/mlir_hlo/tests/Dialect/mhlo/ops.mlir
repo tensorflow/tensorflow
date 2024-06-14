@@ -628,6 +628,21 @@ func.func @all_to_all(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
   func.return %0 : tensor<16x4xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: func @all_to_all_same_split_concat_dim
+func.func @all_to_all_same_split_concat_dim(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 0 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<4x16xf32>) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
+}
+
 // -----
 
 // CHECK-LABEL: func @all_to_all_dynamic_split_dim

@@ -3597,6 +3597,7 @@ def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
   // Currently, it doesn't have an XLA builder equivalent.
   // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_UniformDequantizeOp : MHLO_UnaryElementwiseOp<"uniform_dequantize",
