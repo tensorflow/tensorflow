@@ -386,9 +386,11 @@ TEST_F(MlirLoopFusionTest, MinimumMaximum) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-LABEL: fused_computation_tuple
-    // CHECK:   arith.minimumf
-    // CHECK:   arith.maximumf
+    // CHECK:       func.func @fused_computation
+    // CHECK:         xla_gpu.pure_call @fused_computation_tuple
+    // CHECK:       func.func private @fused_computation_tuple
+    // CHECK-DAG:     arith.minimumf
+    // CHECK-DAG:     arith.maximumf
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

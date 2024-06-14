@@ -311,20 +311,20 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
     // CHECK-DAG:    %[[C20:.*]] = arith.constant 20
     // CHECK:        %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C20]]
     // CHECK:        %[[CONCAT:.*]] = scf.if %[[IN_BOUNDS]]
-    // CHECK:          %[[P0_VAL:.*]] = xla_gpu.pure_call @main_p0
-    // CHECK-SAME:         %[[X]], %[[Y]], %[[Z]]
+    // CHECK:          %[[P0_VAL:.*]] = tensor.extract %[[ARG0]]
+    // CHECK-SAME:         [%[[X]], %[[Y]], %[[Z]]]
     // CHECK:          scf.yield %[[P0_VAL]]
     // CHECK:        } else {
     // CHECK:          %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C35]]
     // CHECK:          %[[CONCAT2:.*]] = scf.if %[[IN_BOUNDS]]
     // CHECK:            %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C20]]
-    // CHECK:            %[[P1_VAL:.*]] = xla_gpu.pure_call @main_p1
-    // CHECK-SAME:           %[[X]], %[[OFFSET]], %[[Z]]
+    // CHECK:            %[[P1_VAL:.*]] = tensor.extract %[[ARG1]]
+    // CHECK-SAME:           [%[[X]], %[[OFFSET]], %[[Z]]]
     // CHECK:            scf.yield %[[P1_VAL]]
     // CHECK:          } else {
     // CHECK:            %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C35]]
-    // CHECK:            %[[P2_VAL:.*]] = xla_gpu.pure_call @main_p2
-    // CHECK-SAME:           %[[X]], %[[OFFSET]], %[[Z]]
+    // CHECK:            %[[P2_VAL:.*]] = tensor.extract %[[ARG2]]
+    // CHECK-SAME:           [%[[X]], %[[OFFSET]], %[[Z]]]
     // CHECK:            scf.yield %[[P2_VAL]]
     // CHECK:          }
     // CHECK:          scf.yield %[[CONCAT2]]
@@ -349,13 +349,13 @@ TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
     // CHECK-DAG:    %[[C20:.*]] = arith.constant 20
     // CHECK:        %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C20]]
     // CHECK:        %[[CONCAT:.*]] = scf.if %[[IN_BOUNDS]]
-    // CHECK:          %[[P0_VAL:.*]] = xla_gpu.pure_call @main_p0
-    // CHECK-SAME:         %[[X]], %[[Y]], %[[Z]]
+    // CHECK:          %[[P0_VAL:.*]] = tensor.extract %[[ARG0]]
+    // CHECK-SAME:         [%[[X]], %[[Y]], %[[Z]]]
     // CHECK:          scf.yield %[[P0_VAL]]
     // CHECK:        } else {
     // CHECK:          %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C20]]
-    // CHECK:          %[[P1_VAL:.*]] = xla_gpu.pure_call @main_p1
-    // CHECK-SAME:         %[[X]], %[[OFFSET]], %[[Z]]
+    // CHECK:          %[[P1_VAL:.*]] = tensor.extract %[[ARG1]]
+    // CHECK-SAME:         [%[[X]], %[[OFFSET]], %[[Z]]]
     // CHECK:          scf.yield %[[P1_VAL]]
     // CHECK:        }
     // CHECK:        return %[[CONCAT]]
@@ -1554,11 +1554,11 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
     // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:        %[[A:.*]] = xla_gpu.pure_call @main_p0(%[[P0]], %[[P1]], %[[X]], %[[Y]])
+    // CHECK:        %[[A:.*]] = tensor.extract %[[P0]][%[[X]], %[[Y]]]
     // CHECK:        %[[IDX:.*]] = xla_gpu.apply_indexing
     // CHECK-SAME:       affine_map<(d0, d1) -> (d0 * 10 + d1)>
     // CHECK-SAME:       (%[[X]] in [0, 9], %[[Y]] in [0, 9])
-    // CHECK:        %[[B:.*]] = xla_gpu.pure_call @main_p1(%[[P0]], %[[P1]], %[[IDX]])
+    // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
     // CHECK:        return %[[A]], %[[B]]
   )"));
 }
@@ -1578,16 +1578,13 @@ TEST_F(ElementalHloToMlirTest, NestedTuple) {
     // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
     // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:          %[[T0_0:.*]], %[[T0_1:.*]] = xla_gpu.pure_call @main_t0
-    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[X]], %[[Y]])
+    // CHECK:          %[[P0_V:.*]] = xla_gpu.pure_call @main_p0
     // CHECK:          %[[IDX:.*]] =
     // CHECK-SAME:       affine_map<(d0, d1) -> (d0 * 10 + d1)>
     // CHECK-SAME:       (%[[X]] in [0, 9], %[[Y]] in [0, 9])
-    // CHECK:          %[[P:.*]] = xla_gpu.pure_call @main_p1
+    // CHECK:          %[[P1_V:.*]] = xla_gpu.pure_call @main_p1
     // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
-    // CHECK:          %[[T1_0:.*]], %[[T1_1:.*]] = xla_gpu.pure_call @main_t1
-    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
-    // CHECK:          return %[[T0_0]], %[[T0_1]], %[[P]], %[[T1_0]], %[[T1_1]]
+    // CHECK:          return %[[P0_V]], %[[P1_V]], %[[P1_V]], %[[P1_V]], %[[P0_V]]
   )"));
 }
 

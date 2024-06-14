@@ -321,9 +321,18 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
 std::vector<mlir_converter::EpilogueSpecification>
 MlirTransposeFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                   MLIRContext* mlir_context) const {
-  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, shmem_transposes_, shmem_transpose_roots_, *this,
-      mlir_context)};
+  std::vector<mlir_converter::EpilogueSpecification> epilogues{
+      mlir_converter::EpilogueSpecification::FromOutputIndexing(
+          analysis_, shmem_transposes_, shmem_transpose_roots_, *this,
+          mlir_context)};
+  // Add empty epilogues for the side outputs. This ensures their roots don't
+  // get "fused" into the tuple function.
+  for (const auto* root : side_output_roots_) {
+    epilogues.push_back(
+        mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+            root, root, mlir_context));
+  }
+  return epilogues;
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(
