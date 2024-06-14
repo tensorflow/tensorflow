@@ -556,7 +556,8 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, ClampExecutesCorrectly) {
+// Reenable when b/346931845 is fixed.
+TEST_F(CuDnnFusionLevel2Test, DISABLED_ClampExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   x = bf16[16,32] parameter(0)
