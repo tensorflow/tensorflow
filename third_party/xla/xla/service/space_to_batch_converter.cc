@@ -1620,6 +1620,14 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   }
 
   if (IsTrivialElementwise(consumer)) {
+    for (int64_t i = 0; i < consumer->operand_count(); ++i) {
+      if (consumer->operand(i)->opcode() == HloOpcode::kBroadcast) {
+        if (!IsBroadcastPropagatable(consumer->mutable_operand(i), producer)) {
+          VLOG(2) << "Could not propagate through broadcast";
+          return false;
+        }
+      }
+    }
     return true;
   }
 
@@ -1724,17 +1732,13 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kReduce) {
+    // Support only the trivial case where both batch and split spatial dim are
+    // being reduced
+
     auto reduce_dims = consumer->dimensions();
     auto result = instr_to_dim_map_[consumer->mutable_operand(0)];
     const int64_t batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
     const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
-    // Support the trivial case where none of the batch and split spatial dim
-    // are being reduced.
-    return !absl::c_linear_search(reduce_dims, batch_dim) &&
-           !absl::c_linear_search(reduce_dims, space_dim);
-
-    // Support only the trivial case where both batch and split spatial dim are
-    // being reduced
     VLOG(1) << "Checking if reduce is supported batch_dim " << batch_dim
             << " space_dim " << space_dim << " reduce " << consumer->ToString();
     return absl::c_linear_search(reduce_dims, batch_dim) &&
@@ -2066,113 +2070,15 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kReduce) {
-    auto reduce_dims = consumer->dimensions();
-    auto dim_map_val = instr_to_dim_map_[consumer->mutable_operand(0)];
+    auto new_consumer = computation->AddInstruction(consumer->Clone());
     auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
-    auto permute_dims = instr_to_dim_permute_map_[first_operand];
 
+    auto dim_map_val = instr_to_dim_map_[consumer->mutable_operand(0)];
     const int64_t old_batch_dim =
         dim_map_val[DimMapper(SpaceToBatchDimMap::kBatch)];
-    const int64_t space_dim =
-        dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0)];
 
+    auto permute_dims = instr_to_dim_permute_map_[first_operand];
     const int64_t new_batch_dim = DimLookUp(permute_dims, old_batch_dim);
-    const int64_t new_space_dim = DimLookUp(permute_dims, space_dim);
-    auto new_consumer = computation->AddInstruction(consumer->Clone());
-    std::vector<int64_t> changed_dims(consumer->dimensions().size());
-
-    // Support the trivial case where none of the batch and split spatial dim
-    // are being reduced.
-    if (!absl::c_linear_search(reduce_dims, old_batch_dim) &&
-        !absl::c_linear_search(reduce_dims, space_dim)) {
-      for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
-        changed_dims[i] = DimLookUp(permute_dims, new_consumer->dimensions(i));
-      }
-
-      // Decide where the new batch and space dims are in the output.
-      int64_t new_output_batch_dim = new_batch_dim;
-      int64_t new_output_space_dim = new_space_dim;
-      for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
-        if (changed_dims[i] < new_batch_dim) {
-          new_output_batch_dim--;
-        }
-        if (changed_dims[i] < new_space_dim) {
-          new_output_space_dim--;
-        }
-      }
-
-      // Decide where the new batch and space dims are in the original reduce's
-      // output.
-      int64_t old_output_batch_dim = old_batch_dim;
-      int64_t old_output_space_dim = space_dim;
-      for (int64_t i = 0; i < consumer->dimensions().size(); ++i) {
-        if (reduce_dims[i] < old_batch_dim) {
-          old_output_batch_dim--;
-        }
-        if (reduce_dims[i] < space_dim) {
-          old_output_space_dim--;
-        }
-      }
-
-      TF_ASSIGN_OR_RETURN(
-          new_consumer,
-          MakeReduceHlo(first_operand, consumer->mutable_operand(1),
-                        changed_dims, consumer->called_computations()[0]));
-
-      VLOG(3) << " new_output_batch_dim " << new_output_batch_dim << " size "
-              << first_operand->shape().dimensions(new_batch_dim)
-              << " new_output_space_dim " << new_output_space_dim << " size "
-              << first_operand->shape().dimensions(new_space_dim);
-
-      std::vector<int64_t> dim_map(NumMappedDims());
-      dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] = old_output_batch_dim;
-      dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)] = old_output_space_dim;
-      // We don't know where the feature dim is, so set it to -1.
-      dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] = -1;
-
-      instr_to_dim_map_[consumer] = dim_map;
-      const int64_t rank = first_operand->shape().rank();
-
-      const int64_t output_rank = new_consumer->shape().rank();
-
-      // Make a map of each dim in original reduce output to input.
-      std::vector<int64_t> old_reduce_output_to_input(output_rank);
-      int dim_number_to_assign_old = 0;
-      for (int64_t i = 0; i < rank; ++i) {
-        if (auto it = absl::c_find(reduce_dims, i); it != reduce_dims.end()) {
-          continue;
-        }
-        old_reduce_output_to_input[i] = dim_number_to_assign_old++;
-      }
-
-      // Make a map of each dim in new reduce output to the new input.
-      std::vector<int64_t> new_reduce_output_to_input(output_rank);
-      int dim_number_to_assign_new = 0;
-      for (int64_t i = 0; i < rank; ++i) {
-        if (auto it = absl::c_find(changed_dims, i); it != changed_dims.end()) {
-          continue;
-        }
-        new_reduce_output_to_input[i] = dim_number_to_assign_new++;
-      }
-
-      std::vector<int64_t> new_permute_dims(output_rank);
-      // From the output dims to input dims mapping, figure how the old output
-      // dims are mapped to the new output dims.
-      for (int64_t i = 0; i < output_rank; ++i) {
-        new_permute_dims[i] = std::distance(
-            new_reduce_output_to_input.begin(),
-            absl::c_find(
-                new_reduce_output_to_input,
-                DimLookUp(permute_dims, old_reduce_output_to_input[i])));
-      }
-
-      instr_to_dim_permute_map_[new_consumer] = new_permute_dims;
-      old_to_new_instrs_[consumer] = new_consumer;
-
-      // Because batch and split spatial dims are not reduced, further
-      // propagation is needed.
-      return true;
-    }
 
     auto retval = GetSpatialDimsToSplit(consumer->mutable_operand(0));
     std::vector<int64_t> old_spatial_dims = retval.first;
@@ -2184,6 +2090,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
                            consumer->mutable_operand(1), new_batch_dim,
                            new_spatial_dims, old_batch_dim, old_spatial_dims));
 
+    std::vector<int64_t> changed_dims(new_consumer->dimensions().size());
     for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
       changed_dims[i] = DimLookUp(permute_dims, new_consumer->dimensions(i));
     }
