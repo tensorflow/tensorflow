@@ -4,6 +4,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/autotuning.proto";
+import "xla/service/gpu/backend_configs.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
 
@@ -21,6 +22,7 @@ message DenylistedAlgorithm {
 
 message AlgorithmDenylistEntry {
   string hlo = 1;
+  GpuBackendConfig backend_config = 6;
   ComputeCapability cc = 2;
   CudnnVersion cudnn_version = 3;
   string blas_version = 5;
