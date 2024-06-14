@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 namespace tensorflow {
 namespace ifrt_serving {
 

@@ -21,8 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "tsl/framework/serving_device_selector.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

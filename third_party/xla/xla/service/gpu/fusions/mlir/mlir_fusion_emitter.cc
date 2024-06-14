@@ -97,8 +97,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
-#include "tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

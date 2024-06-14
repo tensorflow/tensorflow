@@ -135,7 +135,7 @@ filegroup(
         "gpu_util.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
-        "@local_tsl//tsl/framework:bfc_allocator.h",
+        "@local_xla//xla/tsl/framework:bfc_allocator.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -186,10 +186,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
         # Clean up so that PJRT can run on ARM (and remove "#if defined(PLATFORM_GOOGLE) ..." use
@@ -326,9 +326,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "@local_tsl//tsl/framework:device_id",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
         "@local_xla//xla/tests:test_macros_header",
+        "@local_xla//xla/tsl/framework:device_id",
     ],
 )
 
@@ -457,7 +457,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_xla//xla/tsl/framework:serving_device_selector",
     ],
 )
 
@@ -470,8 +470,8 @@ tf_cc_test(
         ":gpu_serving_device_selector",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/framework:serving_device_selector",
-        "@local_tsl//tsl/framework:serving_device_selector_policies",
+        "@local_xla//xla/tsl/framework:serving_device_selector",
+        "@local_xla//xla/tsl/framework:serving_device_selector_policies",
     ],
 )
 
@@ -479,5 +479,5 @@ cc_library(
     name = "gpu_scheduling_metrics_storage",
     srcs = ["gpu_scheduling_metrics_storage.cc"],
     hdrs = ["gpu_scheduling_metrics_storage.h"],
-    deps = ["@local_tsl//tsl/framework:real_time_in_memory_metric"],
+    deps = ["@local_xla//xla/tsl/framework:real_time_in_memory_metric"],
 )

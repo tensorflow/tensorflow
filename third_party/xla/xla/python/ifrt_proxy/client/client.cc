@@ -220,16 +220,52 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     }
   }
 
-  // TODO(b/343992694): Implement a batched version natively and deprecate the
-  // non-batched version.
+  if (rpc_helper_->version().protocol_version() <= 2) {
+    std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
+    new_arrays.reserve(arrays.size());
+    for (const auto& array : arrays) {
+      TF_ASSIGN_OR_RETURN(
+          auto new_sharding,
+          array->sharding().WithDeviceAssignment(devices, memory_kind));
+      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                          array->Reshard(std::move(new_sharding), semantics));
+    }
+    return new_arrays;
+  }
+
+  auto req = std::make_unique<CopyArraysRequest>();
+  for (const auto& array : arrays) {
+    if (auto* proxy_array =
+            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+      req->add_array_handles(proxy_array->handle().handle);
+    } else {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports arrays created via IFRT Proxy client");
+    }
+  }
+  if (devices.has_value()) {
+    for (auto* const device : devices->devices()) {
+      req->add_device_ids(device->Id().value());
+    }
+  }
+  if (memory_kind.has_value()) {
+    // Use an empty string to indicate the default memory kind.
+    req->set_memory_kind(std::string(memory_kind->memory_kind().value_or("")));
+  }
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+
+  auto future = rpc_helper_->CopyArrays(std::move(req));
+  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+
   std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
   new_arrays.reserve(arrays.size());
-  for (const auto& array : arrays) {
+  for (int i = 0; i < response->array_handles_size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
-        array->sharding().WithDeviceAssignment(devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
-                        array->Reshard(std::move(new_sharding), semantics));
+        arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
+    new_arrays.push_back(tsl::MakeRef<Array>(
+        this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
+        std::move(new_sharding), ArrayHandle{response->array_handles(i)}));
   }
   return new_arrays;
 }

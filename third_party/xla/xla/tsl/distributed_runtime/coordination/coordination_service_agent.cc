@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tsl/framework/cancellation.h"
+#include "xla/tsl/framework/cancellation.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/random.h"

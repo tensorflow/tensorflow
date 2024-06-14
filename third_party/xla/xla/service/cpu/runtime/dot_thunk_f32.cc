@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/dot_thunk.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
 #endif
 
 template void ::xla::cpu::DotThunk::TypedMatMul<float>(

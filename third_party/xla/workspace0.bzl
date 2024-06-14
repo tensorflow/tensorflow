@@ -16,6 +16,8 @@ def _tf_bind():
     # If that ends up being the case, please leave a comment explaining
     # why we can't depend on the canonical build target.
 
+    # throwaway change
+
     # Needed by Protobuf
     native.bind(
         name = "grpc_cpp_plugin",

@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
-#include "tsl/framework/serving_device_selector.h"
-#include "tsl/framework/serving_device_selector_policies.h"
 
 namespace tensorflow {
 namespace gpu {

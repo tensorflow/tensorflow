@@ -16,10 +16,10 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_CONV_IMPL_H_
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 // 'tensorflow' namespace is used so that types don't require qualification.
