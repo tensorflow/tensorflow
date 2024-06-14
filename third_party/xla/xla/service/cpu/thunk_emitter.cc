@@ -19,8 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -384,6 +387,25 @@ ThunkEmitter::GetHostKernelAllocationSlices(const HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(add_buffers(slices.results, instruction));
 
   return slices;
+}
+
+absl::Status ThunkEmitter::ElementTypesSameAndSupported(
+    const HloInstruction& instruction,
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const PrimitiveType> supported_types) {
+  for (auto operand : operands) {
+    TF_RET_CHECK(
+        ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));
+  }
+
+  TF_RET_CHECK(!operands.empty());
+  PrimitiveType primitive_type = operands[0]->shape().element_type();
+  if (!absl::c_linear_search(supported_types, primitive_type)) {
+    return Unimplemented("unsupported operand type %s in op %s",
+                         PrimitiveType_Name(primitive_type),
+                         HloOpcodeString(instruction.opcode()));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla::cpu
