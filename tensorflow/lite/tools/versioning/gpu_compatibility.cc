@@ -631,11 +631,44 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
         return absl::UnimplementedError(
             "DynamicUpdateSlice requires 3 inputs.");
       }
-      OpSignatureTensorSpec array_to_update = op_sig.inputs[0];
-      if (array_to_update.dims.size() != 4) {
+      OpSignatureTensorSpec operand = op_sig.inputs[0];
+      OpSignatureTensorSpec update_slice = op_sig.inputs[1];
+      OpSignatureTensorSpec start_indices = op_sig.inputs[2];
+      if (operand.dims.size() == 4 && operand.dims[0] != 1) {
         return absl::UnimplementedError(
-            "DynamicUpdateSlice only supports 4D array_to_update.");
+            "DynamicUpdateSlice only support 4D operand with batch size 1.");
       }
+
+      if (start_indices.dims.size() > 1) {
+        return absl::UnimplementedError(
+            "DynamicUpdateSlice only support 1D start_indices.");
+      }
+
+      if (operand.type != update_slice.type) {
+        return absl::InternalError(
+            absl::StrCat("Array to update and updated slice must have the same "
+                         "data type, but got: array to update: ",
+                         operand.type, ", updated slice: ", update_slice.type));
+      }
+
+      if (start_indices.dims.size() != 1) {
+        return absl::InternalError(
+            absl::StrCat("Start indices must have be 1D, but got: ",
+                         start_indices.dims.size()));
+      }
+
+      if (start_indices.type != kTfLiteInt32) {
+        return absl::InvalidArgumentError(
+            "start_indices must be of type int32.");
+      }
+
+      if (update_slice.dims.size() != operand.dims.size()) {
+        return absl::InternalError(absl::StrCat(
+            "Operand and update must have the same number of "
+            "dimensions, but got: operand: ",
+            operand.dims.size(), ", update: ", update_slice.dims.size()));
+      }
+
       return absl::OkStatus();
     }
     case kTfLiteBuiltinFullyConnected: {
@@ -1052,7 +1085,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
 
   return absl::InvalidArgumentError(absl::StrCat(
       "Not supported op ", tflite::EnumNamesBuiltinOperator()[op_sig.op]));
-}
+}  // NOLINT(readability/fn_size)
 
 absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Operator* op,
