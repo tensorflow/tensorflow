@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -793,7 +794,7 @@ int64_t Interval::GetLoopTripCount() const {
   return upper - lower + 1;
 }
 
-Interval::ComparisonResult Interval::operator>(const Interval& b) const {
+Interval::ComparisonResult Interval::Gt(const Interval& b) const {
   if (!IsFeasible() || !b.IsFeasible()) {
     return {std::nullopt};
   }
@@ -806,7 +807,7 @@ Interval::ComparisonResult Interval::operator>(const Interval& b) const {
   return {std::nullopt};
 }
 
-Interval::ComparisonResult Interval::operator==(const Interval& b) const {
+Interval::ComparisonResult Interval::Eq(const Interval& b) const {
   Interval intersection = Intersect(b);
   if (!intersection.IsFeasible()) return {false};
   if (intersection.IsPoint() && IsPoint() && b.IsPoint()) {
@@ -901,16 +902,16 @@ std::ostream& operator<<(std::ostream& out, const Interval& range) {
 }
 
 bool operator==(const DimVar& lhs, const DimVar& rhs) {
-  return lhs.bounds.Equals(rhs.bounds);
+  return lhs.bounds == rhs.bounds;
 }
 
 bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range.Equals(rhs.range);
+  return lhs.range == rhs.range;
 }
 
 bool operator==(const RTVar& lhs, const RTVar& rhs) {
-  return lhs.feasible_values.Equals(rhs.feasible_values) &&
-         lhs.hlo == rhs.hlo && lhs.map == rhs.map;
+  return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
+         lhs.map == rhs.map;
 }
 
 std::vector<DimVar> DimVarsFromTensorSizes(
@@ -1238,7 +1239,8 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
   return lhs.GetAffineMap() == rhs.GetAffineMap() &&
          lhs.GetDimVars() == rhs.GetDimVars() &&
          lhs.GetRangeVars() == rhs.GetRangeVars() &&
-         lhs.GetRTVars() == rhs.GetRTVars();
+         lhs.GetRTVars() == rhs.GetRTVars() &&
+         lhs.GetConstraints() == rhs.GetConstraints();
 }
 
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {

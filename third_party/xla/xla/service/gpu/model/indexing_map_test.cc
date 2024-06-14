@@ -24,15 +24,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -868,61 +870,61 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
 TEST(IntervalComparisonTest, PointComparisons) {
   Interval interval{12, 64};
   auto point = [](int64_t n) { return Interval{n, n}; };
-  EXPECT_EQ(interval > point(11), true);
-  EXPECT_EQ(interval > point(12), std::nullopt);
-  EXPECT_EQ(interval > point(65), false);
+  EXPECT_EQ(interval.Gt(point(11)), true);
+  EXPECT_EQ(interval.Gt(point(12)), std::nullopt);
+  EXPECT_EQ(interval.Gt(point(65)), false);
 
-  EXPECT_EQ(interval < point(65), true);
-  EXPECT_EQ(interval < point(64), std::nullopt);
-  EXPECT_EQ(interval < point(10), false);
+  EXPECT_EQ(interval.Lt(point(65)), true);
+  EXPECT_EQ(interval.Lt(point(64)), std::nullopt);
+  EXPECT_EQ(interval.Lt(point(10)), false);
 
-  EXPECT_EQ(interval == point(11), false);
-  EXPECT_EQ(interval == point(12), std::nullopt);
-  EXPECT_EQ(interval == point(15), std::nullopt);
-  EXPECT_EQ(interval == point(65), false);
+  EXPECT_EQ(interval.Eq(point(11)), false);
+  EXPECT_EQ(interval.Eq(point(12)), std::nullopt);
+  EXPECT_EQ(interval.Eq(point(15)), std::nullopt);
+  EXPECT_EQ(interval.Eq(point(65)), false);
 
-  EXPECT_EQ(interval != point(11), true);
-  EXPECT_EQ(interval != point(15), std::nullopt);
-  EXPECT_EQ(interval != point(65), true);
+  EXPECT_EQ(interval.Ne(point(11)), true);
+  EXPECT_EQ(interval.Ne(point(15)), std::nullopt);
+  EXPECT_EQ(interval.Ne(point(65)), true);
 
-  EXPECT_EQ(interval >= point(12), true);
-  EXPECT_EQ(interval >= point(64), std::nullopt);
-  EXPECT_EQ(interval >= point(65), false);
+  EXPECT_EQ(interval.Ge(point(12)), true);
+  EXPECT_EQ(interval.Ge(point(64)), std::nullopt);
+  EXPECT_EQ(interval.Ge(point(65)), false);
 
-  EXPECT_EQ(interval <= point(11), false);
-  EXPECT_EQ(interval <= point(64), true);
-  EXPECT_EQ(interval <= point(63), std::nullopt);
-  EXPECT_EQ(interval <= point(65), true);
+  EXPECT_EQ(interval.Le(point(11)), false);
+  EXPECT_EQ(interval.Le(point(64)), true);
+  EXPECT_EQ(interval.Le(point(63)), std::nullopt);
+  EXPECT_EQ(interval.Le(point(65)), true);
 
-  EXPECT_EQ(point(15) == point(15), true);
-  EXPECT_EQ(point(15) == point(16), false);
+  EXPECT_EQ(point(15).Eq(point(15)), true);
+  EXPECT_EQ(point(15).Eq(point(16)), false);
 
-  EXPECT_EQ(point(15) != point(15), false);
-  EXPECT_EQ(point(15) != point(16), true);
+  EXPECT_EQ(point(15).Ne(point(15)), false);
+  EXPECT_EQ(point(15).Ne(point(16)), true);
 }
 
 TEST(IntervalComparisonTest, RangeComparisons) {
   Interval interval{12, 64};
   auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-  EXPECT_EQ(interval > range(-10, 11), true);
-  EXPECT_EQ(interval > range(-10, 12), std::nullopt);
-  EXPECT_EQ(interval > interval, std::nullopt);
-  EXPECT_EQ(interval > range(10, 20), std::nullopt);
-  EXPECT_EQ(interval > range(50, 60), std::nullopt);
-  EXPECT_EQ(interval > range(64, 100), false);
-  EXPECT_EQ(interval > range(65, 100), false);
+  EXPECT_EQ(interval.Gt(range(-10, 11)), true);
+  EXPECT_EQ(interval.Gt(range(-10, 12)), std::nullopt);
+  EXPECT_EQ(interval.Gt(interval), std::nullopt);
+  EXPECT_EQ(interval.Gt(range(10, 20)), std::nullopt);
+  EXPECT_EQ(interval.Gt(range(50, 60)), std::nullopt);
+  EXPECT_EQ(interval.Gt(range(64, 100)), false);
+  EXPECT_EQ(interval.Gt(range(65, 100)), false);
 
-  EXPECT_EQ(interval < range(65, 100), true);
-  EXPECT_EQ(interval < range(64, 100), std::nullopt);
-  EXPECT_EQ(interval < interval, std::nullopt);
-  EXPECT_EQ(interval < range(50, 60), std::nullopt);
-  EXPECT_EQ(interval < range(10, 20), std::nullopt);
-  EXPECT_EQ(interval < range(-10, 12), false);
-  EXPECT_EQ(interval < range(-10, 11), false);
+  EXPECT_EQ(interval.Lt(range(65, 100)), true);
+  EXPECT_EQ(interval.Lt(range(64, 100)), std::nullopt);
+  EXPECT_EQ(interval.Lt(interval), std::nullopt);
+  EXPECT_EQ(interval.Lt(range(50, 60)), std::nullopt);
+  EXPECT_EQ(interval.Lt(range(10, 20)), std::nullopt);
+  EXPECT_EQ(interval.Lt(range(-10, 12)), false);
+  EXPECT_EQ(interval.Lt(range(-10, 11)), false);
 
-  EXPECT_EQ(interval == interval, std::nullopt);
-  EXPECT_EQ(interval == range(65, 100), false);
-  EXPECT_EQ(interval == range(0, 11), false);
+  EXPECT_EQ(interval.Eq(interval), std::nullopt);
+  EXPECT_EQ(interval.Eq(range(65, 100)), false);
+  EXPECT_EQ(interval.Eq(range(0, 11)), false);
 }
 
 MATCHER_P(IntervalIs, interval, "") {
@@ -1386,6 +1388,131 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
               )"));
 }
 
+TEST_F(IndexingMapTest, IntervalSupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {Interval{1, 1}, Interval{0, 1}, Interval{1, 2}}));
+}
+
+TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashing) {
+  auto check_consistent = [](const Interval& a, const Interval& b) {
+    if (a == b) {
+      EXPECT_EQ(hash_value(a), hash_value(b));
+    }
+    if (hash_value(a) != hash_value(b)) {
+      EXPECT_NE(a, b);
+    }
+    // Some LLVM containers use "!=".
+    EXPECT_EQ(a != b, !(a == b));
+  };
+
+  std::vector<Interval> intervals = {Interval{1, 1}, Interval{0, 1},
+                                     Interval{1, 2}};
+  for (const auto& a : intervals) {
+    for (const auto& b : intervals) {
+      check_consistent(a, b);
+    }
+  }
+}
+
+TEST_F(IndexingMapTest, DimVarSupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {DimVar{1, 1}, DimVar{0, 1}, DimVar{1, 2}}));
+}
+
+TEST_F(IndexingMapTest, RangeVarSupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {RangeVar{1, 1}, RangeVar{0, 1}, RangeVar{1, 2}}));
+}
+
+TEST_F(IndexingMapTest, RTVarSupportsAbslHash) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  ROOT %constant = s64[] constant(42)
+})"));
+  ASSERT_NE(hlo_module, nullptr);
+  const HloInstruction* constant_instr =
+      hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {RTVar{Interval{1, 1}, nullptr,
+             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
+       RTVar{Interval{1, 2}, nullptr,
+             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
+       RTVar{
+           Interval{1, 2},
+           nullptr,
+           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
+       },
+       RTVar{
+           Interval{1, 2},
+           constant_instr,
+           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
+       }}));
+}
+
+TEST_F(IndexingMapTest, IndexingMapSupportsAbslHash) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {IndexingMap::FromTensorSizes(
+           ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
+                          &mlir_context_),
+           {50, 60}, {70, 80}),
+       IndexingMap::FromTensorSizes(
+           ParseAffineMap("(d0, d1)[s0, s1] -> (d1 * 2, d0, s1, s0)",
+                          &mlir_context_),
+           {50, 60}, {70, 80}),
+       IndexingMap::FromTensorSizes(
+           ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
+                          &mlir_context_),
+           {51, 60}, {70, 80}),
+       IndexingMap::FromTensorSizes(
+           ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
+                          &mlir_context_),
+           {50, 60}, {71, 80}),
+       [&] {
+         auto m = IndexingMap::FromTensorSizes(
+             ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
+                            &mlir_context_),
+             {50, 60}, {70, 80});
+         m.AddConstraint(ParseAffineExpr("d0 mod 8", &mlir_context_),
+                         Interval{0, 0});
+         m.AddConstraint(ParseAffineExpr("d0 mod 16", &mlir_context_),
+                         Interval{0, 0});
+         return m;
+       }(),
+       [&] {
+         auto m = IndexingMap::FromTensorSizes(
+             ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
+                            &mlir_context_),
+             {50, 60}, {70, 80});
+         m.AddConstraint(ParseAffineExpr("d0 mod 8", &mlir_context_),
+                         Interval{0, 0});
+         m.AddConstraint(ParseAffineExpr("d0 mod 32", &mlir_context_),
+                         Interval{0, 0});
+         return m;
+       }(),
+       IndexingMap(
+           ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                          &mlir_context_),
+           {DimVar{{0, 31}}},
+           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
+           {RTVar{Interval{0, 3},
+                  /*instr=*/nullptr, zero_dim_map},
+            RTVar{Interval{0, 4},
+                  /*instr=*/nullptr, zero_dim_map}}),
+       IndexingMap(
+           ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                          &mlir_context_),
+           {DimVar{{0, 31}}},
+           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
+           {RTVar{Interval{0, 3},
+                  /*instr=*/nullptr, zero_dim_map},
+            RTVar{Interval{0, 5},
+                  /*instr=*/nullptr, zero_dim_map}})}));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
