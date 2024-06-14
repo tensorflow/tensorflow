@@ -303,11 +303,12 @@ triton_softmax_computation {
 
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -357,11 +358,12 @@ triton_softmax_computation {
 
 ENTRY main {
   param_0 = f32[] constant(42)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -413,12 +415,13 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[127]{0} parameter(1)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -480,12 +483,13 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(1)
   param_1 = f32[127]{0} parameter(0)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_1, param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_1, param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -545,12 +549,13 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[127]{0} parameter(1)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -614,12 +619,13 @@ ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(1)
   param_1 = f32[127]{0} parameter(0)
   param_2 = f32[125]{0} parameter(2)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -688,12 +694,13 @@ ENTRY main {
   param_0 = f32[10,125,127]{2,1,0} parameter(0)
   param_1 = f32[127]{0} parameter(1)
   param_2 = f32[10,125]{1,0} parameter(2)
-  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 1, 127},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -760,7 +767,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[32]{0} parameter(1)
   parameter_0 = f32[32,16]{1,0} parameter(0)
-  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -768,7 +775,8 @@ ENTRY main {
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 16},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 CHECK-LABEL:   tt.func @triton_fn(
@@ -844,7 +852,7 @@ triton_softmax_computation {
 
 ENTRY main {
   p0 = pred[10,128]{1,0} parameter(0)
-  ROOT softmax = f32[10,128] fusion(p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT softmax = f32[10,128] fusion(p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0,
@@ -877,7 +885,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_0 = f32[16,32]{1,0} parameter(0)
   parameter_1 = f32[32]{0} parameter(1)
-  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -885,7 +893,8 @@ ENTRY main {
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 32},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 32)>
 CHECK-LABEL:   tt.func @triton_fn(
@@ -950,7 +959,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
   parameter_0 = f32[] parameter(0)
-  ROOT _ = f32[64,32,16]{2,1,0} fusion(parameter_1, parameter_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT _ = f32[64,32,16]{2,1,0} fusion(parameter_1, parameter_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton"}}
 }
 )";
 
@@ -959,7 +968,8 @@ ENTRY main {
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 1, 16},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 // CHECK:         #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
@@ -1023,7 +1033,7 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
   parameter_0 = f32[16]{0} parameter(0)
-  ROOT _ = f32[64,32,16]{2,1,0} fusion(f32[64,32,16]{2,1,0} parameter_1, f32[16]{0} parameter_0), kind=kCustom, calls=%triton_softmax_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT _ = f32[64,32,16]{2,1,0} fusion(f32[64,32,16]{2,1,0} parameter_1, f32[16]{0} parameter_0), kind=kCustom, calls=%triton_softmax_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton"}}
 }
 )";
 
@@ -1032,7 +1042,8 @@ ENTRY main {
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitSoftMax,
+                                          /*output_tile_sizes=*/{1, 1, 16},
+                                          EmitGeneric,
                                           "triton_softmax_computation", R"(
 // CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(

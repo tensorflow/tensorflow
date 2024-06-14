@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -64,7 +65,6 @@ struct TritonWrapperResult {
 // TritonFusionAnalysis and TritonGemmConfig are ignored.
 absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
-                         const TritonFusionAnalysis& analysis,
                          const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
                          const TritonGemmConfig& config,
@@ -81,8 +81,8 @@ absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const TritonFusionAnalysis& analysis,
                         const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const TritonGemmConfig& config,
-                        const std::vector<int64_t>& output_tile_sizes);
+                        mlir::triton::FuncOp fn,
+                        const TritonGemmConfig& config);
 
 // Compute the launch dimensions for the given Triton SoftMax.
 LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
@@ -95,14 +95,20 @@ absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const TritonFusionAnalysis& analysis,
                          const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
-                         const TritonGemmConfig& config,
-                         const std::vector<int64_t>& output_tile_sizes);
+                         const TritonGemmConfig& config);
+
+using LegacyTritonIrEmitter = std::function<absl::Status(
+    mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
+    const TritonFusionAnalysis& analysis, const HloFusionInstruction*,
+    mlir::triton::FuncOp, const TritonGemmConfig&)>;
 
 using TritonIrEmitter = std::function<absl::Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
-    const TritonFusionAnalysis& analysis, const HloFusionInstruction*,
-    mlir::triton::FuncOp, const TritonGemmConfig&,
+    const HloFusionInstruction*, mlir::triton::FuncOp, const TritonGemmConfig&,
     const std::vector<int64_t>&)>;
+
+using LegacyOrNewTritonIrEmitter =
+    std::variant<LegacyTritonIrEmitter, TritonIrEmitter>;
 
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
@@ -115,7 +121,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const HloFusionInstruction* fusion, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
-    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
@@ -123,8 +129,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context);
+    const std::vector<int64_t>& output_tile_sizes,
+    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(

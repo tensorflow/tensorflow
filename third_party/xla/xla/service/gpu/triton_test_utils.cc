@@ -82,7 +82,7 @@ stream_executor::GpuComputeCapability TritonTest::CudaAmpereOrRocm() {
 
 absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     absl::string_view hlo_text, const TritonGemmConfig& config,
-    std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
+    std::vector<int64_t> output_tile_sizes, LegacyOrNewTritonIrEmitter emitter,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       ParseAndReturnVerifiedModule(hlo_text));
@@ -94,7 +94,7 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
 
 absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     const HloComputation& computation, const TritonGemmConfig& config,
-    std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
+    std::vector<int64_t> output_tile_sizes, LegacyOrNewTritonIrEmitter emitter,
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 

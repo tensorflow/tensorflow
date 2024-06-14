@@ -178,6 +178,13 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
       config.num_ctas = 1;
 
+      LegacyOrNewTritonIrEmitter ir_emitter;
+      if (fusion_kind == kTritonFusionKind) {
+        ir_emitter = &EmitGeneric;
+      } else {
+        ir_emitter = &EmitSoftMax;
+      }
+
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(
@@ -185,8 +192,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
               ir_emitter_context.gpu_compute_capability(),
               ir_emitter_context.gpu_device_info(), config,
               /*output_tile_sizes=*/launch_config.output_tile_sizes,
-              ir_emitter_context.llvm_module(),
-              (fusion_kind == kTritonFusionKind ? &EmitGeneric : &EmitSoftMax),
+              ir_emitter_context.llvm_module(), ir_emitter,
               *ir_emitter_context.mlir_context()));
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);

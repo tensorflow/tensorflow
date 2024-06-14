@@ -67,14 +67,14 @@ class TritonFilecheckTest : public TritonTest {
  public:
   absl::Status CreateTritonIrAndFileCheck(
       absl::string_view hlo_text, const TritonGemmConfig& config,
-      std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
-      absl::string_view triton_fusion_name,
+      std::vector<int64_t> output_tile_sizes,
+      LegacyOrNewTritonIrEmitter emitter, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern);
 
   absl::Status CreateTritonIrAndFileCheck(
       const HloComputation& computation, const TritonGemmConfig& config,
-      std::vector<int64_t> output_tile_sizes, TritonIrEmitter emitter,
-      absl::string_view filecheck_pattern);
+      std::vector<int64_t> output_tile_sizes,
+      LegacyOrNewTritonIrEmitter emitter, absl::string_view filecheck_pattern);
 };
 
 class TritonSupportTest : public TritonFilecheckTest {

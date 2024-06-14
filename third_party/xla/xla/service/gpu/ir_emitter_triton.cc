@@ -2080,8 +2080,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                         const se::DeviceDescription& device_info,
                         const TritonFusionAnalysis& analysis,
                         const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const TritonGemmConfig& config,
-                        const std::vector<int64_t>& output_tile_sizes) {
+                        mlir::triton::FuncOp fn,
+                        const TritonGemmConfig& config) {
   TF_RETURN_IF_ERROR(CheckGemmTilingComplexityHeuristic(config));
 
   const HloComputation* computation = fusion->fused_instructions_computation();
@@ -2501,7 +2501,6 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
 absl::Status EmitGeneric(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
-                         const TritonFusionAnalysis&,
                          const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn, const TritonGemmConfig&,
                          const std::vector<int64_t>& output_tile_sizes) {
@@ -2546,18 +2545,11 @@ absl::Status EmitSoftMax(mlir::OpBuilder builder,
                          const TritonFusionAnalysis&,
                          const HloFusionInstruction* fusion,
                          mlir::triton::FuncOp fn,
-                         const TritonGemmConfig& config,
-                         const std::vector<int64_t>& output_tile_sizes) {
+                         const TritonGemmConfig& config) {
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(*computation,
                                                builder.getContext());
-  if (auto* symbolic_tile_analysis =
-          std::get_if<SymbolicTileAnalysis>(&symbolic_tile_analysis_or)) {
-    return EmitGeneric(builder, libdevice_path, device_info,
-                       TritonFusionAnalysis{}, fusion, fn, TritonGemmConfig{},
-                       output_tile_sizes);
-  }
   // TODO(b/332649307): Remove the fallback on the legacy triton analysis once
   //  the symbolic tile analysis can handle all cases.
   TF_ASSIGN_OR_RETURN(TritonFusionAnalysis analysis,
@@ -2748,8 +2740,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context) {
+    const std::vector<int64_t>& output_tile_sizes,
+    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   LoadMlirDialectsForTriton(mlir_context);
 
   const HloComputation* hlo_computation =
@@ -2785,9 +2777,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(ir_emitter(
-      b, GetLibdevicePath(fusion->GetModule()->config(), device_info),
-      device_info, analysis, fusion, fn, config, output_tile_sizes));
+  std::string libdevice_path =
+      GetLibdevicePath(fusion->GetModule()->config(), device_info);
+
+  if (std::holds_alternative<LegacyTritonIrEmitter>(ir_emitter)) {
+    TF_RETURN_IF_ERROR(std::get<LegacyTritonIrEmitter>(ir_emitter)(
+        b, libdevice_path, device_info, analysis, fusion, fn, config));
+  } else {
+    TF_RET_CHECK(std::holds_alternative<TritonIrEmitter>(ir_emitter));
+    TF_RETURN_IF_ERROR(std::get<TritonIrEmitter>(ir_emitter)(
+        b, libdevice_path, device_info, fusion, fn, config, output_tile_sizes));
+  }
 
   b.create<mt::ReturnOp>(loc);
 
@@ -2811,7 +2811,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const HloFusionInstruction* fusion, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
-    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
+    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
