@@ -116,8 +116,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                                  const DeviceMemoryBase& device_src,
                                  uint64_t size) override;
 
-  absl::Status RecordEvent(Stream* stream, Event* event) override;
-
   absl::Status UnloadAllPrograms() override;
 
   absl::Status EnqueueCompactionOnStreamForHbm(

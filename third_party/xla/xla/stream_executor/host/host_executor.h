@@ -119,8 +119,6 @@ class HostExecutor : public StreamExecutorCommon {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status RecordEvent(Stream* stream, Event* event) override;
-
   void DeallocateStream(Stream* stream) override;
 
   absl::Status BlockHostUntilDone(Stream* stream) override;

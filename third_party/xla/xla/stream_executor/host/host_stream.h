@@ -52,6 +52,7 @@ class HostStream : public StreamCommon {
 
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
+  absl::Status RecordEvent(Event* event) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

@@ -115,6 +115,14 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
+  absl::Status RecordEvent(stream_executor::Event* event) override {
+    StatusHelper status;
+    auto se_event = tpu_platform_->LookupEvent(event);
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_RecordEventFn(
+        se_executor_, stream_, se_event, status.c_status);
+    return status.status();
+  }
+
   SE_Stream* se_stream() const { return stream_; }
 
  private:

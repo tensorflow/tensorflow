@@ -660,10 +660,6 @@ bool GpuExecutor::HostCallback(Stream* stream,
   delete callback;
 }
 
-absl::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
-  return AsGpuEvent(event)->Record(AsGpuStream(stream));
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);

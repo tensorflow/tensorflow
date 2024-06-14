@@ -185,6 +185,10 @@ class CStream : public StreamCommon {
     return status;
   }
 
+  absl::Status RecordEvent(Event* event) override {
+    return static_cast<CEvent*>(event)->Record(stream_handle_);
+  }
+
   absl::Status WaitFor(Stream* other) override {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     SP_Stream other_handle = static_cast<CStream*>(other)->Handle();

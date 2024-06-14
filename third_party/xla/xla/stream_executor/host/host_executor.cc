@@ -239,16 +239,6 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event);
 }
 
-absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
-  std::shared_ptr<absl::Notification> notification =
-      AsHostEvent(event)->notification();
-  AsHostStream(stream)->EnqueueTask([notification]() {
-    CHECK(!notification->HasBeenNotified());
-    notification->Notify();
-  });
-  return absl::OkStatus();
-}
-
 absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }

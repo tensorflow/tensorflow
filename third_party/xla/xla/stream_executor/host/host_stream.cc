@@ -74,6 +74,16 @@ bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {
   });
 }
 
+absl::Status HostStream::RecordEvent(Event* event) {
+  std::shared_ptr<absl::Notification> notification =
+      static_cast<HostEvent*>(event)->notification();
+  EnqueueTask([notification]() {
+    CHECK(!notification->HasBeenNotified());
+    notification->Notify();
+  });
+  return absl::OkStatus();
+}
+
 bool HostStream::EnqueueTaskWithStatus(
     absl::AnyInvocable<absl::Status() &&> task) {
   CHECK(task != nullptr);

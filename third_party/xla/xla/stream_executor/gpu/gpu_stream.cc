@@ -71,6 +71,10 @@ absl::Status GpuStream::WaitFor(Stream* other) {
   return absl::InternalError("Couldn't wait for stream.");
 }
 
+absl::Status GpuStream::RecordEvent(Event* event) {
+  return static_cast<GpuEvent*>(event)->Record(this);
+}
+
 absl::Status GpuStream::WaitFor(Event* event) {
   if (GpuDriver::WaitStreamOnEvent(
           parent_->gpu_context(), gpu_stream(),

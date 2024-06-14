@@ -61,10 +61,6 @@ StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
   return handle;
 }
 
-absl::Status StreamCommon::RecordEvent(Event *event) {
-  return parent_->RecordEvent(this, event);
-}
-
 absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   // Do not destroy bad streams when holding mu_ because ~Stream() may
   // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.

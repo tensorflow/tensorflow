@@ -71,7 +71,6 @@ class StreamCommon : public Stream {
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status RecordEvent(Event *event) override;
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,

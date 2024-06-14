@@ -56,6 +56,9 @@ class InterpreterStream : public host::HostStream {
   absl::Status WaitFor(Event *event) override {
     return absl::UnimplementedError("Not implemented.");
   }
+  absl::Status RecordEvent(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
 };
 
 class XlaInterpreterExecutor : public StreamExecutorCommon {
@@ -125,10 +128,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
 
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
-
-  absl::Status RecordEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
-  }
 
   void DeallocateStream(Stream *stream) override {}
 
