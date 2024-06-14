@@ -222,6 +222,16 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     custom_call_handler_ = std::move(handler);
   }
 
+  // Callback for each multiply-accumulate in each dot or convolution operation.
+  using TraceMACHandler = std::function<void(
+      int64_t result_index, int64_t lhs_index, int64_t rhs_index)>;
+
+  // Sets a callback for each multiply-accumulate in each dot or convolution
+  // operation.
+  void set_trace_mac_handler(TraceMACHandler handler) {
+    trace_mac_handler_ = std::move(handler);
+  }
+
   // Returns the result of a matrix multiply `lhs x rhs`.
   static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
       const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
@@ -483,6 +493,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
   // Optional handler for custom_call ops.
   CustomCallHandler custom_call_handler_;
+
+  // Optional handler for tracing MAC operations (eg in dot and convolution).
+  TraceMACHandler trace_mac_handler_;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;
