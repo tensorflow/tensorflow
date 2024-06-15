@@ -1,1 +1,122 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/docs/Status/Cxx2cIssues.csv b/libcxx/docs/Status/Cxx2cIssues.csv
+--- a/libcxx/docs/Status/Cxx2cIssues.csv
++++ b/libcxx/docs/Status/Cxx2cIssues.csv
+@@ -65,5 +65,4 @@
+ "`3343 <https://wg21.link/LWG3343>`__","Ordering of calls to ``unlock()`` and ``notify_all()`` in Effects element of ``notify_all_at_thread_exit()`` should be reversed","Not Yet Adopted","|Complete|","16.0",""
+ "XXXX","","The sys_info range should be affected by save","Not Yet Adopted","|Complete|","19.0"
+ "`4071 <https://wg21.link/LWG4071>`__","","``reference_wrapper`` comparisons are not SFINAE-friendly","Not Yet Adopted","|Complete|","19.0"
+-"`4110 <https://wg21.link/LWG4110>`__","","``shared_ptr(nullptr_t, Deleter)`` is overconstrained, breaking some sensible deleters","Not Yet Adopted","|Complete|","19.0"
+ "","","","","",""
+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
+--- a/libcxx/include/__memory/shared_ptr.h
++++ b/libcxx/include/__memory/shared_ptr.h
+@@ -404,7 +404,7 @@
+ };
+ 
+ template <class _Dp, class _Tp>
+-using __shared_ptr_nullptr_deleter_ctor_reqs = _And<is_move_constructible<_Dp>, __well_formed_deleter<_Dp, _Tp*> >;
++using __shared_ptr_nullptr_deleter_ctor_reqs = _And<is_move_constructible<_Dp>, __well_formed_deleter<_Dp, nullptr_t> >;
+ 
+ #if defined(_LIBCPP_ABI_ENABLE_SHARED_PTR_TRIVIAL_ABI)
+ #  define _LIBCPP_SHARED_PTR_TRIVIAL_ABI __attribute__((__trivial_abi__))
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter_allocator.pass.cpp
+@@ -33,21 +33,17 @@
+ // LWG 3233. Broken requirements for shared_ptr converting constructors
+ // https://cplusplus.github.io/LWG/issue3233
+ static_assert( std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>, std::nullptr_t, bad_deleter, test_allocator<int> >::value,
+-              "");
++static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
++static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+ 
+ #if TEST_STD_VER >= 17
+-static_assert(
+-    std::is_constructible<std::shared_ptr<int[]>, std::nullptr_t, test_deleter<int[]>, test_allocator<int> >::value,
+-    "");
++static_assert( std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+ 
+-static_assert(
+-    std::is_constructible<std::shared_ptr<int[5]>, std::nullptr_t, test_deleter<int[5]>, test_allocator<int> >::value,
+-    "");
++static_assert( std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, test_deleter<int>, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, bad_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_nullptr_deleter, test_allocator<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_move_deleter, test_allocator<int> >::value, "");
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/nullptr_t_deleter.pass.cpp
+@@ -32,16 +32,17 @@
+ // LWG 3233. Broken requirements for shared_ptr converting constructors
+ // https://cplusplus.github.io/LWG/issue3233
+ static_assert( std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, test_deleter<int> >::value, "");
+-static_assert(!std::is_constructible<std::shared_ptr<int>, std::nullptr_t, bad_deleter>::value, "");
++static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, bad_deleter>::value, "");
++static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_nullptr_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int>,  std::nullptr_t, no_move_deleter>::value, "");
+ 
+ #if TEST_STD_VER >= 17
+-static_assert(std::is_constructible<std::shared_ptr<int[]>, std::nullptr_t, test_deleter<int[]> >::value, "");
++static_assert( std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, test_deleter<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, bad_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_nullptr_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[]>,  std::nullptr_t, no_move_deleter>::value, "");
+ 
+-static_assert(std::is_constructible<std::shared_ptr<int[5]>, std::nullptr_t, test_deleter<int[5]> >::value, "");
++static_assert( std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, test_deleter<int> >::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, bad_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_nullptr_deleter>::value, "");
+ static_assert(!std::is_constructible<std::shared_ptr<int[5]>,  std::nullptr_t, no_move_deleter>::value, "");
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter_allocator.pass.cpp
+@@ -165,13 +165,5 @@
+                                              test_allocator<Derived[4]> >::value, "");
+     }
+ 
+-#if TEST_STD_VER >= 14
+-    {
+-      // LWG 4110
+-      auto deleter = [](auto pointer) { delete pointer; };
+-      std::shared_ptr<int> p(new int, deleter, std::allocator<int>());
+-    }
+-#endif
+-
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
+--- a/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
++++ b/libcxx/test/std/utilities/memory/util.smartptr/util.smartptr.shared/util.smartptr.shared.const/pointer_deleter.pass.cpp
+@@ -115,14 +115,6 @@
+     }
+ #endif // TEST_STD_VER >= 11
+ 
+-#if TEST_STD_VER >= 14
+-    {
+-      // LWG 4110
+-      auto deleter = [](auto pointer) { delete pointer; };
+-      std::shared_ptr<int> p(new int, deleter);
+-    }
+-#endif
+-
+   test_function_type();
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -1051,7 +1051,7 @@
+         ":CAPIDebugObjects",
+         ":CAPIIRObjects",
+         ":CAPIInterfacesObjects",
+-        ":CAPITransformObjects",
++        ":CAPITransformsObjects",
+     ],
+ )
+ 
