@@ -102,13 +102,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
@@ -2078,10 +2078,33 @@ absl::Status CheckGemmTilingComplexityHeuristic(
 absl::Status EmitMatMul(mlir::OpBuilder builder,
                         absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
-                        const TritonFusionAnalysis& analysis,
                         const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn,
-                        const TritonGemmConfig& config) {
+                        mlir::triton::FuncOp fn, const BlockLevelParameters&) {
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+
+  if (!backend_config.has_triton_gemm_config()) {
+    // TODO(bchetioui): consolidate default parameters. At the moment, these
+    // may be constructed in two distinct places.
+    LOG(WARNING) << "Using fallback triton GEMM config for op "
+                 << fusion->name();
+    auto& triton_config = *backend_config.mutable_triton_gemm_config();
+    triton_config.set_block_m(64);
+    triton_config.set_block_k(64);
+    triton_config.set_block_n(64);
+    triton_config.set_split_k(1);
+    triton_config.set_num_stages(1);
+    triton_config.set_num_warps(2);
+    triton_config.set_num_ctas(1);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      TritonGemmConfig config,
+      TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
+  TF_ASSIGN_OR_RETURN(auto analysis,
+                      TritonFusionAnalysis::Execute(
+                          *fusion->called_computation(), config.split_k));
+
   TF_RETURN_IF_ERROR(CheckGemmTilingComplexityHeuristic(config));
 
   const HloComputation* computation = fusion->fused_instructions_computation();
@@ -2502,8 +2525,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn, const TritonGemmConfig&,
-                         const std::vector<int64_t>& output_tile_sizes) {
+                         mlir::triton::FuncOp fn,
+                         const BlockLevelParameters& block_level_parameters) {
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(*computation,
@@ -2523,9 +2546,9 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   Value pid = b.create<ma::IndexCastUIOp>(
       b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
 
-  TF_ASSIGN_OR_RETURN(
-      TiledHloComputation tiled_hlo_computation,
-      symbolic_tile_analysis.ComputeTiledHloInstructions(output_tile_sizes));
+  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                      symbolic_tile_analysis.ComputeTiledHloInstructions(
+                          block_level_parameters.output_tile_sizes));
   TF_ASSIGN_OR_RETURN(Value result,
                       EmitTiledScope(b, libdevice_path, device_info, fusion,
                                      tiled_hlo_computation, fn, pid));
@@ -2542,14 +2565,9 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 absl::Status EmitSoftMax(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
-                         const TritonFusionAnalysis&,
                          const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const TritonGemmConfig& config) {
+                         mlir::triton::FuncOp fn, const BlockLevelParameters&) {
   const HloComputation* computation = fusion->fused_instructions_computation();
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(*computation,
-                                               builder.getContext());
   // TODO(b/332649307): Remove the fallback on the legacy triton analysis once
   //  the symbolic tile analysis can handle all cases.
   TF_ASSIGN_OR_RETURN(TritonFusionAnalysis analysis,
@@ -2737,11 +2755,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
-    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloFusionInstruction* fusion,
-    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    const std::vector<int64_t>& output_tile_sizes,
-    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::MLIRContext& mlir_context) {
   LoadMlirDialectsForTriton(mlir_context);
 
   const HloComputation* hlo_computation =
@@ -2780,13 +2797,23 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   std::string libdevice_path =
       GetLibdevicePath(fusion->GetModule()->config(), device_info);
 
-  if (std::holds_alternative<LegacyTritonIrEmitter>(ir_emitter)) {
-    TF_RETURN_IF_ERROR(std::get<LegacyTritonIrEmitter>(ir_emitter)(
-        b, libdevice_path, device_info, analysis, fusion, fn, config));
+  auto backend_config =
+      fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
+  absl::string_view fusion_kind = backend_config.kind();
+
+  if (fusion_kind == kTritonGemmFusionKind) {
+    TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
+                                  block_level_parameters));
+  } else if (fusion_kind == kTritonSoftmaxFusionKind) {
+    TF_ASSIGN_OR_RETURN(TritonFusionAnalysis analysis,
+                        TritonFusionAnalysis::Execute(*hlo_computation));
+    TF_RETURN_IF_ERROR(EmitSoftMax(b, libdevice_path, device_info, fusion, fn,
+                                   block_level_parameters));
+  } else if (fusion_kind == kTritonFusionKind) {
+    TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
+                                   block_level_parameters));
   } else {
-    TF_RET_CHECK(std::holds_alternative<TritonIrEmitter>(ir_emitter));
-    TF_RETURN_IF_ERROR(std::get<TritonIrEmitter>(ir_emitter)(
-        b, libdevice_path, device_info, fusion, fn, config, output_tile_sizes));
+    return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
   b.create<mt::ReturnOp>(loc);
@@ -2807,11 +2834,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 }
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
-    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloFusionInstruction* fusion, const se::GpuComputeCapability& cc,
-    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
-    LegacyOrNewTritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::GpuComputeCapability& cc,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context) {
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
@@ -2822,28 +2849,27 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto triton_module,
-      CreateTritonModule(analysis, fn_name, fusion, device_info, config,
-                         output_tile_sizes, ir_emitter, mlir_context));
+  TF_ASSIGN_OR_RETURN(auto triton_module,
+                      CreateTritonModule(fn_name, fusion, device_info,
+                                         block_level_parameters, mlir_context));
 
   VLOG(3) << fusion->ToString(HloPrintOptions::ShortParsable());
   VLOG(3) << fusion->fused_instructions_computation()->ToString(
       HloPrintOptions::ShortParsable());
-  VLOG(2) << config.ToString();
 
   // Compile Triton kernel to LLVM.
   const HloModule* hlo_module = fusion->GetModule();
   return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), cc,
-                             device_info, config, triton_module.get(),
-                             llvm_module, mlir_context);
+                             device_info, block_level_parameters,
+                             triton_module.get(), llvm_module, mlir_context);
 }
 
 // TODO(b/325220878): Replace TritonGemmConfig with a more generic abstraction.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
     const se::GpuComputeCapability& cc,
-    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context) {
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
@@ -2905,7 +2931,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(CreateSimplifyAffinePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  if (!CreateTritonPipeline(pm, cc, config, /*out*/ cluster_info).ok()) {
+  if (!CreateTritonPipeline(pm, cc, block_level_parameters, cluster_info)
+           .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
   if (log_stream.has_value()) {
@@ -2964,8 +2991,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   // `cluster_info` must be read after pm.run().
   std::optional<se::ClusterDim> cluster_dim;
-  if (config.num_ctas > 1) {
-    VLOG(3) << "num_ctas: " << config.num_ctas
+  if (block_level_parameters.num_ctas > 1) {
+    VLOG(3) << "num_ctas: " << block_level_parameters.num_ctas
             << ", cluster_info: " << cluster_info.clusterDimX << ","
             << cluster_info.clusterDimY << "," << cluster_info.clusterDimZ;
     if (cluster_info.clusterDimX > 1 || cluster_info.clusterDimY > 1 ||

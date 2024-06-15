@@ -30,10 +30,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A container for block-level parameters. Prefer to use this instead of
-// BlockLevelFusionConfig directly.
+// A container for block-level parameters. Currently only used for Triton
+// fusions.
 struct BlockLevelParameters {
   std::vector<int64_t> output_tile_sizes;
+
+  // Triton-specific parameters.
+  int num_warps = 1;
+  int num_ctas = 1;
+  int num_stages = 1;
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
@@ -45,7 +50,7 @@ struct BlockLevelParameters {
   }
 };
 
-// Stores TiledHloInstructions in the computation.
+// Stores `TiledHloInstruction`s in the computation.
 //  * Instructions reference each other with non-owning pointers.
 //  * Instructions with the same tiling parameters are CSE-ed during
 //  construction.

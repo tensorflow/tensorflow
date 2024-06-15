@@ -24,12 +24,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_test_utils.h"
 #include "xla/stream_executor/device_description.h"
@@ -66,16 +64,15 @@ ENTRY e {
     kind=kCustom, calls=triton_computation,
     backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
-
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
   if (IsTritonSupportedInstruction(ti.Instruction(),
                                    GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-        ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1, 32},
-        EmitGeneric, "CHECK: tt.func @triton_fn"));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({1, 32}),
+                                            "CHECK: tt.func @triton_fn"));
   } else {
     // TODO(b/331632717): update the check to use SymbolicTileAnalysis to avoid
     // tiling failures and check triton emitter fails gracefully.
@@ -138,9 +135,9 @@ ENTRY e {
   if (IsTritonSupportedInstruction(ti.Instruction(),
                                    GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-        ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1, 32},
-        EmitGeneric, "CHECK: tt.func @triton_fn"));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({1, 32}),
+                                            "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
                 ::testing::AnyOf(
@@ -206,9 +203,9 @@ ENTRY e {
   if (IsTritonSupportedInstruction(ti.Instruction(),
                                    GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-        ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1, 32},
-        EmitGeneric, "CHECK: tt.func @triton_fn"));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({1, 32}),
+                                            "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(
         TritonFusionAnalysis::Execute(ti.TritonComputation()),
@@ -255,9 +252,9 @@ ENTRY e {
   if (IsTritonSupportedInstruction(ti.Instruction(),
                                    GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-        ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1, 32},
-        EmitGeneric, "CHECK: tt.func @triton_fn"));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({1, 32}),
+                                            "CHECK: tt.func @triton_fn"));
   } else {
     EXPECT_THAT(
         TritonFusionAnalysis::Execute(ti.TritonComputation()),
@@ -307,18 +304,16 @@ ENTRY main {
   if (IsTritonSupportedInstruction(ti.Instruction(),
                                    GetCudaComputeCapability())) {
     TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-    TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-        ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1},
-        EmitGeneric, "CHECK: tt.func @triton_fn"));
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({1}),
+                                            "CHECK: tt.func @triton_fn"));
   } else {
     const se::DeviceDescription dev_info =
         TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
     EXPECT_THAT(
-        TritonWrapper(*TritonFusionAnalysis::Execute(ti.TritonComputation()),
-                      "test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
-                      dev_info,
-                      /*config=*/{}, /*output_tile_sizes=*/{1}, &llvm_module_,
-                      &EmitGeneric, mlir_context_),
+        TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                      dev_info, FromOutputTileSizes({1}), &llvm_module_,
+                      mlir_context_),
         tsl::testing::StatusIs(
             absl::StatusCode::kInternal,
             ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -364,9 +359,9 @@ ENTRY main {
       IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
           .CanFuse());
   TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      ti.TritonComputation(), /*config=*/{}, /*output_tile_sizes=*/{1},
-      EmitGeneric, "CHECK: tt.func @triton_fn"));
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                          FromOutputTileSizes({1}),
+                                          "CHECK: tt.func @triton_fn"));
 }
 
 TEST_F(
@@ -519,11 +514,8 @@ ENTRY main {
       ::testing::HasSubstr("Reduction init value should be a constant "
                            "or a convert of a constant."));
   EXPECT_THAT(
-      TritonWrapper(*TritonFusionAnalysis::Execute(ti.TritonComputation()),
-                    "test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
-                    dev_info,
-                    /*config=*/{},
-                    /*output_tile_sizes=*/{1}, &llvm_module_, &EmitGeneric,
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       tsl::testing::StatusIs(
           absl::StatusCode::kInternal,
@@ -562,11 +554,8 @@ ENTRY main {
           .Explain(),
       ::testing::HasSubstr("Unsupported reduction computation by Triton."));
   EXPECT_THAT(
-      TritonWrapper(*TritonFusionAnalysis::Execute(ti.TritonComputation()),
-                    "test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
-                    dev_info,
-                    /*config=*/{},
-                    /*output_tile_sizes=*/{1}, &llvm_module_, &EmitGeneric,
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              ::testing::HasSubstr("Unsupported operation")));

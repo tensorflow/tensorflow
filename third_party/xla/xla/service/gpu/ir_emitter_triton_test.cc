@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter_triton.h"
 
-#include <cstdint>
 #include <cstdlib>
 #include <iterator>
 #include <limits>
@@ -46,8 +45,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_test_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -134,10 +132,7 @@ ENTRY e {
                          "split_k":1,"num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitMatMul,
-                                          "triton_gemm_r", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_gemm_r", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
@@ -216,14 +211,12 @@ ENTRY e {
   ROOT custom-call = f32[137,1]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":32,
                          "split_k":1,"num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
 
-  TritonGemmConfig config(16, 16, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x16xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
@@ -305,11 +298,8 @@ ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
@@ -360,11 +350,8 @@ ENTRY main {
   param_0 = f32[] constant(42)
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:            %[[PID:.*]] = tt.get_program_id x : i32
@@ -418,11 +405,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
@@ -486,11 +470,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_1, param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
@@ -552,11 +533,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
@@ -622,11 +600,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 127},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
@@ -697,10 +672,8 @@ ENTRY main {
   ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 1, 127},
-                                          EmitGeneric,
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText,
+                                          FromOutputTileSizes({1, 1, 127}),
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -773,11 +746,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 16},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 16}), "triton_softmax_computation", R"(
 CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -891,11 +861,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 32},
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 32}), "triton_softmax_computation", R"(
 CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 32)>
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -966,10 +933,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 1, 16},
-                                          EmitGeneric,
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText,
+                                          FromOutputTileSizes({1, 1, 16}),
                                           "triton_softmax_computation", R"(
 // CHECK:         #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
@@ -1039,11 +1004,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{1, 1, 16},
-                                          EmitGeneric,
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText,
+                                          FromOutputTileSizes({1, 1, 16}),
                                           "triton_softmax_computation", R"(
 // CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
@@ -1116,10 +1078,8 @@ ENTRY e {
     }
 }
 )";
-  TritonGemmConfig config(16, 16, 16, 1, 1, 1);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config,
-                                          /*output_tile_sizes=*/{}, EmitMatMul,
-                                          "triton_gemm_computation", R"(
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheckForDot(kHloText, "triton_gemm_computation", R"(
 CHECK: %[[LOAD:.*]] = tt.load %{{.*}} {{.*}} : !tt.ptr<tensor<16x16xi8>>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
@@ -1153,9 +1113,7 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TritonGemmConfig config(16, 64, 32, 1, 1, 2);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_gemm", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_gemm", R"(
 CHECK:   tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32>
 CHECK-SAME:                 %[[P1:[^:]*]]: !tt.ptr<f32>
 CHECK-SAME:                 %[[P2:[^:]*]]: !tt.ptr<f32>
@@ -1201,10 +1159,7 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  TritonGemmConfig config(16, 64, 32, 1, 1, 2);
-  ASSERT_THAT(
-      CreateTritonIrAndFileCheck(kHloText, config, /*output_tile_sizes=*/{},
-                                 EmitMatMul, "triton_gemm", R"(
+  ASSERT_THAT(CreateTritonIrAndFileCheckForDot(kHloText, "triton_gemm", R"(
 CHECK:     tt.func @triton_fn({{[^,]*}}, %[[DYNAMIC_SLICE_INPUT:[^:]*]]: !tt.ptr<f32> {{[^,]*}}, %[[START_INDEX0_PTR:[^:]*]]: !tt.ptr<i32>
 CHECK-DAG:   %[[C0_i32:.*]] = arith.constant 0 : i32
 CHECK-DAG:   %[[C1_i64:.*]] = arith.constant 1 : i64
@@ -1220,7 +1175,7 @@ CHECK-DAG:   %[[ROW_OFFSET_i64:.*]] = arith.extsi %[[ROW_OFFSET]] : i32 to i64
 CHECK-DAG:   %[[ROW_LIMIT:.*]] = arith.addi %[[ROW_OFFSET_i64]], %[[C5_i64]] : i64
 CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_LIMIT]]], [%[[C1_i64]], %[[C2_i64]]], [%[[C0_i32]], %[[ROW_OFFSET]]]
 )"),
-      tsl::testing::IsOk());
+              tsl::testing::IsOk());
 }
 
 TEST_F(TritonFilecheckTest, SparseDot) {
@@ -1245,9 +1200,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK: %[[LHS:[0-9]+]] = tt.load
 CHECK: %[[RHS:[0-9]+]] = tt.load
 CHECK: %[[META:[0-9]+]] = tt.load
@@ -1277,9 +1230,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":64,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 64, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-DAG: %[[C24:.+]] = arith.constant dense<24>
 CHECK-DAG: %[[C48:.+]] = arith.constant dense<48>
 CHECK: %[[LHS:[0-9]+]] = tt.load %{{.+}} {boundaryCheck = array<i32: 1>
@@ -1317,9 +1268,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK: %[[TWO:.+]] = arith.constant 2 : i32
 CHECK: %[[LHS:[0-9]+]] = tt.load
 CHECK: %[[RHS:[0-9]+]] = tt.load
@@ -1461,40 +1410,59 @@ ENTRY entry {
   p0 = s8[1024,1024] parameter(0)
   p1 = f32[1024,1024] parameter(1)
   ROOT r = f32[1024,1024] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot
+    kind=kCustom, calls=triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloText));
-  const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
+  HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  const HloComputation* triton_dot_computation =
-      triton_dot_fusion->fused_instructions_computation();
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
-  TritonGemmConfig config(16, 32, 512, 1, 4, 8);
+  auto backend_config_or =
+      triton_dot_fusion->backend_config<GpuBackendConfig>();
+  ASSERT_OK(backend_config_or);
+  GpuBackendConfig& backend_config = *backend_config_or;
+
+  FusionBackendConfig& fusion_backend_config =
+      *backend_config.mutable_fusion_backend_config();
+  auto& config = *fusion_backend_config.mutable_triton_gemm_config();
+  config.set_block_m(16);
+  config.set_block_n(32);
+  config.set_block_k(512);
+  config.set_split_k(1);
+  config.set_num_ctas(1);
+  config.set_num_warps(8);
+  config.set_num_stages(4);
+
+  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.num_ctas = 1;
+  block_level_parameters.num_stages = 4;
+  block_level_parameters.num_warps = 8;
+
   EXPECT_THAT(
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    config, /*output_tile_sizes=*/{}, &llvm_module, &EmitMatMul,
-                    mlir_context),
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context),
       tsl::testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           ::testing::HasSubstr("Shared memory size limit exceeded")));
 
-  config.block_m = 64;
-  config.block_n = 128;
-  config.block_k = 128;
-  config.num_stages = 1;
+  config.set_block_m(64);
+  config.set_block_n(128);
+  config.set_block_k(128);
+  block_level_parameters.num_stages = 1;
+  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    config, /*output_tile_sizes=*/{}, &llvm_module, &EmitMatMul,
-                    mlir_context));
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
@@ -1989,41 +1957,58 @@ ENTRY entry {
   p0 = s8[1024,1024] parameter(0)
   p1 = f32[1024,1024] parameter(1)
   ROOT r = f32[1024,1024] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot
+    kind=kCustom, calls=triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloText));
-  const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
+  HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  const HloComputation* triton_dot_computation =
-      triton_dot_fusion->fused_instructions_computation();
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
+  auto backend_config_or =
+      triton_dot_fusion->backend_config<GpuBackendConfig>();
+  ASSERT_OK(backend_config_or);
+  GpuBackendConfig& backend_config = *backend_config_or;
+
+  FusionBackendConfig& fusion_backend_config =
+      *backend_config.mutable_fusion_backend_config();
+  auto& config = *fusion_backend_config.mutable_triton_gemm_config();
   // Fails if the tiling is too complex.
-  TritonGemmConfig config(512, 512, 32, 1, 1, 2);
+  config.set_block_m(512);
+  config.set_block_n(512);
+  config.set_block_k(32);
+  config.set_split_k(1);
+  config.set_num_ctas(1);
+  config.set_num_stages(1);
+  config.set_num_warps(2);
+  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.num_ctas = 1;
+  block_level_parameters.num_stages = 1;
+  block_level_parameters.num_warps = 2;
   EXPECT_THAT(
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    config, /*output_tile_sizes=*/{}, &llvm_module, &EmitMatMul,
-                    mlir_context),
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context),
       tsl::testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           "Tiling complexity heuristic exceeded: 147456 > 9000"));
 
   // Succeeds if the tiling is not too complex.
-  config.block_m = 32;
-  config.block_n = 32;
-  config.block_k = 32;
-  TF_CHECK_OK(
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    config, /*output_tile_sizes=*/{}, &llvm_module, &EmitMatMul,
-                    mlir_context)
-          .status());
+  config.set_block_m(32);
+  config.set_block_n(32);
+  config.set_block_k(32);
+  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+
+  TF_CHECK_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
+                            dev_info, block_level_parameters, &llvm_module,
+                            mlir_context)
+                  .status());
 }
 
 // Triton compiler used to have an issue with reordering constants:
@@ -3611,8 +3596,6 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(kHloTextOptinShmem));
   const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  const HloComputation* triton_dot_computation =
-      triton_dot_fusion->fused_instructions_computation();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -3620,15 +3603,15 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(
       auto gpu_config, triton_dot_fusion->backend_config<GpuBackendConfig>());
   const FusionBackendConfig& config = gpu_config.fusion_backend_config();
-  TF_ASSERT_OK_AND_ASSIGN(
-      TritonGemmConfig triton_gemm_config,
-      TritonGemmConfig::FromProto(config.triton_gemm_config()));
+  auto gemm_config = config.triton_gemm_config();
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.num_ctas = gemm_config.num_ctas();
+  block_level_parameters.num_warps = gemm_config.num_warps();
+  block_level_parameters.num_stages = gemm_config.num_stages();
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion, GpuComputeComp(), dev_info,
-                    triton_gemm_config, /*output_tile_sizes=*/{}, &llvm_module,
-                    &EmitMatMul, mlir_context));
+      TritonWrapper("test_fn", triton_dot_fusion, GpuComputeComp(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.
@@ -4752,7 +4735,7 @@ class Triton6xBF16GemmTest : public TritonFilecheckTest {
     // These 2 flags are not strictly necessary now, but we're adding them to be
     // on the safe side against future flakiness.
     //
-    // Enable triton fusion for all supported gemms.
+    // Enable triton fusion for all supported GEMMs.
     debug_options.set_xla_gpu_triton_gemm_any(true);
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -4779,7 +4762,7 @@ class Triton6xBF16GemmTestWithFlag : public TritonFilecheckTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonFilecheckTest::GetDebugOptionsForTest();
-    // Enable triton fusion for all supported gemms.
+    // Enable triton fusion for all supported GEMMs.
     debug_options.set_xla_gpu_triton_gemm_any(true);
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -4813,9 +4796,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
@@ -4855,9 +4836,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
@@ -4898,9 +4877,7 @@ ENTRY e {
     {"block_m":64,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(64, 32, 32, 1, 1, 4);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
@@ -4928,9 +4905,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -4972,9 +4947,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -5028,9 +5001,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -5083,7 +5054,7 @@ class Triton3xBF16GemmTest : public TritonFilecheckTest {
     // These 2 flags are not strictly necessary now, but we're adding them the
     // to be on the safe side against future flakiness.
     //
-    // Enable triton fusion for all supported gemms.
+    // Enable triton fusion for all supported GEMMs.
     debug_options.set_xla_gpu_triton_gemm_any(true);
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -5103,7 +5074,7 @@ class Triton3xBF16GemmTestWithFlag : public TritonFilecheckTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonFilecheckTest::GetDebugOptionsForTest();
-    // Enable triton fusion for all supported gemms.
+    // Enable triton fusion for all supported GEMMs.
     debug_options.set_xla_gpu_triton_gemm_any(true);
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -5144,9 +5115,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
@@ -5186,9 +5155,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
@@ -5228,9 +5195,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK:      tt.dot
 CHECK-SAME: tensor<32x32xf16> * tensor<32x32xf16> -> tensor<32x32xf32>
 CHECK-NOT:  tt.dot
@@ -5258,9 +5223,7 @@ ENTRY e {
     {"block_m":64,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(64, 32, 32, 1, 1, 4);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-4,
@@ -5288,9 +5251,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -5332,9 +5293,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -5378,9 +5337,7 @@ ENTRY e {
     {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
 }
 )";
-  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      kHloText, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -5441,14 +5398,13 @@ ENTRY entry {
   p0 = f32[10,20] parameter(0)
   p1 = f32[20,30] parameter(1)
   ROOT r = f32[10,30] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot
+    kind=kCustom, calls=triton_gemm_dot,
+    backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloText));
   const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  const HloComputation* triton_dot_computation =
-      triton_dot_fusion->fused_instructions_computation();
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
@@ -5456,12 +5412,11 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      TritonWrapper(*TritonFusionAnalysis::Execute(*triton_dot_computation),
-                    "test_fn", triton_dot_fusion,
+      TritonWrapper("test_fn", triton_dot_fusion,
                     se::CudaComputeCapability{se::CudaComputeCapability::VOLTA,
                                               /*minor=*/0},
-                    dev_info, TritonGemmConfig{}, /*output_tile_sizes=*/{},
-                    &llvm_module, &EmitMatMul, mlir_context),
+                    dev_info, BlockLevelParameters(), &llvm_module,
+                    mlir_context),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
@@ -5499,9 +5454,7 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
-  TritonGemmConfig config(32, 16, 128, 1, 1, 4);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      hlo_text, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(hlo_text, "triton_dot", R"(
 CHECK:      tt.dot
 CHECK-NOT:  inputPrecision = tf32
   )"));
@@ -5509,7 +5462,7 @@ CHECK-NOT:  inputPrecision = tf32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonFilecheckTest, Fp8) {
+TEST_F(TritonFilecheckTest, Fp8LoweringIsSupportedPostHopper) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
@@ -5518,28 +5471,25 @@ TEST_F(TritonFilecheckTest, Fp8) {
 HloModule t
 
 triton_dot {
-  parameter_0.1 = f8e4m3fn[1600,1600]{1,0} parameter(0)
-  parameter_1.1 = f8e4m3fn[1600,1600]{1,0} parameter(1)
-  transpose.2 = f8e4m3fn[1600,1600]{0,1} transpose(parameter_1.1), dimensions={1,0}
-  ROOT dot.3 = f16[1600,1600]{1,0} dot(parameter_0.1, transpose.2),
+  parameter_0 = f8e4m3fn[1600,1600]{1,0} parameter(0)
+  parameter_1 = f8e4m3fn[1600,1600]{1,0} parameter(1)
+  transpose = f8e4m3fn[1600,1600]{0,1} transpose(parameter_1), dimensions={1,0}
+  ROOT dot = f16[1600,1600]{1,0} dot(parameter_0, transpose),
                 lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY main {
-  parameter_1.2 = f8e4m3fn[1600,1600]{1,0} parameter(1)
-  parameter_0.2 = f8e4m3fn[1600,1600]{1,0} parameter(0)
-  ROOT gemm_fusion_dot.2.0 = f16[1600,1600]{1,0} fusion(parameter_0.2, parameter_1.2),
+  parameter_1 = f8e4m3fn[1600,1600]{1,0} parameter(1)
+  parameter_0 = f8e4m3fn[1600,1600]{1,0} parameter(0)
+  ROOT gemm_fusion_dot = f16[1600,1600]{1,0} fusion(parameter_0, parameter_1),
        kind=kCustom, calls=triton_dot,
-       backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+       backend_config={
        "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
          {"block_m":"128","block_n":"32","block_k":"64","split_k":"1",
-          "num_stages":"4","num_warps":"4","num_ctas":"1"}},
-        "force_earliest_schedule":false}
+          "num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  TritonGemmConfig config(128, 32, 64, 1, 4, 4);
-  TF_ASSERT_OK(CreateTritonIrAndFileCheck(
-      hlo_text, config, /*output_tile_sizes=*/{}, EmitMatMul, "triton_dot", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheckForDot(hlo_text, "triton_dot", R"(
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
   )"));
 
@@ -5569,10 +5519,7 @@ ENTRY main {
   param_1 = f32[125]{0} parameter(1)
   ROOT triton_reduction = f32[125]{0} fusion(param_0, param_1), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  std::vector<int64_t> output_tile_sizes = {1};
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, output_tile_sizes,
-                                          EmitGeneric,
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, FromOutputTileSizes({1}),
                                           "triton_reduction_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
@@ -5631,11 +5578,8 @@ ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 })";
-  TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  std::vector<int64_t> output_tile_sizes = {1, 127};
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, output_tile_sizes,
-                                          EmitGeneric,
-                                          "triton_softmax_computation", R"(
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      kHloText, FromOutputTileSizes({1, 127}), "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = affine_map<(d0) -> (d0 * 127)>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32

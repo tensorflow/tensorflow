@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_support.h"
 #include "xla/service/gpu/triton_test_utils.h"
@@ -88,7 +89,11 @@ ENTRY e {
   parameter_1 = $1[11,63]{1,0} parameter(1)
   ROOT triton_op = $2[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+      triton_gemm_config:
+        {"block_m":16,"block_n":32,"block_k":512,
+         "split_k":1,"num_stages":4,"num_warps":8,
+         "num_ctas":1}}}
 })";
     // TODO(b/345763510): Change the kind above to "__triton" once dots are
     // supported.
@@ -111,14 +116,17 @@ ENTRY e {
       }
       const se::DeviceDescription dev_info =
           TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-      EXPECT_THAT(TritonWrapper(
-                      *TritonFusionAnalysis::Execute(ti.TritonComputation()),
-                      "test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
-                      dev_info, config_, /*output_tile_sizes=*/{},
-                      &llvm_module_, &EmitMatMul, mlir_context_),
-                  tsl::testing::StatusIs(
-                      absl::StatusCode::kInternal,
-                      ::testing::HasSubstr("Failed to compile Triton kernel")));
+      BlockLevelParameters block_level_parameters;
+      block_level_parameters.num_ctas = 1;
+      block_level_parameters.num_stages = 4;
+      block_level_parameters.num_warps = 8;
+      EXPECT_THAT(
+          TritonWrapper("test_fn", &ti.TritonFusion(),
+                        GetCudaComputeCapability(), dev_info,
+                        block_level_parameters, &llvm_module_, mlir_context_),
+          tsl::testing::StatusIs(
+              absl::StatusCode::kInternal,
+              ::testing::HasSubstr("Failed to compile Triton kernel")));
     }
   }
 };
@@ -268,7 +276,11 @@ ENTRY e {
   parameter_1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_op = pred[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+      triton_gemm_config:
+        {"block_m":16,"block_n":32,"block_k":512,
+         "split_k":1,"num_stages":4,"num_warps":8,
+         "num_ctas":1}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -279,11 +291,14 @@ ENTRY e {
       IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
           .Explain(),
       ::testing::HasSubstr("Unsupported output data type for Dot op."));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.num_ctas = 1;
+  block_level_parameters.num_stages = 4;
+  block_level_parameters.num_warps = 8;
   EXPECT_THAT(
-      TritonWrapper(
-          *TritonFusionAnalysis::Execute(ti.TritonComputation()), "test_fn",
-          &ti.TritonFusion(), GetCudaComputeCapability(), dev_info, config_,
-          /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul, mlir_context_),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                    dev_info, block_level_parameters, &llvm_module_,
+                    mlir_context_),
       tsl::testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("pm.run(triton_module.get()).succeeded()")));
@@ -305,7 +320,11 @@ ENTRY e {
   parameter_1 = f32[2,2,2,2]{3,2,1,0} parameter(1)
   ROOT triton_op = f32[2,2,2,2]{3,2,1,0} fusion(parameter_0, parameter_1),
     kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+      triton_gemm_config:
+        {"block_m":16,"block_n":32,"block_k":512,
+         "split_k":1,"num_stages":4,"num_warps":8,
+         "num_ctas":1}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -316,11 +335,14 @@ ENTRY e {
       IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
           .Explain(),
       ::testing::HasSubstr("Multiple batch dimensions"));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.num_ctas = 1;
+  block_level_parameters.num_stages = 4;
+  block_level_parameters.num_warps = 8;
   EXPECT_THAT(
-      TritonWrapper(
-          *TritonFusionAnalysis::Execute(ti.TritonComputation()), "test_fn",
-          &ti.TritonFusion(), GetCudaComputeCapability(), dev_info, config_,
-          /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul, mlir_context_),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                    dev_info, block_level_parameters, &llvm_module_,
+                    mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInternal,
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }

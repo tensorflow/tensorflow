@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -160,7 +161,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
             llvm_ir::SanitizeFunctionName(
                 absl::StrCat(suggested_kernel_name, "_impl")));
 
-    auto backend_config = analysis_.fusion_backend_config();
+    auto backend_config =
+        fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
     absl::string_view fusion_kind = backend_config.kind();
 
     TritonWrapperResult triton_wrapper_result;
@@ -170,58 +172,69 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       auto launch_config = *this->launch_config();
       launch_dimensions = launch_config.launch_dimensions;
 
-      // This is a hack, we use TritonGemmConfig also for the Softmax and
-      // Generic emitters, but we ignore most parameters.
-      TritonGemmConfig config;
-      config.num_stages = 1;
-      // Thread count per block is always a multiple of WarpSize.
-      config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
-      config.num_ctas = 1;
-
-      LegacyOrNewTritonIrEmitter ir_emitter;
-      if (fusion_kind == kTritonFusionKind) {
-        ir_emitter = &EmitGeneric;
-      } else {
-        ir_emitter = &EmitSoftMax;
-      }
+      // TODO(bchetioui): parse block-level parameters from backend config
+      // where available.
+      BlockLevelParameters block_level_parameters;
+      block_level_parameters.output_tile_sizes = std::vector<int64_t>(
+          hlo_computation->root_instruction()->shape().rank() - 1, 1);
+      block_level_parameters.output_tile_sizes.push_back(
+          hlo_computation->root_instruction()->shape().dimensions().back());
+      block_level_parameters.num_warps =
+          launch_dimensions.num_threads_per_block() / WarpSize();
+      block_level_parameters.num_ctas = 1;
+      block_level_parameters.num_stages = 1;
 
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
-          TritonWrapper(
-              /*analysis=*/{}, impl_fn_name, &fusion,
-              ir_emitter_context.gpu_compute_capability(),
-              ir_emitter_context.gpu_device_info(), config,
-              /*output_tile_sizes=*/launch_config.output_tile_sizes,
-              ir_emitter_context.llvm_module(), ir_emitter,
-              *ir_emitter_context.mlir_context()));
+          TritonWrapper(impl_fn_name, &fusion,
+                        ir_emitter_context.gpu_compute_capability(),
+                        ir_emitter_context.gpu_device_info(),
+                        block_level_parameters,
+                        ir_emitter_context.llvm_module(),
+                        *ir_emitter_context.mlir_context()));
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
+      // TODO(bchetioui): port matmul emitter to fully use the new
+      // infrastructure.
+      BlockLevelParameters block_level_parameters;
       if (!backend_config.has_triton_gemm_config()) {
         LOG(WARNING) << "Using fallback triton GEMM config for op "
                      << fusion.name();
+        // TODO(bchetioui): deduplicate default matmul config information.
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_block_m(64);
         triton_config.set_block_k(64);
         triton_config.set_block_n(64);
         triton_config.set_split_k(1);
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(2);
-        triton_config.set_num_ctas(1);
+
+        block_level_parameters.num_ctas = 1;
+        block_level_parameters.num_stages = 1;
+        block_level_parameters.num_warps = 2;
+      } else {
+        const auto& triton_config = backend_config.triton_gemm_config();
+        block_level_parameters.num_ctas = triton_config.num_ctas();
+        block_level_parameters.num_stages = triton_config.num_stages();
+        block_level_parameters.num_warps = triton_config.num_warps();
       }
+
+      TF_ASSIGN_OR_RETURN(
+          triton_wrapper_result,
+          TritonWrapper(impl_fn_name, &fusion,
+                        ir_emitter_context.gpu_compute_capability(),
+                        ir_emitter_context.gpu_device_info(),
+                        block_level_parameters,
+                        ir_emitter_context.llvm_module(),
+                        *ir_emitter_context.mlir_context()));
+
+      // TODO(bchetioui): move calculation of launch dimensions to
+      // 'launch_config()'.
       TF_ASSIGN_OR_RETURN(
           TritonGemmConfig config,
           TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
 
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
-      TF_ASSIGN_OR_RETURN(
-          triton_wrapper_result,
-          TritonWrapper(analysis, impl_fn_name, &fusion,
-                        ir_emitter_context.gpu_compute_capability(),
-                        ir_emitter_context.gpu_device_info(), config,
-                        /*output_tile_sizes=*/{},
-                        ir_emitter_context.llvm_module(), &EmitMatMul,
-                        *ir_emitter_context.mlir_context()));
+
       TF_ASSIGN_OR_RETURN(
           launch_dimensions,
           GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
