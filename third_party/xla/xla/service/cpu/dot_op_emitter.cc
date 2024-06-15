@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/cpu/dot_op_emitter.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -41,7 +40,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -140,7 +138,7 @@ class DotOpEmitter {
                         const llvm_ir::IrArray& rhs_array,
                         const llvm_ir::IrArray* addend_array,
                         llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b, mlir::MLIRContext* mlir_context,
+                        llvm::IRBuilder<>* b,
                         const HloModuleConfig& hlo_module_config,
                         const TargetMachineFeatures& target_machine_features);
 
@@ -225,20 +223,6 @@ class DotOpEmitter {
         .value_or(kDefaultTileSize);
   }
 
-  std::array<int64_t, 3> GetMlirGemmTileSize() const {
-    // Tile by 4 x registers x register size. This was picked by running
-    // small matmuls on Haswell and Skylake. There's a lot of room for
-    // improvement here.
-    constexpr int64_t kDefaultTileSizeForM = 4;
-    int64_t elements_per_register =
-        target_machine_features_.vector_register_num_elements(
-            *b_->GetInsertBlock()->getParent(),
-            dot_info_.result_shape.element_type());
-    int64_t num_registers = target_machine_features_.vector_register_count(
-        *b_->GetInsertBlock()->getParent());
-    return {{kDefaultTileSizeForM, num_registers, elements_per_register}};
-  }
-
   DotInfo dot_info_;
   std::string dot_hlo_name_;
   const llvm_ir::IrArray& target_array_;
@@ -247,19 +231,20 @@ class DotOpEmitter {
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilder<>* b_;
-  mlir::MLIRContext* mlir_context_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
 };
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(
-    DotInfo dot_info, std::string dot_hlo_name,
-    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features)
+DotOpEmitter::DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
+                           const llvm_ir::IrArray& target_array,
+                           const llvm_ir::IrArray& lhs_array,
+                           const llvm_ir::IrArray& rhs_array,
+                           const llvm_ir::IrArray* addend_array,
+                           llvm::Value* executable_run_options_value,
+                           llvm::IRBuilder<>* b,
+                           const HloModuleConfig& hlo_module_config,
+                           const TargetMachineFeatures& target_machine_features)
     : dot_info_(std::move(dot_info)),
       dot_hlo_name_(std::move(dot_hlo_name)),
       target_array_(target_array),
@@ -268,7 +253,6 @@ DotOpEmitter::DotOpEmitter(
       addend_array_(addend_array),
       executable_run_options_value_(executable_run_options_value),
       b_(b),
-      mlir_context_(mlir_context),
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
 
@@ -1116,7 +1100,7 @@ absl::Status EmitNonBatchDotOperation(
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(PRED == type || S8 == type || U8 == type || S16 == type ||
@@ -1125,8 +1109,8 @@ absl::Status EmitNonBatchDotOperation(
                C64 == type || C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,
-                           executable_run_options_value, b, mlir_context,
-                           hlo_module_config, target_machine_features);
+                           executable_run_options_value, b, hlo_module_config,
+                           target_machine_features);
   return dot_emitter.Emit();
 }
 
@@ -1199,7 +1183,7 @@ bool PotentiallyImplementedAsEigenMatmul(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features, DotInfo& dot_info) {
   int64_t num_batch_dims =
       dot.dot_dimension_numbers().lhs_batch_dimensions_size();
@@ -1255,7 +1239,7 @@ absl::Status EmitBatchDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
 
@@ -1265,12 +1249,11 @@ absl::Status EmitBatchDotOperation(
   if (ShouldUseMultiThreadedEigen(hlo_module_config) &&
       PotentiallyImplementedAsEigenMatmul(
           dot, target_array, lhs_array, rhs_array, executable_run_options_value,
-          b, mlir_context, hlo_module_config, target_machine_features,
-          dot_info)) {
+          b, hlo_module_config, target_machine_features, dot_info)) {
     DotOpEmitter dot_emitter(dot_info, std::string(dot.name()), target_array,
                              lhs_array, rhs_array, nullptr /*addend_array*/,
-                             executable_run_options_value, b, mlir_context,
-                             hlo_module_config, target_machine_features);
+                             executable_run_options_value, b, hlo_module_config,
+                             target_machine_features);
 
     return dot_emitter.EmitBatch();
   } else {
@@ -1330,7 +1313,7 @@ absl::Status EmitBatchDotOperation(
           // Emit the inner non-batch dot operation.
           return EmitNonBatchDotOperation(
               dot_info, std::string(dot.name()), target_slice, lhs_slice,
-              rhs_slice, nullptr, executable_run_options_value, b, mlir_context,
+              rhs_slice, nullptr, executable_run_options_value, b,
               hlo_module_config, target_machine_features);
         });
   }
@@ -1380,7 +1363,7 @@ absl::Status EmitDotOperation(
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   // This routine assumes that the dot operation is not in a parallelized
   // enclosing computation.
@@ -1393,14 +1376,14 @@ absl::Status EmitDotOperation(
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);
     return EmitBatchDotOperation(dot, target_array, lhs_array, rhs_array,
-                                 executable_run_options_value, b, mlir_context,
+                                 executable_run_options_value, b,
                                  hlo_module_config, target_machine_features);
   }
 
-  return EmitNonBatchDotOperation(
-      DotInfo(dot), std::string(dot.name()), target_array, lhs_array, rhs_array,
-      addend_array, executable_run_options_value, b, mlir_context,
-      hlo_module_config, target_machine_features);
+  return EmitNonBatchDotOperation(DotInfo(dot), std::string(dot.name()),
+                                  target_array, lhs_array, rhs_array,
+                                  addend_array, executable_run_options_value, b,
+                                  hlo_module_config, target_machine_features);
 }
 }  // namespace cpu
 }  // namespace xla

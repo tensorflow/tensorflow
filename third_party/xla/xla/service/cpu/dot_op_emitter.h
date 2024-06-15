@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
@@ -62,7 +61,7 @@ absl::Status EmitDotOperation(
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
-    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features);
 
 }  // namespace xla::cpu
