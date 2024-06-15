@@ -1105,7 +1105,7 @@ absl::Status CheckGpuDelegateCompatibility(
     const TfLiteContext* context, const TfLiteNode* node,
     const TfLiteRegistration* registration, GpuCompatibilityFlags flags) {
   return CheckGpuDelegateCompatibility(
-      GetOpSignature(context, node, registration));
+      GetOpSignature(context, node, registration), flags);
 }
 
 }  // namespace tflite
