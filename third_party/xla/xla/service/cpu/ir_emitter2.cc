@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -346,6 +348,10 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
   auto* data_gep = b.CreateConstGEP2_32(arg_ty_, args, index, 0, name + "_gep");
   auto* data = b.CreateLoad(ptr, data_gep, name);
 
+  // All buffers passed to host kernels are expected to be properly aligned,
+  // emit metadata to allow LLVM to use that information for optimization.
+  llvm_ir::SetAlignmentMetadataForLoad(data, cpu_function_runtime::MinAlign());
+
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
@@ -370,6 +376,13 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
       module_->getOrInsertFunction(name, KernelFunctionTy(ctx)).getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
+
+  // Set prefer-vector-width attribute to allow LLVM to use wider vector
+  // registers (by default LLVM uses at most 256-bit registers).
+  const DebugOptions& debug_options = hlo_module_.config().debug_options();
+  function->addFnAttr(
+      "prefer-vector-width",
+      absl::StrCat(debug_options.xla_cpu_prefer_vector_width()));
 
   // Always keep a frame pointer for the host kernel so we can see them in all
   // performance profiling tools.

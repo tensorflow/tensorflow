@@ -73,15 +73,17 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      load ptr
+    CHECK:      load ptr, {{.*}} !align !0
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      load ptr
+    CHECK:      load ptr, {{.*}} !align !0
 
     CHECK:   ret ptr null
     CHECK: }
+
+    CHECK: !0 = !{i64 16}
   )"));
 }
 

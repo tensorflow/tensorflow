@@ -81,6 +81,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #endif
   opts.set_xla_cpu_use_thunk_runtime(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
+  opts.set_xla_cpu_prefer_vector_width(256);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -787,6 +788,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_cpu_enable_concurrency_optimized_scheduler(),
       "Use HLO module scheduler that is optimized for extracting concurrency "
       "from an HLO module by trading off extra memory pressure."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_prefer_vector_width",
+      int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
+      debug_options->xla_cpu_prefer_vector_width(),
+      "Preferred vector with for the XLA:CPU LLVM backend."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
