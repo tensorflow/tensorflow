@@ -44,7 +44,6 @@ cc_library(
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -108,7 +107,6 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
@@ -264,7 +262,6 @@ cc_library(
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -303,7 +300,6 @@ xla_cc_binary(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "//xla/tools:hlo_module_loader",
