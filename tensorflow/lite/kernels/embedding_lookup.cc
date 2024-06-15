@@ -83,14 +83,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-  TfLiteIntArray* outputSize = TfLiteIntArrayCreate(NumDimensions(value));
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(NumDimensions(value));
 
-  outputSize->data[0] = SizeOfDimension(lookup, 0);
-  outputSize->data[1] = SizeOfDimension(value, 1);
+  output_size->data[0] = SizeOfDimension(lookup, 0);
+  output_size->data[1] = SizeOfDimension(value, 1);
   for (int i = 2; i < NumDimensions(value); i++) {
-    outputSize->data[i] = SizeOfDimension(value, i);
+    output_size->data[i] = SizeOfDimension(value, i);
   }
-  return context->ResizeTensor(context, output, outputSize);
+  return context->ResizeTensor(context, output, output_size);
 }
 
 TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,

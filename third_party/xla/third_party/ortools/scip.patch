@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index 4fbbc0e3b3..964b2d030d 100644
+index 25bf90ad2f..7572e592d0 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -83,8 +83,6 @@ hooks/
@@ -12,10 +12,10 @@ index 4fbbc0e3b3..964b2d030d 100644
  # settings
  settings/
 diff --git a/src/scip/benders_xyz.c b/src/scip/benders_xyz.c
-index 0d812ba6bd..ffe1badee0 100644
+index d39b973c51..19e8540cd0 100644
 --- a/src/scip/benders_xyz.c
 +++ b/src/scip/benders_xyz.c
-@@ -47,6 +47,7 @@
+@@ -56,6 +56,7 @@
  /** Benders' decomposition data */
  struct SCIP_BendersData
  {
@@ -24,10 +24,10 @@ index 0d812ba6bd..ffe1badee0 100644
  
  
 diff --git a/src/scip/benderscut_xyz.c b/src/scip/benderscut_xyz.c
-index 0f05582fe4..7fb99f648a 100644
+index 5eb41adbe9..281dd29a9a 100644
 --- a/src/scip/benderscut_xyz.c
 +++ b/src/scip/benderscut_xyz.c
-@@ -41,6 +41,7 @@
+@@ -50,6 +50,7 @@
  /** Benders' decomposition cut data */
  struct SCIP_BenderscutData
  {
@@ -36,10 +36,10 @@ index 0f05582fe4..7fb99f648a 100644
  
  
 diff --git a/src/scip/branch_xyz.c b/src/scip/branch_xyz.c
-index 1f13ac7460..e8ded751cf 100644
+index b0f6d9528a..7ed4f817bf 100644
 --- a/src/scip/branch_xyz.c
 +++ b/src/scip/branch_xyz.c
-@@ -42,6 +42,7 @@
+@@ -51,6 +51,7 @@
  /** branching rule data */
  struct SCIP_BranchruleData
  {
@@ -47,7 +47,7 @@ index 1f13ac7460..e8ded751cf 100644
  };
  
  
-@@ -216,7 +217,7 @@ SCIP_RETCODE SCIPincludeBranchruleXyz(
+@@ -225,7 +226,7 @@ SCIP_RETCODE SCIPincludeBranchruleXyz(
     /* use SCIPincludeBranchrule() if you want to set all callbacks explicitly and realize (by getting compiler errors) when
      * new callbacks are added in future SCIP versions
      */
@@ -57,10 +57,10 @@ index 1f13ac7460..e8ded751cf 100644
           branchCopyXyz, branchFreeXyz, branchInitXyz, branchExitXyz, branchInitsolXyz, branchExitsolXyz,
           branchExeclpXyz, branchExecextXyz, branchExecpsXyz,
 diff --git a/src/scip/compr_xyz.c b/src/scip/compr_xyz.c
-index 2f6b29e88c..a6142d7785 100644
+index 348d61c75c..322c2446cf 100644
 --- a/src/scip/compr_xyz.c
 +++ b/src/scip/compr_xyz.c
-@@ -41,6 +41,7 @@
+@@ -50,6 +50,7 @@
  /** tree compression data */
  struct SCIP_ComprData
  {
@@ -69,10 +69,10 @@ index 2f6b29e88c..a6142d7785 100644
  
  
 diff --git a/src/scip/cons_xyz.c b/src/scip/cons_xyz.c
-index 8141039a2e..e3f5d2b94b 100644
+index d4b750f2ec..8178cdc5b7 100644
 --- a/src/scip/cons_xyz.c
 +++ b/src/scip/cons_xyz.c
-@@ -69,11 +69,13 @@
+@@ -78,11 +78,13 @@
  /** constraint data for xyz constraints */
  struct SCIP_ConsData
  {
@@ -87,10 +87,10 @@ index 8141039a2e..e3f5d2b94b 100644
  
  
 diff --git a/src/scip/cutsel_xyz.c b/src/scip/cutsel_xyz.c
-index c660098bb0..92f3fb9d92 100644
+index e78da4eb4a..6203ed00a5 100644
 --- a/src/scip/cutsel_xyz.c
 +++ b/src/scip/cutsel_xyz.c
-@@ -40,6 +40,7 @@
+@@ -49,6 +49,7 @@
  /** cut selector data */
  struct SCIP_CutselData
  {
@@ -99,10 +99,10 @@ index c660098bb0..92f3fb9d92 100644
  
  
 diff --git a/src/scip/dialog_xyz.c b/src/scip/dialog_xyz.c
-index 1918057017..8506d526e6 100644
+index 05354614ae..866269e490 100644
 --- a/src/scip/dialog_xyz.c
 +++ b/src/scip/dialog_xyz.c
-@@ -28,7 +28,7 @@
+@@ -37,7 +37,7 @@
  
  #define DIALOG_NAME            "xyz"
  #define DIALOG_DESC            "xyz user interface dialog"
@@ -111,7 +111,7 @@ index 1918057017..8506d526e6 100644
  
  
  
-@@ -42,6 +42,7 @@
+@@ -51,6 +51,7 @@
  /** dialog data */
  struct SCIP_DialogData
  {
@@ -119,7 +119,7 @@ index 1918057017..8506d526e6 100644
  };
  
  
-@@ -154,7 +155,7 @@ SCIP_RETCODE SCIPincludeDialogXyz(
+@@ -163,7 +164,7 @@ SCIP_RETCODE SCIPincludeDialogXyz(
     /* create, include, and release dialog */
     if( !SCIPdialogHasEntry(parentdialog, DIALOG_NAME) )
     {
@@ -129,10 +129,10 @@ index 1918057017..8506d526e6 100644
              DIALOG_NAME, DIALOG_DESC, DIALOG_ISSUBMENU, dialogdata) );
        SCIP_CALL( SCIPaddDialogEntry(scip, parentdialog, dialog) );
 diff --git a/src/scip/disp_xyz.c b/src/scip/disp_xyz.c
-index 6c6a776091..b00cf1e036 100644
+index ac1d7ccef9..09f71c67cd 100644
 --- a/src/scip/disp_xyz.c
 +++ b/src/scip/disp_xyz.c
-@@ -26,13 +26,13 @@
+@@ -35,13 +35,13 @@
  #include "scip/disp_xyz.h"
  
  
@@ -149,7 +149,7 @@ index 6c6a776091..b00cf1e036 100644
                                           *   with a line from its right neighbor */
  
  
-@@ -47,6 +47,7 @@
+@@ -56,6 +56,7 @@
  /** display column data */
  struct SCIP_DispData
  {
@@ -157,7 +157,7 @@ index 6c6a776091..b00cf1e036 100644
  };
  
  
-@@ -188,10 +189,10 @@ SCIP_RETCODE SCIPincludeDispXyz(
+@@ -197,10 +198,10 @@ SCIP_RETCODE SCIPincludeDispXyz(
     /* TODO: (optional) create display column specific data here */
  
     /* include display column */
@@ -172,10 +172,10 @@ index 6c6a776091..b00cf1e036 100644
  
     /* add xyz display column parameters */
 diff --git a/src/scip/event_xyz.c b/src/scip/event_xyz.c
-index 31fd333f98..c793d69bc4 100644
+index 7d63318d6c..e878ff7062 100644
 --- a/src/scip/event_xyz.c
 +++ b/src/scip/event_xyz.c
-@@ -36,6 +36,7 @@
+@@ -45,6 +45,7 @@
  /** event handler data */
  struct SCIP_EventhdlrData
  {
@@ -183,7 +183,7 @@ index 31fd333f98..c793d69bc4 100644
  };
  
  /*
-@@ -179,7 +180,7 @@ SCIP_RETCODE SCIPincludeEventHdlrXyz(
+@@ -188,7 +189,7 @@ SCIP_RETCODE SCIPincludeEventHdlrXyz(
      */
     SCIP_CALL( SCIPincludeEventhdlr(scip, EVENTHDLR_NAME, EVENTHDLR_DESC,
           eventCopyXyz,
@@ -193,10 +193,10 @@ index 31fd333f98..c793d69bc4 100644
           eventhdlrdata) );
  #else
 diff --git a/src/scip/expr_xyz.c b/src/scip/expr_xyz.c
-index 2eb7914e1d..4e924b03b5 100644
+index 63b0638b78..39101dd0ec 100644
 --- a/src/scip/expr_xyz.c
 +++ b/src/scip/expr_xyz.c
-@@ -38,11 +38,13 @@
+@@ -47,11 +47,13 @@
  /** expression handler data */
  struct SCIP_ExprhdlrData
  {
@@ -212,16 +212,16 @@ index 2eb7914e1d..4e924b03b5 100644
  /*
 diff --git a/src/scip/githash.c b/src/scip/githash.c
 new file mode 100644
-index 0000000000..2891bc72de
+index 0000000000..943de15fa4
 --- /dev/null
 +++ b/src/scip/githash.c
 @@ -0,0 +1 @@
-+#define SCIP_GITHASH "a740f0891e"
++#define SCIP_GITHASH "62fab8a2e3"
 diff --git a/src/scip/heur_xyz.c b/src/scip/heur_xyz.c
-index 9f7d804f4d..e33bb83b7c 100644
+index 519a55d98f..22944d128b 100644
 --- a/src/scip/heur_xyz.c
 +++ b/src/scip/heur_xyz.c
-@@ -46,6 +46,7 @@
+@@ -55,6 +55,7 @@
  /** primal heuristic data */
  struct SCIP_HeurData
  {
@@ -230,10 +230,10 @@ index 9f7d804f4d..e33bb83b7c 100644
  
  
 diff --git a/src/scip/nlhdlr_xyz.c b/src/scip/nlhdlr_xyz.c
-index bc90f3dafe..056af7b6d3 100644
+index f459ba5f05..70f82dde0e 100644
 --- a/src/scip/nlhdlr_xyz.c
 +++ b/src/scip/nlhdlr_xyz.c
-@@ -40,11 +40,13 @@
+@@ -49,11 +49,13 @@
  /** nonlinear handler data */
  struct SCIP_NlhdlrData
  {
@@ -248,10 +248,10 @@ index bc90f3dafe..056af7b6d3 100644
  
  /*
 diff --git a/src/scip/nlpi_xyz.c b/src/scip/nlpi_xyz.c
-index 3509410b23..901433d2d4 100644
+index 54866878fd..7212ca0aba 100644
 --- a/src/scip/nlpi_xyz.c
 +++ b/src/scip/nlpi_xyz.c
-@@ -43,12 +43,14 @@
+@@ -52,12 +52,14 @@
  
  struct SCIP_NlpiData
  {
@@ -267,10 +267,10 @@ index 3509410b23..901433d2d4 100644
  
  
 diff --git a/src/scip/nodesel_xyz.c b/src/scip/nodesel_xyz.c
-index a5b6d9d7d6..0aacc3c8d2 100644
+index 054500369c..938f1c26ac 100644
 --- a/src/scip/nodesel_xyz.c
 +++ b/src/scip/nodesel_xyz.c
-@@ -41,6 +41,7 @@
+@@ -50,6 +50,7 @@
  /** node selector data */
  struct SCIP_NodeselData
  {
@@ -279,10 +279,10 @@ index a5b6d9d7d6..0aacc3c8d2 100644
  
  
 diff --git a/src/scip/presol_xyz.c b/src/scip/presol_xyz.c
-index 38ba9df72e..04fe8605f5 100644
+index 82e1a1a60a..4be46acda7 100644
 --- a/src/scip/presol_xyz.c
 +++ b/src/scip/presol_xyz.c
-@@ -42,6 +42,7 @@
+@@ -51,6 +51,7 @@
  /** presolver data */
  struct SCIP_PresolData
  {
@@ -291,10 +291,10 @@ index 38ba9df72e..04fe8605f5 100644
  
  
 diff --git a/src/scip/pricer_xyz.c b/src/scip/pricer_xyz.c
-index 16c968b951..5090a91e35 100644
+index b21be1c1c7..086c7b1c1e 100644
 --- a/src/scip/pricer_xyz.c
 +++ b/src/scip/pricer_xyz.c
-@@ -43,6 +43,7 @@
+@@ -52,6 +52,7 @@
  /** variable pricer data */
  struct SCIP_PricerData
  {
@@ -302,7 +302,7 @@ index 16c968b951..5090a91e35 100644
  };
  
  
-@@ -204,7 +205,7 @@ SCIP_RETCODE SCIPincludePricerXyz(
+@@ -213,7 +214,7 @@ SCIP_RETCODE SCIPincludePricerXyz(
      * new callbacks are added in future SCIP versions
      */
     SCIP_CALL( SCIPincludePricer(scip, PRICER_NAME, PRICER_DESC, PRICER_PRIORITY, PRICER_DELAY,
@@ -312,10 +312,10 @@ index 16c968b951..5090a91e35 100644
           pricerdata) );
  #else
 diff --git a/src/scip/prop_xyz.c b/src/scip/prop_xyz.c
-index 431d8e909b..975564f12b 100644
+index 2f5151463c..91415c5aa9 100644
 --- a/src/scip/prop_xyz.c
 +++ b/src/scip/prop_xyz.c
-@@ -28,7 +28,7 @@
+@@ -37,7 +37,7 @@
  /* fundamental propagator properties */
  #define PROP_NAME              "xyz"
  #define PROP_DESC              "propagator template"
@@ -324,7 +324,7 @@ index 431d8e909b..975564f12b 100644
  #define PROP_FREQ                    10 /**< propagator frequency */
  #define PROP_DELAY                FALSE /**< should propagation method be delayed, if other propagators found reductions? */
  #define PROP_TIMING             SCIP_PROPTIMING_BEFORELP/**< propagation timing mask */
-@@ -50,6 +50,7 @@
+@@ -59,6 +59,7 @@
  /** propagator data */
  struct SCIP_PropData
  {
@@ -333,10 +333,10 @@ index 431d8e909b..975564f12b 100644
  
  
 diff --git a/src/scip/reader_xyz.c b/src/scip/reader_xyz.c
-index 08e5a6ff7b..c8fdd9d4f5 100644
+index c1c538794c..6c984717aa 100644
 --- a/src/scip/reader_xyz.c
 +++ b/src/scip/reader_xyz.c
-@@ -40,6 +40,7 @@
+@@ -49,6 +49,7 @@
  /** data for xyz reader */
  struct SCIP_ReaderData
  {
@@ -345,10 +345,10 @@ index 08e5a6ff7b..c8fdd9d4f5 100644
  
  
 diff --git a/src/scip/relax_xyz.c b/src/scip/relax_xyz.c
-index 4d4acc80b3..74dfbda91f 100644
+index efdfa41a88..64bca3d139 100644
 --- a/src/scip/relax_xyz.c
 +++ b/src/scip/relax_xyz.c
-@@ -43,6 +43,7 @@
+@@ -52,6 +52,7 @@
  /** relaxator data */
  struct SCIP_RelaxData
  {
@@ -357,10 +357,10 @@ index 4d4acc80b3..74dfbda91f 100644
  
  
 diff --git a/src/scip/scipbuildflags.c b/src/scip/scipbuildflags.c
-index b54b9112cb..dc8e62b5e0 100644
+index 27ab6082a2..e2d6a7caec 100644
 --- a/src/scip/scipbuildflags.c
 +++ b/src/scip/scipbuildflags.c
-@@ -21,10 +21,9 @@
+@@ -30,10 +30,9 @@
  
  /*---+----1----+----2----+----3----+----4----+----5----+----6----+----7----+----8----+----9----+----0----+----1----+----2*/
  
@@ -374,10 +374,10 @@ index b54b9112cb..dc8e62b5e0 100644
  /** returns the flags that were used to build SCIP */
  const char* SCIPgetBuildFlags(
 diff --git a/src/scip/sepa_xyz.c b/src/scip/sepa_xyz.c
-index 40d3c1c5f7..f68658951d 100644
+index 75f3f810a8..e1d8171a48 100644
 --- a/src/scip/sepa_xyz.c
 +++ b/src/scip/sepa_xyz.c
-@@ -44,6 +44,7 @@
+@@ -53,6 +53,7 @@
  /** separator data */
  struct SCIP_SepaData
  {
@@ -386,10 +386,10 @@ index 40d3c1c5f7..f68658951d 100644
  
  
 diff --git a/src/scip/table_xyz.c b/src/scip/table_xyz.c
-index 2c93a43235..4f1fd28de4 100644
+index 62d596871b..42fb15d3a8 100644
 --- a/src/scip/table_xyz.c
 +++ b/src/scip/table_xyz.c
-@@ -43,6 +43,7 @@
+@@ -52,6 +52,7 @@
  /** statistics table data */
  struct SCIP_TableData
  {
@@ -398,10 +398,10 @@ index 2c93a43235..4f1fd28de4 100644
  
  
 diff --git a/src/symmetry/compute_symmetry_bliss.cpp b/src/symmetry/compute_symmetry_bliss.cpp
-index 484627c4b9..27c2895165 100644
+index 203a64a384..82e0725aa1 100644
 --- a/src/symmetry/compute_symmetry_bliss.cpp
 +++ b/src/symmetry/compute_symmetry_bliss.cpp
-@@ -25,8 +25,8 @@
+@@ -34,8 +34,8 @@
  #include "compute_symmetry.h"
  
  /* include bliss graph */
@@ -412,4 +412,3 @@ index 484627c4b9..27c2895165 100644
  
  #include <string.h>
  #include <vector>
- 

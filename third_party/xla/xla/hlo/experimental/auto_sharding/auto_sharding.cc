@@ -1641,14 +1641,14 @@ void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape) {
   }
 }
 
-void RemoveInvalidShardingsWithShapes(
+void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
     const Shape& shape, StrategyGroup* strategy_group,
     const bool instruction_has_user_sharding) {
   if (strategy_group->is_tuple) {
     for (size_t i = 0; i < strategy_group->childs.size(); i++) {
-      RemoveInvalidShardingsWithShapes(shape.tuple_shapes().at(i),
-                                       strategy_group->childs[i].get(),
-                                       instruction_has_user_sharding);
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          shape.tuple_shapes().at(i), strategy_group->childs[i].get(),
+          instruction_has_user_sharding);
     }
   } else {
     if (instruction_has_user_sharding &&
