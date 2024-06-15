@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -391,8 +392,9 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
   bool all_stablehlo = true;
   module->walk([&](mlir::Operation* op) {
     if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect>(
-            op->getDialect())) {
+        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
+                   mlir::chlo::ChloDialect>(op->getDialect())) {
+      std::cout << op->getDialect()->getNamespace().str() << "\n";
       all_stablehlo = false;
       return mlir::WalkResult::interrupt();
     }
