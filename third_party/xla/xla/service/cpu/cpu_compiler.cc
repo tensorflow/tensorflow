@@ -817,7 +817,7 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 
 namespace {
 
-// Align buffers to 16-byte boundaries.
+// Align buffers to XLA:CPU minimal alignment.
 int64_t memory_alignment(LogicalBuffer::Color) {
   return cpu_function_runtime::MinAlign();
 }
@@ -1047,11 +1047,17 @@ LiteralToConstantAllocation(BufferAllocation::Index index,
     int bit_width = primitive_util::BitWidth(element_type);
     int packed_size_bytes = CeilOfRatio<int64_t>(size_bytes, 8 / bit_width);
 
-    std::vector<uint8_t> packed(packed_size_bytes);
+    // Use Literal as a storage for packed data as it allocates underlying
+    // buffer with correct alignment. Keep it allocated on heap to avoid
+    // capturing stack address that will be invalidated by a move below.
+    auto packed = std::make_unique<Literal>(
+        ShapeUtil::MakeShape(U8, {packed_size_bytes}));
+
     PackIntN(
         bit_width,
         absl::MakeSpan(reinterpret_cast<const char*>(untyped_data), size_bytes),
-        absl::MakeSpan(reinterpret_cast<char*>(packed.data()), packed.size()));
+        absl::MakeSpan(reinterpret_cast<char*>(packed->untyped_data()),
+                       packed->size_bytes()));
 
     return CpuExecutable::ConstantAllocation{index, std::move(packed)};
   }

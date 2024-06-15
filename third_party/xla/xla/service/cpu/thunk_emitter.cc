@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -257,9 +258,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
                       ir_emitter_.EmitElementalHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        buffers.arguments, buffers.results,
-                                        kernel.name, kernel.thread_dims);
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
@@ -268,9 +269,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        buffers.arguments, buffers.results,
-                                        kernel.name, kernel.thread_dims);
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -279,9 +280,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
                       ir_emitter_.EmitReductionHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        buffers.arguments, buffers.results,
-                                        kernel.name, kernel.thread_dims);
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(

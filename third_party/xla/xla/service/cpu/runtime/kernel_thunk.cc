@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -46,21 +48,24 @@ namespace xla::cpu {
 absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::Create(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    std::string kernel_name, se::ThreadDim thread_dim) {
-  return absl::WrapUnique(new KernelThunk(std::move(info), arguments_buffers,
-                                          results_buffers,
-                                          std::move(kernel_name), thread_dim));
+    std::string kernel_name, se::ThreadDim thread_dim,
+    std::optional<int64_t> min_alignment) {
+  return absl::WrapUnique(
+      new KernelThunk(std::move(info), arguments_buffers, results_buffers,
+                      std::move(kernel_name), thread_dim, min_alignment));
 }
 
 KernelThunk::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    std::string kernel_name, se::ThreadDim thread_dim)
+    std::string kernel_name, se::ThreadDim thread_dim,
+    std::optional<int64_t> min_alignment)
     : Thunk(Kind::kKernel, std::move(info)),
       arguments_buffers_(arguments_buffers.begin(), arguments_buffers.end()),
       results_buffers_(results_buffers.begin(), results_buffers.end()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
+      min_alignment_(min_alignment),
       kernel_ptr_(nullptr) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
@@ -92,6 +97,21 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
     VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)", res_num++,
                                   buffer.ToString(),
                                   buffers_data.back().opaque());
+  }
+
+  // Check that all buffers are aligned to the minimum alignment. We codegen
+  // with the assumption that all buffers are aligned, and if they are not, we
+  // will crash with a segmentation fault, or worse, produce incorrect results.
+  if (min_alignment_.has_value()) {
+    for (int64_t i = 0; i < buffers_data.size(); ++i) {
+      se::DeviceMemoryBase& data = buffers_data[i];
+      if (reinterpret_cast<uintptr_t>(data.opaque()) % *min_alignment_ != 0) {
+        return Internal(
+            "Host kernel %s buffer argument #%d (%p) is not aligned to a "
+            "required minimum alignment of %d bytes",
+            info().op_name, i, data.opaque(), *min_alignment_);
+      }
+    }
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk

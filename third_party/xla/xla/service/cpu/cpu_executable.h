@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
@@ -60,7 +61,7 @@ class CpuExecutable : public Executable {
     se::DeviceMemoryBase AsDeviceMemoryBase() const;
 
     BufferAllocation::Index index = -1;
-    std::variant<std::monostate, std::vector<uint8_t>,
+    std::variant<std::monostate, std::unique_ptr<Literal>,
                  absl::Span<const uint8_t>>
         data;
   };

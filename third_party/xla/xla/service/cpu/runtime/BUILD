@@ -266,6 +266,7 @@ cc_library(
     deps = [
         ":task",
         ":thunk",
+        "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor",

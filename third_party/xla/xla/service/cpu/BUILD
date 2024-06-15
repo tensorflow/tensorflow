@@ -546,6 +546,7 @@ cc_library(
         ":simple_orc_jit",
         ":xla_framework",
         "//xla:executable_run_options",
+        "//xla:literal",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -800,6 +801,7 @@ cc_library(
     deps = [
         ":ir_emitter2",
         ":target_machine_features",
+        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
