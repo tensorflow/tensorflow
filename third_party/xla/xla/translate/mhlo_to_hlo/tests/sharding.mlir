@@ -220,3 +220,95 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32>) 
   }
   func.return %0#1, %0#2 : tensor<4xf32>, tensor<4xf32>
 }
+
+// -----
+
+// CHECK-LABEL: HloModule main
+
+// CHECK:      %region_0.8 (arg_tuple.9: (f32[4], f32[4])) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %arg_tuple.9 = (f32[4], f32[4]) parameter(0), sharding={{\{}}{devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}}
+// CHECK-NEXT:   %get-tuple-element.10 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.9), index=0, sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
+// CHECK-NEXT:   %get-tuple-element.11 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.9), index=1
+// CHECK-NEXT:   ROOT %tuple.12 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.10, f32[4] %get-tuple-element.11), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT: }
+
+// CHECK:      %region_1.13 (arg_tuple.14: (f32[4], f32[4])) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %arg_tuple.14 = (f32[4], f32[4]) parameter(0), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %get-tuple-element.15 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.14), index=0, sharding={replicated}
+// CHECK-NEXT:   %get-tuple-element.16 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.14), index=1, sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   ROOT %tuple.17 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.15, f32[4] %get-tuple-element.16), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT: }
+
+// CHECK:      ENTRY %main.22 (Arg_0.1: s32[], Arg_1.2: f32[4], Arg_2.3: f32[4], Arg_3.4: f32[4], Arg_4.5: f32[4]) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %Arg_0.1 = s32[] parameter(0)
+// CHECK-NEXT:   %Arg_1.2 = f32[4] parameter(1), sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
+// CHECK-NEXT:   %Arg_2.3 = f32[4] parameter(2)
+// CHECK-NEXT:   %tuple.6 = (f32[4], f32[4]) tuple(f32[4] %Arg_1.2, f32[4] %Arg_2.3), sharding={{\{}}{devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}}
+// CHECK-NEXT:   %Arg_3.4 = f32[4] parameter(3), sharding={replicated}
+// CHECK-NEXT:   %Arg_4.5 = f32[4] parameter(4), sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   %tuple.7 = (f32[4], f32[4]) tuple(f32[4] %Arg_3.4, f32[4] %Arg_4.5), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %conditional.18 = (f32[4], f32[4]) conditional(s32[] %Arg_0.1, (f32[4], f32[4]) %tuple.6, (f32[4], f32[4]) %tuple.7), branch_computations={%region_0.8, %region_1.13},
+// CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %get-tuple-element.19 = f32[4] get-tuple-element((f32[4], f32[4]) %conditional.18), index=0, sharding={replicated}
+// CHECK-NEXT:   %get-tuple-element.20 = f32[4] get-tuple-element((f32[4], f32[4]) %conditional.18), index=1, sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   ROOT %tuple.21 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.19, f32[4] %get-tuple-element.20)
+// CHECK-NEXT: }
+
+func.func @main(%arg0: tensor<i32>,
+                %arg1: tensor<4xf32> {mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"},
+                %arg2: tensor<4xf32>,
+                %arg3: tensor<4xf32> {mhlo.sharding = "{replicated}"},
+                %arg4: tensor<4xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0:2 = "mhlo.case"(%arg0) ( {
+    mhlo.return %arg1, %arg2 : tensor<4xf32>, tensor<4xf32>
+  },  {
+    mhlo.return %arg3, %arg4 : tensor<4xf32>, tensor<4xf32>
+  }) {mhlo.sharding = "{{replicated},{devices=[4]<=[4]}}"} : (tensor<i32>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+
+// CHECK:      %region_0.8 (arg_tuple.9: (f32[4], f32[4])) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %arg_tuple.9 = (f32[4], f32[4]) parameter(0), sharding={{\{}}{devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}}
+// CHECK-NEXT:   %get-tuple-element.10 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.9), index=0, sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
+// CHECK-NEXT:   %get-tuple-element.11 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.9), index=1
+// CHECK-NEXT:   ROOT %tuple.12 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.10, f32[4] %get-tuple-element.11), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT: }
+
+// CHECK:      %region_1.13 (arg_tuple.14: (f32[4], f32[4])) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %arg_tuple.14 = (f32[4], f32[4]) parameter(0), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %get-tuple-element.15 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.14), index=0, sharding={replicated}
+// CHECK-NEXT:   %get-tuple-element.16 = f32[4] get-tuple-element((f32[4], f32[4]) %arg_tuple.14), index=1, sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   ROOT %tuple.17 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.15, f32[4] %get-tuple-element.16), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT: }
+
+// CHECK:      ENTRY %main.22 (Arg_0.1: pred[], Arg_1.2: f32[4], Arg_2.3: f32[4], Arg_3.4: f32[4], Arg_4.5: f32[4]) -> (f32[4], f32[4]) {
+// CHECK-NEXT:   %Arg_0.1 = pred[] parameter(0)
+// CHECK-NEXT:   %Arg_1.2 = f32[4] parameter(1), sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
+// CHECK-NEXT:   %Arg_2.3 = f32[4] parameter(2)
+// CHECK-NEXT:   %tuple.6 = (f32[4], f32[4]) tuple(f32[4] %Arg_1.2, f32[4] %Arg_2.3), sharding={{\{}}{devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}}
+// CHECK-NEXT:   %Arg_3.4 = f32[4] parameter(3), sharding={replicated}
+// CHECK-NEXT:   %Arg_4.5 = f32[4] parameter(4), sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   %tuple.7 = (f32[4], f32[4]) tuple(f32[4] %Arg_3.4, f32[4] %Arg_4.5), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %conditional.18 = (f32[4], f32[4]) conditional(pred[] %Arg_0.1, (f32[4], f32[4]) %tuple.6, (f32[4], f32[4]) %tuple.7), true_computation=%region_0.8, false_computation=%region_1.13,
+// CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
+// CHECK-NEXT:   %get-tuple-element.19 = f32[4] get-tuple-element((f32[4], f32[4]) %conditional.18), index=0, sharding={replicated}
+// CHECK-NEXT:   %get-tuple-element.20 = f32[4] get-tuple-element((f32[4], f32[4]) %conditional.18), index=1, sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   ROOT %tuple.21 = (f32[4], f32[4]) tuple(f32[4] %get-tuple-element.19, f32[4] %get-tuple-element.20)
+// CHECK-NEXT: }
+
+func.func @main(%arg0: tensor<i1>,
+                %arg1: tensor<4xf32> {mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"},
+                %arg2: tensor<4xf32>,
+                %arg3: tensor<4xf32> {mhlo.sharding = "{replicated}"},
+                %arg4: tensor<4xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<4xf32>, tensor<4xf32>) {
+  %0:2 = "mhlo.if"(%arg0) ( {
+    mhlo.return %arg1, %arg2 : tensor<4xf32>, tensor<4xf32>
+  },  {
+    mhlo.return %arg3, %arg4 : tensor<4xf32>, tensor<4xf32>
+  }) {mhlo.sharding = "{{replicated},{devices=[4]<=[4]}}"} : (tensor<i1>) -> (tensor<4xf32>, tensor<4xf32>)
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+}

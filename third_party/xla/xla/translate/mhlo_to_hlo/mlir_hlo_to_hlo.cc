@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -677,6 +678,20 @@ std::optional<xla::OpSharding> CreateTupleSharding(
   return sharding;
 }
 
+// If `elements` has a single element, returns that element. Otherwise, returns
+// a tuple instruction with `elements` and attaches a tuple sharding from
+// `shardings`.
+xla::XlaOp CreateTupleIfMultipleOps(
+    xla::XlaBuilder* builder, llvm::ArrayRef<xla::XlaOp> ops,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
+  if (ops.size() == 1) {
+    return ops[0];
+  }
+  xla::XlaScopedShardingAssignment scoped_sharding(
+      builder, CreateTupleSharding(shardings));
+  return Tuple(builder, ops);
+}
+
 // Returns the flattened result shardings of the given `op_sharding`, i.e.,
 // either:
 // - an empty vector if `op_sharding` is `std::nullopt`.
@@ -698,6 +713,20 @@ llvm::SmallVector<std::optional<xla::OpSharding>> GetResultShardings(
     res_shardings.append(num_results, op_sharding);
   }
   return res_shardings;
+}
+
+// Returns the OpSharding of each op in `xlaOps`, or std::nullopt if the op
+// doesn't have a sharding.
+llvm::SmallVector<std::optional<xla::OpSharding>> GetXlaOpShardings(
+    llvm::ArrayRef<xla::XlaOp> xla_ops) {
+  llvm::SmallVector<std::optional<xla::OpSharding>> shardings;
+  shardings.reserve(xla_ops.size());
+  for (const xla::XlaOp& xla_op : xla_ops) {
+    auto sharding = xla_op.builder()->GetOpSharding(xla_op);
+    assert(sharding.ok() && "can't find XlaOp for argument");
+    shardings.push_back(*sharding);
+  }
+  return shardings;
 }
 
 namespace mlir {
@@ -1602,37 +1631,44 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   llvm::SmallVector<mlir::Value> implicit_false_operands(
       implicit_false_operand_set.begin(), implicit_false_operand_set.end());
 
+  // Create the true branch Xla argument.
+  llvm::SmallVector<xla::XlaOp> true_args;
+  if (failed(GetXlaOps(op, implicit_true_operands, ctx, true_args)))
+    return failure();
+  llvm::SmallVector<std::optional<xla::OpSharding>> true_arg_shardings =
+      GetXlaOpShardings(true_args);
+  xla::XlaOp true_arg =
+      CreateTupleIfMultipleOps(ctx.builder, true_args, true_arg_shardings);
+
+  // Create the false branch Xla argument.
+  llvm::SmallVector<xla::XlaOp> false_args;
+  if (failed(GetXlaOps(op, implicit_false_operands, ctx, false_args)))
+    return failure();
+  llvm::SmallVector<std::optional<xla::OpSharding>> false_arg_shardings =
+      GetXlaOpShardings(false_args);
+  xla::XlaOp false_arg =
+      CreateTupleIfMultipleOps(ctx.builder, false_args, false_arg_shardings);
+
+  llvm::SmallVector<std::optional<xla::OpSharding>> ret_shardings =
+      GetResultShardings(ctx.builder->sharding(), op->getNumResults());
+
   // Create xla parameters for functions corresponding to ifOp regions using the
   // implicit captures operands. Also export the instructions within those
   // regions.
   if (failed(ctx.converter->LowerRegionAsComputation(
           &op.getTrueBranch(), &true_branch,
           llvm::ArrayRef(implicit_true_operands),
-          /*ensure_single_arg*/ true)) ||
+          /*ensure_single_arg*/ true, true_arg_shardings, ret_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
           &op.getFalseBranch(), &false_branch,
           llvm::ArrayRef(implicit_false_operands),
-          /*ensure_single_arg*/ true))) {
+          /*ensure_single_arg*/ true, false_arg_shardings, ret_shardings))) {
     return failure();
   }
 
   // Create the Xla pred argument.
   xla::XlaOp pred;
   if (failed(GetXlaOp(op.getPred(), value_map, &pred, op))) return failure();
-
-  // Create the true branch Xla argument.
-  llvm::SmallVector<xla::XlaOp> true_args;
-  if (failed(GetXlaOps(op, implicit_true_operands, ctx, true_args)))
-    return failure();
-  xla::XlaOp true_arg =
-      true_args.size() == 1 ? true_args[0] : Tuple(ctx.builder, true_args);
-
-  // Create the false branch Xla argument.
-  llvm::SmallVector<xla::XlaOp> false_args;
-  if (failed(GetXlaOps(op, implicit_false_operands, ctx, false_args)))
-    return failure();
-  xla::XlaOp false_arg =
-      false_args.size() == 1 ? false_args[0] : Tuple(ctx.builder, false_args);
 
   // Create XLA Conditional op.
   auto ifop =
@@ -1676,7 +1712,15 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     // Create the branches[i]'s Xla argument.
     llvm::SmallVector<xla::XlaOp> args;
     if (failed(GetXlaOps(op, implicit_operands, ctx, args))) return failure();
-    branch_operands[i] = args.size() == 1 ? args[0] : Tuple(ctx.builder, args);
+
+    llvm::SmallVector<std::optional<xla::OpSharding>> arg_shardings =
+        GetXlaOpShardings(args);
+
+    branch_operands[i] =
+        CreateTupleIfMultipleOps(ctx.builder, args, arg_shardings);
+
+    llvm::SmallVector<std::optional<xla::OpSharding>> ret_shardings =
+        GetResultShardings(ctx.builder->sharding(), op->getNumResults());
 
     // Create xla parameters for functions corresponding to region branches[i]
     // using the implicit captures operands. Also export the instructions within
@@ -1684,7 +1728,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     computations_p[i] = &computations[i];
     if (failed(ctx.converter->LowerRegionAsComputation(
             &branches[i], computations_p[i], llvm::ArrayRef(implicit_operands),
-            /*ensure_single_arg*/ true)))
+            /*ensure_single_arg*/ true, arg_shardings, ret_shardings)))
       return failure();
   }
 
@@ -3482,10 +3526,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
       llvm::SmallVector<xla::Shape, 4> arg_shapes;
 
-      // The arguments of `block` are ignored if `implicit_operands` is set,
-      // therefore `arg_shardings` should be empty in that case.
-      assert(arg_shardings.empty() || !implicit_operands);
-
       auto args_size = block->getNumArguments();
       if (implicit_operands) args_size = implicit_operands->size();
 
@@ -3512,10 +3552,13 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                                     "arg_tuple");
 
         if (implicit_operands) {
-          int arg_index = 0;
-          for (auto implicit_operand : *implicit_operands)
-            lowering[implicit_operand] =
-                xla::GetTupleElement(tuple, arg_index++);
+          for (auto [arg_index, implicit_operand] :
+               llvm::enumerate(*implicit_operands)) {
+            xla::XlaScopedShardingAssignment scoped_sharding(
+                builder, arg_shardings.empty() ? std::nullopt
+                                               : arg_shardings[arg_index]);
+            lowering[implicit_operand] = xla::GetTupleElement(tuple, arg_index);
+          }
         } else {
           for (BlockArgument& arg : block->getArguments()) {
             auto num = arg.getArgNumber();
@@ -3528,6 +3571,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       } else if (args_size == 1) {
         // Save the location information as a name. For example JAX will set the
         // name of the function argument. Want to preserve these for debugging.
+        xla::XlaScopedShardingAssignment scoped_sharding(
+            builder,
+            arg_shardings.empty() ? std::nullopt : arg_shardings.front());
         if (implicit_operands) {
           mlir::Value arg = (*implicit_operands)[0];
           xla::XlaScopedOpMetadataAssignment op_metadata(
@@ -3537,9 +3583,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
           mlir::BlockArgument arg = block->getArgument(0);
           xla::XlaScopedOpMetadataAssignment op_metadata(
               builder, GetOpNameMetadataFromLocation(arg));
-          xla::XlaScopedShardingAssignment scoped_sharding(
-              builder,
-              arg_shardings.empty() ? std::nullopt : arg_shardings.front());
           lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         }
       } else {
@@ -3619,7 +3662,12 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
     return hasShapeOps ? WalkResult::interrupt() : WalkResult::advance();
   });
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
   mlir::PassManager pm(module.getContext());
+  pm.enableVerifier(enableVerifier);
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
   if (hasShapeOps) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
@@ -3646,7 +3694,12 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // supports not just MHLO, but also CHLO and StableHLO, but we will
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
   mlir::PassManager pm(module->getContext());
+  pm.enableVerifier(enableVerifier);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (failed(pm.run(module))) {
     return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
