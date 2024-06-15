@@ -1120,7 +1120,8 @@ void BFCAllocator::MaybeWriteMemoryMap() {
     std::unique_ptr<WritableFile> dump_file;
     string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
                                        Env::Default()->NowMicros());
-    Status status = Env::Default()->NewWritableFile(file_name, &dump_file);
+    absl::Status status =
+        Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {
       LOG(ERROR) << "Failed to open file " << file_name;
       return;

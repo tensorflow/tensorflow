@@ -67,7 +67,7 @@ class CancellationManager {
   // Run all callbacks associated with this manager with a status.
   // Currently the status is for logging purpose only. See also
   // CancellationManager::RegisterCallbackWithErrorLogging.
-  void StartCancelWithStatus(const Status& status);
+  void StartCancelWithStatus(const absl::Status& status);
 
   // Returns true iff StartCancel() has been called.
   bool IsCancelled() { return is_cancelled_.load(std::memory_order_acquire); }
@@ -208,9 +208,9 @@ class CancellationManager {
 // Registers the given cancellation callback, returning a function that can be
 // used to deregister the callback. If `cancellation_manager` is NULL, no
 // registration occurs and `deregister_fn` will be a no-op.
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> callback,
-                                    std::function<void()>* deregister_fn);
+absl::Status RegisterCancellationCallback(
+    CancellationManager* cancellation_manager, std::function<void()> callback,
+    std::function<void()>* deregister_fn);
 
 }  // namespace tsl
 

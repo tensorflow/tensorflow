@@ -38,8 +38,9 @@ class TfToPlatformDeviceIdMap {
     return id_map;
   }
 
-  Status Insert(const DeviceType& type, TfDeviceId tf_device_id,
-                PlatformDeviceId platform_device_id) TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status Insert(const DeviceType& type, TfDeviceId tf_device_id,
+                      PlatformDeviceId platform_device_id)
+      TF_LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
       mutex_lock lock(mu_);
@@ -60,7 +61,7 @@ class TfToPlatformDeviceIdMap {
           "the same process. This is not currently supported, see ",
           "https://github.com/tensorflow/tensorflow/issues/19083");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool Find(const DeviceType& type, TfDeviceId tf_device_id,
@@ -76,7 +77,7 @@ class TfToPlatformDeviceIdMap {
     return true;
   }
 
-  StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
+  absl::StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
       const DeviceType& type, PlatformDeviceId platform_device_id) const
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
@@ -118,25 +119,25 @@ class TfToPlatformDeviceIdMap {
 };
 }  // namespace
 
-Status DeviceIdManager::InsertTfPlatformDeviceIdPair(
+absl::Status DeviceIdManager::InsertTfPlatformDeviceIdPair(
     const DeviceType& type, TfDeviceId tf_device_id,
     PlatformDeviceId platform_device_id) {
   return TfToPlatformDeviceIdMap::singleton()->Insert(type, tf_device_id,
                                                       platform_device_id);
 }
 
-Status DeviceIdManager::TfToPlatformDeviceId(
+absl::Status DeviceIdManager::TfToPlatformDeviceId(
     const DeviceType& type, TfDeviceId tf_device_id,
     PlatformDeviceId* platform_device_id) {
   if (TfToPlatformDeviceIdMap::singleton()->Find(type, tf_device_id,
                                                  platform_device_id)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::NotFound("TensorFlow device ", type, ":", tf_device_id.value(),
                           " was not registered");
 }
 
-StatusOr<std::vector<TfDeviceId>> DeviceIdManager::GetTfDevicesOnPlatform(
+absl::StatusOr<std::vector<TfDeviceId>> DeviceIdManager::GetTfDevicesOnPlatform(
     const DeviceType& type, PlatformDeviceId platform_device_id) {
   return TfToPlatformDeviceIdMap::singleton()->GetTfDevicesOnPlatform(
       type, platform_device_id);

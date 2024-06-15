@@ -37,7 +37,7 @@ void CheckValidTfDeviceId(const DeviceType& type, int visible_device_count,
                           TfDeviceId tf_device_id);
 
 // Parse `visible_device_list` into a list of platform Device ids.
-Status ParseVisibleDeviceList(
+absl::Status ParseVisibleDeviceList(
     const std::string& visible_device_list, int visible_device_count,
     std::vector<PlatformDeviceId>* visible_device_order);
 
@@ -50,20 +50,20 @@ Status ParseVisibleDeviceList(
 // Please refer to tensorflow/tsl/framework/device_id.h and
 // tensorflow/core/protobuf/config.proto about the relationship between
 // TfDeviceId and PlatformDeviceId, and how `visible_device_list` is used.
-StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
+absl::StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
     const absl::flat_hash_map<std::string, int64_t>&
         session_option_device_counts,
     absl::string_view device_type, absl::string_view visible_device_list,
     int visible_device_count);
 
-StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
+absl::StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type);
 
 // TODO(b/293324740): support virtual devices.
 // Returns the corresponding PlatformDeviceId if it is found. Otherwise returns
 // the id in device_name.
-StatusOr<int> GetDeviceIdFromDeviceParsedName(
+absl::StatusOr<int> GetDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type);
 
