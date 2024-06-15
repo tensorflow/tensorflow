@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir::quant::stablehlo {
@@ -28,8 +29,10 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertTFQuantOpsToMHLOPass());
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mhlo::createHloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mhlo::createMhloQuantLegalizeToIntPass());
+      mlir::stablehlo::createStablehloLegalizeQuantToIntPass());
+  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateVerifyQuantLegalizationPass());
 }

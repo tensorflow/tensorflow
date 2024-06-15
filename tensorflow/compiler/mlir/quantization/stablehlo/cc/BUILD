@@ -268,6 +268,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 

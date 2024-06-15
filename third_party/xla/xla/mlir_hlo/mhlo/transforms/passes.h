@@ -179,10 +179,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createShapeLegalizeToHloPass(
     bool legalizeConstraints = false);
 
-// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-// like int ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createMhloQuantLegalizeToIntPass();
-
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
