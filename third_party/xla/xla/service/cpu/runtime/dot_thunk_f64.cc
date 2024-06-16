@@ -17,4 +17,5 @@ limitations under the License.
 
 template void ::xla::cpu::DotThunk::TypedMatMul<double>(
     const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,
-    int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs);
+    int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs,
+    DoneCallback done);

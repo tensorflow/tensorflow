@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/dot_thunk.h"
 
+#include <atomic>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -76,6 +77,24 @@ struct MatMulDims {
 
   // True if the RHS contraction dimension is 0.
   bool rhs_canonical;
+};
+
+// Keep track of pending matrix multiplications and an event that signals
+// completion of Dot operation to the caller.
+struct ExecuteState {
+  explicit ExecuteState(int64_t batch_size)
+      : pending_matmuls(batch_size),
+        event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
+
+  void Notify() {
+    if (pending_matmuls.load(std::memory_order_relaxed) == 1 ||
+        pending_matmuls.fetch_sub(1, std::memory_order_relaxed) == 1) {
+      event.SetStateConcrete();
+    }
+  }
+
+  std::atomic<int64_t> pending_matmuls;
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> event;
 };
 
 }  // namespace
@@ -283,13 +302,15 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     return static_cast<uint8_t*>(ptr) + stride * index;
   };
 
+  auto state = std::make_shared<ExecuteState>(batch_size_);
+
   auto dispatch = [&](auto type_tag) {
     for (int64_t i = 0; i < batch_size_; ++i) {
       TypedMatMul<decltype(type_tag)>(
           params.intra_op_threadpool, batch_ptr(out, out_stride, i),
           batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i),
           matmul_dims.m, matmul_dims.n, matmul_dims.k, transpose_lhs,
-          transpose_rhs);
+          transpose_rhs, [state] { state->Notify(); });
     }
   };
 
@@ -318,8 +339,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
           primitive_util::LowercasePrimitiveTypeName(element_type));
   }
 
-  // TODO(ezhulenev): Execute matmul using Eigen::ThreadPoolDevice.
-  return OkExecuteEvent();
+  return state->event;
 }
 
 }  // namespace xla::cpu
