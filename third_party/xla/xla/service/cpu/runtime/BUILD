@@ -211,11 +211,20 @@ xla_cc_test(
 
 cc_library(
     name = "dot_thunk",
-    srcs = ["dot_thunk.cc"],
+    srcs = [
+        "dot_thunk.cc",
+        "dot_thunk_c128.cc",
+        "dot_thunk_c64.cc",
+        "dot_thunk_f16.cc",
+        "dot_thunk_f32.cc",
+        "dot_thunk_f64.cc",
+        "dot_thunk_s32.cc",
+    ],
     hdrs = ["dot_thunk.h"],
     deps = [
         ":thunk",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:transpose",

@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/dot_thunk.h"
 
-#define EIGEN_USE_THREADS
-
-#include <array>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -27,14 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/optimization.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -43,15 +37,12 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-
-#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
-#endif
 
 namespace xla::cpu {
 namespace {
@@ -114,42 +105,6 @@ static MatMulDims GetMatMulDims(
       /*lhs_canonical=*/lhs_shape.rank() <= 1 || lhs_contracting_dims[0] == 1,
       /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/rhs_contracting_dims[0] == 0};
-}
-
-// Col-major x Col-major MatMul implementation as Eigen contraction.
-template <typename T, Eigen::AlignmentType alignment>
-static void MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
-                   T* rhs, int64_t m, int64_t n, int64_t k,
-                   int32_t transpose_lhs, int32_t transpose_rhs) {
-  int64_t lhs_rows = m;
-  int64_t lhs_cols = k;
-  if (transpose_lhs) std::swap(lhs_rows, lhs_cols);
-
-  int64_t rhs_rows = k;
-  int64_t rhs_cols = n;
-  if (transpose_rhs) std::swap(rhs_rows, rhs_cols);
-
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> a(lhs, lhs_rows,
-                                                                 lhs_cols);
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> b(rhs, rhs_rows,
-                                                                 rhs_cols);
-  Eigen::TensorMap<Eigen::Tensor<T, 2>, alignment> c(out, m, n);
-
-  typedef typename Eigen::Tensor<T, 2>::DimensionPair DimPair;
-  int lhs_contract_dim = transpose_lhs ? 0 : 1;
-  int rhs_contract_dim = transpose_rhs ? 1 : 0;
-  std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
-
-  c.device(*device) = a.contract(b, dims);
-}
-
-template <typename T, Eigen::AlignmentType alignment>
-static void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
-                        void* lhs, void* rhs, int64_t m, int64_t n, int64_t k,
-                        bool transpose_lhs, bool transpose_rhs) {
-  MatMul<T, alignment>(device, static_cast<T*>(out), static_cast<T*>(lhs),
-                       static_cast<T*>(rhs), m, n, k, transpose_lhs,
-                       transpose_rhs);
 }
 
 absl::StatusOr<std::unique_ptr<DotThunk>> DotThunk::Create(
@@ -324,43 +279,23 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
   int64_t rhs_stride = matmul_dims.k * matmul_dims.n * byte_width;
   int64_t out_stride = matmul_dims.m * matmul_dims.n * byte_width;
 
-  auto is_16_byte_aligned = [](void* ptr) {
-    return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
-  };
-
   auto batch_ptr = [&](void* ptr, int64_t stride, int64_t index) -> void* {
     return static_cast<uint8_t*>(ptr) + stride * index;
   };
 
   auto dispatch = [&](auto type_tag) {
-    using T = decltype(type_tag);
-
     for (int64_t i = 0; i < batch_size_; ++i) {
-      void* lhs_ptr = batch_ptr(lhs, lhs_stride, i);
-      void* rhs_ptr = batch_ptr(rhs, rhs_stride, i);
-      void* out_ptr = batch_ptr(out, out_stride, i);
-
-      bool is_aligned = is_16_byte_aligned(lhs_ptr) &&
-                        is_16_byte_aligned(rhs_ptr) &&
-                        is_16_byte_aligned(out_ptr);
-
-      if (ABSL_PREDICT_TRUE(is_aligned)) {
-        TypedMatMul<T, Eigen::Aligned16>(params.intra_op_threadpool, out_ptr,
-                                         lhs_ptr, rhs_ptr, matmul_dims.m,
-                                         matmul_dims.n, matmul_dims.k,
-                                         transpose_lhs, transpose_rhs);
-      } else {
-        TypedMatMul<T, Eigen::Unaligned>(params.intra_op_threadpool, out_ptr,
-                                         lhs_ptr, rhs_ptr, matmul_dims.m,
-                                         matmul_dims.n, matmul_dims.k,
-                                         transpose_lhs, transpose_rhs);
-      }
+      TypedMatMul<decltype(type_tag)>(
+          params.intra_op_threadpool, batch_ptr(out, out_stride, i),
+          batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i),
+          matmul_dims.m, matmul_dims.n, matmul_dims.k, transpose_lhs,
+          transpose_rhs);
     }
   };
 
   switch (element_type) {
     case F16:
-      dispatch(Eigen::half{});
+      dispatch(half{});
       break;
     case F32:
       dispatch(float{});

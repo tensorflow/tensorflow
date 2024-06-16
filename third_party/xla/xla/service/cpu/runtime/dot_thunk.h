@@ -16,11 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_DOT_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_DOT_THUNK_H_
 
+#define EIGEN_USE_THREADS
+
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -53,6 +60,17 @@ class DotThunk final : public Thunk {
            int64_t batch_size, Shape lhs_matmul_shape, Shape rhs_matmul_shape,
            Shape out_matmul_shape);
 
+  // Col-major x Col-major MatMul implementation as Eigen contraction.
+  template <typename T, Eigen::AlignmentType alignment>
+  static void MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
+                     T* rhs, int64_t m, int64_t n, int64_t k,
+                     int32_t transpose_lhs, int32_t transpose_rhs);
+
+  template <typename T>
+  static void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
+                          void* lhs, void* rhs, int64_t m, int64_t n, int64_t k,
+                          bool transpose_lhs, bool transpose_rhs);
+
   DotDimensionNumbers dot_dimensions_;
 
   BufferAllocation::Slice lhs_buffer_;
@@ -76,6 +94,74 @@ class DotThunk final : public Thunk {
   absl::InlinedVector<int64_t, 2> lhs_matmul_contracting_dims_;
   absl::InlinedVector<int64_t, 2> rhs_matmul_contracting_dims_;
 };
+
+//===----------------------------------------------------------------------===//
+// DotThunk implementation details.
+//===----------------------------------------------------------------------===//
+
+template <typename T, Eigen::AlignmentType alignment>
+void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
+                      T* rhs, int64_t m, int64_t n, int64_t k,
+                      int32_t transpose_lhs, int32_t transpose_rhs) {
+  int64_t lhs_rows = m;
+  int64_t lhs_cols = k;
+  if (transpose_lhs) std::swap(lhs_rows, lhs_cols);
+
+  int64_t rhs_rows = k;
+  int64_t rhs_cols = n;
+  if (transpose_rhs) std::swap(rhs_rows, rhs_cols);
+
+  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> a(lhs, lhs_rows,
+                                                                 lhs_cols);
+  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> b(rhs, rhs_rows,
+                                                                 rhs_cols);
+  Eigen::TensorMap<Eigen::Tensor<T, 2>, alignment> c(out, m, n);
+
+  typedef typename Eigen::Tensor<T, 2>::DimensionPair DimPair;
+  int lhs_contract_dim = transpose_lhs ? 0 : 1;
+  int rhs_contract_dim = transpose_rhs ? 1 : 0;
+  std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
+
+  c.device(*device) = a.contract(b, dims);
+}
+
+template <typename T>
+void DotThunk::TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
+                           void* lhs, void* rhs, int64_t m, int64_t n,
+                           int64_t k, bool transpose_lhs, bool transpose_rhs) {
+  auto is_16_byte_aligned = [](void* ptr) {
+    return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
+  };
+
+  bool is_aligned = is_16_byte_aligned(lhs) && is_16_byte_aligned(rhs) &&
+                    is_16_byte_aligned(out);
+
+  if (ABSL_PREDICT_TRUE(is_aligned)) {
+    MatMul<T, Eigen::Aligned16>(device, static_cast<T*>(out),
+                                static_cast<T*>(lhs), static_cast<T*>(rhs), m,
+                                n, k, transpose_lhs, transpose_rhs);
+  } else {
+    MatMul<T, Eigen::Unaligned>(device, static_cast<T*>(out),
+                                static_cast<T*>(lhs), static_cast<T*>(rhs), m,
+                                n, k, transpose_lhs, transpose_rhs);
+  }
+}
+
+// Extern DotThunk::TypedMatMul template for all supported data types to enable
+// parallel compilation.
+#define DOT_THUNK_EXTERN_MATMUL_TEMPLATE(T)                                   \
+  extern template void DotThunk::TypedMatMul<T>(                              \
+      const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs, \
+      int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs)
+
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(Eigen::half);
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(float);
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(double);
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(int32_t);
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(std::complex<float>);
+DOT_THUNK_EXTERN_MATMUL_TEMPLATE(std::complex<double>);
+
+#undef DOT_THUNK_EXTERN_MATMUL_TEMPLATE
 
 }  // namespace xla::cpu
 
