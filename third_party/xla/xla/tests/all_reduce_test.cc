@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"

@@ -811,6 +811,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
+        "//xla/service/cpu/runtime:all_reduce_thunk",
         "//xla/service/cpu/runtime:call_thunk",
         "//xla/service/cpu/runtime:conditional_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
