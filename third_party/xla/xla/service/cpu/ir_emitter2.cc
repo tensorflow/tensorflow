@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emitter2.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
@@ -304,6 +307,45 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitReductionHostKernel(
 
   // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
   return EmitElementalHostKernel(instr);
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
+    const HloInstruction* instr) {
+  VLOG(2) << "Emit dot host kernel: " << instr->name();
+
+  // Host kernel only supports strategies that emit LLVM IR.
+  static std::array<DotImplementationStrategy, 3> strategies = {
+      DotImplementationStrategy::kNaiveLlvmIr,
+      DotImplementationStrategy::kTiledLlvmIrGemm,
+      DotImplementationStrategy::kTiledLlvmIrGemv,
+  };
+
+  DotImplementationStrategy strategy = GetDotImplementationStrategy(
+      hlo_module_.config(), *instr,
+      nested_ir_emitter_->target_machine_features());
+
+  if (absl::c_find(strategies, strategy) == strategies.end()) {
+    return Internal("Unsupported dot implementation strategy");
+  }
+
+  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+
+  llvm::IRBuilder<> b(module_->getContext());
+  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
+
+  llvm_ir::IrArray lhs_array = kernel_prototype.arguments[0];
+  llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
+  llvm_ir::IrArray target_array = kernel_prototype.results[0];
+
+  TF_RETURN_IF_ERROR(EmitDotOperation(
+      *instr, target_array, lhs_array, rhs_array,
+      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr, &b,
+      hlo_module_.config(), nested_ir_emitter_->target_machine_features(),
+      /*allow_runtime_calls=*/false));
+
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
 }
 
 //===----------------------------------------------------------------------===//

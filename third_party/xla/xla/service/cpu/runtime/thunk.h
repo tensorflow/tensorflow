@@ -64,6 +64,7 @@ class Thunk {
     kCall,
     kCopy,
     kConditional,
+    kDot,
     kInfeed,
     kKernel,
     kOutfeed,

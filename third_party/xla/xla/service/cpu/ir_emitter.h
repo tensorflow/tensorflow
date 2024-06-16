@@ -155,6 +155,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return emitted_functions_.contains({&callee, allow_reassociation});
   }
 
+  const TargetMachineFeatures& target_machine_features() const {
+    return target_machine_features_;
+  }
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.

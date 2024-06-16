@@ -921,6 +921,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",

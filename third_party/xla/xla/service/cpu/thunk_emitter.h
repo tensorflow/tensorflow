@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -98,6 +99,8 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitWhileThunk(
       const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitDotThunk(const HloInstruction* instruction);
 
   // Returns the list of buffer allocation slices assigned to the given
   // instruction that will be passed to the host kernel as arguments: a

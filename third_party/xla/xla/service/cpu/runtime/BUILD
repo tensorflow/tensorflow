@@ -210,6 +210,36 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "dot_thunk",
+    srcs = ["dot_thunk.cc"],
+    hdrs = ["dot_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:transpose",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "outfeed_thunk",
     srcs = ["outfeed_thunk.cc"],
     hdrs = ["outfeed_thunk.h"],

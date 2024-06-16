@@ -32,10 +32,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
+#include "xla/service/cpu/runtime/dot_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
@@ -220,6 +222,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
 
+    case HloOpcode::kDot:
+      return EmitDotThunk(instruction);
+
     default:
       return absl::UnimplementedError(
           absl::StrCat("HLO opcode `", HloOpcodeString(instruction->opcode()),
@@ -366,6 +371,56 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
   return ThunkSequence::Of<WhileThunk>(ThunkInfo(instruction), cond_buffer,
                                        std::move(cond_thunk),
                                        std::move(body_thunk));
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
+    const HloInstruction* instruction) {
+  const HloInstruction* lhs = instruction->operand(0);
+  const HloInstruction* rhs = instruction->operand(1);
+
+  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+      *instruction, /*operands=*/{lhs, rhs},
+      /*supported_types=*/
+      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
+
+  const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
+  if (dnums.lhs_contracting_dimensions_size() != 1) {
+    return Unimplemented(
+        "Dot with multiple contracting dimensions is not implemented.");
+  }
+
+  DotImplementationStrategy strategy = GetDotImplementationStrategy(
+      hlo_module_config_, *instruction, target_machine_features_);
+
+  switch (strategy) {
+    // Emit host kernel implementing dot instruction.
+    case DotImplementationStrategy::kNaiveLlvmIr:
+    case DotImplementationStrategy::kTiledLlvmIrGemm:
+    case DotImplementationStrategy::kTiledLlvmIrGemv: {
+      TF_ASSIGN_OR_RETURN(auto kernel,
+                          ir_emitter_.EmitDotHostKernel(instruction));
+      TF_ASSIGN_OR_RETURN(auto buffers,
+                          GetHostKernelAllocationSlices(instruction));
+
+      return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
+                                            buffers.arguments, buffers.results,
+                                            kernel.name, kernel.thread_dims);
+    }
+
+    // Emit DotThunk implementing dot instruction as a library call.
+    case DotImplementationStrategy::kEigen: {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
+                          GetAllocationSlice(lhs));
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
+                          GetAllocationSlice(rhs));
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
+                          GetAllocationSlice(instruction));
+
+      return ThunkSequence::Of<DotThunk>(
+          ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+          rhs->shape(), out_slice, instruction->shape());
+    }
+  }
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
