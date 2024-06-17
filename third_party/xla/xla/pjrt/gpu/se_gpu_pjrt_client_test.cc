@@ -762,5 +762,24 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
             0);
 }
 
+TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
+  const int num_nodes = 4;
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2);
+  EXPECT_EQ(client->device_count(), devices_per_host * num_nodes);
+  for (int i = 0; i < client->device_count(); i++) {
+    auto device = client->devices()[i];
+    auto slice_index =
+        std::get<int64_t>(device->Attributes().at("slice_index"));
+    auto host_index = device->process_index();
+    EXPECT_EQ(slice_index, host_index);
+  }
+}
+
 }  // namespace
 }  // namespace xla
