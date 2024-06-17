@@ -1360,16 +1360,17 @@ xla_test(
     name = "convolution_cudnn_test",
     timeout = "long",
     srcs = ["convolution_cudnn_test.cc"],
-    backend_tags = {"gpu": [
-        "gpu",
-        "requires-gpu-sm80",
-    ]},
-    backends = ["gpu"],
-    tags = ["no_rocm"],  # No int8
+    backends = [
+        "gpu_v100",
+        "gpu_a100",
+        "gpu_h100",
+    ],
+    data = ["data/cudnn_reproducer.hlo"],
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
     ],
 )
