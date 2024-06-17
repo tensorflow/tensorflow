@@ -80,9 +80,9 @@ using mlir_converter::PartitionedComputations;
 
 LaunchDimensions MlirReductionFusion::launch_dimensions() const {
   size_t blocks_y = groups_.grouped_roots.size();
-  return {se::BlockDim(/*x=*/Product(num_blocks_),
+  return {se::BlockDim(/*x=*/total_num_blocks_,
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
-          se::ThreadDim(/*x=*/Product(num_threads_),
+          se::ThreadDim(/*x=*/total_num_threads_per_block_,
                         /*y=*/1, /*z=*/1)};
 }
 
@@ -229,33 +229,29 @@ absl::Status MlirReductionFusion::EmitEntryFunction(
   return absl::OkStatus();
 }
 
-IndexingMap GetIndexingMapForTiling(absl::Span<const int64_t> input_shape,
-                                    absl::Span<const int64_t> block_counts,
-                                    absl::Span<const int64_t> thread_counts,
-                                    absl::Span<const int64_t> block_tile_sizes,
-                                    absl::Span<const int64_t> thread_tile_sizes,
-                                    MLIRContext* ctx) {
-  auto rank = input_shape.size();
+IndexingMap MlirReductionFusion::ComputeThreadIdToReductionInputIndexing(
+    mlir::MLIRContext* ctx) const {
+  auto rank = input_shape_.size();
 
   auto thread_offsets =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), thread_counts);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
   auto block_offsets =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), block_counts);
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
   SmallVector<AffineExpr> results;
   results.resize(rank);
   for (int i = 0; i < rank; ++i) {
-    results[i] = block_offsets[i] * block_tile_sizes[i] + thread_offsets[i];
-    if (thread_tile_sizes[i] > 1) {
-      results[i] = results[i] + getAffineSymbolExpr(i, ctx) * thread_counts[i];
+    results[i] =
+        block_offsets[i] * tile_sizes_per_block_[i] + thread_offsets[i];
+    if (tile_sizes_per_thread_[i] > 1) {
+      results[i] = results[i] + getAffineSymbolExpr(i, ctx) * num_threads_[i];
     }
   }
-  auto threads_per_block = Product(thread_counts);
-  auto num_blocks = Product(block_counts);
-  IndexingMap map{
-      AffineMap::get(6, rank, results, ctx),
-      DimVarsFromTensorSizes({threads_per_block, 1, 1, num_blocks, 1, 1}),
-      RangeVarsFromTensorSizes(thread_tile_sizes), /*rt_vars=*/{}};
-  for (auto [result, input_dim] : llvm::zip(results, input_shape)) {
+  IndexingMap map{AffineMap::get(6, rank, results, ctx),
+                  DimVarsFromTensorSizes({total_num_threads_per_block_, 1, 1,
+                                          total_num_blocks_, 1, 1}),
+                  RangeVarsFromTensorSizes(tile_sizes_per_thread_),
+                  /*rt_vars=*/{}};
+  for (auto [result, input_dim] : llvm::zip(results, input_shape_)) {
     map.AddConstraint(result, {0, input_dim - 1});
   }
   return map;
@@ -263,10 +259,8 @@ IndexingMap GetIndexingMapForTiling(absl::Span<const int64_t> input_shape,
 
 HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     int group_id, const HloValueMap& inits) {
-  auto tile_indexing = GetIndexingMapForTiling(
-      owner.input_shape_, owner.num_blocks_, owner.num_threads_,
-      owner.tile_sizes_per_block_, owner.tile_sizes_per_thread_,
-      builder.getContext());
+  auto tile_indexing =
+      owner.ComputeThreadIdToReductionInputIndexing(builder.getContext());
   tile_indexing
       .GetMutableDimensionBound(
           KernelFusionInterface::kIndexingMapBlockIdxDims[1])
@@ -371,9 +365,7 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToInputIndexing(
              .indexing_maps[hero_operand_index]
              .begin());
   }
-  auto map = GetIndexingMapForTiling(input_shape_, num_blocks_, num_threads_,
-                                     tile_sizes_per_block_,
-                                     tile_sizes_per_thread_, ctx);
+  auto map = ComputeThreadIdToReductionInputIndexing(ctx);
   AddGroupIdConstraint(map, root_index, groups_);
   return map * GetBitcastMap(input_shape_,
                              hero.operand(hero_operand_index)->shape(), ctx);
@@ -524,6 +516,9 @@ MlirRowReductionFusion::MlirRowReductionFusion(
     num_blocks_[i] = CeilOfRatio(input_shape_[i], tile_sizes_per_block_[i]);
     CHECK_NE(num_blocks_[i], 0);
   }
+
+  total_num_blocks_ = Product(num_blocks_);
+  total_num_threads_per_block_ = Product(num_threads_);
 }
 
 std::optional<IndexingMap>
@@ -531,9 +526,7 @@ MlirRowReductionFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* ctx) const {
   if (!groups_.is_reduction_root[root_index]) {
     auto map = ComposeIndexingMaps(
-        GetIndexingMapForTiling(input_shape_, num_blocks_, num_threads_,
-                                tile_sizes_per_thread_, tile_sizes_per_block_,
-                                ctx),
+        ComputeThreadIdToReductionInputIndexing(ctx),
         GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
                       ctx));
     AddGroupIdConstraint(map, root_index, groups_);
@@ -549,10 +542,10 @@ MlirRowReductionFusion::ComputeThreadIdToOutputIndexing(
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
   std::vector<DimVar> dimension_ranges{
-      {{0, Product(num_threads_) - 1}},
+      {{0, total_num_threads_per_block_ - 1}},
       {},
       {},
-      {{0, Product(num_blocks_) - 1}},
+      {{0, total_num_blocks_ - 1}},
       {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
       {},
   };
@@ -601,7 +594,7 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
   Value one = b.create<ma::ConstantIndexOp>(1);
   Value thread_id = state.thread_and_block_ids[0];
   auto thread_indexing =
-      GetBitcastMap({Product(num_threads_)},
+      GetBitcastMap({total_num_threads_per_block_},
                     ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
                     b.getContext());
   auto thread_ids =
@@ -767,6 +760,9 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
     num_blocks_[i] = CeilOfRatio(input_shape_[i], tile_sizes_per_block_[i]);
     CHECK_NE(num_blocks_[i], 0);
   }
+
+  total_num_blocks_ = Product(num_blocks_);
+  total_num_threads_per_block_ = Product(num_threads_);
 }
 
 std::optional<IndexingMap>
@@ -777,9 +773,7 @@ MlirColumnReductionFusion::ComputeThreadIdToOutputIndexing(
 
   if (!groups_.is_reduction_root[root_index]) {
     auto map = ComposeIndexingMaps(
-        GetIndexingMapForTiling(input_shape_, num_blocks_, num_threads_,
-                                tile_sizes_per_block_, tile_sizes_per_thread_,
-                                ctx),
+        ComputeThreadIdToReductionInputIndexing(ctx),
         GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
                       ctx));
     AddGroupIdConstraint(map, root_index, groups_);
@@ -793,10 +787,10 @@ MlirColumnReductionFusion::ComputeThreadIdToOutputIndexing(
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
   std::vector<DimVar> dimension_ranges{
-      {{0, Product(num_threads_) - 1}},
+      {{0, total_num_threads_per_block_ - 1}},
       {},
       {},
-      {{0, Product(num_blocks_) - 1}},
+      {{0, total_num_blocks_ - 1}},
       {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
       {},
   };
@@ -841,8 +835,6 @@ MlirColumnReductionFusion::ComputeThreadIdToOutputIndexing(
   return map;
 }
 
-int MlirColumnReductionFusion::GetRowsPerWarp() const { return 1; }
-
 llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
     int group_id, EmitterState& state) const {
   auto& b = state.builder;
@@ -854,7 +846,7 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
 
   Value thread_id = state.thread_and_block_ids[0];
   auto thread_indexing =
-      GetBitcastMap({Product(num_threads_)},
+      GetBitcastMap({total_num_threads_per_block_},
                     ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
                     b.getContext());
   auto thread_ids =
