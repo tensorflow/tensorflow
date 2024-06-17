@@ -692,17 +692,17 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   auto blas_lambda = [this, out_algorithms](auto handle, auto &&blas_func,
                                             auto &&...rest) {
     rocblas_int num_sols = 0;
-
+    // If get_solutions call fails, we still can use the default (fallback)
+    // algorithm which is available for almost all number types.
     if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
                              nullptr, &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
-    }
-    solutions_.resize(num_sols);
-    if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
-                             solutions_.data(), &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
+        ret == rocblas_status_success) {
+      solutions_.resize(num_sols);
+      if (ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
+                          solutions_.data(), &num_sols);
+          ret != rocblas_status_success) {
+        num_sols = 0;
+      }
     }
     out_algorithms->resize(num_sols + 1);
     (*out_algorithms)[0] = blas::kDefaultAlgorithm;
