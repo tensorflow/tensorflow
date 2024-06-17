@@ -4569,11 +4569,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
         HloInstruction::CreateUnary(multiply->shape(), HloOpcode::kExp, add));
   }
 
-  VLOG(10) << "trying transform [rsqrt(B) * rsqrt(B) => 1/B] "
+  VLOG(10) << "trying transform [rsqrt(B) * rsqrt(B) => 1/B], for B >= 0 "
            << multiply->ToString();
   HloInstruction* b;
   if (Match(multiply, m::Multiply(m::Rsqrt(m::Op(&b)), m::Rsqrt(m::Op(&b)))) &&
-      IsPositive(b, options_)) {
+      IsNonNegative(b, options_)) {
     return ReplaceWithNewInstruction(
         multiply,
         HloInstruction::CreateBinary(multiply->shape(), HloOpcode::kDivide,
@@ -6589,22 +6589,20 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
-  VLOG(10) << "trying transform [rsqrt(Pow(A, -2)) => |A|] "
+  VLOG(10) << "trying transform [rsqrt(pow(A, -2)) => A], for A >= 0 "
            << rsqrt->ToString();
   HloInstruction* rsqrt_operand = rsqrt->mutable_operand(0);
   if (rsqrt_operand->opcode() == HloOpcode::kPower &&
       IsAll(rsqrt_operand->operand(1), -2) &&
-      IsPositive(rsqrt_operand, options_)) {
-    return ReplaceWithNewInstruction(
-        rsqrt, HloInstruction::CreateUnary(rsqrt->shape(), HloOpcode::kAbs,
-                                           rsqrt_operand->mutable_operand(0)));
+      IsNonNegative(rsqrt_operand->operand(0), options_)) {
+    return ReplaceInstruction(rsqrt, rsqrt_operand->mutable_operand(0));
   }
 
-  VLOG(10) << "trying transform [rsqrt(Divide(1, A)) => sqrt(A)] "
+  VLOG(10) << "trying transform [rsqrt(1/A)) => sqrt(A)], for A >= 0 "
            << rsqrt->ToString();
   if (rsqrt_operand->opcode() == HloOpcode::kDivide &&
       IsAll(rsqrt_operand->operand(0), 1) &&
-      IsPositive(rsqrt_operand->operand(1), options_)) {
+      IsNonNegative(rsqrt_operand->operand(1), options_)) {
     return ReplaceWithNewInstruction(
         rsqrt, HloInstruction::CreateUnary(rsqrt->shape(), HloOpcode::kSqrt,
                                            rsqrt_operand->mutable_operand(1)));

@@ -147,6 +147,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
@@ -1922,12 +1923,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
   std::string ptx_snippets;
   std::vector<std::vector<uint8_t>> binaries_to_link;
   binaries_to_link.reserve(compile_results.size());
-  struct NamedBinary {
-    // The string is the function name or empty just like for llvm_modules.
-    std::string name;
-    std::vector<uint8_t> binary;
-  };
-  std::vector<NamedBinary> binaries_to_cache;
+  std::vector<KernelReuseCache::NamedBinary> binaries_to_cache;
   binaries_to_cache.reserve(single_function_module_count);
   for (const auto& [name, maybe_result] : compile_results) {
     TF_ASSIGN_OR_RETURN(auto result, maybe_result);
@@ -1948,51 +1944,40 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
       return FailedPrecondition("File path can not be resolved: %s",
                                 cache_path);
     }
-    CompilationCacheProto& cache =
+    // current_cache contains new kernels from the current compilation and
+    // kernels to reuse from previous compilations if some were loaded from the
+    // cache file.
+    const CompilationCacheProto& current_cache =
         compile_module_results.kernel_compilation_cache;
-    if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
+    const bool cache_file_exists =
+        tsl::Env::Default()->FileExists(resolved_path).ok();
+    if (cache_file_exists) {
+      // Pick reused binaries from previous compilations needed to link the
+      // current executable.
       int loaded_kernel_count = 0;
-      for (const auto& [name, entry] : cache.entries()) {
-        if (llvm_module->getFunction(name)) {
-          VLOG(5)
-              << "Skipping cached " << name
-              << " in favor of the just compiled kernel with the same name.";
-          CHECK(entry.binary().empty());
+      for (const auto& [name, entry] : current_cache.entries()) {
+        if (llvm_module->getFunction(name) != nullptr) {
+          VLOG(5) << "Using the just compiled kernel for " << name;
+          TF_RET_CHECK(entry.binary().empty())
+              << name
+              << " is a just compiled kernel and is not expected to have a "
+                 "binary yet.";
           continue;
         }
         const uint8_t* binary =
             reinterpret_cast<const uint8_t*>(entry.binary().data());
         binaries_to_link.push_back(
             std::vector<uint8_t>(binary, binary + entry.binary().size()));
-        VLOG(5) << "Loaded " << name << ": " << entry.binary().size();
+        VLOG(5) << "Using " << name << " from cache: " << entry.binary().size();
         ++loaded_kernel_count;
       }
-      VLOG(2) << "Loaded " << loaded_kernel_count << " / "
-              << cache.entries_size() << " cached kernels.";
-    } else {
-      auto entries = cache.mutable_entries();
-      for (const auto& [name, binary] : binaries_to_cache) {
-        auto it = entries->find(name);
-        if (it == entries->end()) {
-          continue;
-        }
-        it->second.set_binary(reinterpret_cast<const char*>(binary.data()),
-                              binary.size());
-        VLOG(5) << "Cached kernels: " << name << ": " << binary.size();
-      }
-      for (auto it = entries->begin(); it != entries->end();) {
-        if (it->second.binary().empty()) {
-          it = entries->erase(it);
-        } else {
-          ++it;
-        }
-      }
-      if (cache.entries_size() > 0) {
-        TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-            tsl::Env::Default(), resolved_path, cache.SerializeAsString()));
-        VLOG(2) << "Stored " << cache.entries_size() << " / "
-                << binaries_to_cache.size();
-      }
+      VLOG(2) << "Using " << loaded_kernel_count << " / "
+              << current_cache.entries_size() << " cached kernels.";
+    }
+    if (!binaries_to_cache.empty()) {
+      TF_RETURN_IF_ERROR(
+          UpdateDiskKernelCache(resolved_path, /*do_append=*/cache_file_exists,
+                                current_cache, binaries_to_cache));
     }
   }
 
@@ -2007,6 +1992,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     return maybe_backend_result.status();
   }
   VLOG(4) << "Binary size after linking [B]: " << maybe_backend_result->size();
+  compile_module_results.kernel_compilation_cache.Clear();
   return BackendCompileResult{ptx_snippets, std::move(*maybe_backend_result)};
 }
 

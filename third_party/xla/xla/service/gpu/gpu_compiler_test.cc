@@ -559,6 +559,7 @@ CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
 class KernelCacheTest : public HloTestBase {
  public:
   void SetUp() override {
+    CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
@@ -568,8 +569,8 @@ class KernelCacheTest : public HloTestBase {
       GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
     }
   }
+
   DebugOptions GetDebugOptionsForTest() override {
-    CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
@@ -583,16 +584,16 @@ class KernelCacheTest : public HloTestBase {
     return true;
   }
 
-  bool NonEmptyCacheExists() {
+  int CacheEntryCount() {
     if (!CacheFileExists()) {
-      return false;
+      return 0;
     }
     std::string serialized;
     TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
                                        &serialized));
     CompilationCacheProto proto;
     EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
-    return proto.entries_size() > 0;
+    return proto.entries_size();
   }
 
   std::string cache_file_name_;
@@ -609,9 +610,10 @@ TEST_F(KernelCacheTest, CacheIsGenerated) {
   EXPECT_FALSE(CacheFileExists());
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
   // First run generates a cache
-  EXPECT_TRUE(NonEmptyCacheExists());
+  EXPECT_EQ(CacheEntryCount(), 1);
   // Second run - with cache file
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
 }
 
 TEST_F(KernelCacheTest, NoCacheIsGeneratedWithoutCompiledKernels) {
@@ -626,10 +628,10 @@ TEST_F(KernelCacheTest, NoCacheIsGeneratedWithoutCompiledKernels) {
   EXPECT_FALSE(CacheFileExists());
 }
 
-TEST_F(KernelCacheTest, UsingCacheFromAnotherModuleDoesNotFail) {
+TEST_F(KernelCacheTest, CacheGrowsWithNewKernels) {
   EXPECT_FALSE(CacheFileExists());
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(NonEmptyCacheExists());
+  EXPECT_EQ(CacheEntryCount(), 1);
   // Second run - with cache file and another HLO
   EXPECT_TRUE(Run(R"(
   ENTRY e {
@@ -637,6 +639,7 @@ TEST_F(KernelCacheTest, UsingCacheFromAnotherModuleDoesNotFail) {
     ROOT _ = s8[] multiply(p, p)
   })",
                   /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 2);
 }
 
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
@@ -651,8 +654,9 @@ class KernelCacheTestSingleThreaded : public KernelCacheTest {
 TEST_F(KernelCacheTestSingleThreaded, CacheIsGenerated) {
   EXPECT_FALSE(CacheFileExists());
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(NonEmptyCacheExists());
+  EXPECT_EQ(CacheEntryCount(), 1);
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
 }
 
 class NoKernelCacheTest : public KernelCacheTest {
@@ -666,7 +670,7 @@ class NoKernelCacheTest : public KernelCacheTest {
 
 TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_FALSE(NonEmptyCacheExists());
+  EXPECT_FALSE(CacheFileExists());
 }
 
 }  // namespace

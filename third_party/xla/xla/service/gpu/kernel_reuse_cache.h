@@ -45,6 +45,10 @@ class KernelReuseCache {
     int64_t shmem_bytes = 0;
     std::string binary;
   };
+  struct NamedBinary {
+    std::string name;
+    std::vector<uint8_t> binary;
+  };
 
   absl::Status Load(const CompilationCacheProto& proto);
   // Exporting skips kernels that were loaded but not used during emission.
@@ -87,6 +91,14 @@ class KernelReuseCache {
   // linking the corresponding kernels later.
   absl::flat_hash_set<std::string> hits_;
 };
+
+// Add kernels to the cache file. Binaries are taken from binaries_to_cache,
+// all other kernel properties are taken from current_cache.
+// do_append makes an existing file be loaded first.
+absl::Status UpdateDiskKernelCache(
+    absl::string_view path, bool do_append,
+    const CompilationCacheProto& current_cache,
+    absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache);
 
 // Calculates the fingerprint of a (fused_computation, kernel_arguments,
 // discriminator) tuple.
