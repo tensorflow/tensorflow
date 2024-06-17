@@ -65,9 +65,9 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/threadpool.h"
 

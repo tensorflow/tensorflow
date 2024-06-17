@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/platform/mutex.h"
 
 #if GOOGLE_CUDA

@@ -21,7 +21,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 
 namespace tensorflow {

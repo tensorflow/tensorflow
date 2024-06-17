@@ -413,7 +413,7 @@ cc_library(
         ":types",
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl",
+        "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 

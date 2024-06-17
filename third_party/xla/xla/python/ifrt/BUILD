@@ -346,13 +346,13 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/framework:allocator",
     ],
 )
 

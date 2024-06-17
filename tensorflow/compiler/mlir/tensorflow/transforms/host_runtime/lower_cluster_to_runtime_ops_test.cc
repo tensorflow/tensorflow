@@ -35,13 +35,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {

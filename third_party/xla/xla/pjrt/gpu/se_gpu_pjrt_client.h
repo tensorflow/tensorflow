@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "tsl/framework/allocator.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 

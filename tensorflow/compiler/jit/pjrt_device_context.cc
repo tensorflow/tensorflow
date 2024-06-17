@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/c/tsl_status_internal.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
-#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {

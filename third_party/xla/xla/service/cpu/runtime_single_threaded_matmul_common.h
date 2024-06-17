@@ -23,7 +23,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace xla {

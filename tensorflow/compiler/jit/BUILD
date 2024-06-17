@@ -361,7 +361,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/pjrt:pjrt_client",
@@ -369,6 +368,7 @@ cc_library(
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:executable",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ],
     alwayslink = 1,
 )
@@ -591,8 +591,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/framework:device_id_utils",
-        "@local_tsl//tsl/framework:serving_device_selector_policies",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/client:local_client",
@@ -603,6 +601,8 @@ cc_library(
         "@local_xla//xla/service:shaped_buffer",
         "@local_xla//xla/stream_executor:device_memory_allocator",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/tsl/framework:device_id_utils",
+        "@local_xla//xla/tsl/framework:serving_device_selector_policies",
     ],
 )
 
@@ -629,13 +629,13 @@ tf_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ],
 )
 
@@ -1679,9 +1679,9 @@ cc_library(
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ],
 )
 

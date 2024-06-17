@@ -28,9 +28,9 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "tsl/framework/device_id.h"
 
 namespace xla {
 

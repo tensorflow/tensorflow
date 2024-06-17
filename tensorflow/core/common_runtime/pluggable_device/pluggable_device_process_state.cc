@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 

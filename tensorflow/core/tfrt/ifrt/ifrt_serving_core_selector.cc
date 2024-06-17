@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
