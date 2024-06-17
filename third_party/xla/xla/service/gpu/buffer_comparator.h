@@ -30,7 +30,8 @@ class BufferComparator {
   BufferComparator(const BufferComparator&) = delete;
   BufferComparator(BufferComparator&&) = default;
 
-  BufferComparator(const Shape& shape, const HloModuleConfig& config);
+  BufferComparator(const Shape& shape, const HloModuleConfig& config,
+                   double tolerance = 0.1);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
@@ -46,8 +47,28 @@ class BufferComparator {
                                     se::DeviceMemoryBase expected) const;
 
  private:
+  template <typename ElementT, typename ComparisonT>
+  absl::StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
+                                                 se::DeviceMemoryBase current,
+                                                 se::DeviceMemoryBase expected,
+                                                 std::string_view kernel_name,
+                                                 void* kernel_symbol) const;
+
+  template <typename ElementType, typename ComparisonType>
+  absl::StatusOr<bool> HostCompare(se::Stream* stream,
+                                   se::DeviceMemoryBase current,
+                                   se::DeviceMemoryBase expected) const;
+
+  template <typename ElementT>
+  absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
+                                     se::DeviceMemoryBase current,
+                                     se::DeviceMemoryBase expected,
+                                     std::string_view kernel_name,
+                                     void* kernel_symbol) const;
+
   Shape shape_;
   HloModuleConfig config_;
+  double tolerance_;
 };
 
 namespace buffer_comparator {

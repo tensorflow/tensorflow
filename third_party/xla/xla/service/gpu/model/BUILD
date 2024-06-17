@@ -460,6 +460,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
