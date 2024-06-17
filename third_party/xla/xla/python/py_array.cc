@@ -967,11 +967,15 @@ bool PyArray::IsDeleted() const {
 }
 
 PyArray PyArray::Clone() const {
+  auto array = tsl::FormRef(ifrt_array());
+  auto* ifrt_client = py_client()->ifrt_client();
   tsl::RCReference<ifrt::Array> out =
-      ifrt_array()
-          ->Reshard(ifrt_array()->shared_ptr_sharding(),
-                    ifrt::ArrayCopySemantics::kReuseInput)
-          .value();
+      ifrt_client
+          ->CopyArrays(absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
+                       /*memory_kind=*/std::nullopt,
+                       ifrt::ArrayCopySemantics::kReuseInput)
+          .value()
+          .front();
   return PyArray(aval(), weak_type(), dtype(),
                  std::vector<int64_t>(shape().begin(), shape().end()),
                  sharding(), py_client(), traceback(), std::move(out),
