@@ -91,18 +91,9 @@ void TpuExecutor_EnqueueInfeed(SE_StreamExecutor* executor,
 void TpuExecutor_DequeueOutfeed(SE_StreamExecutor* executor,
                                 int32_t outfeed_queue_index, uint8_t* data,
                                 int64_t size, TF_Status* status);
-void TpuExecutor_WaitForInfeedReady(SE_StreamExecutor* executor,
-                                    int32_t infeed_queue_index,
-                                    TF_Status* status);
-void TpuExecutor_WaitForOutfeedReady(SE_StreamExecutor* executor,
-                                     int32_t outfeed_queue_index,
-                                     TF_Status* status);
 
 void TpuExecutor_BlockHostUntilDone(SE_StreamExecutor* executor,
                                     SE_Stream* stream, TF_Status* status);
-void TpuExecutor_BlockUntilDoneOrFailed(SE_StreamExecutor* executor,
-                                        TF_Status* status);
-void TpuExecutor_SyncAndForgetFailedStreams(SE_StreamExecutor* executor);
 bool TpuExecutor_SynchronizeAllActivity(SE_StreamExecutor* executor);
 
 void TpuExecutor_UnloadAllPrograms(SE_StreamExecutor* executor,
