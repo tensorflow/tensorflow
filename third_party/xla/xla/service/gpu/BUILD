@@ -1185,6 +1185,7 @@ build_cub_sort_kernels(
     types = get_cub_sort_kernel_types(),
     deps = if_gpu_is_configured([
         ":gpu_prim",
+        "//xla/stream_executor/gpu:gpu_types_header",
     ]),
 )
 

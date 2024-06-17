@@ -574,6 +574,8 @@ cc_library(
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
