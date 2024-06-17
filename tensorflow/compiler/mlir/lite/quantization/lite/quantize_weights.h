@@ -25,7 +25,6 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/model.h"
 
 namespace mlir {
 namespace lite {

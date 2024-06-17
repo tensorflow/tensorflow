@@ -65,7 +65,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
