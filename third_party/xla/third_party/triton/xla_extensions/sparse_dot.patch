@@ -54,7 +54,7 @@ index a87e1c44a..456a4f224 100644
 +
  #endif
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-index 6e7868b14..035659a60 100644
+index a5c96c18b..83777c686 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 @@ -497,6 +497,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
@@ -178,10 +178,10 @@ index 6e7868b14..035659a60 100644
  } // namespace triton
  } // namespace mlir
 diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-index f13c722df..952a1f23e 100644
+index c47558fa6..35f0cca95 100644
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -39,7 +39,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
+@@ -37,7 +37,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
    return 0;
  }
  
@@ -191,7 +191,7 @@ index f13c722df..952a1f23e 100644
                                       int numWarps) {
    auto rank = shape.size();
    // Early exit for batched matmul
-@@ -53,8 +54,8 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
+@@ -51,8 +52,8 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
    auto slices = multiRootGetSlice(dotOp, {filter}, {filter});
    bool hasChainedDot = false;
    for (Operation *op : slices) {
@@ -202,7 +202,7 @@ index f13c722df..952a1f23e 100644
        auto resTy = chainedDot.getResult().getType();
        if (resTy.getRank() != rank) {
          continue;
-@@ -98,12 +99,13 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
+@@ -96,12 +97,13 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
    return ret;
  }
  
@@ -220,7 +220,7 @@ index f13c722df..952a1f23e 100644
        slices.end())
      return {(unsigned)numWarps, 1};
  
-@@ -144,6 +146,7 @@ class BlockedToMMA : public mlir::RewritePattern {
+@@ -191,6 +193,7 @@ class BlockedToMMA : public mlir::OpRewritePattern<DotOp> {
                  mlir::TypeID::get<arith::ArithDialect>());
    }
  
@@ -228,14 +228,14 @@ index f13c722df..952a1f23e 100644
    // Finds the first different bitwidth in the chain of shape-preserving
    // unary ops that x depends on.
    // There are two primary scenarios:
-@@ -177,14 +180,14 @@ class BlockedToMMA : public mlir::RewritePattern {
+@@ -224,14 +227,14 @@ class BlockedToMMA : public mlir::OpRewritePattern<DotOp> {
      return origBitWidth;
    }
  
 -public:
    BlockedToMMA(mlir::MLIRContext *context, int computeCapability)
-       : mlir::RewritePattern(DotOp::getOperationName(), 2, context),
-         computeCapability(computeCapability) {}
+       : OpRewritePattern<DotOp>(context), computeCapability(computeCapability) {
+   }
  
 -  static SmallVector<unsigned, 3>
 -  getWarpsPerTile(DotOp dotOp, const ArrayRef<int64_t> shape, int version,
@@ -247,7 +247,7 @@ index f13c722df..952a1f23e 100644
      switch (version) {
      case 2:
        return warpsPerTileV2(dotOp, shape, numWarps);
-@@ -358,6 +361,103 @@ public:
+@@ -359,6 +362,106 @@ public:
      return success();
    }
  };
@@ -323,8 +323,11 @@ index f13c722df..952a1f23e 100644
 +          oldBType.getShape(), oldBType.getElementType(), newBEncoding);
 +      b = rewriter.create<ConvertLayoutOp>(b.getLoc(), newBType, b);
 +    } else {
-+      a = BlockedToMMA::getMMAv3Operand(a, rewriter, 0);
-+      b = BlockedToMMA::getMMAv3Operand(b, rewriter, 1);
++      auto eltType = dotOp.getA().getType().getElementType();
++      // In MMAV3 tranpose is only supported for f16 and bf16.
++      bool allowTranspose = eltType.isF16() || eltType.isBF16();
++      a = getSharedMemoryMMAOperand(a, rewriter, 0, allowTranspose);
++      b = getSharedMemoryMMAOperand(b, rewriter, 1, allowTranspose);
 +    }
 +
 +    // convert metadata
@@ -351,7 +354,7 @@ index f13c722df..952a1f23e 100644
  } // namespace
  
  static Value promoteOperand(OpBuilder &builder, Location loc, Value operand,
-@@ -419,6 +519,7 @@ public:
+@@ -420,6 +523,7 @@ public:
  
      mlir::RewritePatternSet patterns(context);
      patterns.add<BlockedToMMA>(context, computeCapability);
