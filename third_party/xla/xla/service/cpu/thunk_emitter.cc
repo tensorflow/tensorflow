@@ -116,9 +116,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTuple:
       return ThunkSequence::Empty();
 
-    // No-op operations that are used only to define an execution order for the
-    // HLO dataflow graph.
-    case HloOpcode::kAfterAll:
+    // No-op operations that are used to provide more metadata about the HLO
+    // dataflow graph.
+    case HloOpcode::kAfterAll:             // Defines an execution order.
+    case HloOpcode::kDomain:               // Defines an HLO domain.
+    case HloOpcode::kOptimizationBarrier:  // Prevents moving ops past barrier.
+      return ThunkSequence::Empty();
+
+    // Allocations for constants owned by the executable, and resolved at run
+    // time according to the buffer assignment (using allocation index). We do
+    // not need to emit any thunks for constant instructions.
+    case HloOpcode::kConstant:
       return ThunkSequence::Empty();
 
     // Call operations are simply converted to a ThunkSequence emitted from the
@@ -132,12 +140,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitConditionThunk(instruction);
     case HloOpcode::kWhile:
       return EmitWhileThunk(instruction);
-
-    // Allocations for constants owned by the executable, and resolved at run
-    // time according to the buffer assignment (using allocation index). We do
-    // not need to emit any thunks for constant instructions.
-    case HloOpcode::kConstant:
-      return ThunkSequence::Empty();
 
     // Simple HLO instructions lowered to elemental host kernels (plain loops
     // behind the HostKernel API).
