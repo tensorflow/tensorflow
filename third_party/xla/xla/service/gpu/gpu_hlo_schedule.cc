@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -494,40 +495,43 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
                                        pgle_profile_file_or_dir_path);
   }
 }
+}  // end namespace
 
-// Return true if the profile is applicable to the module. That is true if every
-// instruction in the profile is present in the module.
 absl::Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile) {
-  absl::flat_hash_set<absl::string_view> instruction_names;
+  absl::flat_hash_set<absl::string_view> all_instruction_names;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : comp->instructions()) {
-      instruction_names.insert(instr->name());
+      all_instruction_names.insert(instr->name());
     }
   }
 
+  std::vector<std::string> missing_costs_names;
   for (const auto& cost : profile.costs()) {
-    if (!instruction_names.contains(cost.name())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", cost.name(), module->name()));
+    if (!all_instruction_names.contains(cost.name())) {
+      missing_costs_names.push_back(cost.name());
     }
   }
+  std::vector<std::string> missing_latency_names;
   for (const auto& latency : profile.latencies()) {
-    if (!instruction_names.contains(latency.source())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", latency.source(), module->name()));
+    if (!all_instruction_names.contains(latency.source())) {
+      missing_latency_names.push_back(latency.source());
     }
 
-    if (!instruction_names.contains(latency.target())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", latency.target(), module->name()));
+    if (!all_instruction_names.contains(latency.target())) {
+      missing_latency_names.push_back(latency.target());
     }
   }
+  if (!(missing_costs_names.empty() && missing_latency_names.empty())) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("\nMissing costs: %s;\nMissing latencies: %s",
+                        absl::StrJoin(missing_costs_names, ", "),
+                        absl::StrJoin(missing_latency_names, ", ")));
+  }
+
   return absl::OkStatus();
 }
-
-}  // end namespace
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
