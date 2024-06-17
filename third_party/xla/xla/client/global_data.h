@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "xla/service_interface.h"
+#include "xla/service/service.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -31,7 +31,7 @@ namespace xla {
 class GlobalData {
  public:
   // Gives ownership of the global data handle to this object.
-  GlobalData(ServiceInterface* parent, GlobalDataHandle handle);
+  GlobalData(Service* parent, GlobalDataHandle handle);
 
   // Unregisters the wrapped handle, which causes the service to
   // deallocate the associated data.
@@ -40,7 +40,7 @@ class GlobalData {
   const GlobalDataHandle& handle() const { return handle_; }
 
   // Releases a set of GlobalData handles. A single RPC will be issued
-  // per unique ServiceInterface of the given GlobalData objects.
+  // per unique Service of the given GlobalData objects.
   static void Release(std::vector<std::unique_ptr<GlobalData>> instances);
 
  private:
@@ -52,7 +52,7 @@ class GlobalData {
   }
 
   GlobalDataHandle handle_;   // Handle being wrapped.
-  ServiceInterface* parent_;  // Service used to unregister handle_.
+  Service* parent_;           // Service used to unregister handle_.
 
   GlobalData(const GlobalData&) = delete;
   GlobalData& operator=(const GlobalData&) = delete;

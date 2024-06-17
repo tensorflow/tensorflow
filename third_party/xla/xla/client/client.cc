@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace xla {
 
-Client::Client(ServiceInterface* stub) : stub_(stub) {}
+Client::Client(Service* stub) : stub_(stub) {}
 
 Client::~Client() = default;
 

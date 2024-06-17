@@ -266,18 +266,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "service_interface",
-    srcs = [],
-    hdrs = ["service_interface.h"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":xla_data_proto_cc",
-        ":xla_proto_cc",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
     name = "status_macros",
     srcs = ["status_macros.cc"],
     hdrs = ["status_macros.h"],

@@ -1234,7 +1234,6 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:execution_options_util",
-        "//xla:service_interface",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",

@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/execution_tracker.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service_interface.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -78,36 +77,36 @@ class ServiceOptions {
 // the service state of computations and allocations, and delegates
 // target-specific requests to the target-specific infrastructure
 // (target-specific compiler, StreamExecutor).
-class Service : public ServiceInterface {
+class Service {
  public:
   // Unregisters a previously-allocated global handle.
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
   // returned.
-  absl::Status Unregister(const UnregisterRequest* arg,
-                          UnregisterResponse* result) override;
+  virtual absl::Status Unregister(const UnregisterRequest* arg,
+                                  UnregisterResponse* result);
 
   // Deconstructs a tuple. Returns a newly created GlobalDataHandle for each
   // element in the tuple.
-  absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
-                                DeconstructTupleResponse* result) override;
+  virtual absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
+                                        DeconstructTupleResponse* result);
 
   // Compiles a computation into an executable. The request contains the whole
   // computation graph. Returns the handle to the executable.
-  absl::Status Compile(const CompileRequest* arg,
-                       CompileResponse* result) override;
+  virtual absl::Status Compile(const CompileRequest* arg,
+                               CompileResponse* result);
 
   // Executes an executable with the provided global data passes as immutable
   // arguments. The request contains the handle to the executable. Returns
   // global data output and execution timing.
-  absl::Status Execute(const ExecuteRequest* arg,
-                       ExecuteResponse* result) override;
+  virtual absl::Status Execute(const ExecuteRequest* arg,
+                               ExecuteResponse* result);
 
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
   // computation.
-  absl::Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
-                                    ExecuteParallelResponse* result) override;
+  virtual absl::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result);
 
   // Requests one or more device handles from the target.
   //
@@ -117,27 +116,27 @@ class Service : public ServiceInterface {
   // the first set of replicas, and the next R devices to the second set of
   // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
-  absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                GetDeviceHandlesResponse* result) override;
+  virtual absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                        GetDeviceHandlesResponse* result);
 
   // Requests that global data be transferred to the client in literal form.
-  absl::Status TransferToClient(const TransferToClientRequest* arg,
-                                TransferToClientResponse* result) override;
+  virtual absl::Status TransferToClient(const TransferToClientRequest* arg,
+                                        TransferToClientResponse* result);
 
   // Transfers data from a literal provided by the client, into device memory.
-  absl::Status TransferToServer(const TransferToServerRequest* arg,
-                                TransferToServerResponse* result) override;
+  virtual absl::Status TransferToServer(const TransferToServerRequest* arg,
+                                        TransferToServerResponse* result);
 
   // Transfers data from a literal provided by the client, into the Infeed
   // buffer of the device.
-  absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                                TransferToInfeedResponse* result) override;
+  virtual absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                                        TransferToInfeedResponse* result);
 
   // Transfers data from the Outfeed othe device to the literal provided by the
   // client.
-  absl::Status TransferFromOutfeed(
+  virtual absl::Status TransferFromOutfeed(
       const TransferFromOutfeedRequest* arg,
-      TransferFromOutfeedResponse* result) override;
+      TransferFromOutfeedResponse* result);
 
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
@@ -148,22 +147,22 @@ class Service : public ServiceInterface {
   // ResetDevice should be called before an Execution that expect the device to
   // be in the reset state. For example, if the prior Execution modifies device
   // state (e.g., architectural state) that the next Execution depends on.
-  absl::Status ResetDevice(const ResetDeviceRequest* arg,
-                           ResetDeviceResponse* result) override;
+  virtual absl::Status ResetDevice(const ResetDeviceRequest* arg,
+                                   ResetDeviceResponse* result);
 
-  absl::Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
-                                    ComputeConstantResponse* result) override;
+  virtual absl::Status ComputeConstantGraph(
+      const ComputeConstantGraphRequest* arg, ComputeConstantResponse* result);
 
   // Returns the shape (with layout) of an array associated with a given data
   // handle.
-  absl::Status GetShape(const GetShapeRequest* arg,
-                        GetShapeResponse* result) override;
+  virtual absl::Status GetShape(const GetShapeRequest* arg,
+                                GetShapeResponse* result);
 
   // Creates a unique channel handle that can be used for Send/Recv
   // instructions.
-  absl::Status CreateChannelHandle(
+  virtual absl::Status CreateChannelHandle(
       const CreateChannelHandleRequest* arg,
-      CreateChannelHandleResponse* result) override;
+      CreateChannelHandleResponse* result);
 
   // Returns the backend used to execute computations.
   const Backend& backend() const { return *execute_backend_; }
@@ -182,6 +181,8 @@ class Service : public ServiceInterface {
   // given computation result shape.
   static absl::Status ValidateResultShape(const Shape& client_shape,
                                           const Shape& result_shape);
+
+  virtual ~Service() = default;
 
  private:
   // A private overload for Service itself, used by other methods within this
