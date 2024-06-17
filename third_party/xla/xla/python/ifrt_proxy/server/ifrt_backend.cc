@@ -167,6 +167,8 @@ Future<BackendInterface::Response> IfrtBackend::Process(
           HandleDisassembleIntoSingleDeviceArraysRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCheckValueReadyRequest:
       return Future<Response>(HandleCheckValueReadyRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kCopyArraysRequest:
+      return Future<Response>(HandleCopyArraysRequest(std::move(request)));
     case IfrtRequest::RequestCase::kReshardRequest:
       return Future<Response>(HandleReshardRequest(std::move(request)));
     case IfrtRequest::RequestCase::kFullyReplicatedShardRequest:
@@ -628,6 +630,59 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   }
 
   return response;
+}
+
+absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& copy_arrays_request = request->copy_arrays_request();
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  arrays.reserve(copy_arrays_request.array_handles_size());
+  for (const auto& handle : copy_arrays_request.array_handles()) {
+    TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArray(handle));
+  }
+  std::optional<DeviceList> devices;
+  if (!copy_arrays_request.device_ids().empty()) {
+    DeviceList::Devices ds;
+    for (const auto& device_id : copy_arrays_request.device_ids()) {
+      TF_ASSIGN_OR_RETURN(ds.emplace_back(),
+                          client_->LookupDevice(DeviceId(device_id)));
+    }
+    devices.emplace(std::move(ds));
+  }
+  std::optional<MemoryKind> memory_kind;
+  if (copy_arrays_request.has_memory_kind()) {
+    if (const absl::string_view m = copy_arrays_request.memory_kind();
+        !m.empty()) {
+      memory_kind.emplace(MemoryKind(m));
+    } else {
+      memory_kind.emplace(MemoryKind());
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto semantics,
+      FromArrayCopySemanticsProto(copy_arrays_request.copy_semantics()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto new_arrays,
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(devices),
+                          memory_kind, semantics));
+
+  std::unique_ptr<IfrtResponse> ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* const copy_arrays_resp = ifrt_resp->mutable_copy_arrays_response();
+
+  std::vector<uint64_t> new_handles(new_arrays.size());
+  handle_generator_.BulkNew(absl::MakeSpan(new_handles));
+  {
+    absl::MutexLock lock(&arrays_mutex_);
+    for (int i = 0; i < new_arrays.size(); ++i) {
+      arrays_.insert({new_handles[i], new_arrays[i]});
+      copy_arrays_resp->add_array_handles(new_handles[i]);
+    }
+  }
+
+  return ifrt_resp;
 }
 
 absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
