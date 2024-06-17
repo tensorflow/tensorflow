@@ -599,7 +599,9 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   if (profile.has_value()) {
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
-    LOG(INFO) << "Found profile, using profile guided latency estimator";
+    LOG(INFO)
+        << "Found profile, using profile guided latency estimator. Profile:\n"
+        << profile->DebugString();
     absl::Status s = IsProfileApplicable(module, profile.value());
     if (!s.ok()) {
       LOG(INFO) << "PGLE profile may not applicable to the module, but will "
