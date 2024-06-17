@@ -21446,6 +21446,59 @@ Operator that connects the output of an XLA computation to other consumer graph 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaConcatNDOp : TF_Op<"XlaConcatND", [Pure]> {
+  let summary = "Concats input tensor across all dimensions.";
+
+  let description = [{
+An op which merges slices the input tensor based on the given num_splits
+attribute, strips paddings optionally, and returns the merged tensor without
+paddings.
+
+This op may be generated via the TPU bridge.
+
+For example, with `input` tensor:
+```
+[[0, 1],
+ [4, 5]]
+[[2, 3],
+ [6, 7]]
+[[8, 9],
+ [12, 13]]
+[[10, 11],
+ [14, 15]]
+```
+`num_splits`:
+```
+[2, 2]
+```
+and `paddings`:
+```
+[1, 1]
+```
+the expected `outputs` is:
+```
+[[0, 1, 2],
+ [4, 5, 6],
+ [8, 9, 10]]
+```
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{Input tensor slices in row-major order to merge across all dimensions. All
+inputs must have the same shape.}]>:$inputs,
+
+    I64ArrayAttr:$num_concats,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$paddings
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{Output tensor formed from merging input slices based on num_concats defined.}]>:$output
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaConvOp : TF_Op<"XlaConv", [Pure, TF_NoConstantFold]> {
   let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
 
@@ -22284,6 +22337,58 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSplitNDOp : TF_Op<"XlaSplitND", [Pure]> {
+  let summary = "Splits input tensor across all dimensions.";
+
+  let description = [{
+An op which slices the input tensor based on the given num_splits attribute,
+pads slices optionally, and returned the slices. Slices are returned in
+row-major order.
+
+This op may be generated via the TPU bridge.
+
+For example, with `input` tensor:
+```
+[[0, 1, 2],
+ [3, 4, 5],
+ [6, 7, 8]]
+```
+`num_splits`:
+```
+[2, 2]
+```
+and `paddings`:
+```
+[1, 1]
+```
+the expected `outputs` is:
+```
+[[0, 1],
+ [3, 4]]
+[[2, 0],
+ [5, 0]]
+[[6, 7],
+ [0, 0]]
+[[8, 0],
+ [0, 0]]
+```
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{Input tensor to split across all dimensions.}]>:$input,
+
+    I64ArrayAttr:$num_splits,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$paddings
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{Output slices based on input and num_splits defined, in row-major order.}]>:$outputs
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr N = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_XlaSpmdFullToShardShapeOp : TF_Op<"XlaSpmdFullToShardShape", [Pure]> {
