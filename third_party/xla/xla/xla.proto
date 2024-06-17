@@ -819,7 +819,12 @@ message DebugOptions {
 
   string xla_gpu_kernel_cache_file = 306;
 
-  // Next id: 309
+  // Recognises rotate-right patterns (slice, slice, concat) within a while
+  // loop and labels the while loop as a pipelined while loop. This is an
+  // unsafe flag.
+  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
+
+  // Next id: 310
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -351,6 +351,13 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // A plug for subclasses to alter the IR based on the computation that has the
+  // rotate-right pattern. This is called during `PreprocessHlos`.
+  virtual absl::Status HandleRotateRightWhilePreprocessing(
+      HloComputation* computation) {
+    return absl::OkStatus();
+  };
+
   void set_execution_threads(
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     execution_threads_ = execution_threads;
