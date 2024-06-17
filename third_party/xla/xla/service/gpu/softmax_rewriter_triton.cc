@@ -235,7 +235,8 @@ bool IsTriviallyFusible(HloInstruction* instr,
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return static_cast<bool>(IsTritonSupportedInstruction(*instr, gpu_version));
+    return static_cast<bool>(
+        legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
@@ -248,7 +249,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands
@@ -260,7 +261,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
         (IsBroadcastOfScalarConstant(*operand_1) ||
          IsSupportedBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
     }
   }
 
@@ -408,7 +409,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Root is not elementwise binary.";
   }
 
-  if (!IsTritonSupportedInstruction(*instr, gpu_version_)) {
+  if (!legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version_)) {
     return "Root is not supported for Triton instruction.";
   }
 
@@ -433,7 +434,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   if (CodegenDecision is_supported =
-          IsTritonSupportedInstruction(*reduce, gpu_version_);
+          legacy_triton::IsTritonSupportedInstruction(*reduce, gpu_version_);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return is_supported;

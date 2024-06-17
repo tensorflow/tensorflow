@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,6 +35,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace legacy_triton {
 
 bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   // The list is most likely incomplete.
@@ -408,6 +410,49 @@ CodegenDecision IsTritonSupportedInstruction(
     case HloOpcode::kBroadcast:
       return CodegenDecision{};
     default:
+      break;
+  }
+  return "Unsupported opcode.";
+}
+
+}  // namespace legacy_triton
+
+CodegenDecision IsTritonSupportedInstruction(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
+  bool output_type_is_supported = legacy_triton::IsTritonSupportedDataType(
+      instr.shape().element_type(), gpu_version);
+
+  if (!output_type_is_supported) {
+    return "Unsupported output data type.";
+  }
+
+  bool input_types_are_supported =
+      absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
+        return legacy_triton::IsTritonSupportedDataType(
+            operand->shape().element_type(), gpu_version);
+      });
+
+  if (!input_types_are_supported) {
+    return "Unsupported input data type.";
+  }
+
+  if (instr.IsElementwise()) {
+    return legacy_triton::CanTritonHandleElementwise(instr, gpu_version);
+  }
+
+  // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
+  switch (instr.opcode()) {
+    case HloOpcode::kReduce: {
+      return legacy_triton::CanTritonHandleReduce(
+          *Cast<HloReduceInstruction>(&instr), gpu_version);
+    }
+    case HloOpcode::kTranspose:
+    case HloOpcode::kSlice:
+    case HloOpcode::kParameter:
+    case HloOpcode::kBroadcast:
+      return CodegenDecision{};
+    default:
+      VLOG(1) << "Unsupported instruction: " << instr.ToString();
       break;
   }
   return "Unsupported opcode.";

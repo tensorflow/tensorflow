@@ -287,7 +287,7 @@ absl::Status MakeDotComputationSplitKBatch(
     }
     CHECK_EQ(current->user_count(), 1);
     current = current->users()[0];
-    if (!IsDistributiveOverAddition(*current)) {
+    if (!legacy_triton::IsDistributiveOverAddition(*current)) {
       return Cancelled("Operation non-distributive over addition after dot.");
     }
   } while (true);

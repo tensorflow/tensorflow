@@ -24,7 +24,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -102,8 +101,8 @@ ENTRY e {
     TF_ASSERT_OK_AND_ASSIGN(
         TestedInstruction ti,
         ParseTemplateAndGetInstruction(hlo_test, /*data_type=*/{}, opcode));
-    if (IsTritonSupportedInstruction(ti.Instruction(),
-                                     GetCudaComputeCapability())) {
+    if (legacy_triton::IsTritonSupportedInstruction(
+            ti.Instruction(), GetCudaComputeCapability())) {
       TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
       EXPECT_TRUE(RunAndCompareNoHloPasses(
           std::move(ti.Module()),
@@ -237,10 +236,11 @@ ENTRY e {
                                                     HloOpcode::kDynamicSlice));
 
   const bool is_supported_instruction =
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      legacy_triton::IsTritonSupportedInstruction(ti.Instruction(),
+                                                  GetCudaComputeCapability())
           .CanFuse();
   const bool is_supported_dynamic_slice =
-      IsTritonSupportedDynamicSlice(
+      legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(&ti.Instruction()))
           .CanFuse();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
@@ -287,10 +287,10 @@ ENTRY e {
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Unsupported output data type for Dot op."));
+  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
+                  ti.Instruction(), GetCudaComputeCapability())
+                  .Explain(),
+              ::testing::HasSubstr("Unsupported output data type for Dot op."));
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
   block_level_parameters.num_stages = 4;
@@ -331,10 +331,10 @@ ENTRY e {
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Multiple batch dimensions"));
+  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
+                  ti.Instruction(), GetCudaComputeCapability())
+                  .Explain(),
+              ::testing::HasSubstr("Multiple batch dimensions"));
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
   block_level_parameters.num_stages = 4;
@@ -367,10 +367,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("No non-contracting dimensions."));
+  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
+                  ti.Instruction(), GetCudaComputeCapability())
+                  .Explain(),
+              ::testing::HasSubstr("No non-contracting dimensions."));
   EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
               tsl::testing::StatusIs(
                   absl::StatusCode::kInternal,

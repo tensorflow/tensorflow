@@ -1241,6 +1241,7 @@ cc_library(
         "//xla/service:instruction_fusion",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ],

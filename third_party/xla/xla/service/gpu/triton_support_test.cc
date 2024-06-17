@@ -43,6 +43,8 @@ namespace {
 
 using UnaryElementwiseTest = TritonSupportTestWithParam;
 
+// TODO(b/343158720): remove references to TritonFusionAnalysis in this file.
+
 // TODO(b/331636835): updates elementwise op tests to directly emit single op
 // instead of relying on triton gemm kernel.
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
@@ -472,7 +474,7 @@ ENTRY main {
   EXPECT_THAT(
       IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
           .Explain(),
-      ::testing::HasSubstr("Unsupported output data type for Reduce op."));
+      ::testing::HasSubstr("Unsupported output data type"));
   EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
               tsl::testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,

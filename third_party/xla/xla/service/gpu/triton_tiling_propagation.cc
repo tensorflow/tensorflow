@@ -952,7 +952,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.operand_count() > 0 &&
-             IsTritonSupportedElementwise(
+             legacy_triton::IsTritonSupportedElementwise(
                  hlo.opcode(), hlo.operand(0)->shape().element_type())) {
     return GetPropagatedDimOrdersForElementwise(hlo, direction, src_dim_order);
   } else if (hlo.opcode() == HloOpcode::kBitcast) {
@@ -977,7 +977,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
       return "Dynamic slices for now are only supported in GEMM fusions.";
     }
 
-    if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
+    if (CodegenDecision decision = legacy_triton::IsTritonSupportedDynamicSlice(
             *Cast<HloDynamicSliceInstruction>(&hlo));
         !decision.CanFuse()) {
       // CodegenDecision is actually the same type as FusionDecision.
@@ -1136,12 +1136,13 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
     return "Pads are not fused yet.";
   }
   for (const HloInstruction* operand : hlo.operands()) {
-    if (!IsTritonSupportedDataType(operand->shape().element_type(),
-                                   gpu_version)) {
+    if (!legacy_triton::IsTritonSupportedDataType(
+            operand->shape().element_type(), gpu_version)) {
       return "Unsupported input data type.";
     }
   }
-  if (!IsTritonSupportedDataType(hlo.shape().element_type(), gpu_version)) {
+  if (!legacy_triton::IsTritonSupportedDataType(hlo.shape().element_type(),
+                                                gpu_version)) {
     return "Unsupported output data type.";
   }
   DimOrdersAndReqsOrError result_or_error =

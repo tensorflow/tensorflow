@@ -522,7 +522,7 @@ HlosAndRequirements FuseTowardUsers(
     return existing_hlos_and_requirements;
   }
   const HloInstruction& user = *hlo.users()[0];
-  if (!IsDistributiveOverAddition(user)) {
+  if (!legacy_triton::IsDistributiveOverAddition(user)) {
     return existing_hlos_and_requirements;
   }
 
@@ -617,7 +617,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
   if (CodegenDecision is_supported =
-          IsTritonSupportedInstruction(dot, gpu_version);
+          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return is_supported;

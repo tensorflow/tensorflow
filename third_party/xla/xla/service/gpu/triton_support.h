@@ -31,38 +31,55 @@ namespace xla {
 namespace gpu {
 using CodegenDecision = FusionDecision;
 
+namespace legacy_triton {
+
 // Tells if f(a+b) == f(a) + f(b).
 bool IsDistributiveOverAddition(const HloInstruction& hlo);
 
-// Allowlist of unary elementwise operations supported by Triton GEMM codegen.
+// Allowlist of unary elementwise operations supported by the legacy Triton
+// emitters.
 std::vector<HloOpcode> TritonSupportedUnaryElementwise(PrimitiveType);
 
-// Allowlist of binary elementwise operations supported by Triton GEMM codegen.
+// Allowlist of binary elementwise operations supported by the legacy Triton
+// emitters.
 std::vector<HloOpcode> TritonSupportedBinaryElementwise(PrimitiveType);
 
-// Allowlist of ternary elementwise operations supported by Triton GEMM codegen.
+// Allowlist of ternary elementwise operations supported by the legacy Triton
+// emitters.
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(PrimitiveType);
 
-// Data types that are supported by the Triton emitters.
+// Data types that are supported by the legacy Triton emitters.
 bool IsTritonSupportedDataType(PrimitiveType, const se::GpuComputeCapability&);
 
-// Checks elementwise operation against all supported by Triton GEMM codegen.
+// Checks elementwise operation against unary, binary, and ternary elementwise
+// operations supported by the legacy Triton emitters.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 
 CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version);
 
-// Checks instruction against requirements of triton emitter.
+// Checks instruction against the requirements of the legacy Triton emitters.
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
-// Checks dynamic slice against requirements of triton emitter.
+// Checks dynamic slice against the requirements of the legacy Triton emitters.
 //
 // This is exposed separately from IsTritonSupportedInstruction because we can
 // use it in the dimension order propagation without adding a dependency on the
 // GPU version.
 CodegenDecision IsTritonSupportedDynamicSlice(
     const HloDynamicSliceInstruction& instr);
+}  // namespace legacy_triton
+
+// Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
+// is supported by the Triton emitters for the given compute capability.
+//
+// Note: this function is entirely dissociated from the legacy Triton emitters.
+// If you intend to add a feature to the legacy Triton emitters (which you
+// probably shouldn't), use `legacy_triton::IsTritonSupportedInstruction`
+// instead.
+CodegenDecision IsTritonSupportedInstruction(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
 }  // namespace gpu
 }  // namespace xla

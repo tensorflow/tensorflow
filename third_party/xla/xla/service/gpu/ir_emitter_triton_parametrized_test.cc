@@ -246,47 +246,49 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, UnaryElementwiseTest,
     ::testing::Combine(
         ::testing::Values(PRED),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(PRED)),
+        ::testing::ValuesIn(
+            legacy_triton::TritonSupportedUnaryElementwise(PRED)),
         ::testing::Values(3e-2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS8, UnaryElementwiseTest,
-    ::testing::Combine(::testing::Values(S8),
-                       ::testing::ValuesIn(TritonSupportedUnaryElementwise(S8)),
-                       ::testing::Values(3e-2)),
+    ::testing::Combine(
+        ::testing::Values(S8),
+        ::testing::ValuesIn(legacy_triton::TritonSupportedUnaryElementwise(S8)),
+        ::testing::Values(3e-2)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, UnaryElementwiseTest,
-    ::testing::Combine(
-        ::testing::Values(S16),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(S16)),
-        ::testing::Values(1e-3)),
+    ::testing::Combine(::testing::Values(S16),
+                       ::testing::ValuesIn(
+                           legacy_triton::TritonSupportedUnaryElementwise(S16)),
+                       ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, UnaryElementwiseTest,
-    ::testing::Combine(
-        ::testing::Values(S32),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(S32)),
-        ::testing::Values(1e-3)),
+    ::testing::Combine(::testing::Values(S32),
+                       ::testing::ValuesIn(
+                           legacy_triton::TritonSupportedUnaryElementwise(S32)),
+                       ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF16, UnaryElementwiseTest,
-    ::testing::Combine(
-        ::testing::Values(F16),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(F16)),
-        ::testing::Values(2e-4)),
+    ::testing::Combine(::testing::Values(F16),
+                       ::testing::ValuesIn(
+                           legacy_triton::TritonSupportedUnaryElementwise(F16)),
+                       ::testing::Values(2e-4)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, UnaryElementwiseTest,
-    ::testing::Combine(
-        ::testing::Values(F32),
-        ::testing::ValuesIn(TritonSupportedUnaryElementwise(F32)),
-        ::testing::Values(1e-6)),
+    ::testing::Combine(::testing::Values(F32),
+                       ::testing::ValuesIn(
+                           legacy_triton::TritonSupportedUnaryElementwise(F32)),
+                       ::testing::Values(1e-6)),
     ElementwiseTestParamsToString);
 
 using BinaryElementwiseTest = ElementwiseTest;
@@ -361,7 +363,8 @@ ENTRY e {
 }
 
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
-  std::vector<HloOpcode> ret = TritonSupportedBinaryElementwise(element_type);
+  std::vector<HloOpcode> ret =
+      legacy_triton::TritonSupportedBinaryElementwise(element_type);
   // Comparison requires an additional property.
   ret.erase(std::remove_if(ret.begin(), ret.end(), HloOpcodeIsComparison),
             ret.end());
@@ -530,7 +533,8 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
-    if (!IsTritonSupportedDataType(type, GetCudaComputeCapability())) {
+    if (!legacy_triton::IsTritonSupportedDataType(type,
+                                                  GetCudaComputeCapability())) {
       GTEST_SKIP() << absl::Substitute(
           "Unsupported data type: $0",
           primitive_util::LowercasePrimitiveTypeName(type));
@@ -631,7 +635,8 @@ class ConstantTest : public TritonTest,
 
 TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
   const PrimitiveType data_type = GetParam();
-  if (!IsTritonSupportedDataType(data_type, GetCudaComputeCapability())) {
+  if (!legacy_triton::IsTritonSupportedDataType(data_type,
+                                                GetCudaComputeCapability())) {
     GTEST_SKIP() << absl::Substitute(
         "Unsupported data type: $0",
         primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -735,7 +740,8 @@ TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
-    if (!IsTritonSupportedDataType(type, GetCudaComputeCapability())) {
+    if (!legacy_triton::IsTritonSupportedDataType(type,
+                                                  GetCudaComputeCapability())) {
       GTEST_SKIP() << absl::Substitute(
           "Unsupported data type: $0",
           primitive_util::LowercasePrimitiveTypeName(type));
