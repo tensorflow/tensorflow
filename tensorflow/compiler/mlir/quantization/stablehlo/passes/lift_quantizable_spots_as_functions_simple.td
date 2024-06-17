@@ -68,6 +68,14 @@ def LiftGather : Pat<
       (NamedAttr<"indices_are_sorted"> (DefaultOrNullAttr $indices_are_sorted)))),
   [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $operand)], [], (addBenefit 1)>;
 
+def LiftAbs : Pat<
+  (StableHLO_AbsOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_abs_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
 def LiftAdd : Pat<
   (StableHLO_AddOp:$res
       $lhs, $rhs),
@@ -75,3 +83,141 @@ def LiftAdd : Pat<
     (ArgumentList $lhs, $rhs),
     (ResultList $res)),
   [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftCbrt : Pat<
+  (StableHLO_CbrtOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_cbrt_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftCeil : Pat<
+  (StableHLO_CeilOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_ceil_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftCosine : Pat<
+  (StableHLO_CosineOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_cosine_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftDiv : Pat<
+  (StableHLO_DivOp:$res
+      $lhs, $rhs),
+  (LiftAsTFXlaCallModule<"composite_div_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftExp : Pat<
+  (StableHLO_ExpOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_exp_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftExpm1 : Pat<
+  (StableHLO_Expm1Op:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_expm1_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftFloor : Pat<
+  (StableHLO_FloorOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_floor_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftLog : Pat<
+  (StableHLO_LogOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_log_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftLog1p : Pat<
+  (StableHLO_Log1pOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_log1p_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftLogistic : Pat<
+  (StableHLO_LogisticOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_logistic_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftMul : Pat<
+  (StableHLO_MulOp:$res
+      $lhs, $rhs),
+  (LiftAsTFXlaCallModule<"composite_mul_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftNeg : Pat<
+  (StableHLO_NegOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_neg_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+
+def LiftSign : Pat<
+  (StableHLO_SignOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_sign_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftSine : Pat<
+  (StableHLO_SineOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_sine_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftSqrt : Pat<
+  (StableHLO_SqrtOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_sqrt_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftSubtract : Pat<
+  (StableHLO_SubtractOp:$res
+      $lhs, $rhs),
+  (LiftAsTFXlaCallModule<"composite_subtract_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
+def LiftTanh : Pat<
+  (StableHLO_TanhOp:$res
+      $operand),
+  (LiftAsTFXlaCallModule<"composite_tanh_fn">
+    (ArgumentList $operand),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;
+
