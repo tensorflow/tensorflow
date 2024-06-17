@@ -183,7 +183,7 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
                           s0 mod 3 in [1, 1]
                           s2 mod 4 in [0, 0]
                         )"));
-  composed.Simplify();
+  EXPECT_TRUE(composed.Simplify());
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:
@@ -536,7 +536,7 @@ TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
                              Interval{0, 0});
   indexing_map.AddConstraint(ParseAffineExpr("s1 mod 5", &mlir_context_),
                              Interval{1, 1});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
                           (d0)[s0, s1] -> (d0, s1, s0)
@@ -554,7 +554,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
   IndexingMap indexing_map =
       IndexingMap(ParseAffineMap("(d0) -> (d0)", &mlir_context_),
                   {DimVar{{5, 5}}}, /*range_vars=*/{}, /*rt_vars=*/{});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                   (d0) -> (5)
                                                   domain:
@@ -567,7 +567,7 @@ TEST_F(IndexingMapTest,
   auto serialized_map = "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {8, 16}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                   (d0, d1) -> (d0, d1)
                                                   domain:
@@ -584,7 +584,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithMultipliers) {
 
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {9, 9, 9}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                   (d0, d1, d2) -> (d0, d1, d2)
@@ -603,7 +603,7 @@ TEST_F(IndexingMapTest,
 
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {10, 10, 10}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
     (d0, d1, d2) -> (d0 * 2 + (d2 floordiv 4 + d1) floordiv 2,
                      (d1 * 4 + d2) mod 8)
@@ -620,7 +620,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
       "d0 * 11 + d1 + ((d0 * -11 - d1 + 109) floordiv 11) * 11 - 99)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {8, 9}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                  (d0, d1) -> (d0, d1)
                                                  domain:
@@ -634,7 +634,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape) {
       "()[s0] -> ((s0 * 128) mod 715 + ((s0 * 128) floordiv 715) * 715)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {128});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0] -> (s0 * 128)
       domain: s0 in [0, 127]
@@ -646,7 +646,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
       "(d0, d1) -> ((d0 mod 8) * 128 + d1 + (d0 floordiv 8) * 1024)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {1024, 128}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       (d0, d1) -> (d0 * 128 + d1)
       domain:
@@ -655,11 +655,12 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ModWithNegativeMultipler) {
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_ModWithNegativeMultiplerDoesNotGetSimplified) {
   auto serialized_map = "(d0) -> ((-d0) mod 2)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {128}, {});
-  indexing_map.Simplify();
+  EXPECT_FALSE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       (d0) -> ((-d0) mod 2)
       domain:
@@ -678,7 +679,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyBitcastAndBack) {
       "256 + (d1 mod 64) * 4)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {3072, 128}, {});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       (d0, d1) -> (d0 * 512 + d1 * 4)
       domain:
@@ -693,7 +694,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
       "()[s0] -> ((s0 * 128) mod 715 + ((s0 * 64) floordiv 715) * 715)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {128});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0] -> (((s0 * 64) floordiv 715) * 715 + (s0 * 128) mod 715)
       domain: s0 in [0, 127]
@@ -706,7 +707,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
       "14)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {1234});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                  ()[s0] -> (s0)
                                                  domain:
@@ -720,7 +721,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivGcdGreater1) {
       "floordiv 3) * 768 + ((s0 * 128 + s1) floordiv 192) * 768)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {1234, 128, 4});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0, s1, s2] -> (s0 * 512 + s1 * 4 + s2)
       domain:
@@ -736,7 +737,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
       "20000)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {872, 4, 128, 896});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0, s1, s2, s3] -> (
         (s0 * 458752 + s2 * 4 + s3 * 512) mod 20000 + s1
@@ -756,7 +757,7 @@ TEST_F(IndexingMapTest,
       "* 2) floordiv 4)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {}, {2, 128});
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0, s1] -> (
         s0 * 4 + s1 floordiv 32
@@ -1245,7 +1246,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Broadcast) {
              hlo_module.value()->entry_computation()->root_instruction(),
              ParseAffineMap("(d0) -> (d0, 11)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, 11)
@@ -1286,7 +1287,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ChainedNoncomputeOps) {
           hlo_module.value()->entry_computation()->root_instruction(),
           ParseAffineMap("(d0) -> (d0, d0 floordiv 12, 3)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, (d0 floordiv 12) * -4 + 8)
@@ -1319,7 +1320,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
              hlo_module.value()->entry_computation()->root_instruction(),
              ParseAffineMap("(d0) -> (d0, d0 floordiv 2)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0)[s0] -> (d0, s0)
@@ -1356,7 +1357,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Add) {
              hlo_module.value()->entry_computation()->root_instruction(),
              ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, d0 * 2 + 42)
@@ -1395,7 +1396,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Multiply) {
              hlo_module.value()->entry_computation()->root_instruction(),
              ParseAffineMap("(d0) -> (d0, d0)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, (-d0 + 11) * d0)
@@ -1431,7 +1432,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
              hlo_module.value()->entry_computation()->root_instruction(),
              ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
 
-  indexing_map.Simplify();
+  EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0)[s0] -> (d0, d0 * 2 + s0)

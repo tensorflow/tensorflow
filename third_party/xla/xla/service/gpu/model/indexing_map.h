@@ -394,10 +394,11 @@ class IndexingMap {
   bool SimplifyConstraintRanges();
 
   // Merges "mod" constraints for the same AffineExpr.
-  void MergeModConstraints();
+  // Returns true if simplification was performed.
+  bool MergeModConstraints();
 
   // Replace RTVars that yield constants by indexing expressions.
-  // Returns true if a replacement was performed, otherwise false.
+  // Returns true if simplification was performed.
   bool ReplaceConstantRTVars();
 
   // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions

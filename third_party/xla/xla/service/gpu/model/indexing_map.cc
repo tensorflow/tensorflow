@@ -1270,12 +1270,16 @@ bool IndexingMap::Simplify() {
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
   while (true) {
-    if (!SimplifyConstraintExprs()) break;
+    bool did_simplify = false;
+    did_simplify |= SimplifyConstraintExprs();
+    did_simplify |= SimplifyConstraintRanges();
+    if (!did_simplify) {
+      break;
+    }
     constraints_were_simplified = true;
-    if (!SimplifyConstraintRanges()) break;
   }
   // Simplify dependent constraints.
-  MergeModConstraints();
+  constraints_were_simplified |= MergeModConstraints();
   // Simplify affine_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
   RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
@@ -1595,9 +1599,10 @@ SmallBitVector IndexingMap::RemoveUnusedVars() {
                                unused_vars.unused_symbols);
 }
 
-void IndexingMap::MergeModConstraints() {
+bool IndexingMap::MergeModConstraints() {
   RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
                                  GetMLIRContext());
+  bool did_simplify = false;
 
   // Group constraints by LHS.
   llvm::DenseMap<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
@@ -1622,12 +1627,12 @@ void IndexingMap::MergeModConstraints() {
     if (mod_groups.empty()) continue;
 
     // Update domain for dimensions and symbols only.
-    Interval* update = nullptr;
+    Interval* interval_to_update = nullptr;
     if (lhs.getKind() == AffineExprKind::DimId) {
-      update = &GetMutableDimensionBound(
+      interval_to_update = &GetMutableDimensionBound(
           mlir::cast<AffineDimExpr>(lhs).getPosition());
     } else if (lhs.getKind() == AffineExprKind::SymbolId) {
-      update = &GetMutableSymbolBound(
+      interval_to_update = &GetMutableSymbolBound(
           mlir::cast<AffineSymbolExpr>(lhs).getPosition());
     }
     for (const auto& [res, ops] : mod_groups) {
@@ -1644,6 +1649,7 @@ void IndexingMap::MergeModConstraints() {
           constraints_.erase(op);
         }
         constraints_[lhs % div] = Interval{res, res};
+        did_simplify = true;
       }
       // Update dimension and symbol bounds.
       // TODO(b/347240603): If there are 2 constraints for the same dimension,
@@ -1651,14 +1657,22 @@ void IndexingMap::MergeModConstraints() {
       // depend on the order of iteration of mod_groups, and it may change
       // multiple times if we call MergeModConstraints() repeatedly, until
       // reaching a "sharp limit".
-      if (update != nullptr) {
-        int64_t l = (update->lower / div) * div + res;
-        update->lower = l >= update->lower ? l : l + div;
-        int64_t h = (update->upper / div) * div + res;
-        update->upper = h <= update->upper ? h : h - div;
+      if (interval_to_update != nullptr) {
+        Interval old = *interval_to_update;
+        int64_t l = (interval_to_update->lower / div) * div + res;
+        interval_to_update->lower =
+            l >= interval_to_update->lower ? l : l + div;
+        int64_t h = (interval_to_update->upper / div) * div + res;
+        interval_to_update->upper =
+            h <= interval_to_update->upper ? h : h - div;
+        if (*interval_to_update != old) {
+          did_simplify = true;
+        }
       }
     }
   }
+
+  return did_simplify;
 }
 
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
@@ -1928,6 +1942,7 @@ RTVarOptimizationResult OptimizeRTVar(RTVar rt_var, int64_t symbol_index,
 bool IndexingMap::ReplaceConstantRTVars() {
   if (rt_vars_.empty()) return false;
 
+  bool did_simplify = false;
   std::vector<size_t> to_delete;
 
   for (auto index = 0; index < rt_vars_.size(); ++index) {
@@ -1942,6 +1957,7 @@ bool IndexingMap::ReplaceConstantRTVars() {
         OptimizeRTVar(rt_var, symbol_index, GetMLIRContext());
 
     if (result.remapped_symbol != rt_var_symbol) {
+      did_simplify = true;
       affine_map_ =
           affine_map_.replace({{rt_var_symbol, result.remapped_symbol}});
 
@@ -1964,10 +1980,14 @@ bool IndexingMap::ReplaceConstantRTVars() {
 
     if (result.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
       // If we still depend on the rt_var, then we update it.
-      rt_var = std::move(result.rt_var);
+      if (rt_var != result.rt_var) {
+        rt_var = std::move(result.rt_var);
+        did_simplify = true;
+      }
     } else {
       // Otherwise we schedule the rt_var for removal.
       to_delete.emplace_back(index);
+      did_simplify = true;
     }
   }
 
@@ -1975,7 +1995,7 @@ bool IndexingMap::ReplaceConstantRTVars() {
     rt_vars_.erase(rt_vars_.begin() + index);
   }
 
-  return !to_delete.empty();
+  return did_simplify;
 }
 
 bool IndexingMap::IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const {
