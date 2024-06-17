@@ -217,7 +217,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
   opts.set_xla_gpu_llvm_verification_level(0);
   opts.set_xla_gpu_target_config_filename("");
-  opts.set_xla_gpu_enable_cub_radix_sort(true);
+  opts.set_xla_gpu_enable_cub_radix_sort(false);
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
 
