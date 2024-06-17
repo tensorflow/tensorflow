@@ -655,6 +655,8 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 add_library(tensorflow-lite

@@ -994,11 +994,11 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   // TensorFlow and TensorFlow Lite use different string encoding formats.
   // Convert to TensorFlow Lite format is it's a constant string tensor.
   if (tensor.dtype() == tensorflow::DT_STRING) {
-    ::mlir::TFL::MiniDynamicBuffer dynamic_buffer;
+    ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
     auto flat = tensor.flat<::tensorflow::tstring>();
     for (int i = 0; i < flat.size(); ++i) {
       const auto& str = flat(i);
-      if (!dynamic_buffer.AddString(str.c_str(), str.length()).ok()) {
+      if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
         inst->emitError(
             Twine("failed to add string to dynamic buffer with error: " +
                   status.ToString()));

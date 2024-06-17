@@ -21,23 +21,20 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "absl/status/status.h"
-
 namespace mlir::TFL {
 
-absl::Status MiniDynamicBuffer::AddString(const char* str, size_t len) {
+bool SimpleDynamicBuffer::AddString(const char* str, size_t len) {
   // If `data_.size() + len` is greater than `SIZE_MAX` then the left hand side
   // will overflow to something less than max_length_. After checking `len <=
   // max_length_` we can use this subtraction to check for overflow.
-  if (len > max_length_ || data_.size() >= max_length_ - len)
-    return absl::ResourceExhaustedError("Buffer overflow");
+  if (len > max_length_ || data_.size() >= max_length_ - len) return false;
   data_.resize(data_.size() + len);
   memcpy(data_.data() + offset_.back(), str, len);
   offset_.push_back(offset_.back() + len);
-  return absl::OkStatus();
+  return true;
 }
 
-int MiniDynamicBuffer::WriteToBuffer(char** buffer) {
+int SimpleDynamicBuffer::WriteToBuffer(char** buffer) {
   // Allocate sufficient memory to tensor buffer.
   int32_t num_strings = offset_.size() - 1;
   // Total bytes include:

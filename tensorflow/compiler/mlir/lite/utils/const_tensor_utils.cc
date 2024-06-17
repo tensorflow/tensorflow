@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {
@@ -433,8 +433,8 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   }
   // TensorFlow Lite uses tflite::DynamicBufer to encode vector of strings.
   if (tensor.type == tflite::TensorType_STRING) {
-    for (int i = 0; i < tflite::GetStringCount(buffer.data()); ++i) {
-      tflite::StringRef str = tflite::GetString(buffer.data(), i);
+    for (int i = 0; i < mlir::TFL::GetStringCount(buffer.data()); ++i) {
+      mlir::TFL::StringRef str = mlir::TFL::GetString(buffer.data(), i);
       ret.add_string_val(str.str, str.len);
     }
     return ret;

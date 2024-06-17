@@ -1493,11 +1493,11 @@ cc_library(
     deps = [
         ":convert_type",
         ":low_bit_utils",
+        ":string_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite:string_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1515,9 +1515,7 @@ cc_library(
     name = "string_utils",
     srcs = ["utils/string_utils.cc"],
     hdrs = ["utils/string_utils.h"],
-    deps = [
-        "@com_google_absl//absl/status",
-    ],
+    visibility = ["//tensorflow/lite:__pkg__"],
 )
 
 tf_cc_test(
