@@ -34,7 +34,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
