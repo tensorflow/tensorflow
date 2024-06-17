@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 
 // This file contains routines for rendering HLO computations into a

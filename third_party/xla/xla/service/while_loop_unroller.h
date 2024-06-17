@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_HLO_PASS_INTERFACE_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {

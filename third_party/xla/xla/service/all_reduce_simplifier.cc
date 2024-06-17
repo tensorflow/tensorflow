@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_replication_analysis.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/ar_crs_combiner.h"
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 

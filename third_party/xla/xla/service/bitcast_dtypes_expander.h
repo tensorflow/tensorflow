@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/op_expander_pass.h"
-#include "xla/statusor.h"
 
 #ifndef XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
 #define XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_

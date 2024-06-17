@@ -20,10 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/stream_pool.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

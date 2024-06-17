@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/local_service.h"
 #include "xla/service/service.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
