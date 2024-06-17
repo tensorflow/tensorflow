@@ -952,14 +952,15 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        // `SetBound` doesn't change the static value of a tensor, so forward
-        // the operand when analyzing static value.
-        return PostorderDFSNode()
-            .AddDependency(root->operand_ids(0),
-                           PostorderDFSNodeType::kConstantValue, context)
-            .AddVisit([](Literal operand) -> absl::StatusOr<Literal> {
-              return operand;
-            });
+        return PostorderDFSNode().AddVisit([root]() -> absl::StatusOr<Literal> {
+          if (root->literal().shape().element_type() == TUPLE) {
+            // First literal of SetBound contains bounds, second literal
+            // contains dynamism indicators.
+            return Literal::CreateFromProto(root->literal().tuple_literals(0));
+          } else {
+            return Literal::CreateFromProto(root->literal());
+          }
+        });
       } else if (root->custom_call_target() == "Sharding") {
         return PostorderDFSNode()
             .AddDependency(root->operand_ids(0),

@@ -742,5 +742,22 @@ TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
   EXPECT_EQ(result.value(), 32);
 }
 
+// Parameters are always dynamic unless there is a SetBound wrapping it.
+TEST_F(ConstValueInferenceTest, ParamaterValuePassThroughSetBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  xla::Literal dynamism = xla::LiteralUtil::CreateR0<bool>(false);
+  xla::Literal bound = xla::LiteralUtil::CreateR0<int32_t>(32);
+  xla::Literal tuple =
+      xla::LiteralUtil::MakeTupleOwned(std::move(bound), std::move(dynamism));
+  auto set_bound =
+      CustomCall(&b, "SetBound", {p0}, shape, "", false, {}, &tuple);
+  auto result =
+      ComputeConstantValueLiteral(set_bound, &b).value().Get<int32_t>({});
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 32);
+}
+
 }  // namespace
 }  // namespace xla
