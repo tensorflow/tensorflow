@@ -125,9 +125,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -139,18 +136,19 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      # Starting with TF 2.16, Apple Silicon packages are uploaded directly
+      # to the "tensorflow" project on PyPI. In order to not break users who
+      # are still using `tensorflow-macos`, we upload an empty installer wheel
+      # to "tensorflow-macos" and add "tensorflow" as its dependency. Please
+      # note that this will go away in TF 2.17 and `tensorflow-macos` will be
+      # considered deprecated. Installer packages are not uploaded to
+      # `tf-nightly-macos`, `tf-nightly` is added below only to avoid breaking
+      # CI builds.
+      standard_or_nightly('tensorflow', 'tf-nightly') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
