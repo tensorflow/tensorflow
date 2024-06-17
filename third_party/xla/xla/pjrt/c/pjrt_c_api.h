@@ -53,7 +53,7 @@ typedef enum {
 typedef struct PJRT_Extension_Base {
   size_t struct_size;
   PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  struct PJRT_Extension_Base* next;
 } PJRT_Extension_Base;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 
