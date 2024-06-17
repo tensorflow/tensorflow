@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
@@ -25,43 +26,25 @@ limitations under the License.
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
+namespace {
 
-static void BM_Conv2DF32_3x3(benchmark::State& state) {
-  int feature_size = state.range(0);
-  int input_channels = state.range(1);
-  int output_channels = state.range(2);
+bool IsOdd(int n) { return n % 2 == 1; }
 
-  std::string hlo_module = R"(
-    HloModule TestModule
+template <PrimitiveType ElementType>
+static void BM_Conv2D(benchmark::State& state) {
+  int batch = state.range(0);
+  int height = state.range(1);
+  int width = state.range(2);
+  int input_channels = state.range(3);
+  int kernel_h = state.range(4);
+  int kernel_w = state.range(5);
+  int output_channels = state.range(6);
 
-    ENTRY TestComputation {
-      %p0 = $input_shape parameter(0)
-      %p1 = $kernel_shape parameter(1)
-      ROOT conv = convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-    }
-  )";
-
-  std::minstd_rand0 engine;
-
-  auto input_shape = ShapeUtil::MakeShape(
-      F32, {8, feature_size, feature_size, input_channels});
-  auto kernel_shape =
-      ShapeUtil::MakeShape(F32, {3, 3, input_channels, output_channels});
-  auto input =
-      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
-  auto kernel =
-      *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
-  std::vector<const Literal*> args = {&input, &kernel};
-
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args,
-                           {{"$input_shape", input_shape.ToString()},
-                            {"$kernel_shape", kernel_shape.ToString()}}));
-}
-
-static void BM_Conv2DF32_1x1(benchmark::State& state) {
-  int feature_size = state.range(0);
-  int input_channels = state.range(1);
-  int output_channels = state.range(2);
+  // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
+  CHECK(IsOdd(kernel_h));
+  CHECK(IsOdd(kernel_w));
+  int padding_h = (kernel_h - 1) / 2;
+  int padding_w = (kernel_w - 1) / 2;
 
   std::string hlo_module = R"(
     HloModule TestModule
@@ -69,37 +52,86 @@ static void BM_Conv2DF32_1x1(benchmark::State& state) {
     ENTRY TestComputation {
       %p0 = $input_shape parameter(0)
       %p1 = $kernel_shape parameter(1)
-      ROOT conv = convolution(p0, p1), window={size=1x1 pad=0_0x0_0}, dim_labels=b01f_01io->b01f
+      ROOT conv = convolution(p0, p1), window={size=$window_size pad=$padding},
+        dim_labels=b01f_01io->b01f
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeShape(
-      F32, {8, feature_size, feature_size, input_channels});
-  auto kernel_shape =
-      ShapeUtil::MakeShape(F32, {1, 1, input_channels, output_channels});
-  auto input =
-      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
-  auto kernel =
-      *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
+  // Input format is NHWC.
+  auto input_shape =
+      ShapeUtil::MakeShape(ElementType, {batch, height, width, input_channels});
+  // Filter format is HWIO.
+  auto kernel_shape = ShapeUtil::MakeShape(
+      ElementType, {kernel_h, kernel_w, input_channels, output_channels});
+  auto input = *LiteralUtil::CreateRandomLiteral<ElementType>(
+      input_shape, &engine, 1.0f, 0.1f);
+  auto kernel = *LiteralUtil::CreateRandomLiteral<ElementType>(
+      kernel_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&input, &kernel};
 
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args,
-                           {{"$input_shape", input_shape.ToString()},
-                            {"$kernel_shape", kernel_shape.ToString()}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo_module, args,
+                      {{"$input_shape", input_shape.ToString()},
+                       {"$kernel_shape", kernel_shape.ToString()},
+                       {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
+                       {"$padding", absl::StrCat(padding_h, "_", padding_h, "x",
+                                                 padding_w, "_", padding_w)}}));
 }
 
-BENCHMARK(BM_Conv2DF32_3x3)
-    ->MeasureProcessCPUTime()
-    ->Args({5, 1, 32})
-    ->Args({5, 4, 32})
-    ->Args({128, 4, 8});
+}  // namespace
 
-BENCHMARK(BM_Conv2DF32_1x1)
+// -------------------------------------------------------------------------- //
+// Pixel CNN convolutions.
+// -------------------------------------------------------------------------- //
+
+// Shapes from XLA convolution tests
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
     ->MeasureProcessCPUTime()
-    ->Args({5, 1, 32})
-    ->Args({5, 4, 32})
-    ->Args({128, 4, 8});
+    ->Args({8, 5, 5, 1, 1, 1, 32})
+    ->Args({8, 5, 5, 4, 1, 1, 32})
+    ->Args({8, 128, 128, 4, 1, 1, 8});
+
+// Shapes from TF convolution benchmarks.
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
+    ->MeasureProcessCPUTime()
+    ->Args({8, 32, 32, 128, 1, 1, 1024})
+    ->Args({16, 32, 32, 128, 1, 1, 1024})
+    ->Args({32, 32, 32, 128, 1, 1, 1024});
+
+// Shapes similar to Eigen spatial convolution benchmarks.
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
+    ->MeasureProcessCPUTime()
+    ->Args({32, 64, 64, 32, 1, 1, 64})
+    ->Args({32, 256, 256, 4, 1, 1, 16})
+    ->Args({32, 64, 64, 4, 1, 1, 16})
+    ->Args({32, 32, 32, 96, 1, 1, 96});
+
+// -------------------------------------------------------------------------- //
+// 3x3 Convolution: SpatialConvolution
+// -------------------------------------------------------------------------- //
+
+// Shapes from XLA convolution tests
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
+    ->MeasureProcessCPUTime()
+    ->Args({8, 5, 5, 1, 3, 3, 32})
+    ->Args({8, 5, 5, 4, 3, 3, 32})
+    ->Args({8, 128, 128, 4, 3, 3, 8});
+
+// Shapes from TF convolution benchmarks
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
+    ->MeasureProcessCPUTime()
+    ->Args({8, 32, 32, 128, 3, 3, 1024})
+    ->Args({16, 32, 32, 128, 3, 3, 1024})
+    ->Args({32, 32, 32, 128, 3, 3, 1024});
+
+// Shapes similar to Eigen spatial convolution benchmarks.
+BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
+    ->MeasureProcessCPUTime()
+    ->Args({32, 64, 64, 32, 3, 3, 64})
+    ->Args({32, 256, 256, 4, 3, 3, 16})
+    ->Args({32, 64, 64, 4, 3, 3, 16})
+    ->Args({32, 32, 32, 96, 3, 3, 96});
 
 }  // namespace xla::cpu
