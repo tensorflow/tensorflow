@@ -38,12 +38,13 @@ _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     test_output="errors",
+    verbose_failures=True,
     keep_going=True,
     nobuild_tests_only=True,
-    features="layering_check",
     profile="profile.json.gz",
     flaky_test_attempts=3,
     jobs=150,
+    bes_upload_mode="fully_async",
 )
 
 _DEFAULT_DOCKER_OPTIONS = dict(
@@ -273,12 +274,7 @@ _JAX_CPU_BUILD = Build(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        override_repository="xla=/github/xla",
-        profile="profile.json.gz",
-    ),
+    options=_DEFAULT_BAZEL_OPTIONS,
 )
 
 _JAX_GPU_BUILD = Build(
@@ -298,12 +294,7 @@ _JAX_GPU_BUILD = Build(
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        override_repository="xla=/github/xla",
-        profile="profile.json.gz",
-    ),
+    options=_DEFAULT_BAZEL_OPTIONS,
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
