@@ -66,7 +66,7 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
       return f;                                                          \
     }                                                                    \
     template <typename... Args>                                          \
-    rocblas_status operator()(Args... args) {                            \
+    auto operator()(Args... args) {                                      \
       return DynLoad()(args...);                                         \
     }                                                                    \
   } __name;
@@ -257,19 +257,22 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_zgemm_strided_batched)        \
   __macro(rocblas_gemm_ex)                      \
   __macro(rocblas_gemm_strided_batched_ex)      \
-  __macro(rocblas_gemm_ex_get_solutions)        \
-  __macro(rocblas_gemm_ex_get_solutions_by_type) \
-  __macro(rocblas_gemm_batched_ex_get_solutions) \
+  __macro(rocblas_gemm_ex_get_solutions)                 \
+  __macro(rocblas_gemm_ex_get_solutions_by_type)         \
+  __macro(rocblas_gemm_batched_ex_get_solutions)         \
   __macro(rocblas_gemm_batched_ex_get_solutions_by_type) \
   __macro(rocblas_gemm_strided_batched_ex_get_solutions) \
-  __macro(rocblas_strsm_batched)                \
-  __macro(rocblas_dtrsm_batched)                \
-  __macro(rocblas_ctrsm_batched)                \
-  __macro(rocblas_ztrsm_batched)                \
-  __macro(rocblas_create_handle)                \
-  __macro(rocblas_destroy_handle)               \
-  __macro(rocblas_get_stream)                   \
-  __macro(rocblas_set_stream)                   \
+  __macro(rocblas_is_managing_device_memory)             \
+  __macro(rocblas_is_user_managing_device_memory)        \
+  __macro(rocblas_set_workspace)                         \
+  __macro(rocblas_strsm_batched)                         \
+  __macro(rocblas_dtrsm_batched)                         \
+  __macro(rocblas_ctrsm_batched)                         \
+  __macro(rocblas_ztrsm_batched)                         \
+  __macro(rocblas_create_handle)                         \
+  __macro(rocblas_destroy_handle)                        \
+  __macro(rocblas_get_stream)                            \
+  __macro(rocblas_set_stream)                            \
   __macro(rocblas_set_atomics_mode)
 
 // clang-format on
