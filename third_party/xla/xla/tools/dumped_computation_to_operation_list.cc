@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
