@@ -92,11 +92,30 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "hlo_evaluator_slow_reduce_window_test",
+    srcs = ["hlo_evaluator_slow_reduce_window_test.cc"],
+    tags = [
+        # Times out in asan/tsan/zapfhahn.
+        "noasan",
+        "notsan",
+        "nozapfhahn",
+    ],
+    deps = [
+        ":hlo_evaluator",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
-    tags = [
-        "noasan",  # times out
-    ],
     deps = [
         ":hlo_evaluator",
         "//xla:array2d",

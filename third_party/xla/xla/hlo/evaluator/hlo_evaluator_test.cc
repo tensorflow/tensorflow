@@ -5033,38 +5033,6 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   TestRecursivelyEvaluateInstruction(gte2, expected);
 }
 
-TEST_F(HloEvaluatorTest, SlowReduceWindow) {
-#ifdef THREAD_SANITIZER
-  GTEST_SKIP();
-#endif
-  constexpr absl::string_view kHloModule = R"(
-    HloModule SlowReduceWindow
-    %add {
-      %lhs = s32[] parameter(0)
-      %rhs = s32[] parameter(1)
-      ROOT %sum = s32[] add(%lhs, %rhs)
-    }
-    ENTRY slow_reduce_window {
-      %input = s32[8192] parameter(0)
-      %zero = s32[] constant(0)
-      ROOT %scan = s32[8192] reduce-window(%input, %zero), window={size=8192 pad=8191_0}, to_apply=%add
-    }
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  std::vector<int32_t> data(8192, 1);
-  auto input = LiteralUtil::CreateR1<int32_t>(data);
-  HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal actual_literal,
-      evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
-  std::vector<int32_t> expected(8192);
-  std::iota(expected.begin(), expected.end(), 1);
-  EXPECT_THAT(actual_literal.data<int32_t>(),
-              ::testing::ElementsAreArray(expected));
-}
-
 class PatternMatchParseWhileLoopTest : public HloTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
