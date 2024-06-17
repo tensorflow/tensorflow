@@ -185,6 +185,28 @@ ENTRY main {
           m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()))));
 }
 
+TEST_F(GpuCompilerTest, CanRunScheduledModules) {
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_disable_all_hlo_passes(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+w {
+  p = s8[] parameter(0)
+  ROOT n = s8[] negate(p)
+}
+
+ENTRY e {
+  p = s8[] parameter(0)
+  ROOT _ = s8[] fusion(p), kind=kLoop, calls=w
+})",
+                                                       config));
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
 class PersistedAutotuningTest : public HloTestBase {
  protected:
   static constexpr absl::string_view kHloText = R"(
