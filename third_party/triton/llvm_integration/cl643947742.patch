@@ -1,0 +1,13 @@
+==== triton/test/Triton/reproducer.mlir#1 - triton/test/Triton/reproducer.mlir ====
+# action=edit type=text
+--- triton/test/Triton/reproducer.mlir       2024-06-17 13:39:23.000000000 +0200
++++ triton/test/Triton/reproducer.mlir       2024-06-17 13:39:59.000000000 +0200
+@@ -9,7 +9,7 @@
+ {-#
+   external_resources: {
+     mlir_reproducer: {
+-      pipeline: "builtin.module(any(convert-scf-to-cf,convert-index-to-llvm{index-bitwidth=0},convert-triton-gpu-to-llvm{compute-capability=90},convert-nv-gpu-to-llvm,convert-arith-to-llvm{index-bitwidth=0},canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=true test-convergence=false top-down=true},cse,symbol-dce,enable-line-info))",
++      pipeline: "builtin.module(any(convert-scf-to-cf,convert-index-to-llvm{index-bitwidth=0},convert-triton-gpu-to-llvm{compute-capability=90},convert-nv-gpu-to-llvm,convert-arith-to-llvm{index-bitwidth=0},canonicalize{  max-iterations=10 max-num-rewrites=-1 region-simplify=aggressive test-convergence=false top-down=true},cse,symbol-dce,enable-line-info))",
+       disable_threading: false,
+       verify_each: false
+     }
