@@ -95,13 +95,26 @@ def prepare_amd_gpu_backend_data(backends, backend_tags):
     if len(new_backends) < len(backends):
         new_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
 
-    new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
+    new_backend_tags = {
+        key: value
+        for key, value in backend_tags.items()
+        if key not in ["gpu"] + NVIDIA_GPU_BACKENDS
+    }
     gpu_backend_tags = backend_tags.get("gpu", [])
+    nvidia_tags = []
+    for key in gpu_backend_tags:
+        if key.startswith("requires-"):
+            nvidia_tags.append(key)
+
+    for key in nvidia_tags:
+        gpu_backend_tags.remove(key)
+
     for key in AMD_GPU_DEFAULT_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
     for backend in AMD_GPU_DEFAULT_BACKENDS:
-        new_backend_tags[backend].append("requires-gpu-amd")
+        if "no_rocm" not in gpu_backend_tags:
+            new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("notap")
 
     return new_backends, new_backend_tags
@@ -124,16 +137,16 @@ def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_
         if backend not in ["gpu"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
     ]
 
-    nvidia_backends, disabled_backends, backend_tags, backend_args = \
+    nvidia_backends, disabled_backends, nvidia_backend_tags, backend_args = \
         prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args)
-    amd_backends, backend_tags = prepare_amd_gpu_backend_data(amd_backends, backend_tags)
+    amd_backends, amd_backend_tags = prepare_amd_gpu_backend_data(amd_backends, backend_tags)
 
     new_backends = [
         backend
         for backend in nvidia_backends + amd_backends + other_backends
     ]
 
-    return new_backends, disabled_backends, backend_tags, backend_args
+    return new_backends, disabled_backends, nvidia_backend_tags | amd_backend_tags, backend_args
 
 def xla_test(
         name,
