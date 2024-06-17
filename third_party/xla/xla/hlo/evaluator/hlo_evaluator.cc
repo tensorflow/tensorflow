@@ -4714,4 +4714,18 @@ std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 
+std::unique_ptr<Array2D<tsl::float8_e5m2>> HloEvaluator::MatmulArray2D(
+    const Array2D<tsl::float8_e5m2>& lhs,
+    const Array2D<tsl::float8_e5m2>& rhs) {
+  return MatmulArray2DImpl<tsl::float8_e5m2>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2);
+}
+
+std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
+    const Array2D<tsl::float8_e4m3fn>& lhs,
+    const Array2D<tsl::float8_e4m3fn>& rhs) {
+  return MatmulArray2DImpl<tsl::float8_e4m3fn>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN);
+}
+
 }  // namespace xla

@@ -81,6 +81,7 @@ filegroup(
         "runtime_single_threaded_matmul_c128.cc",
         "runtime_single_threaded_matmul_c64.cc",
         "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f8.cc",
         "runtime_single_threaded_matmul_f16.cc",
         "runtime_single_threaded_matmul_f32.cc",
         "runtime_single_threaded_matmul_f64.cc",
@@ -97,6 +98,7 @@ filegroup(
         "runtime_matmul_f32.cc",
         "runtime_matmul_f64.cc",
         "runtime_matmul_s32.cc",
+        "runtime_matmul_f8.cc",
         "runtime_fork_join.cc",
         #"runtime_handle_ffi_call.cc", # TODO(b/338344732): Add  "runtime_handle_ffi_call.cc".
     ],
@@ -1211,6 +1213,7 @@ cc_library(
         "runtime_single_threaded_matmul_f16.cc",
         "runtime_single_threaded_matmul_f32.cc",
         "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_f8.cc",
         "runtime_single_threaded_matmul_s32.cc",
     ],
     hdrs = ["runtime_single_threaded_matmul.h"],
@@ -1222,6 +1225,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1234,6 +1238,7 @@ cc_library(
     deps = [
         ":runtime_single_threaded_matmul_impl",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
