@@ -4163,22 +4163,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
       }
     }
   }
-
-  if (gather->gather_dimension_numbers().index_vector_dim() <
-          gather->operand(1)->shape().rank() &&
-      gather->gather_dimension_numbers().start_index_map_size() == 1) {
-    Shape updated_shape = ShapeUtil::DeleteDimension(
-        gather->gather_dimension_numbers().index_vector_dim(),
-        gather->operand(1)->shape());
-    Cast<HloGatherInstruction>(gather)
-        ->mutable_gather_dimension_numbers()
-        ->set_index_vector_dim(updated_shape.rank());
-    TF_RETURN_IF_ERROR(gather->ReplaceOperandWithDifferentShape(
-        1, gather->mutable_operand(1)->AddInstruction(
-               HloInstruction::CreateReshape(updated_shape,
-                                             gather->mutable_operand(1)))));
-    MarkAsChanged();
-  }
   return absl::OkStatus();
 }
 

@@ -2299,9 +2299,6 @@ class HloGatherInstruction : public HloInstruction {
     CHECK(gather_dimension_numbers_ != nullptr);
     return *gather_dimension_numbers_;
   }
-  GatherDimensionNumbers* mutable_gather_dimension_numbers() {
-    return gather_dimension_numbers_.get();
-  }
   absl::Span<const int64_t> gather_slice_sizes() const {
     return gather_slice_sizes_;
   }

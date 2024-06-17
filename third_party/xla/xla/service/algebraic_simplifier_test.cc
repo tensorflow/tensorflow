@@ -7842,31 +7842,6 @@ INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 
-TEST_F(AlgebraicSimplifierTest, GatherWithDegenerateIndex) {
-  const char* hlo_string = R"(
-  HloModule repeat
-
-  ENTRY main {
-    o = f32[25,25] parameter(0)
-    i = s32[1,100] parameter(1)
-    ROOT g = f32[100,25] gather(o, i), collapsed_slice_dims={0},
-                                  start_index_map={0},
-                                  index_vector_dim=0,
-                                  offset_dims={1},
-                                  slice_sizes={1,25}
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options;
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).value());
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Gather(m::Parameter(0),
-                                         m::Reshape(m::Parameter(1)))));
-}
-
 TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
   const char* hlo_string = R"(
   HloModule repeat
