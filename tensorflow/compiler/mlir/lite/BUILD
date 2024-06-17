@@ -1,6 +1,8 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -1534,3 +1536,55 @@ build_test(
         ":tensorflow_lite",
     ],
 )
+
+# LINT.IfChange
+
+bool_flag(
+    name = "enable_fuchsia_mmap",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "tflite_with_xnnpack_explicit_false",
+    define_values = {"tflite_with_xnnpack": "false"},
+)
+
+# A config for enabling tensorflow profiler in TFLite. Currently, it only supports dynamic
+# allocation. Add '--define=tflite_tensorflow_profiler=true' in your build command line to use it.
+config_setting(
+    name = "tensorflow_profiler_config",
+    define_values = {"tflite_tensorflow_profiler": "true"},
+)
+
+config_setting(
+    name = "fuchsia_mmap_disabled",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
+    ),
+    flag_values = {
+        ":enable_fuchsia_mmap": "False",
+    },
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
+)
+
+config_setting(
+    name = "tflite_mmap_disabled_true",
+    values = {
+        "copt": "-DTFLITE_MMAP_DISABLED",
+    },
+)
+
+selects.config_setting_group(
+    name = "tflite_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+        "//tensorflow:windows",
+    ],
+)
+# LINT.ThenChange(//tensorflow/lite/BUILD)

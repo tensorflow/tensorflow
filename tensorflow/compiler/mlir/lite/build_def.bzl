@@ -1,0 +1,68 @@
+"""Build macros for TF Lite."""
+
+load("//tensorflow:tensorflow.bzl", "clean_dep")
+load("//tensorflow/compiler/mlir/lite:special_rules.bzl", "tflite_copts_extra")
+
+# LINT.IfChange(tflite_copts)
+def tflite_copts():
+    """Defines common compile time flags for TFLite libraries."""
+    copts = [
+        "-DFARMHASH_NO_CXX_STRING",
+        "-DEIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
+    ] + select({
+        clean_dep("//tensorflow:android_arm"): [
+            "-mfpu=neon",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # clean_dep("//tensorflow:chromiumos_x86_64"): [],
+        # copybara:uncomment_end
+        clean_dep("//tensorflow:ios_x86_64"): [
+            "-msse4.1",
+        ],
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-msse4.2",
+        ],
+        clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
+        clean_dep("//tensorflow:windows"): [
+            # copybara:uncomment_begin(no MSVC flags in google)
+            # "-DTFL_COMPILE_LIBRARY",
+            # "-Wno-sign-compare",
+            # copybara:uncomment_end_and_comment_begin
+            "/DTFL_COMPILE_LIBRARY",
+            "/wd4018",  # -Wno-sign-compare
+            # copybara:comment_end
+        ],
+        "//conditions:default": [
+            "-Wno-sign-compare",
+        ],
+    }) + select({
+        clean_dep("//tensorflow:optimized"): ["-O3"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
+    }) + select({
+        clean_dep("//tensorflow/compiler/mlir/lite:tflite_with_xnnpack_explicit_false"): ["-DTFLITE_WITHOUT_XNNPACK"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/compiler/mlir/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/compiler/mlir/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/compiler/mlir/lite:tflite_mmap_disabled"): ["-DTFLITE_MMAP_DISABLED"],
+        "//conditions:default": [],
+    })
+
+    return copts + tflite_copts_extra()
+
+# LINT.ThenChange(//tensorflow/lite/build_def.bzl:tflite_copts)
