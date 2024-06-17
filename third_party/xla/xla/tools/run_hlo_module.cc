@@ -202,8 +202,6 @@ absl::Status RunAndCompareInternal(
             .status());
   }
 
-  const HloModuleProto test_module_proto = test_module->ToProto();
-
   TF_ASSIGN_OR_RETURN(
       auto args, copy_result_on_failure(
                      MakeFakeArguments(test_module.get(), engine,
