@@ -229,6 +229,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

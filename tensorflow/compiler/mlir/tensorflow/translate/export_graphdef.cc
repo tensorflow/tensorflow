@@ -829,31 +829,4 @@ absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   return graphdef;
 }
 
-absl::Status ConvertMlirFunctionToFunctionLibraryDef(
-    FuncOp func, const GraphExportConfig& configs, FunctionDef* function_def) {
-  Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
-                                     FunctionDefLibrary());
-  llvm::SmallDenseSet<FuncOp> visited_functions;
-  // Construct SymbolTable to enable cheap function lookups. The cost
-  // of constructing the table is offset by the number of queries. Even
-  // though this only converts one function in theory, this function
-  // may have gradient associated which would result in a lookup. This
-  // could be made lazy if we find this to be broad.
-  SymbolTable symbol_table(func->getParentOfType<mlir::ModuleOp>());
-  TF_RETURN_IF_ERROR(Exporter::ConvertLibFunction(
-      configs, tf_dialect, symbol_table, func, &flib_def, visited_functions));
-
-  auto name = FindFunctionName(configs, func);
-  const FunctionDef* func_def = flib_def.Find(name);
-  if (func_def != nullptr) {
-    *function_def = *func_def;
-    return absl::OkStatus();
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Function '", name,
-                   "' couldn't be found in the FunctionDefLibrary after "
-                   "converting from MLIR"));
-}
-
 }  // namespace tensorflow

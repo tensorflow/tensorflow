@@ -41,10 +41,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 #include "tensorflow/compiler/mlir/tfr/passes/passes.h"
 #include "tensorflow/core/platform/path.h"
@@ -176,7 +176,8 @@ absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
   // Export the result as a FunctionDef.
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(func, export_confs_, &func_def));
+      tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+          func, export_confs_, &func_def));
   module.erase();
   return func_def;
 }

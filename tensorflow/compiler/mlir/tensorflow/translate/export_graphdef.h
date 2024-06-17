@@ -54,11 +54,6 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def);
-
-// Converts an MLIR function and adds it to a FunctionLibraryDefinition.
-Status ConvertMlirFunctionToFunctionLibraryDef(mlir::func::FuncOp func,
-                                               const GraphExportConfig& configs,
-                                               FunctionDef* function_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_

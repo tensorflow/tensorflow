@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
