@@ -1,4 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -292,5 +296,19 @@ tf_cc_test(
         "//tensorflow/core/platform:enable_tf2_utils",
         # "//tensorflow/core/platform:resource_loader",
         "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_proto_library(
+    name = "reproducer_proto",
+    srcs = ["reproducer.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+    ],
+    visibility = [
+        "//learning/brain/mlir/bridge:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:__pkg__",
     ],
 )
