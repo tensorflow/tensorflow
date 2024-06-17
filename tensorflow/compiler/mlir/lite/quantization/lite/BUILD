@@ -115,7 +115,6 @@ tf_cc_binary(
     deps = [
         ":quantize_model",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_types",
         "@llvm-project//llvm:Support",
     ],
