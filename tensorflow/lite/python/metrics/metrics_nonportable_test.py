@@ -23,11 +23,11 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import register_custom_opdefs
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
