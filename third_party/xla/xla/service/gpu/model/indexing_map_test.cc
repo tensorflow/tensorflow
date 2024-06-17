@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,7 @@ namespace gpu {
 namespace {
 
 using ::mlir::AffineMap;
+using ::testing::AnyOf;
 using ::testing::ElementsAre;
 
 class IndexingMapTest : public HloTestBase {
@@ -822,7 +824,7 @@ TEST_F(IndexingMapTest, RescaleSymbols_TwoModConstraints) {
     )"));
 }
 
-TEST_F(IndexingMapTest, RescaleSymbols_RescaledSymbolInOtherConstraint) {
+TEST_F(IndexingMapTest, RescaleSymbols_RescaledSymbolInOtherNonModConstraint) {
   auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)";
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap(serialized_map, &mlir_context_), {4}, {10, 2, 6});
@@ -841,6 +843,58 @@ TEST_F(IndexingMapTest, RescaleSymbols_RescaledSymbolInOtherConstraint) {
         s2 in [0, 5]
         (s0 * 6 + 3) * s2 in [0, 28]
     )"));
+}
+
+TEST_F(IndexingMapTest,
+       RescaleSymbols_TwoModConstraintsForTheSameSymbolWhichCannotBeMerged) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {100, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 6", &mlir_context_),
+                             Interval{3, 3});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 7", &mlir_context_),
+                             Interval{5, 5});
+
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+
+  const mlir::AffineExpr result3 = indexing_map.GetAffineMap().getResult(3);
+  ASSERT_THAT(indexing_map.GetConstraints(), ::testing::SizeIs(1));
+  const mlir::AffineExpr constraint_expr =
+      indexing_map.GetConstraints().begin()->first;
+  const Interval constraint_interval =
+      indexing_map.GetConstraints().begin()->second;
+
+  // TODO(b/347240603): This case is not yet fully supported, because the
+  // resulting indexing map depends on the hashmap iteration order, so it can
+  // have different values randomly. Also the range of s0 can depend on the
+  // iteration order and how many times we simplify. Maybe this case is not so
+  // important for now.
+  EXPECT_THAT(
+      std::make_tuple(result3, constraint_expr, constraint_interval),
+      AnyOf(
+          std::make_tuple(ParseAffineExpr("s0 * 6 + 3", &mlir_context_),
+                          ParseAffineExpr("(s0 * 6 + 3) mod 7", &mlir_context_),
+                          Interval{5, 5}),
+          std::make_tuple(ParseAffineExpr("s0 * 7 + 5", &mlir_context_),
+                          ParseAffineExpr("(s0 * 7 + 5) mod 6", &mlir_context_),
+                          Interval{3, 3})));
+}
+
+TEST_F(IndexingMapTest, RescaleSymbolsKeepsHashmapConsistent) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s0, s0 floordiv 6)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {7, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 6", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 * s1", &mlir_context_),
+                             Interval{0, 100});
+
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+
+  for (auto& [expr, interval] : indexing_map.GetConstraints()) {
+    EXPECT_TRUE(indexing_map.GetConstraints().contains(expr))
+        << "Don't modify the *keys* of the hashmap.";
+  }
 }
 
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
