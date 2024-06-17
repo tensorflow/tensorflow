@@ -251,18 +251,11 @@ _CPU_ARM64_BUILD = Build(
     ),
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
 )
+# TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
-)
-
-# NOTE(ddunleavy): compute_cability=80 should really be 89, but I want to catch
-# anything marked as `requires_sm80_only`.
-_GPU_CONTINUOUS_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU_CONTINUOUS,
-    configs=("warnings", "nvcc_clang"),
-    compute_capability=80,
 )
 
 _JAX_CPU_BUILD = Build(
@@ -318,7 +311,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_CONTINUOUS_BUILD,
+    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
