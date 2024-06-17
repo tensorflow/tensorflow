@@ -1,0 +1,24 @@
+diff --git a/mlir/include/mlir-c/Rewrite.h b/mlir/include/mlir-c/Rewrite.h
+index 45218a1cd4eb..bed93045f4b5 100644
+--- a/mlir/include/mlir-c/Rewrite.h
++++ b/mlir/include/mlir-c/Rewrite.h
+@@ -19,6 +19,10 @@
+ #include "mlir-c/Support.h"
+ #include "mlir/Config/mlir-config.h"
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
++
+ //===----------------------------------------------------------------------===//
+ /// Opaque type declarations (see mlir-c/IR.h for more details).
+ //===----------------------------------------------------------------------===//
+@@ -57,4 +61,8 @@ mlirRewritePatternSetFromPDLPatternModule(MlirPDLPatternModule op);
+ 
+ #undef DEFINE_C_API_STRUCT
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif // MLIR_C_REWRITE_H
