@@ -178,6 +178,9 @@ struct DimVar {
   Interval bounds;
 };
 bool operator==(const DimVar& lhs, const DimVar& rhs);
+inline bool operator!=(const DimVar& lhs, const DimVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const DimVar& dimension) {
@@ -192,6 +195,9 @@ struct RangeVar {
   Interval range;
 };
 bool operator==(const RangeVar& lhs, const RangeVar& rhs);
+inline bool operator!=(const RangeVar& lhs, const RangeVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const RangeVar& range_var) {
@@ -210,6 +216,9 @@ struct RTVar {
   mlir::AffineMap map;
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
+inline bool operator!=(const RTVar& lhs, const RTVar& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const RTVar& rt_var) {
@@ -421,6 +430,9 @@ class IndexingMap {
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
+inline bool operator!=(const IndexingMap& lhs, const IndexingMap& rhs) {
+  return !(lhs == rhs);
+}
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
 // Composes affine maps, i.e. second ∘ first.

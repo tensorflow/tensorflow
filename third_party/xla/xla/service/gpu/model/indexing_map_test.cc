@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -1442,12 +1443,26 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
               )"));
 }
 
-TEST_F(IndexingMapTest, IntervalSupportsAbslHash) {
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {Interval{1, 1}, Interval{0, 1}, Interval{1, 2}}));
+template <typename T>
+void ExpectSupportsAbslHashAndEqAndNe(absl::Span<const T> values) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(values));
+
+  // C++20 compilers automatically generate != from ==, but XLA has to work with
+  // C++17, so we test that we explicitly implemented !=. Otherwise it could
+  // happen that some compilers can compile XLA, and some can't.
+  for (const T& a : values) {
+    for (const T& b : values) {
+      EXPECT_EQ(a != b, !(a == b));
+    }
+  }
 }
 
-TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashing) {
+TEST_F(IndexingMapTest, IntervalSupportsAbslHashAndEqAndNe) {
+  ExpectSupportsAbslHashAndEqAndNe<Interval>(
+      {Interval{1, 1}, Interval{0, 1}, Interval{1, 2}});
+}
+
+TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashingAndEqAndNe) {
   auto check_consistent = [](const Interval& a, const Interval& b) {
     if (a == b) {
       EXPECT_EQ(hash_value(a), hash_value(b));
@@ -1468,17 +1483,17 @@ TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashing) {
   }
 }
 
-TEST_F(IndexingMapTest, DimVarSupportsAbslHash) {
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {DimVar{1, 1}, DimVar{0, 1}, DimVar{1, 2}}));
+TEST_F(IndexingMapTest, DimVarSupportsAbslHashAndEqAndNe) {
+  ExpectSupportsAbslHashAndEqAndNe<DimVar>(
+      {DimVar{1, 1}, DimVar{0, 1}, DimVar{1, 2}});
 }
 
-TEST_F(IndexingMapTest, RangeVarSupportsAbslHash) {
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {RangeVar{1, 1}, RangeVar{0, 1}, RangeVar{1, 2}}));
+TEST_F(IndexingMapTest, RangeVarSupportsAbslHashAndEqAndNe) {
+  ExpectSupportsAbslHashAndEqAndNe<RangeVar>(
+      {RangeVar{1, 1}, RangeVar{0, 1}, RangeVar{1, 2}});
 }
 
-TEST_F(IndexingMapTest, RTVarSupportsAbslHash) {
+TEST_F(IndexingMapTest, RTVarSupportsAbslHashAndEqAndNe) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1490,7 +1505,7 @@ ENTRY e {
   const HloInstruction* constant_instr =
       hlo_module->entry_computation()->root_instruction();
 
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+  ExpectSupportsAbslHashAndEqAndNe<RTVar>(
       {RTVar{Interval{1, 1}, nullptr,
              ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
        RTVar{Interval{1, 2}, nullptr,
@@ -1504,12 +1519,12 @@ ENTRY e {
            Interval{1, 2},
            constant_instr,
            ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
-       }}));
+       }});
 }
 
-TEST_F(IndexingMapTest, IndexingMapSupportsAbslHash) {
+TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
   auto zero_dim_map = AffineMap::get(&mlir_context_);
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap>(
       {IndexingMap::FromTensorSizes(
            ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)",
                           &mlir_context_),
@@ -1565,8 +1580,9 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHash) {
            {RTVar{Interval{0, 3},
                   /*instr=*/nullptr, zero_dim_map},
             RTVar{Interval{0, 5},
-                  /*instr=*/nullptr, zero_dim_map}})}));
+                  /*instr=*/nullptr, zero_dim_map}})});
 }
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
