@@ -22,25 +22,36 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"   // IWYU pragma: keep
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
@@ -98,7 +109,7 @@ results {
     return str;
   }
 
-  std::unique_ptr<stream_executor::StreamExecutor> NewStreamExecutor() {
+  static std::unique_ptr<stream_executor::StreamExecutor> NewStreamExecutor() {
     stream_executor::Platform* platform =
         stream_executor::PlatformManager::PlatformWithName("Host").value();
     stream_executor::StreamExecutorConfig config(/*ordinal=*/0);
@@ -243,6 +254,172 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                  return AutotuneResult();
                }).status());
+}
+
+class FileBasedCacheTest : public AutotunerUtilTest {
+ public:
+  static std::string ToString(const proto2::Message& message) {
+    std::string textproto;
+    CHECK(tsl::protobuf::TextFormat::PrintToString(message, &textproto));
+    return textproto;
+  }
+
+  static std::vector<std::string> GetFilesInDir(
+      const absl::string_view cache_dir) {
+    std::vector<std::string> files_in_cache;
+    TF_CHECK_OK(tsl::Env::Default()->GetChildren(std::string(cache_dir),
+                                                 &files_in_cache));
+    return files_in_cache;
+  }
+
+  static std::string Read(const absl::string_view filepath) {
+    std::string file_content;
+    TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(),
+                                      std::string(filepath), &file_content));
+    return file_content;
+  }
+
+  static void Write(const absl::string_view filepath,
+                    const absl::string_view content) {
+    TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(),
+                                       std::string(filepath), content));
+  }
+
+  std::unique_ptr<stream_executor::StreamExecutor> executor_ =
+      NewStreamExecutor();
+  std::unique_ptr<HloModule> module_ =
+      ParseAndReturnVerifiedModule(kHloText).value();
+  const HloInstruction* dot_ = hlo_query::GetFirstInstructionWithOpcode(
+      *module_->entry_computation(), HloOpcode::kDot);
+  std::string cache_dir_ = [] {
+    tsl::Env* default_env = tsl::Env::Default();
+    std::string cache_dir;
+    CHECK(default_env->LocalTempFilename(&cache_dir));
+    CHECK_OK(default_env->CreateDir(cache_dir));
+    return cache_dir;
+  }();
+  AutotuneConfig config_ = AutotuneConfig(DeviceConfig{executor_.get()}, [&] {
+    DebugOptions options;
+    options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir_);
+    return options;
+  }());
+  AutotuneCacheKey cache_key_ = AutotunerUtil::GetKey(dot_, config_);
+  std::string cache_filename_ = [&] {
+    absl::StatusOr<std::string> key_hash =
+        GetBase64EncodedSha256Hash(cache_key_.ToString());
+    CHECK_OK(key_hash.status());
+    return absl::StrCat(key_hash.value(), ".textproto");
+  }();
+  std::string cache_file_path_ = tsl::io::JoinPath(cache_dir_, cache_filename_);
+  const AutotuneResult result1_ = [] {
+    AutotuneResult result;
+    result.set_scratch_bytes(1);
+    return result;
+  }();
+  const AutotuneResult result2_ = [] {
+    AutotuneResult result;
+    result.set_scratch_bytes(2);
+    return result;
+  }();
+};
+
+TEST_F(FileBasedCacheTest, AutotuneWritesResultToTheCacheDir) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneResult result,
+      AutotunerUtil::Autotune(dot_, config_, [&] { return result1_; }));
+  EXPECT_EQ(ToString(result), ToString(result1_));
+
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+}
+
+TEST_F(FileBasedCacheTest, AutotuneReadsResultFromTheCacheDir) {
+  Write(cache_file_path_, ToString(result1_));
+
+  bool cache_hit = true;
+  TF_ASSERT_OK_AND_ASSIGN(AutotuneResult result,
+                          AutotunerUtil::Autotune(dot_, config_, [&] {
+                            cache_hit = false;
+                            return result2_;
+                          }));
+
+  EXPECT_TRUE(cache_hit);
+  EXPECT_EQ(ToString(result), ToString(result1_));
+}
+
+TEST_F(FileBasedCacheTest,
+       RepeatedAutotuneCallsDontReadOrWriteTheCacheFileAgain) {
+  auto check_autotune_cache_hit = [](const HloInstruction* instr,
+                                     const AutotuneConfig& config,
+                                     const AutotuneResult& expected_result) {
+    bool cache_hit = true;
+    TF_ASSERT_OK_AND_ASSIGN(AutotuneResult result,
+                            AutotunerUtil::Autotune(instr, config, [&] {
+                              cache_hit = false;
+                              AutotuneResult new_result;
+                              new_result.set_scratch_bytes(2);
+                              return new_result;
+                            }));
+    EXPECT_TRUE(cache_hit);
+    EXPECT_EQ(ToString(result), ToString(expected_result));
+  };
+
+  Write(cache_file_path_, ToString(result1_));
+  check_autotune_cache_hit(dot_, config_, /*expected_result=*/result1_);
+
+  constexpr absl::string_view kPlaceholderContent = "placeholder content";
+  Write(cache_file_path_, kPlaceholderContent);
+  // File was not read again:
+  check_autotune_cache_hit(dot_, config_, /*expected_result=*/result1_);
+  // File was not written again:
+  EXPECT_EQ(Read(cache_file_path_), kPlaceholderContent);
+}
+
+TEST_F(FileBasedCacheTest,
+       IsInCacheReturnsTrueIfTheResultIsInTheFileBasedCache) {
+  Write(cache_file_path_, ToString(result1_));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
+                          AutotunerUtil::IsInCache(cache_key_, config_));
+
+  EXPECT_TRUE(is_in_cache);
+}
+
+TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
+  TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
+                          AutotunerUtil::IsInCache(cache_key_, config_));
+
+  EXPECT_FALSE(is_in_cache);
+}
+
+TEST_F(FileBasedCacheTest, AddResultAddsTheResultToTheFileBasedCache) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+  EXPECT_TRUE(added);
+
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+}
+
+TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+    EXPECT_TRUE(added);
+  }
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+  constexpr absl::string_view kPlaceholderContent = "placeholder content";
+  Write(cache_file_path_, kPlaceholderContent);
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+    EXPECT_FALSE(added);
+  }
+
+  // File was not written again:
+  EXPECT_EQ(Read(cache_file_path_), kPlaceholderContent);
 }
 
 }  // namespace

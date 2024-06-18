@@ -824,7 +824,9 @@ message DebugOptions {
   // unsafe flag.
   bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
 
-  // Next id: 310
+  string xla_gpu_per_fusion_autotune_cache_dir = 310;
+
+  // Next id: 311
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
