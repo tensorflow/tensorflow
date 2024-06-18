@@ -37,6 +37,7 @@ default_visibility = [
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     "//tensorflow/cc/saved_model:__subpackages__",
     #internal starburst clustering service,
+    "//waymo/ml/deploy/benchmark:__subpackages__",
 ]
 
 package(
@@ -686,6 +687,7 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/utils:__subpackages__",
+        "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -1700,6 +1702,7 @@ tf_proto_library(
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
+        "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
 )
 
