@@ -241,7 +241,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config, tags, result,
-      bundle.get(), quantization_py_function_lib);
+      std::move(bundle), quantization_py_function_lib);
   return status;
 }
 

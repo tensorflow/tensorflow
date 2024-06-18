@@ -386,8 +386,9 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir, SavedModelBundle* saved_model_bundle,
-    std::string* result, bool serialize_stablehlo_ops,
+    llvm::StringRef saved_model_dir,
+    std::unique_ptr<SavedModelBundle> saved_model_bundle, std::string* result,
+    bool serialize_stablehlo_ops,
     const PyFunctionLibrary* quantization_py_function_lib) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
@@ -433,8 +434,8 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     if (failed(RunHloToTfConversion(
             pass_config, saved_model_dir, saved_model_tags,
             toco_flags.mutable_quantization_config(),
-            quantization_py_function_lib, saved_model_bundle, pass_manager,
-            status_handler, module))) {
+            quantization_py_function_lib, saved_model_bundle.get(),
+            pass_manager, status_handler, module))) {
       return status_handler.ConsumeStatus();
     }
   }
@@ -453,6 +454,14 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
         "TFLite converter object. For example, "
         "converter.experimental_enable_resource_variables = True"));
   }
+
+  // Its safe to reset the saved_model_bundle after variable freezing, as this
+  // function owns the saved_model_bundle via std::move into a unique_ptr.
+  saved_model_bundle.reset();
+
+  // set session to nullptr to avoid invalid access  as the session would be
+  // deleted along with the saved_model_bundle.
+  session = nullptr;
 
   pass_manager.clear();
 
