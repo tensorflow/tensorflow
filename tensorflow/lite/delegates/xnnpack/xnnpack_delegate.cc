@@ -58,6 +58,8 @@ namespace tflite {
 namespace xnnpack {
 namespace {
 
+constexpr char kOdmlSDPA[] = "odml.scaled_dot_product_attention";
+
 template <typename T>
 void SafeCopyCustomData(const TfLiteNode& node, T* target) {
   const size_t safe_size =
@@ -2914,6 +2916,25 @@ class Subgraph {
       case kTfLiteBuiltinVarHandle:
         return VisitVarHandleNode(subgraph, delegate, logging_context,
                                   node_index, node);
+      case kTfLiteBuiltinStablehloComposite: {
+        const TfLiteStablehloCompositeParams* composite_params =
+            static_cast<const TfLiteStablehloCompositeParams*>(
+                node->builtin_data);
+        if (strcmp(composite_params->name, kOdmlSDPA) == 0) {
+          return VisitScaledDotAttentionCompositeNode(
+              subgraph, delegate, context, node_index, node, context->tensors,
+              composite_params->attributes, composite_params->attributes_size,
+              input_output_tensors);
+        } else {
+#ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
+          TF_LITE_KERNEL_LOG(context,
+                             "unsupported stablehlo.composite operator type "
+                             "\"%s\" in node #%d",
+                             composite_params->name, node_index);
+#endif  // XNNPACK_DELEGATE_ENABLE_LOGGING
+        }
+        return kTfLiteError;
+      }
       case kTfLiteBuiltinCustom: {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
             0) {
@@ -2938,28 +2959,11 @@ class Subgraph {
           return VisitMediaPipeUnpoolingNode(
               subgraph, delegate, context, node_index, node, context->tensors,
               &pool_params, input_output_tensors);
-        } else if (strcmp(registration->custom_name,
-                          "odml.scaled_dot_product_attention") == 0) {
-          const float* scale_val = nullptr;
-          // ensure 28 bytes as we expect
-          // TODO(b/339106680): this reading method may not work for every case.
-          if (node->custom_initial_data_size == 28 && sizeof(float) == 4) {
-            // Custom data here is a flexbuffer map.
-            // byte_width is 4 for our map.
-            // First 5 values are "scale", then is the float value, and last is
-            // flexbuffer metadata.
-            const uint8_t* buffer =
-                reinterpret_cast<const uint8_t*>(node->custom_initial_data);
-            if (strcmp("scale", reinterpret_cast<const char*>(buffer)) == 0) {
-              constexpr size_t kScaleValOffset = 20;
-              scale_val =
-                  reinterpret_cast<const float*>(buffer + kScaleValOffset);
-            }
-          }
-
-          return VisitDotAttentionNode(subgraph, delegate, context, node_index,
-                                       node, context->tensors, scale_val,
-                                       input_output_tensors);
+        } else if (strcmp(registration->custom_name, kOdmlSDPA) == 0) {
+          return VisitScaledDotAttentionCompositeNode(
+              subgraph, delegate, context, node_index, node, context->tensors,
+              reinterpret_cast<const uint8_t*>(node->custom_initial_data),
+              node->custom_initial_data_size, input_output_tensors);
         } else {
 #ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
           TF_LITE_KERNEL_LOG(
@@ -6589,6 +6593,31 @@ class Subgraph {
       }
     }
     return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitScaledDotAttentionCompositeNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const uint8_t* buffer,
+      const size_t buffer_size,
+      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    const float* scale_val = nullptr;
+    // ensure 28 bytes as we expect
+    // TODO(b/339106680): this reading method may not work for every case.
+    if (buffer_size == 28 && sizeof(float) == 4) {
+      // Custom data here is a flexbuffer map.
+      // byte_width is 4 for our map.
+      // First 5 values are "scale", then is the float value, and last is
+      // flexbuffer metadata.
+      if (strcmp("scale", reinterpret_cast<const char*>(buffer)) == 0) {
+        constexpr size_t kScaleValOffset = 20;
+        scale_val = reinterpret_cast<const float*>(buffer + kScaleValOffset);
+      }
+    }
+
+    return VisitDotAttentionNode(subgraph, delegate, logging_context,
+                                 node_index, node, tensors, scale_val,
+                                 input_output_tensors);
   }
 
   static TfLiteStatus VisitDotAttentionNode(

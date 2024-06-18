@@ -17,22 +17,30 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_ODML_SDPA_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
+#include <initializer_list>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace xnnpack {
+
+constexpr const char kOdmlSdpaCompositeMqa[] = "odml_sdpa_composite_mqa";
+constexpr const char kOdmlSdpaCompositeMha[] = "odml_sdpa_composite_mha";
+constexpr const char kOdmlSdpaCompositeGqa[] = "odml_sdpa_composite_gqa";
+constexpr const char kOdmlSdpaCustom[] = "odml_sdpa_custom";
 
 class ODMLSDPATester {
  public:
   ODMLSDPATester() = default;
   ODMLSDPATester(const ODMLSDPATester&) = delete;
   ODMLSDPATester& operator=(const ODMLSDPATester&) = delete;
+
+  explicit ODMLSDPATester(const std::string& model_name)
+      : model_name_(model_name) {};
 
   inline ODMLSDPATester& QueryShape(std::initializer_list<int32_t> shape) {
     EXPECT_THAT(shape, testing::Each(testing::Gt(0)));
@@ -68,6 +76,13 @@ class ODMLSDPATester {
     return *this;
   }
 
+  int32_t Batch() const { return query_shape_[0]; };
+  int32_t InputSeqLen() const { return query_shape_[1]; };
+  int32_t QHeads() const { return query_shape_[2]; };
+  int32_t HeadDim() const { return query_shape_[3]; };
+  int32_t MaxSeqLen() const { return key_shape_[1]; };
+  int32_t KVHeads() const { return key_shape_[2]; };
+
   inline const std::vector<int32_t>& MaskShape() const { return mask_shape_; }
 
   inline int32_t QuerySize() const { return query_size_; }
@@ -95,6 +110,7 @@ class ODMLSDPATester {
   int32_t key_size_ = 1;
   int32_t value_size_ = 1;
   int32_t mask_size_ = 1;
+  std::string model_name_;
 };
 
 }  // namespace xnnpack
