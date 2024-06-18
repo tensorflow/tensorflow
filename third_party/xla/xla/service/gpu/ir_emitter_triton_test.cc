@@ -4118,18 +4118,12 @@ triton_gemm_dot.7103_computation.clone {
   ROOT bitcast.7925.clone = f16[8,1,8,4,128]{4,3,2,1,0} bitcast(dot.1)
 }
 
-fused_computation {
-  param_0.2 = f32[] parameter(0)
-  param_1 = f32[] parameter(1)
-  add.2 = f32[] add(param_0.2, param_1)
-  convert.13 = f16[] convert(add.2)
-  ROOT convert.12 = f32[] convert(convert.13)
-}
-
 triton_gemm_dot.7103.reduce_sub_computation.clone {
   lhs.1 = f32[] parameter(0)
   rhs.1 = f32[] parameter(1)
-  ROOT fusion = f32[] fusion(lhs.1, rhs.1), kind=kLoop, calls=fused_computation
+  add.2 = f32[] add(lhs.1, rhs.1)
+  convert.13 = f16[] convert(add.2)
+  ROOT convert.12 = f32[] convert(convert.13)
 }
 
 fused_computation.1 {
@@ -4202,18 +4196,12 @@ triton_gemm_dot.7103_computation.clone {
   ROOT bitcast.7925.clone = f16[16,1,8,4,128]{4,3,2,1,0} bitcast(dot.1)
 }
 
-fused_computation {
-  param_0.2 = f32[] parameter(0)
-  param_1 = f32[] parameter(1)
-  add.2 = f32[] add(param_0.2, param_1)
-  convert.13 = f16[] convert(add.2)
-  ROOT convert.12 = f32[] convert(convert.13)
-}
-
 triton_gemm_dot.7103.reduce_sub_computation.clone {
   lhs.1 = f32[] parameter(0)
   rhs.1 = f32[] parameter(1)
-  ROOT fusion = f32[] fusion(lhs.1, rhs.1), kind=kLoop, calls=fused_computation
+  add.2 = f32[] add(lhs.1, rhs.1)
+  convert.13 = f16[] convert(add.2)
+  ROOT convert.12 = f32[] convert(convert.13)
 }
 
 fused_computation.1 {
