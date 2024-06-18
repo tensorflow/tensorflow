@@ -124,7 +124,7 @@ TEST_F(SymbolicTileTest,
     HloModule m
     ENTRY e {
       p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
-      ROOT bitcast = f32[48,4]{1,0} bitcast(p0)
+      ROOT reshape = f32[48,4]{1,0} reshape(p0)
     }
   )"));
 
@@ -152,7 +152,7 @@ TEST_F(SymbolicTileTest,
     HloModule m
     ENTRY e {
       p0 = f32[192,4]{1,0} parameter(0)
-      ROOT bitcast = s8[4,8,6,4]{3,2,1,0} bitcast(p0)
+      ROOT reshape = f32[4,8,6,4]{3,2,1,0} reshape(p0)
     }
   )"));
 
@@ -542,7 +542,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
     computation {
       p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
       reverse = f32[1,8,6,4]{3,2,1,0} reverse(p0), dimensions={1,2}
-      ROOT bitcast = f32[48,4]{1,0} bitcast(reverse)
+      ROOT reshape = f32[48,4]{1,0} reshape(reverse)
     }
 
     ENTRY e {
@@ -572,8 +572,8 @@ TEST_F(SymbolicTileTest,
     HloModule m
     computation {
       p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
-      bitcast = f32[48,4]{1,0} bitcast(p0)
-      ROOT slice = f32[5,2]{1,0} slice(bitcast), slice={[18:43:5], [0:4:2]}
+      reshape = f32[48,4]{1,0} reshape(p0)
+      ROOT slice = f32[5,2]{1,0} slice(reshape), slice={[18:43:5], [0:4:2]}
     }
 
     ENTRY e {
@@ -597,8 +597,8 @@ TEST_F(SymbolicTileTest,
     HloModule m
     computation {
       p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
-      bitcast = f32[48,4]{1,0} bitcast(p0)
-      ROOT slice = f32[5,2]{1,0} slice(bitcast), slice={[20:45:5], [0:4:2]}
+      reshape = f32[48,4]{1,0} reshape(p0)
+      ROOT slice = f32[5,2]{1,0} slice(reshape), slice={[20:45:5], [0:4:2]}
     }
 
     ENTRY e {
@@ -621,8 +621,8 @@ TEST_F(SymbolicTileTest,
     computation {
       p0 = f32[1,6,8,4]{3,2,1,0} parameter(0)
       transpose = f32[1,8,6,4]{3,2,1,0} transpose(p0), dimensions={0,2,1,3}
-      bitcast = f32[48,4]{1,0} bitcast(transpose)
-      ROOT slice = f32[5,2]{1,0} slice(bitcast), slice={[18:43:5], [0:4:2]}
+      reshape = f32[48,4]{1,0} reshape(transpose)
+      ROOT slice = f32[5,2]{1,0} slice(reshape), slice={[18:43:5], [0:4:2]}
     }
 
     ENTRY e {
@@ -646,8 +646,8 @@ TEST_F(SymbolicTileTest,
     computation {
       p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
       reverse = f32[1,8,6,4]{3,2,1,0} reverse(p0), dimensions={1,2}
-      bitcast = f32[48,4]{1,0} bitcast(reverse)
-      ROOT slice = f32[5,2]{1,0} slice(bitcast), slice={[18:43:5], [0:4:2]}
+      reshape = f32[48,4]{1,0} reshape(reverse)
+      ROOT slice = f32[5,2]{1,0} slice(reshape), slice={[18:43:5], [0:4:2]}
     }
 
     ENTRY e {
@@ -699,7 +699,7 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
     HloModule m
     ENTRY e {
       p0 = f32[1,8,6,4,8]{4,3,2,1,0} parameter(0)
-      ROOT bitcast = f32[48,32]{1,0} bitcast(p0)
+      ROOT reshape = f32[48,32]{1,0} reshape(p0)
     }
   )"));
 
