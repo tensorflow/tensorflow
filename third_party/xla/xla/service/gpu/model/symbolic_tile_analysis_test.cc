@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,12 +42,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using detail::GetGoodTilings;
 using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
 using ::testing::Matcher;
 using ::testing::SizeIs;
 using ::testing::status::IsOkAndHolds;
 using ::testing::status::StatusIs;
+using TilingVector = std::vector<SymbolicTileAnalysis::Tiling>;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
            block_id_to_tile_offsets_indexing, "") {
@@ -504,6 +507,106 @@ ENTRY main {
   ROOT fusion = f32[48,32]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
   EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+}
+
+bool AlwaysValid(absl::Span<const int64_t>) { return true; }
+
+TEST(GetGoodTilingsTest, ReturnsOneTilingWhenRankIsZero) {
+  EXPECT_EQ(GetGoodTilings({}, AlwaysValid),
+            TilingVector{SymbolicTileAnalysis::Tiling{}});
+}
+
+TEST(GetGoodTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
+  EXPECT_EQ(GetGoodTilings({1}, AlwaysValid), TilingVector{{1}});
+  EXPECT_EQ(GetGoodTilings({2}, AlwaysValid), TilingVector({{1}, {2}}));
+  EXPECT_EQ(GetGoodTilings({3}, AlwaysValid), TilingVector({{1}, {2}, {3}}));
+  EXPECT_EQ(GetGoodTilings({4}, AlwaysValid), TilingVector({{1}, {2}, {4}}));
+  EXPECT_EQ(GetGoodTilings({5}, AlwaysValid),
+            TilingVector({{1}, {2}, {4}, {5}}));
+  EXPECT_EQ(GetGoodTilings({11}, AlwaysValid),
+            TilingVector({{1}, {2}, {4}, {8}, {11}}));
+}
+
+TEST(GetGoodTilingsTest, CreatesCartesianProductForRankTwo) {
+  EXPECT_EQ(GetGoodTilings({3, 4}, AlwaysValid), TilingVector({{1, 1},
+                                                               {1, 2},
+                                                               {1, 4},
+                                                               {2, 1},
+                                                               {2, 2},
+                                                               {2, 4},
+                                                               {3, 1},
+                                                               {3, 2},
+                                                               {3, 4}}));
+}
+
+TEST(GetGoodTilingsTest, CreatesCartesianProductForRankThree) {
+  EXPECT_EQ(GetGoodTilings({3, 4, 2}, AlwaysValid), TilingVector({{1, 1, 1},
+                                                                  {1, 1, 2},
+                                                                  {1, 2, 1},
+                                                                  {1, 2, 2},
+                                                                  {1, 4, 1},
+                                                                  {1, 4, 2},
+                                                                  {2, 1, 1},
+                                                                  {2, 1, 2},
+                                                                  {2, 2, 1},
+                                                                  {2, 2, 2},
+                                                                  {2, 4, 1},
+                                                                  {2, 4, 2},
+                                                                  {3, 1, 1},
+                                                                  {3, 1, 2},
+                                                                  {3, 2, 1},
+                                                                  {3, 2, 2},
+                                                                  {3, 4, 1},
+                                                                  {3, 4, 2}}));
+}
+
+TEST(GetGoodTilingsTest, FiltersTheTilingsUsingThePredicate) {
+  auto all_even = [](absl::Span<const int64_t> tile_sizes) {
+    return absl::c_all_of(tile_sizes,
+                          [](int64_t tile_size) { return tile_size % 2 == 0; });
+  };
+
+  EXPECT_EQ(GetGoodTilings({3, 4}, all_even), TilingVector({{2, 2}, {2, 4}}));
+
+  auto all_equal = [](absl::Span<const int64_t> tile_sizes) {
+    return absl::c_all_of(tile_sizes, [&](int64_t tile_size) {
+      return tile_size == tile_sizes.at(0);
+    });
+  };
+
+  EXPECT_EQ(GetGoodTilings({3, 3, 3}, all_equal),
+            TilingVector({{1, 1, 1}, {2, 2, 2}, {3, 3, 3}}));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       GetGoodTilingsWorksTakingConstraintsIntoAccount) {
+  // The module was chosen (from SymbolicTileTest) because it has a constraint
+  // on the tile sizes.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
+  ROOT bitcast = f32[48,4]{1,0} bitcast(p0)
+}
+
+ENTRY main {
+  p0 = f32[1,8,6,4]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[48,4]{1,0} fusion(p0), kind=kLoop, calls=fusion
+})"));
+
+  std::optional<SymbolicTileAnalysis> opt_analysis =
+      TryAnalyzeModule(module.get());
+  ASSERT_TRUE(opt_analysis.has_value());
+
+  const SymbolicTileAnalysis& analysis = opt_analysis.value();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
+      analysis.GetGoodTilings());
+  // The constraint on the 1st dimension is "s0 mod 6 in [0, 0]", and only 48
+  // fulfills that from the set of possible tile sizes (1, 2, 4, 8, 16, 32, 48).
+  // There is no constraint on the 2nd dimension.
+  EXPECT_EQ(good_tilings, std::vector<SymbolicTileAnalysis::Tiling>(
+                              {{48, 1}, {48, 2}, {48, 4}}));
 }
 
 }  // namespace

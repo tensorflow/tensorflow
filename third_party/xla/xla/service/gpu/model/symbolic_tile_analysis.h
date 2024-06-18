@@ -17,13 +17,16 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_ANALYSIS_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +52,11 @@ using SymbolicTileAnalysisOrError =
 // instruction of the computation to the relevant instruction.
 class SymbolicTileAnalysis {
  public:
+  // A tile size for each dimension.
+  //
+  // This is an inlined vector to avoid too many heap allocations.
+  using Tiling = absl::InlinedVector<int64_t, 4>;
+
   // Tries to construct a symbolic tile analysis from a computation. Returns
   // a diagnostic if the construction fails for any reason.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
@@ -62,7 +70,7 @@ class SymbolicTileAnalysis {
   // constraints are satisfied by the chosen tiled parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
-      const std::vector<int64_t>& tile_parameters,
+      absl::Span<const int64_t> tile_parameters,
       bool constraints_are_known_satisfied = false) const;
 
   // Returns the tiled root instruction.
@@ -91,7 +99,7 @@ class SymbolicTileAnalysis {
   // correctly. This is typically the case if too few tile parameters are
   // provided to fully reduce the constraint expressions to constants.
   absl::StatusOr<bool> ParametersSatisfyConstraints(
-      const std::vector<int64_t>& tile_parameters) const;
+      absl::Span<const int64_t> tile_parameters) const;
 
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
@@ -100,6 +108,14 @@ class SymbolicTileAnalysis {
   // messages and debugging.
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
+
+  // Returns a list of tilings for the symbolic tiled HLO computation of the
+  // analysis that are expected to perform well.
+  //
+  // Note: This is an initial implementation where the results may not perform
+  // that well, and now we're filtering the tilings with Triton in mind
+  // (allowing only powers of 2 or the full dimension size).
+  absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
 
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
@@ -121,6 +137,13 @@ class SymbolicTileAnalysis {
   mlir::MLIRContext* context_;
 };
 
+namespace detail {
+// Only exposed for testing, please use SymbolicTileAnalysis::GetGoodTilings()
+// instead.
+std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
+    absl::Span<const int64_t> dim_sizes,
+    std::function<bool(absl::Span<const int64_t>)> is_valid);
+}  // namespace detail
 }  // namespace gpu
 }  // namespace xla
 

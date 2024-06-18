@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -30,8 +31,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -53,6 +57,8 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -282,7 +288,7 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
-    const std::vector<int64_t>& tile_parameters) const {
+    absl::Span<const int64_t> tile_parameters) const {
   // Populate parameter map.
   llvm::SmallVector<AffineExpr> parameters = llvm::to_vector(
       llvm::map_range(tile_parameters, [this](const int64_t v) -> AffineExpr {
@@ -312,7 +318,7 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
-    const std::vector<int64_t>& tile_parameters,
+    absl::Span<const int64_t> tile_parameters,
     bool constraints_are_known_satisfied) const {
   if (!constraints_are_known_satisfied) {
     TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
@@ -418,6 +424,88 @@ std::string SymbolicTileAnalysis::ToString(
     ss << tiled_hlo->ToString();
   }
   return ss.str();
+}
+
+namespace {
+
+// The possible tiles sizes for one dimension.
+std::vector<int64_t> PossibleTileSizesForOneDimension(int64_t dim_size) {
+  CHECK_GE(dim_size, 1);
+
+  std::vector<int64_t> result;
+  result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
+  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
+    result.push_back(tile_size);
+  }
+  result.push_back(dim_size);
+  return result;
+}
+
+}  // namespace
+
+namespace detail {
+std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
+    absl::Span<const int64_t> dim_sizes,
+    std::function<bool(absl::Span<const int64_t>)> is_valid) {
+  CHECK(is_valid != nullptr);
+
+  std::vector<SymbolicTileAnalysis::Tiling> tilings;
+  tilings.push_back({});
+  for (int dim_size : dim_sizes) {
+    std::vector<int64_t> possible_tile_sizes =
+        PossibleTileSizesForOneDimension(dim_size);
+    std::vector<SymbolicTileAnalysis::Tiling> extended_tilings;
+    extended_tilings.reserve(tilings.size() * possible_tile_sizes.size());
+    for (const SymbolicTileAnalysis::Tiling& tiling : tilings) {
+      for (int64_t tile_size : possible_tile_sizes) {
+        SymbolicTileAnalysis::Tiling extended_tiling = tiling;
+        extended_tiling.push_back(tile_size);
+        extended_tilings.push_back(extended_tiling);
+      }
+    }
+    tilings = std::move(extended_tilings);
+  }
+
+  tilings.erase(
+      std::remove_if(tilings.begin(), tilings.end(), std::not_fn(is_valid)),
+      tilings.end());
+
+  return tilings;
+}
+}  // namespace detail
+
+absl::StatusOr<std::vector<SymbolicTileAnalysis::Tiling>>
+SymbolicTileAnalysis::GetGoodTilings() const {
+  TF_RET_CHECK(!symbolic_tiled_hlo_instructions_.empty());
+  TF_RET_CHECK(symbolic_tiled_hlo_instructions_.back() != nullptr);
+
+  const SymbolicTiledHloInstruction& instr =
+      *symbolic_tiled_hlo_instructions_.back();
+  TF_RET_CHECK(instr.hlo() != nullptr);
+  const Shape& shape = instr.hlo()->shape();
+  if (!absl::c_all_of(shape.dimensions(),
+                      [](int64_t dim_size) { return dim_size >= 1; })) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Shape %s has zero or negative dimensions.", shape.ToString()));
+  }
+
+  absl::Status status = absl::OkStatus();
+  std::vector<SymbolicTileAnalysis::Tiling> result = detail::GetGoodTilings(
+      shape.dimensions(), [&](absl::Span<const int64_t> tile_sizes) {
+        absl::StatusOr<bool> is_valid =
+            ParametersSatisfyConstraints(tile_sizes);
+        if (!is_valid.ok()) {
+          status = is_valid.status();
+          return false;
+        }
+        return is_valid.value();
+      });
+
+  if (status.ok()) {
+    return result;
+  }
+
+  return status;
 }
 
 }  // namespace gpu
