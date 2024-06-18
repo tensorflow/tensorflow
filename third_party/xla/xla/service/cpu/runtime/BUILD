@@ -423,3 +423,26 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
+
+cc_library(
+    name = "fft_thunk",
+    srcs = ["fft_thunk.cc"],
+    hdrs = ["fft_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:runtime_fft",
+        "//xla/service/cpu:runtime_single_threaded_fft",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)

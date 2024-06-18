@@ -82,6 +82,8 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
       const HloInstruction* instruction);
 
