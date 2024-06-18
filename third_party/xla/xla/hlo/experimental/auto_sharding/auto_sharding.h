@@ -295,7 +295,7 @@ std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
     StrategyGroups& strategy_groups, StrategyMap& strategy_map);
 
 std::unique_ptr<StrategyGroup> HandlePartialReduce(
-    const HloInstruction* ins, size_t instruction_id, bool have_memory_cost,
+    const HloInstruction* ins, size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     StrategyMap& strategy_map, const CallGraph& call_graph);
 

@@ -3168,8 +3168,16 @@ func.func @testSqueezeOutOfBounds(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32>
 
 // -----
 
+func.func @testNullaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{op must have 1 or 2 operands}}
+  "tf.Einsum"() {equation = "->"} : () -> (tensor<f32>)
+  func.return
+}
+
+// -----
+
 func.func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
-  // expected-error @+1 {{supports at most two operands}}
+  // expected-error @+1 {{op must have 1 or 2 operands}}
   %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
   func.return
 }
