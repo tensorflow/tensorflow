@@ -706,6 +706,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
