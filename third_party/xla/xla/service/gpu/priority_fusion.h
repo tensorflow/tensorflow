@@ -89,6 +89,8 @@ class GpuPriorityFusion : public InstructionFusion {
   std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
 
   HloFusionAnalysisCache fusion_analysis_cache_;
+
+  mlir::MLIRContext mlir_context_;
 };
 
 }  // namespace gpu
