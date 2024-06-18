@@ -13,7 +13,7 @@
 # limitations under the License.
 """Rule to build custom wheel.
 
-It parses prvoided inputs and then calls `build_pip_package_py` binary with following args:
+It parses prvoided inputs and then calls `build_pip_package` binary with following args:
 1) `--project-name` - name to be passed to setup.py file. It will define name of the wheel.
 Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 2) `--collab` - whether this is a collaborator build.
@@ -66,7 +66,7 @@ tf_wheel = rule(
         "headers": attr.label_list(allow_files = True),
         "xla_aot_compiled": attr.label_list(allow_files = True),
         "wheel_binary": attr.label(
-            default = Label("//tensorflow/tools/pip_package:build_pip_package_py"),
+            default = Label("//tensorflow/tools/pip_package:build_pip_package"),
             executable = True,
             cfg = "exec",
         ),

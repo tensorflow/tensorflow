@@ -124,7 +124,7 @@ bazel build -c opt ${PI_COPTS} \
   //tensorflow:libtensorflow.so \
   //tensorflow:libtensorflow_framework.so \
   //tensorflow/tools/benchmark:benchmark_model \
-  //tensorflow/tools/pip_package:build_pip_package_py
+  //tensorflow/tools/pip_package:build_pip_package
 
 OUTDIR=output-artifacts
 mkdir -p "${OUTDIR}"
@@ -132,7 +132,7 @@ echo "Final outputs will go to ${OUTDIR}"
 
 # Build a universal wheel.
 BDIST_OPTS="--universal" \
-  bazel-bin/tensorflow/tools/pip_package/build_pip_package_py "${OUTDIR}"
+  bazel-bin/tensorflow/tools/pip_package/build_pip_package "${OUTDIR}"
 
 OLD_FN=$(ls "${OUTDIR}" | grep -m 1 \.whl)
 SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-'${WHEEL_ARCH}'.whl/; print'

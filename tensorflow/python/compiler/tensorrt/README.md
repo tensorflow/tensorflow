@@ -52,7 +52,7 @@ components from the system automatically. If installed from tar packages, user
 has to set path to location where the library is installed during configuration.
 
 ```shell
-bazel build --config=cuda --config=opt //tensorflow/tools/pip_package:build_pip_package_py
-bazel-bin/tensorflow/tools/pip_package/build_pip_package_py /tmp/
+bazel build --config=cuda --config=opt //tensorflow/tools/pip_package:build_pip_package
+bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/
 ```
 

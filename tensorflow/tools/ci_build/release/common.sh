@@ -17,7 +17,19 @@
 
 # Keeps Bazel versions of the build scripts.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=6.5.0
+# LATEST_BAZEL_VERSION=6.5.0
+
+# The latest version of Bazel is set to a static value which should not be the case.
+# We are supposed to change this to a dynamic value as we previous version might
+# not support some configuration changes that we make.
+
+set -x
+
+LATEST_BAZEL_VERSION=$(curl -s https://api.github.com/repos/bazelbuild/bazel/releases/latest | jq -r .tag_name)
+
+# strippin off the 'v' prefix if it exists
+LATEST_BAZEL_VERSION=${LATEST_BAZEL_VERSION#v}
+
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/opensource_only/ci/official/requirements_updater/.bazelversion

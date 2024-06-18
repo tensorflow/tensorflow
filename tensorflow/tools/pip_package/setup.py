@@ -41,6 +41,7 @@ from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
+from distutils.command.build import build as _build
 
 
 # This version string is semver compatible, but incompatible with pip.
@@ -284,7 +285,19 @@ class InstallHeaders(Command):
 
   def get_outputs(self):
     return self.outfiles
+  
+# For "Windows", "file naming" rules are strict with a casing constraint. Similar name are not supported.
+# That is the reason, the nme of the folder is changed, which will result in successful ".whl" file creation.
 
+# The condition - "else" is set to not disturb the current working pattern of other OS such as "Linux" and "MacOS".
+  
+class CustomBuild(_build):
+    def initialize_options(self):
+        _build.initialize_options(self)
+        if os.name == 'nt':  # Check if it's Windows
+            self.build_base = 'build_on_windows'  # Set a custom build directory for Windows
+        else:
+            self.build_base = 'build'  # Use the default for other OS
 
 def find_files(pattern, root):
   """Return all the files matching pattern below root dir."""
@@ -369,7 +382,7 @@ headers = (
 # see https://setuptools.pypa.io/en/latest/references/keywords.html.
 if collaborator_build:
   collaborator_build_dependent_options = {
-      'cmdclass': {},
+      'cmdclass': {'build': CustomBuild},
       'distclass': None,
       'entry_points': {},
       'headers': [],
@@ -382,6 +395,7 @@ else:
       'cmdclass': {
           'install_headers': InstallHeaders,
           'install': InstallCommand,
+          'build': CustomBuild
       },
       'distclass': BinaryDistribution,
       'entry_points': {
@@ -389,7 +403,20 @@ else:
       },
       'headers': headers,
       'include_package_data': True,
-      'packages': find_namespace_packages(),
+      'packages': find_namespace_packages(
+        exclude=[
+          "bazel-bin*", 
+          "bazel-out*", 
+          "bazel-tensorflow*",
+          "bazel-testlogs*",
+          "ci*",
+          "dist*",
+          "redundant_tensorflow_gpu*",
+          "redundant_tf_nightly_gpu*",
+          "utils*",
+          "xla_build*"
+        ],
+      ),
       'package_data': {
           'tensorflow': [EXTENSION_NAME] + matches,
       },

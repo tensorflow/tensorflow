@@ -361,7 +361,7 @@ build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
 
 # Enable the runfiles symlink tree on Windows. This makes it possible to build
 # the pip package on Windows without an intermediate data-file archive, as the
-# build_pip_package_py script in its current form (as of Aug 2023) uses the
+# build_pip_package script in its current form (as of Aug 2023) uses the
 # runfiles symlink tree to decide what to put into the Python wheel.
 startup --windows_enable_symlinks
 build:windows --enable_runfiles
@@ -605,6 +605,11 @@ build:release_linux_base --config=avx_linux
 
 # Enable support for all targets
 build:release_base --config=cpu_cross
+
+# Added the "ENVIRONMENT VARIABLE" and the "PATH" flags to make configuring and refracting
+# easy, when using "Windows" platforms
+build:release_windows_base --action_env=PATH=C:/Python311/python.exe
+build:release_windows_base --python_path="C:/Python311/python.exe"
 
 # Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.

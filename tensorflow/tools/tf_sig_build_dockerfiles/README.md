@@ -180,14 +180,14 @@ Now you can continue on to any of:
     ```
     docker exec tf bazel --bazelrc=/usertools/cpu.bazelrc \
     build --config=sigbuild_remote_cache \
-    tensorflow/tools/pip_package:build_pip_package_py
+    tensorflow/tools/pip_package:build_pip_package
     ```
 
     And then construct the pip package:
 
     ```
     docker exec tf \
-      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
+      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
       /tf/pkg \
       --cpu \
       --nightly_flag
@@ -202,14 +202,14 @@ Now you can continue on to any of:
     ```
     docker exec tf bazel --bazelrc=/usertools/gpu.bazelrc \
     build --config=sigbuild_remote_cache \
-    tensorflow/tools/pip_package:build_pip_package_py
+    tensorflow/tools/pip_package:build_pip_package
     ```
 
     And then construct the pip package:
 
     ```
     docker exec tf \
-      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
+      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
       /tf/pkg \
       --nightly_flag
     ```
@@ -225,14 +225,14 @@ Now you can continue on to any of:
     ```
     docker exec tf bazel --bazelrc=/usertools/cpu.bazelrc \
     build --config=sigbuild_local_cache \
-    tensorflow/tools/pip_package:build_pip_package_py
+    tensorflow/tools/pip_package:build_pip_package
     ```
 
     And then construct the pip package:
 
     ```
     docker exec tf \
-      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
+      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
       /tf/pkg \
       --cpu \
       --nightly_flag
@@ -250,14 +250,14 @@ Now you can continue on to any of:
     docker exec tf \
     bazel --bazelrc=/usertools/gpu.bazelrc \
     build --config=sigbuild_local_cache \
-    tensorflow/tools/pip_package:build_pip_package_py
+    tensorflow/tools/pip_package:build_pip_package
     ```
 
     And then construct the pip package:
 
     ```
     docker exec tf \
-      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py \
+      ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
       /tf/pkg \
       --nightly_flag
     ```

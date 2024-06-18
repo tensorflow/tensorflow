@@ -7,21 +7,21 @@ package(default_visibility = ["//visibility:public"])
 load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
 load("@python//:defs.bzl", "interpreter")
 
-py_runtime(
-    name = "py2_runtime",
-    interpreter_path = interpreter,
-    python_version = "PY2",
-)
+# py_runtime(
+#     name = "py2_runtime",
+#     interpreter_path = interpreter,
+#     python_version = "PY2",
+# )
 
 py_runtime(
     name = "py3_runtime",
-    interpreter_path = interpreter,
+    interpreter_path = "C:/Python311/python.exe",
     python_version = "PY3",
 )
 
 py_runtime_pair(
     name = "py_runtime_pair",
-    py2_runtime = ":py2_runtime",
+    # py2_runtime = ":py2_runtime",
     py3_runtime = ":py3_runtime",
 )
 

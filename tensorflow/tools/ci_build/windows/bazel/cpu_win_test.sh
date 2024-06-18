@@ -59,7 +59,7 @@ Files/Git/cmd:/c/msys64:/c/msys64/usr/bin:/c/Windows/system32:/c/Windows:/c/Wind
 
 # Environment variables to be set by Jenkins before calling this script
 
-export PYTHON_VERSION=${PYTHON_VERSION:-"310"}
+export PYTHON_VERSION=${PYTHON_VERSION:-"311"}
 export TF_PYTHON_VERSION=${PYTHON_VERSION:0:1}.${PYTHON_VERSION:1}
 # keep the tensorflow git repo clone under here as tensorflow subdir
 MYTFWS_ROOT=${WORKSPACE:-"C:/Users/mlp_admin"} 

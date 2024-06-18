@@ -25,7 +25,7 @@ fi
 
 PACKAGE_NAME="cloud_tpu_profiler"
 PIP_PACKAGE="tensorflow/python/tpu/profiler/pip_package"
-RUNFILES="bazel-bin/tensorflow/python/tpu/profiler/pip_package/build_pip_package_py.runfiles/org_tensorflow/tensorflow/python/tpu/profiler"
+RUNFILES="bazel-bin/tensorflow/python/tpu/profiler/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow/python/tpu/profiler"
 
 function main() {
   if [ $# -lt 1 ] ; then

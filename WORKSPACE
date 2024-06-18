@@ -72,7 +72,7 @@ cc_library(
 pip_parse(
     name = "pypi",
     annotations = NUMPY_ANNOTATIONS,
-    python_interpreter_target = interpreter,
+    python_interpreter_target = "@python_version_repo//:py3_runtime",
     requirements = "//:requirements_lock_" + TF_PYTHON_VERSION.replace(".", "_") + ".txt",
 )
 

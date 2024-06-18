@@ -24,6 +24,8 @@ http_archive(
 
 # buildifier: disable=same-origin-load
 load("@rules_python//python:repositories.bzl", "py_repositories")
+# Load the interpreter
+# load("@rules_python//python:defs.bzl", "interpreter")
 
 py_repositories()
 
@@ -35,10 +37,27 @@ local_repository(
 
 load(
     "@local_tensorflow//tensorflow/tools/toolchains/python:python_repo.bzl",
-    "python_repository",
+    "python_repository"
 )
 
-python_repository(name = "python_version_repo")
+# The value of the "py_runtime_path" has to changed based on the "os" that is being used.
+# There is a standard that has to be followed that is set by "bazel", for smooth execution.
+# For "Linux", it is "/usr/bin/python3".
+# For "Windows", it is "C:/Python311/python.exe" - The python version has to be downloaded based
+# on the task at time. Usually, the "Latest version" will be used. 
+
+# The pattern is already mentioned in the cpu_win_test.sh file as the value for the variable
+# "NATIVE_PYTHON_LOCATION". We have to follow that pattern and use as the interpreter path for bazel.
+
+# The path havs to be absolute, and the same path has to be saved as one of the "Environment Variable" 
+# as well.
+
+# This file - WORKSPACE is the only place where "bazel" will get the information about "interpreter" and
+# its "path". So if not set accurately, the "target" will not be detected correctly, and the build will fail.
+python_repository(
+    name = "python_version_repo",
+    py_runtime_path = "C:/Python311/python.exe"
+)
 
 load("@python_version_repo//:py_version.bzl", "TF_PYTHON_VERSION")
 
@@ -56,7 +75,7 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
     name = "pypi",
-    python_interpreter_target = interpreter,
+    python_interpreter_target = "@python_version_repo//:py3_runtime",
     requirements = "//:requirements_lock_" + TF_PYTHON_VERSION.replace(".", "_") + ".txt",
 )
 

@@ -1,7 +1,7 @@
-diff --git a/tensorflow/tools/pip_package/build_pip_package_py.sh b/tensorflow/tools/pip_package/build_pip_package_py.sh
+diff --git a/tensorflow/tools/pip_package/build_pip_package.sh b/tensorflow/tools/pip_package/build_pip_package.sh
 index 305033cd44..d2c43dc7ab 100755
---- a/tensorflow/tools/pip_package/build_pip_package_py.sh
-+++ b/tensorflow/tools/pip_package/build_pip_package_py.sh
+--- a/tensorflow/tools/pip_package/build_pip_package.sh
++++ b/tensorflow/tools/pip_package/build_pip_package.sh
 @@ -135,6 +135,7 @@ function prepare_src() {
    cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
    cp tensorflow/tools/pip_package/README ${TMPDIR}

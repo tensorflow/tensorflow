@@ -29,6 +29,6 @@ cc_library(
     pip_parse(
         name = "pypi",
         annotations = numpy_annotations,
-        python_interpreter_target = interpreter,
+        python_interpreter_target = @python_version_repo//:py3_runtime,
         requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS,
     )

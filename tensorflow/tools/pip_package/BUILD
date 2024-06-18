@@ -4,7 +4,7 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
-load("@rules_python//python:repositories.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
@@ -233,17 +233,17 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:grpc_tpu_worker_service",
 ])
 
+# It is always a good practice to keep the value of the "name" parameter and the 
+# and the srcs parameter same.
+
+# The "main" parameter is not required here because, the "target" file does not have 
+# "main" scope mentioned in it. Mentioning the parameter, will cause errors such as 
+# "The target NOT declared". 
 py_binary(
-    name = "build_pip_package_py",
-    srcs = [
-        "build_pip_package.py",
-    ],
-    main = "build_pip_package.py",
-    deps = [
-        "//tensorflow/tools/pip_package/utils:py_utils",
-        "@pypi_setuptools//:pkg",
-        "@pypi_wheel//:pkg",
-    ],
+    name = "build_pip_package",
+    srcs = ["build_pip_package.py"],
+    deps = ["//tensorflow/tools/pip_package/utils:utils"],
+    srcs_version = "PY3",
 )
 
 collect_data_files(

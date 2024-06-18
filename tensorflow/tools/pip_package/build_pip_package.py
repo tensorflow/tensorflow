@@ -39,15 +39,27 @@ from tensorflow.tools.pip_package.utils.utils import is_windows
 from tensorflow.tools.pip_package.utils.utils import replace_inplace
 
 
+# The "default" argument must be added because the "required" is set to "True".
+# If no values for output and project names are mentioned after the build process
+# then the default values will be considered.
+
+# If the devault value is not specified, the ".whl" packaging might fail.
 def parse_args() -> argparse.Namespace:
   """Arguments parser."""
   parser = argparse.ArgumentParser(
       description="Helper for building pip package", fromfile_prefix_chars="@")
   parser.add_argument(
-      "--output-name", required=True,
-      help="Output file for the wheel, mandatory")
-  parser.add_argument("--project-name", required=True,
-                      help="Project name to be passed to setup.py")
+        "--output-name", 
+        required=True,
+        help="Output file for the wheel, mandatory",
+        default='default_output_name'
+      )
+  parser.add_argument(
+    "--project-name", 
+    required=True,
+    help="Project name to be passed to setup.py",
+    default='default_project_name'
+  )
   parser.add_argument(
       "--headers", help="header files for the wheel", action="append")
   parser.add_argument("--srcs", help="source files for the wheel",

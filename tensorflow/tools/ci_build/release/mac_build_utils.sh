@@ -61,11 +61,11 @@ function bazel_build_wheel {
     --config=release_cpu_macos \
     --action_env=PYENV_VERSION="${PYENV_VERSION}" \
     --action_env=PYTHON_BIN_PATH="${PYTHON_BIN_PATH}" \
-    //tensorflow/tools/pip_package:build_pip_package_py \
+    //tensorflow/tools/pip_package:build_pip_package \
     || die "Error: Bazel build failed"
 
   # Build the wheel
-  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py ${PIP_WHL_DIR} ${PIP_WHL_FLAGS}
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${PIP_WHL_FLAGS}
 
   # Set wheel path and verify that there is only one .whl file in the path.
   WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
@@ -80,7 +80,7 @@ function bazel_build_wheel {
   write_to_sponge TF_INFO_WHL_SIZE "${WHL_SIZE}"
 
   # Build the wheel (with cpu flag)
-  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package_py ${PIP_WHL_DIR} ${PIP_WHL_FLAGS} --cpu
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${PIP_WHL_FLAGS} --cpu
 
   for WHL_PATH in $(ls "${PIP_WHL_DIR}"/*.whl); do
     # change 10_15 to 10_14

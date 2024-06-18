@@ -69,8 +69,8 @@ RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 RUN ${PIP} install future>=0.17.1
 
 RUN bazel --bazelrc=/root/.bazelrc build -c opt \
-    tensorflow/tools/pip_package:build_pip_package_py && \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package_py "${TF_NIGHTLY_FLAG}" "${WHL_DIR}" && \
+    tensorflow/tools/pip_package:build_pip_package && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${TF_NIGHTLY_FLAG}" "${WHL_DIR}" && \
     ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/*.whl && \
     rm -rf /root/.cache
     # Clean up Bazel cache when done.

@@ -71,9 +71,9 @@ ${SCRIPT_DIR}/print_build_info.sh ${CONTAINER_TYPE} ${COMMAND[@]}
 
 # orginally based on the docker logs, the bazel build in the script was pointing to
 # "build_pip_package". The "traget" which does is not existing. The one that is there
-# in our script is "build_pip_package_py". By correcting this pointing, the build should
+# in our script is "build_pip_package". By correcting this pointing, the build should
 # run perfectly
 
-bazel build --config=rocm //tensorflow/tools/pip_package:build_pip_package_py --verbose_failures
+bazel build --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures
 
 ${COMMAND[@]}

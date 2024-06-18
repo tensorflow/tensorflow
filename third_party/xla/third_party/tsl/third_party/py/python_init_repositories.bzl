@@ -15,5 +15,6 @@ def python_init_repositories(
         local_wheel_workspaces = local_wheel_workspaces,
         local_wheel_dist_folder = local_wheel_dist_folder,
         default_python_version = default_python_version,
+        py_runtime_path = "C:/Python311/python.exe"
     )
     py_repositories()
