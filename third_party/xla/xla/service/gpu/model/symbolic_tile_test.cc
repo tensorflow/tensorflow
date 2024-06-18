@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -729,7 +730,7 @@ TEST_F(SymbolicTileTest,
       ParseAffineMap("(d0) -> (d0 mod 6, d0 mod 6)", &mlir_context_),
       /*dimensions=*/{DimVar{0, 10}}, /*range_vars=*/{}, /*rt_vars=*/{});
 
-  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(std::move(indexing_map)),
               Optional(MatchSymbolicTileString(R"(
               Symbolic tile with
               offset_map: ()[s0] -> (0, 0)
@@ -738,6 +739,28 @@ TEST_F(SymbolicTileTest,
               constraints:
                 unsatisfiable
               )")));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileWhenPreexistingConstraintsCanBeSimplifiedAway) {
+  // The example is from
+  // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                     &mlir_context_),
+      {4, 2048, 50304}, {50304});
+  // This constraint is redundant, because it can be derived from the domains of
+  // the dimension variables.
+  indexing_map.AddConstraint(ParseAffineExpr("d0 * 2048 + d1", &mlir_context_),
+                             Interval{0, 8191});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: ()[s0, s1, s2] -> (0, 0)
+        size_map: ()[s0, s1, s2] -> (s0 * s1, 50304)
+        stride_map: ()[s0, s1, s2] -> (((-s1 + 2049) floordiv 2048) * ((-((-s0 + 5) floordiv 4) + 1) * 2048) + -((-s1 + 2049) floordiv 2048) + 1, 1)
+      )")));
 }
 
 }  // namespace

@@ -607,13 +607,19 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
 }
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
-    const IndexingMap& indexing_map) {
+    IndexingMap indexing_map) {
   VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map.ToString();
 
   // We do not handle indexing maps with pre-existing constraints for now.
+  // Let's try to simplify the indexing map, because the constraints my be
+  // redundant.
+  // TODO(bchetioui): Consider doing the simplification in the caller, not here.
+  bool did_simplify = indexing_map.Simplify();
+  VLOG(1) << "did_simplify: " << did_simplify;
   if (indexing_map.GetConstraintsCount() != 0) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
-            << "constraints might produce spurious constraints. Bailing out.";
+            << "constraints might produce spurious constraints. Bailing out. "
+            << indexing_map.ToString();
     return std::nullopt;
   }
 

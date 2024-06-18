@@ -157,8 +157,7 @@ namespace gpu {
 // simplified later.
 class SymbolicTile {
  public:
-  static std::optional<SymbolicTile> FromIndexingMap(
-      const IndexingMap& indexing_map);
+  static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   using ConstraintMap = llvm::DenseMap<mlir::AffineExpr, Interval>;
 
