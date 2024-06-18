@@ -44,6 +44,7 @@ cc_library(
         ":gpu_helpers",
         ":gpu_metrics",
         ":gpu_topology",
+        ":gpu_topology_proto_cc",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -122,6 +123,8 @@ cc_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+        "//xla/service/gpu:gpu_memory_space_assignment",
+        "//xla:debug_options_flags",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -298,6 +301,7 @@ xla_test(
         "no_oss",
     ] + if_google(["config-cuda-only"]),
     deps = [
+        ":gpu_topology",
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
         "//xla:test",

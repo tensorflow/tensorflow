@@ -251,9 +251,11 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64_t offset,
   CHECK_LE(offset + size, size_)
       << "LogicalBuffer " << buffer
       << " size out of range at offset: " << offset << " with size: " << size;
-  CHECK_EQ(buffer.color(), color())
-      << "Buffer color " << buffer.color() << " for buffer " << buffer
-      << " does not match allocation color " << color() << ".";
+  if (!(IsPreallocatedTempBuffer() && color() != 0)) {
+    CHECK_EQ(buffer.color(), color())
+        << "Buffer color " << buffer.color() << " for buffer " << buffer
+        << " does not match allocation color " << color() << ".";
+  }
   OffsetSize offset_size;
   offset_size.offset = offset;
   offset_size.size = size;
@@ -616,7 +618,8 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // Combines allocations of temporary buffers of the same color into one big
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations(
-    const absl::flat_hash_set<BufferValue::Color>& private_stack_colors) {
+    const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
+    std::optional<BufferValue::Color> temp_buffer_color) {
   VLOG(1) << "CombineTempAllocations()";
   // Stores the combined allocations.
   std::deque<BufferAllocation> combined_allocations;
@@ -699,6 +702,12 @@ void BufferAssignment::CombineTempAllocations(
             combined_allocation->peak_buffers_.end(),
             temp_allocation.peak_buffers_.begin(),
             temp_allocation.peak_buffers_.end());
+      }
+
+      if (temp_buffer_color.has_value()) {
+        if (combined_allocation->color() == 0) {
+          combined_allocation->set_color(temp_buffer_color.value());
+        }
       }
     }
     // Replace all existing temporary allocations with the new combined
@@ -1091,13 +1100,14 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+    std::optional<BufferValue::Color> temp_buffer_color) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), std::move(can_share_buffer), private_stacks,
-      heap_buffer_interval_compare, isolation_options);
+      heap_buffer_interval_compare, isolation_options, temp_buffer_color);
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -2000,7 +2010,8 @@ BufferAssigner::CreateAssignment(
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+    std::optional<BufferValue::Color> temp_buffer_color) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
@@ -2108,7 +2119,8 @@ BufferAssigner::CreateAssignment(
   for (const auto& [color, computations] : private_stacks) {
     private_stack_colors.insert(color);
   }
-  assignment->CombineTempAllocations(private_stack_colors);
+
+  assignment->CombineTempAllocations(private_stack_colors, temp_buffer_color);
 
   XLA_VLOG_LINES(2, assignment->ToString());
   TF_RETURN_IF_ERROR(assignment->ComputeSummaryStats());

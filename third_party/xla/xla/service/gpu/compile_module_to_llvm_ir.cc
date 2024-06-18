@@ -183,7 +183,16 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                     .xla_gpu_enable_nccl_user_buffers()
                 ? CollectiveColorer()
                 : BufferAssigner::DefaultColorer(),
-            /*must_not_live_out=*/{}, can_share_buffer_function));
+            /*must_not_live_out=*/{},
+            /*can_share_buffer*/ can_share_buffer_function,
+            /*preset_assignments*/ {},
+            /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
+            /*isolation_options*/ std::nullopt,
+            hlo_module->config()
+                    .debug_options()
+                    .xla_gpu_temp_buffer_use_separate_color()
+                ? std::optional<BufferValue::Color>(kTempBufferMemorySpaceColor)
+                : std::nullopt));
   }
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results.buffer_assignment->GetStats().ToString();
