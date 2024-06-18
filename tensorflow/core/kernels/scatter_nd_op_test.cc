@@ -363,7 +363,7 @@ TEST_F(ScatterNdOpConstructionTest, Error_BadIndicesPolicyInvalid) {
                    .Input(FakeInput(DT_INT32))
                    .Attr("bad_indices_policy", "AN_UNRECOGNIZED_POLICY")
                    .Finalize(node_def()));
-  EXPECT_NE(InitOp(), OkStatus());
+  EXPECT_NE(InitOp(), absl::OkStatus());
 }
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
