@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
-#define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
 
 #include <string>
 
-namespace tflite {
+namespace tflite_migration {
 namespace flex {
 
 // Return true if op_name is a tf.text op need to be supported by flex delegate.
 bool IsAllowedTFTextOpForFlex(const std::string& op_name);
 
 }  // namespace flex
-}  // namespace tflite
+}  // namespace tflite_migration
 
-#endif  // TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_

@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
 
 #include <set>
 #include <string>
 
+#include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops_internal.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
 
-namespace tflite {
+namespace tflite_migration {
 namespace flex {
 
 const std::set<std::string>& GetFlexAllowlist() {
@@ -849,4 +849,4 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
 }
 
 }  // namespace flex
-}  // namespace tflite
+}  // namespace tflite_migration

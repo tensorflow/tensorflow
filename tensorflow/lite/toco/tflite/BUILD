@@ -26,11 +26,11 @@ cc_library(
     ],
     deps = [
         ":types",
+        "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",

@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/statusor.h"
 #include "tsl/platform/grpc_credentials.h"
 
 namespace xla {
