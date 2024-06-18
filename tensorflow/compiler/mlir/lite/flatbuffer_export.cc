@@ -1517,7 +1517,7 @@ void CreateFlexbufferVector(
     const std::unique_ptr<flexbuffers::Builder>& flex_builder,
     std::string& name, const mlir::Attribute& attr) {
   auto start = flex_builder->StartVector(name.c_str());
-  auto array = attr.cast<mlir::ArrayAttr>().getValue();
+  auto array = attr.cast<mlir::vhlo::ArrayV1Attr>().getValue();
 
   for (int i = 0; i < array.size(); i++) {
     if (llvm::isa<mlir::BoolAttr>(array[i])) {
@@ -1671,6 +1671,11 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       flex_builder->Float(
           name.c_str(),
           attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+    else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(attr))
+      CreateFlexbufferVector(flex_builder, name, attr);
+    else
+      // Unhandled attribute type.
+      return std::nullopt;
   }
 
   flex_builder->EndMap(map_start);
@@ -2161,8 +2166,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildVhloPadV1Op(vhlo_op, operands, results, vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CompositeOpV1>(inst)) {
-      return BuildVhloCompositeV1Op(vhlo_op, operands, results,
-                                    inst->getName().getStringRef().str());
+      auto op = BuildVhloCompositeV1Op(vhlo_op, operands, results,
+                                       inst->getName().getStringRef().str());
+      if (!op)
+        return inst->emitOpError("Failed to build VhloCompositeOpV1."),
+               std::nullopt;
+      return op;
     }
     // for ops don't have kernels, only serialize when conversion is set to
     // true
