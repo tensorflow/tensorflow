@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
@@ -81,6 +83,37 @@ module {
     }
   });
   EXPECT_FALSE(has_unsupported_dialect);
+}
+
+TEST(HloProgramSerDesTest, UsesMinimumStableHloVersion) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+module {
+  func.func @main() -> tensor<f32> {
+    %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    return %1 : tensor<f32>
+  }
+})";
+
+  Serialized serialized;
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          xla::ParseMlirModuleString(kMlirModuleStr, *context));
+  auto program =
+      std::make_unique<HloProgram>(std::move(context), std::move(module));
+  TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+
+  std::string expected_version =
+      "StableHLO_v" + mlir::stablehlo::getMinimumVersion();
+
+  EXPECT_NE(mlir::stablehlo::getMinimumVersion(),
+            mlir::stablehlo::getCurrentVersion());
+
+  // Would be better to parse the raw data, but is hard to dig into LLVM
+  // to do it correctly.
+  EXPECT_THAT(serialized.DebugString().c_str(), HasSubstr(expected_version));
+  EXPECT_THAT(serialized.DebugString().c_str(),
+              testing::Not(HasSubstr(mlir::stablehlo::getCurrentVersion())));
 }
 
 TEST(HloProgramSerDesTest, SerializationError) {
