@@ -536,39 +536,46 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
 HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
     const HloReduceInstruction* reduce, int input_id,
     MLIRContext* mlir_context) {
-  absl::flat_hash_set<int64_t> reduce_dims_ids(reduce->dimensions().begin(),
-                                               reduce->dimensions().end());
-  const Shape& input_shape = reduce->operand(input_id)->shape();
   const Shape& output_shape = GetOutputShape(reduce, 0);
   int64_t output_rank = output_shape.rank();
 
-  int64_t output_dim_id = 0;
-  std::vector<AffineExpr> inputs_exprs, inits_exprs;
+  HloInstructionIndexing instr_indexing;
+  int arity = reduce->input_count();
+  instr_indexing.indexing_maps.resize(arity);
+  if (input_id >= arity) {
+    // This is an init value: it contributes to every output element.
+    std::vector<AffineExpr> inits_exprs;
+    inits_exprs.reserve(output_rank);
+    for (int sym = 0; sym < output_rank; ++sym) {
+      inits_exprs.push_back(getAffineSymbolExpr(sym, mlir_context));
+    }
+    IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
+        AffineMap::get(0, /*symbolCount=*/output_rank, inits_exprs,
+                       mlir_context),
+        {}, output_shape.dimensions());
+    for (int64_t id = 0; id < arity; ++id) {
+      instr_indexing.indexing_maps[id].insert(inits_indexing_map);
+    }
+    return instr_indexing;
+  }
+
+  // This is a reduced value: it contributes to all output elements at the
+  // input element's indices with the reduced dimensions removed.
+  const Shape& input_shape = reduce->operand(input_id)->shape();
+  std::vector<AffineExpr> inputs_exprs;
   inputs_exprs.reserve(output_rank);
-  inits_exprs.reserve(output_rank);
   for (auto [input_dim_id, input_dim] :
        llvm::enumerate(input_shape.dimensions())) {
-    if (reduce_dims_ids.contains(input_dim_id)) {
-      continue;
+    if (!absl::c_linear_search(reduce->dimensions(), input_dim_id)) {
+      inputs_exprs.push_back(getAffineDimExpr(input_dim_id, mlir_context));
     }
-    inputs_exprs.push_back(getAffineDimExpr(input_dim_id, mlir_context));
-    inits_exprs.push_back(getAffineSymbolExpr(output_dim_id++, mlir_context));
   }
   IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(input_shape.rank(), /*symbolCount=*/0, inputs_exprs,
                      mlir_context),
       input_shape.dimensions(), {});
-  IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(0, /*symbolCount=*/output_rank, inits_exprs, mlir_context),
-      {}, output_shape.dimensions());
-
-  HloInstructionIndexing instr_indexing;
-  instr_indexing.indexing_maps.resize(reduce->operand_count());
-  for (int64_t id = 0; id < reduce->input_count(); ++id) {
+  for (int64_t id = 0; id < arity; ++id) {
     instr_indexing.indexing_maps[id].insert(inputs_indexing_map);
-  }
-  for (int64_t id = reduce->input_count(); id < reduce->operand_count(); ++id) {
-    instr_indexing.indexing_maps[id].insert(inits_indexing_map);
   }
   return instr_indexing;
 }
