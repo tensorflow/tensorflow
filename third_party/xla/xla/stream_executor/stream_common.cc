@@ -163,10 +163,6 @@ absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
   return absl::InternalError("failed to memcpy");
 }
 
-absl::Status StreamCommon::MemZero(DeviceMemoryBase *location, uint64_t size) {
-  return parent_->MemZero(this, location, size);
-}
-
 absl::Status StreamCommon::Memset32(DeviceMemoryBase *location,
                                     uint32_t pattern, uint64_t size) {
   return parent_->Memset32(this, location, pattern, size);

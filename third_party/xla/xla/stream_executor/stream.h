@@ -199,11 +199,13 @@ class Stream {
     return Memcpy(gpu_dst, gpu_src, size);
   }
 
-  // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
-  // The location must not be null.
-  virtual absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) = 0;
+  // Entrain onto the stream: a memset of zero at a device location of size
+  // bytes. The location must not be null.
+  virtual absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) {
+    return absl::UnimplementedError("MemZero is not supported on this stream.");
+  }
 
-  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
+  // Entrain onto the stream: a memset of a 32-bit pattern at device location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
   virtual absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,

@@ -53,6 +53,14 @@ HostStream::~HostStream() {
   parent()->DeallocateStream(this);
 }
 
+absl::Status HostStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+  void* gpu_mem = location->opaque();
+  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([gpu_mem, size]() { memset(gpu_mem, 0, size); });
+  return absl::OkStatus();
+}
+
 absl::Status HostStream::WaitFor(Stream* other) {
   auto event = std::make_shared<absl::Notification>();
   static_cast<HostStream*>(other)->EnqueueTask([event]() { event->Notify(); });

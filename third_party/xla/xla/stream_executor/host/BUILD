@@ -81,6 +81,7 @@ cc_library(
     ],
     deps = [
         ":host_event",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",

@@ -100,10 +100,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     return false;
   }
 
-  absl::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64_t size) override {
-    return absl::InternalError("Interpreter can not memzero");
-  }
   absl::Status Memset(Stream *stream, DeviceMemoryBase *location,
                       uint8_t pattern, uint64_t size) override {
     return absl::InternalError("Interpreter can not memset");

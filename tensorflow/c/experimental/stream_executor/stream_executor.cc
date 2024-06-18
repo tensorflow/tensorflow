@@ -155,17 +155,6 @@ absl::Status ValidateSEPlatformRegistrationParams(
 }
 #undef TF_VALIDATE_NOT_NULL
 
-// Converts DeviceMemoryBase to a C struct.
-SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
-  SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
-  // `opaque` field inside SP_DeviceMemoryBase is not const.
-  // Therefore, we need to cast away the constness before setting it.
-  device_memory_base.opaque = const_cast<void*>(mem->opaque());
-  device_memory_base.size = mem->size();
-  device_memory_base.payload = mem->payload();
-  return device_memory_base;
-}
-
 DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
   DeviceMemoryBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
@@ -312,15 +301,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(&gpu_src);
     stream_executor_->sync_memcpy_dtoh(&device_, host_dst, &device_memory_base,
                                        size, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-  absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64 size) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
-    stream_executor_->mem_zero(&device_, stream_handle, &device_mem, size,
-                               c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,

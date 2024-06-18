@@ -98,8 +98,6 @@ class HostExecutor : public StreamExecutorCommon {
                             const DeviceMemoryBase& gpu_src,
                             uint64_t size) override;
 
-  absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) override;
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                       uint8_t pattern, uint64_t size) override;
   absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,

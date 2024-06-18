@@ -140,10 +140,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   // -- Unimplemented (stubbed out) methods.
 
-  absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) override {
-    LOG(FATAL) << "not yet implemented";
-  }
   absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                         uint32_t pattern, uint64_t size) override {
     LOG(FATAL) << "not yet implemented";

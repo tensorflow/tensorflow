@@ -46,6 +46,17 @@ absl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
                                       std::string* device_type,
                                       std::string* platform_name);
 
+// Converts DeviceMemoryBase to a C struct.
+inline SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
+  SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
+  // `opaque` field inside SP_DeviceMemoryBase is not const.
+  // Therefore, we need to cast away the constness before setting it.
+  device_memory_base.opaque = const_cast<void*>(mem->opaque());
+  device_memory_base.size = mem->size();
+  device_memory_base.payload = mem->payload();
+  return device_memory_base;
+}
+
 // This file implements core stream executor base classes in terms of
 // the C API defined in stream_executor.h. A class "CSomething" represents a
 // "Something" that can be manipulated via calls in the C interface.
@@ -166,8 +177,7 @@ class CStream : public StreamCommon {
   absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
-    return s;
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   void Destroy() {
@@ -201,8 +211,14 @@ class CStream : public StreamCommon {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->wait_for_event(device_, stream_handle_, event_handle,
                                      c_status.get());
-    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
-    return s;
+    return tensorflow::StatusFromTF_Status(c_status.get());
+  }
+  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
+    stream_executor_->mem_zero(device_, stream_handle_, &device_mem, size,
+                               c_status.get());
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   SP_Stream Handle() { return stream_handle_; }

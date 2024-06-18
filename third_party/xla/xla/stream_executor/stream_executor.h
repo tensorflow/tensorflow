@@ -223,12 +223,6 @@ class StreamExecutor {
     return SynchronousMemcpy(host_dst, device_src, size);
   }
 
-  // Enqueues an operation onto stream to zero out size bytes at the given
-  // device memory location. Neither stream nor location may be null. Returns
-  // whether the operation was successfully enqueued onto the stream.
-  virtual absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                               uint64_t size) = 0;
-
   // Enqueues an operation onto stream to set 8-bit patterns starting at
   // location, for byte count given by size.  Returns whether the operation was
   // successfully enqueued onto the stream.

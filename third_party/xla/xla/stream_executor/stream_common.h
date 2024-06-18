@@ -77,7 +77,6 @@ class StreamCommon : public Stream {
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
                       const DeviceMemoryBase &gpu_src, uint64_t size) override;
-  absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) override;
   absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
                         uint64_t size) override;
   absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
