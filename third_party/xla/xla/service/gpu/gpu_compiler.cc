@@ -408,8 +408,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
-  std::unique_ptr<ThunkSequence> thunk_sequence =
-      ir_emitter->ConsumeThunkSequence();
 
   // Get all other fields required by GpuExecutable.
   std::vector<GpuExecutable::ConstantInfo> constants =
@@ -431,7 +429,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
           Thunk::BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
                            proto_.dnn_compiled_graphs().cend()),
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
-          /*executable=*/std::move(thunk_sequence),
+          /*executable=*/ir_emitter->ConsumeThunkSequence(),
           /*constants=*/std::move(constants),
           /*output_info=*/std::move(output_info),
           /*module_name=*/std::move(hlo_module->name()),
@@ -2072,8 +2070,9 @@ GpuCompiler::CompileToBackendResult(
   }
   RecordXlaDeviceBinarySize(backend_result.binary.size());
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
-                            compile_module_results.executable->ToString());
+    DumpToFileInDirOrStdout(
+        *module, "", "thunk_sequence.txt",
+        compile_module_results.executable->ToString(/*indent=*/0));
   }
 
   return CompileResultWithMetadata{std::move(backend_result),
@@ -2148,8 +2147,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                              gpu_device_info));
 
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
-                            res.compile_module_results.executable->ToString());
+    DumpToFileInDirOrStdout(
+        *module, "", "thunk_sequence.txt",
+        res.compile_module_results.executable->ToString(/*indent=*/0));
   }
 
   // The module is being moved into the GpuExecutable below and we need to

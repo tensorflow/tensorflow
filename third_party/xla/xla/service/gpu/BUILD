@@ -1003,6 +1003,7 @@ cc_library(
         "//xla/service/gpu/runtime:for_all_thunks",
         "//xla/service/gpu/runtime:nccl_clique",
         "//xla/service/gpu/runtime:nccl_clique_key",
+        "//xla/service/gpu/runtime:sequential_thunk",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",

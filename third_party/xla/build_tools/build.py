@@ -298,14 +298,20 @@ _JAX_GPU_BUILD = Build(
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
+    # XLA presubmit
     "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
+    # XLA continuous
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
+    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
+    # JAX presubmit
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
+    # JAX continuous
+    "tensorflow/xla/jax/github_continuous/build_cpu": _JAX_CPU_BUILD,
+    "tensorflow/xla/jax/github_continuous/build_gpu": _JAX_GPU_BUILD,
 }
 
 
