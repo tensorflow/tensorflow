@@ -1425,7 +1425,7 @@ ENTRY entry {
 
   auto backend_config_or =
       triton_dot_fusion->backend_config<GpuBackendConfig>();
-  ASSERT_OK(backend_config_or);
+  TF_ASSERT_OK(backend_config_or);
   GpuBackendConfig& backend_config = *backend_config_or;
 
   FusionBackendConfig& fusion_backend_config =
@@ -1439,7 +1439,7 @@ ENTRY entry {
   config.set_num_warps(8);
   config.set_num_stages(4);
 
-  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
@@ -1457,7 +1457,7 @@ ENTRY entry {
   config.set_block_n(128);
   config.set_block_k(128);
   block_level_parameters.num_stages = 1;
-  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
@@ -1972,7 +1972,7 @@ ENTRY entry {
 
   auto backend_config_or =
       triton_dot_fusion->backend_config<GpuBackendConfig>();
-  ASSERT_OK(backend_config_or);
+  TF_ASSERT_OK(backend_config_or);
   GpuBackendConfig& backend_config = *backend_config_or;
 
   FusionBackendConfig& fusion_backend_config =
@@ -1986,7 +1986,7 @@ ENTRY entry {
   config.set_num_ctas(1);
   config.set_num_stages(1);
   config.set_num_warps(2);
-  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
@@ -2003,7 +2003,7 @@ ENTRY entry {
   config.set_block_m(32);
   config.set_block_n(32);
   config.set_block_k(32);
-  ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   TF_CHECK_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
                             dev_info, block_level_parameters, &llvm_module,
