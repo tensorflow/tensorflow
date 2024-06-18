@@ -203,6 +203,7 @@ cc_library(
 cc_library(
     name = "tf_to_tfrt",
     srcs = [
+        "transforms/batch_padding_policy.cc",
         "transforms/cross_device_transfer.cc",
         "transforms/deduplicate_batch_function.cc",
         "transforms/deduplicate_if_result_pass.cc",
