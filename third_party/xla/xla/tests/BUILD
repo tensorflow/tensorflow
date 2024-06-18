@@ -12,10 +12,6 @@ load(
     "if_cuda_is_configured",
 )
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -2462,32 +2458,30 @@ xla_test(
 xla_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
-    backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM",
-    ]),
-    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-    tags = ["gpu"],
-    deps = if_gpu_is_configured([
-        ":verified_hlo_module",
+    backend_tags = {
+        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly.
+        "gpu": ["gpu"],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_test_base",
         "//xla:literal_util",
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/status",
+        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:backend",
-        "//xla/service:cpu_plugin",
         "//xla/service:llvm_compiler",
-        "//xla/service:platform_util",
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test_main",
-    ]) + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_platform_id",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_platform_id",
-    ]),
+    ],
 )
 
 xla_test(

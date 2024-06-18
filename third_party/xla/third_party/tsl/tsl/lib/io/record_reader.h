@@ -94,14 +94,14 @@ class RecordReader {
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(uint64* offset, tstring* record);
+  absl::Status ReadRecord(uint64* offset, tstring* record);
 
   // Skip num_to_skip record starting at "*offset" and update *offset
   // to point to the offset of the next num_to_skip + 1 record.
   // Return OK on success, OUT_OF_RANGE for end of file, or something
   // else for an error. "*num_skipped" records the number of records that
   // are actually skipped. It should be equal to num_to_skip on success.
-  Status SkipRecords(uint64* offset, int num_to_skip, int* num_skipped);
+  absl::Status SkipRecords(uint64* offset, int num_to_skip, int* num_skipped);
 
   // Return the metadata of the Record file.
   //
@@ -112,11 +112,11 @@ class RecordReader {
   // so that GetMetadata() could be a const method.
   //
   // 'metadata' must not be nullptr.
-  Status GetMetadata(Metadata* md);
+  absl::Status GetMetadata(Metadata* md);
 
  private:
-  Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
-  Status PositionInputStream(uint64 offset);
+  absl::Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
+  absl::Status PositionInputStream(uint64 offset);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
@@ -143,7 +143,7 @@ class SequentialRecordReader {
 
   // Read the next record in the file into *record. Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(tstring* record) {
+  absl::Status ReadRecord(tstring* record) {
     return underlying_.ReadRecord(&offset_, record);
   }
 
@@ -151,7 +151,7 @@ class SequentialRecordReader {
   // OUT_OF_RANGE for end of file, or something else for an error.
   // "*num_skipped" records the number of records that are actually skipped.
   // It should be equal to num_to_skip on success.
-  Status SkipRecords(int num_to_skip, int* num_skipped) {
+  absl::Status SkipRecords(int num_to_skip, int* num_skipped) {
     return underlying_.SkipRecords(&offset_, num_to_skip, num_skipped);
   }
 
@@ -160,13 +160,13 @@ class SequentialRecordReader {
 
   // Seek to this offset within the file and set this offset as the current
   // offset. Trying to seek backward will throw error.
-  Status SeekOffset(uint64 offset) {
+  absl::Status SeekOffset(uint64 offset) {
     if (offset < offset_)
       return errors::InvalidArgument(
           "Trying to seek offset: ", offset,
           " which is less than the current offset: ", offset_);
     offset_ = offset;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

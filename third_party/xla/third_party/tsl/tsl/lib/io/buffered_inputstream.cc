@@ -41,13 +41,13 @@ BufferedInputStream::~BufferedInputStream() {
   }
 }
 
-Status BufferedInputStream::FillBuffer() {
+absl::Status BufferedInputStream::FillBuffer() {
   if (!file_status_.ok()) {
     pos_ = 0;
     limit_ = 0;
     return file_status_;
   }
-  Status s = input_stream_->ReadNBytes(size_, &buf_);
+  absl::Status s = input_stream_->ReadNBytes(size_, &buf_);
   pos_ = 0;
   limit_ = buf_.size();
   if (!s.ok()) {
@@ -57,10 +57,10 @@ Status BufferedInputStream::FillBuffer() {
 }
 
 template <typename StringType>
-Status BufferedInputStream::ReadLineHelper(StringType* result,
-                                           bool include_eol) {
+absl::Status BufferedInputStream::ReadLineHelper(StringType* result,
+                                                 bool include_eol) {
   result->clear();
-  Status s;
+  absl::Status s;
   size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
@@ -79,7 +79,7 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
         result->append(1, c);
       }
       pos_++;
-      return OkStatus();
+      return absl::OkStatus();
     }
     // We don't append '\r' to *result
     if (c == '\r') {
@@ -89,12 +89,13 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
     pos_++;
   }
   if (absl::IsOutOfRange(s) && !result->empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }
 
-Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
+absl::Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read,
+                                             tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
@@ -105,7 +106,7 @@ Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   }
   result->reserve(bytes_to_read);
 
-  Status s;
+  absl::Status s;
   while (result->size() < static_cast<size_t>(bytes_to_read)) {
     // Check whether the buffer is fully read or not.
     if (pos_ == limit_) {
@@ -127,12 +128,12 @@ Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   // obtained enough data to satisfy the function call. Returning OK then.
   if (absl::IsOutOfRange(s) &&
       (result->size() == static_cast<size_t>(bytes_to_read))) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }
 
-Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
+absl::Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",
                                    bytes_to_skip);
@@ -144,7 +145,7 @@ Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
     // Otherwise, we already have read limit_ - pos_, so skip the rest. At this
     // point we need to get fresh data into the buffer, so reset pos_ and
     // limit_.
-    Status s = input_stream_->SkipNBytes(bytes_to_skip - (limit_ - pos_));
+    absl::Status s = input_stream_->SkipNBytes(bytes_to_skip - (limit_ - pos_));
     pos_ = 0;
     limit_ = 0;
     if (absl::IsOutOfRange(s)) {
@@ -152,14 +153,14 @@ Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
     }
     return s;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 
-Status BufferedInputStream::Seek(int64_t position) {
+absl::Status BufferedInputStream::Seek(int64_t position) {
   if (position < 0) {
     return errors::InvalidArgument("Seeking to a negative position: ",
                                    position);
@@ -176,7 +177,7 @@ Status BufferedInputStream::Seek(int64_t position) {
   if (position < Tell()) {
     // Seek within buffer before 'pos_'
     pos_ -= Tell() - position;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Seek after 'pos_'
@@ -184,9 +185,9 @@ Status BufferedInputStream::Seek(int64_t position) {
 }
 
 template <typename T>
-Status BufferedInputStream::ReadAll(T* result) {
+absl::Status BufferedInputStream::ReadAll(T* result) {
   result->clear();
-  Status status;
+  absl::Status status;
   while (status.ok()) {
     status = FillBuffer();
     if (limit_ == 0) {
@@ -198,7 +199,7 @@ Status BufferedInputStream::ReadAll(T* result) {
 
   if (absl::IsOutOfRange(status)) {
     file_status_ = status;
-    return OkStatus();
+    return absl::OkStatus();
   }
   return status;
 }
@@ -206,19 +207,19 @@ Status BufferedInputStream::ReadAll(T* result) {
 template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
-Status BufferedInputStream::Reset() {
+absl::Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   pos_ = 0;
   limit_ = 0;
-  file_status_ = OkStatus();
-  return OkStatus();
+  file_status_ = absl::OkStatus();
+  return absl::OkStatus();
 }
 
-Status BufferedInputStream::ReadLine(std::string* result) {
+absl::Status BufferedInputStream::ReadLine(std::string* result) {
   return ReadLineHelper(result, false);
 }
 
-Status BufferedInputStream::ReadLine(tstring* result) {
+absl::Status BufferedInputStream::ReadLine(tstring* result) {
   return ReadLineHelper(result, false);
 }
 
@@ -228,8 +229,8 @@ std::string BufferedInputStream::ReadLineAsString() {
   return result;
 }
 
-Status BufferedInputStream::SkipLine() {
-  Status s;
+absl::Status BufferedInputStream::SkipLine() {
+  absl::Status s;
   bool skipped = false;
   while (true) {
     if (pos_ == limit_) {
@@ -242,11 +243,11 @@ Status BufferedInputStream::SkipLine() {
     char c = buf_[pos_++];
     skipped = true;
     if (c == '\n') {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   if (absl::IsOutOfRange(s) && skipped) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }

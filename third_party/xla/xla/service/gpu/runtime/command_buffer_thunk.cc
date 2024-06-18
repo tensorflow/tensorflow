@@ -206,10 +206,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_.has_value()) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
-    const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
     for (auto& thunk : *thunks_) {
-      auto scoped_annotation =
-          GetKernelAnnotation(annotations, thunk->profile_annotation());
+      auto scoped_annotation = GetKernelAnnotation(thunk->profile_annotation());
       TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
     }
     return absl::OkStatus();

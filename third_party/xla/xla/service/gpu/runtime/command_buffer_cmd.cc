@@ -294,8 +294,6 @@ absl::Status CommandBufferCmdSequence::Record(
     }
   }
 
-  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
-
   // Track the number of commands recorded between barriers.
   absl::flat_hash_map<ExecutionScopeId, int64_t> num_recorded_commands;
 
@@ -303,7 +301,7 @@ absl::Status CommandBufferCmdSequence::Record(
     ExecutionScopeId execution_scope_id =
         command.cmd->GetExecutionScope(record_params);
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(annotations, command.cmd->profile_annotation());
+        GetKernelAnnotation(command.cmd->profile_annotation());
 
     if (command.requires_barrier) {
       VLOG(3) << "Add command buffer barrier after "
