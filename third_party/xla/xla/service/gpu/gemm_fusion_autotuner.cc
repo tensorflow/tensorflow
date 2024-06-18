@@ -403,11 +403,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
         PrecisionConfig::ALG_DOT_F32_F32_F32);
   }
 
-  GemmRewriter rewriter(config.GetGpuComputeCapability(), toolkit_version);
-  GpuInstructionFusion fusion_pass(
-      /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
-  TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
-  TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+  for (bool fp8 : {true, false}) {
+    GemmRewriter rewriter(config.GetGpuComputeCapability(), toolkit_version,
+                          fp8);
+    GpuInstructionFusion fusion_pass(
+        /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
+    TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
+    TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+  }
   // TODO(tdanyluk): Consider running GemmAlgorithmPicker here for better cuBLAS
   // performance. It is probably not needed on Ampere and later because cuBLAS
   // ignores the algorithm parameter for those targets. If we run

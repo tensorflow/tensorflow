@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,10 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_fusion.h"
+#include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -565,6 +568,76 @@ class GemmFusionAutotunerDumpTest : public GemmFusionAutotunerTest {
     return debug_options;
   }
 };
+
+TEST_F(GemmFusionAutotunerDumpTest, Fp8CublasltFallbackSupport) {
+  const std::string kHloText = R"(
+HloModule o
+
+gemm_fusion {
+  p0 = f8e4m3fn[64,6144]{1,0} parameter(0)
+  p1 = f8e4m3fn[64,6144]{1,0} parameter(1)
+  ROOT %dot.0 = f32[64,64]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f8e4m3fn[64,6144]{1,0} parameter(0)
+  p1 = f8e4m3fn[64,6144]{1,0} parameter(1)
+  ROOT %dot.0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  DebugOptions opts;
+  AutotuneConfig autotune_config{
+      DeviceConfig{backend().default_stream_executor(),
+                   backend().memory_allocator()},
+      opts};
+  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+                             *module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                          ParseTextProto<AutotuneResults>(R"pb(
+                            version: 3
+                            results {
+                              device: "..."
+                              hlo: "..."
+                              result {
+                                gemm { algorithm: -1 }
+                                run_time { nanos: 14 }
+                              }
+                            })pb"));
+  autotune_results_override.mutable_results(0)->set_device(
+      cache_key.GetModelStr());
+  autotune_results_override.mutable_results(0)->set_hlo(cache_key.GetHlo());
+  CHECK_OK(AutotunerUtil::LoadAutotuneResults(autotune_results_override));
+
+  HloPassPipeline pipeline("gemm_autotune");
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
+                                      tsl::port::MaxParallelism());
+  MultiProcessKeyValueStore key_value_store;
+  pipeline.AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
+                                        &thread_pool, key_value_store);
+  pipeline.AddPass<CallInliner>();
+  for (bool fp8_rewrite : {true, false}) {
+    pipeline.AddPass<GemmRewriter>(autotune_config.GetGpuComputeCapability(),
+                                   GetToolkitVersion(), fp8_rewrite);
+  }
+
+  EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
+  const bool is_at_least_hopper =
+      std::holds_alternative<se::CudaComputeCapability>(
+          autotune_config.GetGpuComputeCapability()) &&
+      std::get<se::CudaComputeCapability>(
+          autotune_config.GetGpuComputeCapability())
+          .IsAtLeastHopper();
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matches,
+      RunFileCheck(module->ToString(), is_at_least_hopper
+                                           ? "// CHECK: __cublas$lt"
+                                           : "// CHECK: __cublas$gemm"));
+  EXPECT_TRUE(filecheck_matches);
+}
 
 TEST_F(GemmFusionAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
   // Computation is chosen such that relatively heavy math operations before the
