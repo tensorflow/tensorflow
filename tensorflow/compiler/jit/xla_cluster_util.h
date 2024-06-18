@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "xla/service/graphcycles/graphcycles.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
 
