@@ -809,6 +809,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
         "//xla/service/cpu/runtime:all_reduce_thunk",

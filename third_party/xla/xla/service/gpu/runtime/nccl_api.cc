@@ -165,19 +165,6 @@ static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
   }
 }
 
-static std::string_view ToString(ReductionKind reduction_kind) {
-  switch (reduction_kind) {
-    case ReductionKind::SUM:
-      return "sum";
-    case ReductionKind::PRODUCT:
-      return "prod";
-    case ReductionKind::MIN:
-      return "min";
-    case ReductionKind::MAX:
-      return "max";
-  }
-}
-
 //==-----------------------------------------------------------------------===//
 // Casting between opaque API structs and NCCL types.
 //==-----------------------------------------------------------------------===//
@@ -531,7 +518,7 @@ absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ToString(reduction_kind), comm, stream);
+      count, ReductionKindToString(reduction_kind), comm, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
@@ -573,7 +560,7 @@ absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ToString(reduction_kind), comm, stream);
+      count, ReductionKindToString(reduction_kind), comm, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 

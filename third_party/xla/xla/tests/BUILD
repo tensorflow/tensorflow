@@ -2131,12 +2131,16 @@ xla_test(
         # All reduce is not supported on the interpreter backend.
         "interpreter",
     ],
-    tags = ["test_hlo_pjrt_runner"],
+    tags = [
+        "test_hlo_pjrt_runner",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",

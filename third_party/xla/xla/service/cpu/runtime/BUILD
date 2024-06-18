@@ -43,8 +43,12 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":buffer_allocations",
+        "//xla:executable_run_options",
+        "//xla:util",
         "//xla/runtime:buffer_use",
+        "//xla/service:global_device_id",
         "//xla/service/cpu:cpu_runtime",
+        "//xla/stream_executor",
         "//xla/stream_executor/host:host_kernel_c_api",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/base:core_headers",
@@ -168,11 +172,14 @@ cc_library(
     srcs = ["all_reduce_thunk.cc"],
     hdrs = ["all_reduce_thunk.h"],
     deps = [
+        ":collective_thunk",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/stream_executor",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/algorithm:container",
@@ -187,6 +194,27 @@ cc_library(
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "collective_thunk",
+    srcs = ["collective_thunk.cc"],
+    hdrs = ["collective_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:computation_placer",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

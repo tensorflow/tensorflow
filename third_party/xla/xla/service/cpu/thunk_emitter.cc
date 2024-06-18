@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/all_reduce_thunk.h"
@@ -248,21 +250,51 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
     const HloInstruction* instruction) {
+  auto* all_reduce = Cast<HloAllReduceInstruction>(instruction);
+
+  // Check that we recognize the reduction computation attached to a collective.
+  auto reduction_kind = MatchReductionComputation(all_reduce->to_apply());
+  if (!reduction_kind.has_value()) {
+    return Unimplemented("AllReduce for computation '%s' is not supported",
+                         all_reduce->to_apply()->ToString());
+  }
+
+  // Collect buffer slices for all operands.
   std::vector<BufferAllocation::Slice> source_buffers;
   std::vector<Shape> source_shapes;
 
-  for (const HloInstruction* operand : instruction->operands()) {
+  for (const HloInstruction* operand : all_reduce->operands()) {
     TF_ASSIGN_OR_RETURN(source_buffers.emplace_back(),
                         GetAllocationSlice(operand));
     source_shapes.push_back(operand->shape());
   }
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice destination_buffer,
-                      GetAllocationSlice(instruction));
+  // Collect buffer slices for all results.
+  std::vector<BufferAllocation::Slice> destination_buffers;
+  std::vector<Shape> destination_shapes;
+
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(destination_buffers.emplace_back(),
+                        GetAllocationSlice(instruction, indexed.index));
+    destination_shapes.push_back(indexed.shape);
+  }
+
+  AllReduceThunk::OpParams op_params = {
+      /*op_id=*/all_reduce->channel_id().has_value()
+          ? all_reduce->channel_id().value()
+          : all_reduce->GetModule()->unique_id(),
+      /*has_channel_id=*/all_reduce->channel_id().has_value(),
+      /*use_global_device_ids=*/all_reduce->use_global_device_ids(),
+      /*replica_groups=*/all_reduce->replica_groups(),
+  };
+
+  bool single_replica = hlo_module_config_.replica_count() == 1 &&
+                        hlo_module_config_.num_partitions() == 1;
 
   return ThunkSequence::Of<AllReduceThunk>(
-      ThunkInfo(instruction), source_buffers, source_shapes, destination_buffer,
-      instruction->shape());
+      ThunkInfo(all_reduce), *reduction_kind, std::move(op_params),
+      source_buffers, source_shapes, destination_buffers, destination_shapes,
+      single_replica);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(

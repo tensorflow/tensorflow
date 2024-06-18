@@ -354,10 +354,14 @@ absl::Status CpuExecutable::ExecuteThunks(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
+  // Prepare for executing XLA program collectively.
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
+                      Thunk::CollectiveExecuteParams::Create(run_options));
+
   Thunk::ExecuteParams execute_params = {
       &*host_kernels_, &allocations,
       runtime::GetXfeedManager(run_options->device_ordinal()),
-      run_options->intra_op_thread_pool()};
+      run_options->intra_op_thread_pool(), &collective_execute_params};
 
   auto executed_event = thunks_->Execute(execute_params);
   tsl::BlockUntilReady(executed_event);

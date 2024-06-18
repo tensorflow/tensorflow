@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -26,13 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/xfeed_manager.h"
+#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -112,6 +111,29 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+  // CollectiveExecuteParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters capturing all the details required for collective execution of
+  // XLA executables (multiple partitions and replicas).
+  struct CollectiveExecuteParams {
+    static absl::StatusOr<CollectiveExecuteParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    RunId run_id;
+
+    int64_t local_device_ordinal;
+    GlobalDeviceId global_device_id;
+
+    const DeviceAssignment* device_assignment = nullptr;
+
+   private:
+    CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
+                            GlobalDeviceId global_device_id,
+                            const DeviceAssignment* device_assignment);
+  };
+
+  //===--------------------------------------------------------------------===//
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
@@ -122,6 +144,7 @@ class Thunk {
     const BufferAllocations* buffer_allocations = nullptr;
     runtime::XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
+    CollectiveExecuteParams* collective_params = nullptr;
   };
 
   // An execute event that becomes ready when all tasks are completed.

@@ -22,36 +22,46 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class AllReduceThunk final : public Thunk {
+class AllReduceThunk final : public CollectiveThunk {
  public:
+  using CollectiveThunk::OpParams;
+
   static absl::StatusOr<std::unique_ptr<AllReduceThunk>> Create(
-      Info info, absl::Span<const BufferAllocation::Slice> source_buffers,
+      Info info, ReductionKind reduction_kind, OpParams op_params,
+      absl::Span<const BufferAllocation::Slice> source_buffers,
       absl::Span<const Shape> source_shapes,
-      BufferAllocation::Slice destination_buffer,
-      const Shape& destination_shape);
+      absl::Span<const BufferAllocation::Slice> destination_buffers,
+      absl::Span<const Shape> destination_shapes, bool single_replica);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 
  private:
-  AllReduceThunk(Info info,
+  AllReduceThunk(Info info, ReductionKind reduction_kind, OpParams op_params,
                  absl::Span<const BufferAllocation::Slice> source_buffers,
                  absl::Span<const Shape> source_shapes,
-                 BufferAllocation::Slice destination_buffer,
-                 const Shape& destination_shape);
+                 absl::Span<const BufferAllocation::Slice> destination_buffers,
+                 absl::Span<const Shape> destination_shapes,
+                 bool single_replica);
+
+  ReductionKind reduction_kind_;
 
   std::vector<BufferAllocation::Slice> source_buffers_;
   std::vector<Shape> source_shapes_;
 
-  BufferAllocation::Slice destination_buffer_;
-  Shape destination_shape_;
+  std::vector<BufferAllocation::Slice> destination_buffers_;
+  std::vector<Shape> destination_shapes_;
+
+  bool single_replica_;
 };
 
 }  // namespace xla::cpu
