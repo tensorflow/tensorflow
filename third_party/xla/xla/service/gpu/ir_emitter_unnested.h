@@ -155,6 +155,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
   absl::Status EmitFusion(const HloFusionInstruction* instr);
+  absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
   absl::Status EmitSelectAndScatter(
       const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
