@@ -51,8 +51,8 @@ auto AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
   std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
                                                    TUPLE, OPAQUE_TYPE, TOKEN};
-  const proto2::EnumDescriptor* xla_type_descriptor =
-      proto2::GetEnumDescriptor<xla::PrimitiveType>();
+  const tsl::protobuf::EnumDescriptor* xla_type_descriptor =
+      tsl::protobuf::GetEnumDescriptor<xla::PrimitiveType>();
   for (int enum_ix = 0; enum_ix < xla_type_descriptor->value_count();
        ++enum_ix) {
     xla::PrimitiveType xla_type = static_cast<xla::PrimitiveType>(
