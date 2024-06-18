@@ -493,7 +493,8 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client_->LookupAddressableDevice(local_hardware_id));
+                      pjrt_client_->LookupAddressableDevice(
+                          xla::PjRtLocalDeviceId(local_hardware_id)));
   return LookupPjRtDevice(pjrt_device);
 }
 

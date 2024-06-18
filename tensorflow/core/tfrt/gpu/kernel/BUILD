@@ -67,6 +67,7 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:pjrt_common",
         "@local_xla//xla/tsl/framework:device_id",
         "@local_xla//xla/tsl/framework:serving_device_selector",
         "@tf_runtime//:hostcontext",

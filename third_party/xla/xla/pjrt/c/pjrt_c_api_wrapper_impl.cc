@@ -453,9 +453,9 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_LookupAddressableDevice_Args",
       PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(
-      xla::PjRtDevice * addressable_device,
-      args->client->client->LookupAddressableDevice(args->local_hardware_id));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * addressable_device,
+                        args->client->client->LookupAddressableDevice(
+                            xla::PjRtLocalDeviceId(args->local_hardware_id)));
   args->addressable_device = GetCDevice(args->client, addressable_device);
   return nullptr;
 }

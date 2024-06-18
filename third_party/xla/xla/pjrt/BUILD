@@ -337,7 +337,7 @@ xla_cc_test(
 cc_library(
     name = "pjrt_common",
     hdrs = ["pjrt_common.h"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@local_tsl//tsl/lib/gtl:int_type",
     ],

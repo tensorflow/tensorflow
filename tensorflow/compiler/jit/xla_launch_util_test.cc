@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
@@ -191,8 +192,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
       const std::vector<VariableInfo>& variables,
       const XlaCompiler::CompilationResult* result,
       xla::PjRtLoadedExecutable* executable) {
-    TF_ASSIGN_OR_RETURN(auto pjrt_device, pjrt_client_->LookupAddressableDevice(
-                                              device_->parsed_name().id));
+    TF_ASSIGN_OR_RETURN(auto pjrt_device,
+                        pjrt_client_->LookupAddressableDevice(
+                            xla::PjRtLocalDeviceId(device_->parsed_name().id)));
 
     std::vector<xla::PjRtBuffer*> executable_args;
     executable_args.reserve(result->input_mapping.size());
@@ -675,9 +677,9 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
   TF_ASSERT_OK_AND_ASSIGN(const int pjrt_device_id,
                           tsl::GetDeviceIdFromDeviceParsedName(
                               context_->device()->parsed_name(), device_type));
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::PjRtDevice * pjrt_device,
-      pjrt_client_->LookupAddressableDevice(pjrt_device_id));
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
+                          pjrt_client_->LookupAddressableDevice(
+                              xla::PjRtLocalDeviceId(pjrt_device_id)));
 
   absl::flat_hash_map<int, const Tensor*> variable_snapshots;
   for (int i = 0; i < variables.size(); i++) {

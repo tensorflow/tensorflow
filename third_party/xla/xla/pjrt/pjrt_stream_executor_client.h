@@ -287,8 +287,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override;
-  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
@@ -416,7 +414,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                LookupAddressableDevice(device_ordinal).value())
+                LookupAddressableDevice(xla::PjRtLocalDeviceId(device_ordinal))
+                    .value())
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
