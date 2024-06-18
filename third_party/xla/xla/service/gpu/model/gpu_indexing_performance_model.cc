@@ -17,15 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -34,10 +40,14 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -238,6 +248,108 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimes(
   }
 
   return {time_unfused, time_fused};
+}
+
+absl::StatusOr<EstimateRunTimeData>
+GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
+    const HloFusionAdaptor& fusion_adaptor,
+    const LaunchDimensions& launch_dimensions,
+    const std::vector<int64_t>& tile_sizes) {
+  // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+  if (!std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("SymbolicTileAnalysis failed. ",
+                     std::get<FusionDecision>(analysis_or_error).Explain()));
+  }
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                      analysis.ComputeTiledHloInstructions(tile_sizes));
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> n_bytes_total_map;
+
+  int64_t flops = 0;
+  int64_t bytes_read = 0;
+
+  for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
+    // Number of blocks that read or compute this tile.
+    int64_t num_blocks = tiled_hlo->block_id_to_tile_offsets_indexing()
+                             .GetDimensionBound(0)
+                             .GetLoopTripCount();
+
+    // Total number of elements that are read from memory or computed for this
+    // tile across all blocks.
+    int64_t num_elements = num_blocks * Product(tiled_hlo->tile_sizes());
+
+    const HloInstruction* hlo = tiled_hlo->hlo();
+
+    if (fusion_adaptor.ContainsInstruction(hlo)) {
+      // Tiles inside the computation contribute to the total FLOPs count.
+      flops += FlopsPerElement(hlo) * num_elements;
+    } else {
+      // Tiles of the operands of the fusion contribute to the total memory
+      // read time.
+      int64_t element_type_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
+      int64_t tile_bytes_read = element_type_size * num_elements;
+
+      bytes_read += tile_bytes_read;
+      n_bytes_total_map[hlo] += tile_bytes_read;
+    }
+  }
+
+  int64_t num_blocks = launch_dimensions.num_blocks();
+  absl::Duration read_time = absl::ZeroDuration();
+  for (const auto& [hlo, n_bytes_total] : n_bytes_total_map) {
+    int64_t operand_size = shape_size_(hlo->shape());
+    int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+
+    read_time += ReadTimeWithDRAMHeuristic(
+        *device_info_, num_blocks, n_bytes_net, n_bytes_total,
+        /*element_type=*/hlo->shape().element_type(),
+        /*coalesced=*/true);
+  }
+
+  int64_t bytes_written =
+      GetShapeSizeRecursive(tiled_hlo_computation.GetRoot()->hlo()->shape());
+
+  absl::Duration compute_time =
+      ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
+                  launch_dimensions.num_threads_per_block());
+  absl::Duration write_time = WriteTime(*device_info_, bytes_written);
+  absl::Duration memory_access_time = read_time + write_time;
+  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
+      compute_time, memory_access_time,
+      GpuPerformanceModelOptions::PriorityFusion());
+
+  return EstimateRunTimeData{/*flops=*/flops,
+                             /*bytes_read=*/bytes_read,
+                             /*bytes_written=*/bytes_written,
+                             /*read_time=*/read_time,
+                             /*write_time=*/write_time,
+                             /*compute_time=*/compute_time,
+                             /*exec_time=*/exec_time};
+}
+
+absl::StatusOr<EstimateRunTimeData>
+GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  const auto& fusion_analysis =
+      (consumer == nullptr) ? fusion_analysis_cache_->Get(*producer)
+                            : fusion_analysis_cache_->Get(*producer, *consumer);
+  auto launch_config = TritonFusion(fusion_analysis).launch_config();
+
+  if (!launch_config.has_value()) {
+    return absl::InvalidArgumentError(
+        "Could not get launch config for Triton fusion.");
+  }
+
+  return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
+                                       launch_config->launch_dimensions,
+                                       launch_config->output_tile_sizes);
 }
 
 }  // namespace gpu

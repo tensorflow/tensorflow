@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -79,10 +80,12 @@ class GpuPerformanceModelTest : public HloTestBase {
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuHloCostAnalysis analysis_{options_, &device_info_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, ShapeSizeBytesFunction(), &mlir_context_};
+      &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
+      &mlir_context_};
 
   GpuPerformanceModelTest() : HloTestBase() {}
 };

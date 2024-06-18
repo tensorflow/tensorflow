@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
@@ -51,8 +52,10 @@ class GpuIndexingPerformanceModelTest : public HloTestBase {
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, ShapeSizeBytesFunction(), &mlir_context_};
+      &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
+      &mlir_context_};
 
   GpuIndexingPerformanceModelTest() : HloTestBase() {}
 };
@@ -165,6 +168,106 @@ ENTRY entry_computation {
   EXPECT_EQ(runtime_data.bytes_written, 256);
   EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.write_time), 0, 1);
   EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 58, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TritonSoftmaxFusionInstructionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  broadcast_0 = f32[512,911]{1,0} broadcast(param_1), dimensions={1}
+  multiply_0 = f32[512,911]{1,0} multiply(param_0, broadcast_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[512]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[512,911]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[512,911]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(auto runtime_data,
+                          indexing_cost_model_.EstimateRunTimeForTriton(
+                              module->entry_computation()->root_instruction()));
+
+  constexpr int64_t kParam0SizeBytes = 512 * 911 * 4;
+  constexpr int64_t kParam1SizeBytes = 911 * 4;
+  constexpr int64_t kOutputSizeBytes = 512 * 911 * 4;
+
+  // Each block reads 1 tile of shape [1, 911] from param_0 and full param_1.
+  // In total param_0 is read once and param_1 is read 512 times.
+  constexpr int64_t kExpectedBytesRead =
+      kParam0SizeBytes + 512 * kParam1SizeBytes;
+
+  EXPECT_EQ(runtime_data.bytes_read, kExpectedBytesRead);
+  EXPECT_EQ(runtime_data.bytes_written, kOutputSizeBytes);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 5, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TritonSoftmaxProducerConsumerFusionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+fusion {
+  param_0 = f32[512,911] parameter(0)
+  param_1 = f32[911] parameter(1)
+  broadcast = f32[512,911] broadcast(param_1), dimensions={1}
+  ROOT multiply = f32[512,911] multiply(param_0, broadcast)
+}
+
+triton_softmax_computation {
+  param_0 = f32[512,911] parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[512] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[512,911] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[512,911] multiply(param_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[512,911] parameter(0)
+  param_1 = f32[911] parameter(1)
+  fusion.1 = f32[512,911] fusion(param_0, param_1), kind=kLoop, calls=fusion
+  ROOT triton_softmax = f32[512,911] fusion(fusion.1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto consumer = module->entry_computation()->root_instruction();
+  auto producer = consumer->operand(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto runtime_data,
+      indexing_cost_model_.EstimateRunTimeForTriton(producer, consumer));
+
+  constexpr int64_t kParam0SizeBytes = 512 * 911 * 4;
+  constexpr int64_t kParam1SizeBytes = 911 * 4;
+  constexpr int64_t kOutputSizeBytes = 512 * 911 * 4;
+
+  // Each block reads 1 tile of shape [1, 911] from param_0 and full param_1.
+  // In total param_0 is read once and param_1 is read 512 times.
+  constexpr int64_t kExpectedBytesRead =
+      kParam0SizeBytes + 512 * kParam1SizeBytes;
+
+  EXPECT_EQ(runtime_data.bytes_read, kExpectedBytesRead);
+  EXPECT_EQ(runtime_data.bytes_written, kOutputSizeBytes);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 5, 1);
 }
 
 }  // namespace
