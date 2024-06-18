@@ -2217,6 +2217,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor",
     ],
 )
 

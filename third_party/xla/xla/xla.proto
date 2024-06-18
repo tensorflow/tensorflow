@@ -584,6 +584,7 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
   bool xla_gpu_enable_pipelined_p2p = 246;
+  bool xla_gpu_run_post_layout_collective_pipeliner = 311;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -826,7 +827,7 @@ message DebugOptions {
 
   string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
-  // Next id: 311
+  // Next id: 312
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
