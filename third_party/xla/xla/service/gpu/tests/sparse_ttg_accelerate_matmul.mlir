@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file -tritongpu-accelerate-matmul | FileCheck %s
+// RUN: sparse-opt %s -split-input-file -sparse-blocked-to-mma | FileCheck %s
 
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
 // CHECK: #[[MMA:.+]] = #triton_gpu.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 64, 16]}>
