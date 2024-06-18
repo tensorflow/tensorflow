@@ -90,16 +90,21 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 
 # buildifier: disable=function-docstring
-def prepare_amd_gpu_backend_data(backends, backend_tags):
+def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
     new_backends = [name for name in backends if name != "gpu"]
     if len(new_backends) < len(backends):
         new_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
+
+    new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
+    if len(new_disabled_backends) < len(disabled_backends):
+        new_disabled_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
 
     new_backend_tags = {
         key: value
         for key, value in backend_tags.items()
         if key not in ["gpu"] + NVIDIA_GPU_BACKENDS
     }
+
     gpu_backend_tags = backend_tags.get("gpu", [])
     nvidia_tags = []
     for key in gpu_backend_tags:
@@ -117,7 +122,7 @@ def prepare_amd_gpu_backend_data(backends, backend_tags):
             new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("notap")
 
-    return new_backends, new_backend_tags
+    return new_backends, new_disabled_backends, new_backend_tags, backend_args
 
 # buildifier: disable=function-docstring
 def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
@@ -137,16 +142,23 @@ def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_
         if backend not in ["gpu"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
     ]
 
-    nvidia_backends, disabled_backends, nvidia_backend_tags, backend_args = \
+    nvidia_backends, nvidia_disabled_backends, nvidia_backend_tags, nvidia_backend_args = \
         prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args)
-    amd_backends, amd_backend_tags = prepare_amd_gpu_backend_data(amd_backends, backend_tags)
+    amd_backends, amd_disabled_backends, amd_backend_tags, amd_backend_args = \
+        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {})
 
     new_backends = [
         backend
         for backend in nvidia_backends + amd_backends + other_backends
     ]
 
-    return new_backends, disabled_backends, nvidia_backend_tags | amd_backend_tags, backend_args
+    disabled_backends = nvidia_disabled_backends + amd_disabled_backends
+
+    backend_tags = nvidia_backend_tags | amd_backend_tags
+
+    backend_args = nvidia_backend_args | amd_backend_args
+
+    return new_backends, disabled_backends, backend_tags, backend_args
 
 def xla_test(
         name,

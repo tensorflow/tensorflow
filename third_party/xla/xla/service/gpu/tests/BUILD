@@ -965,6 +965,7 @@ xla_test(
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
     shard_count = 15,
+    tags = ["nodebug"],
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",

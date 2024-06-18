@@ -781,5 +781,79 @@ ENTRY main.12 {
 
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
 }
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllToAllDecompose) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,128,64]{2,1,0}, bf16[1,4,64,128]{3,2,1,0})->bf16[1,4,64,64]{3,2,1,0}}, num_partitions=4
+
+ENTRY main.9_spmd {
+  param0 = bf16[1,128,64]{2,1,0} parameter(0)
+  param1 = bf16[1,4,64,128]{3,2,1,0} parameter(1)
+  all-to-all = bf16[1,4,64,128]{3,2,1,0} all-to-all(param1), channel_id=4, replica_groups={{0,1,2,3}}, dimensions={1}
+  ROOT dot.12 = bf16[1,4,64,64]{3,2,1,0} dot(all-to-all, param0), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllToAllTransposeDecompose) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,64,128]{2,1,0}, bf16[1,1,64,4,1,32]{5,4,3,2,1,0})->bf16[1,4,32,128]{3,2,1,0}}, num_partitions=4
+ENTRY main.9_spmd {
+  param.9 = bf16[1,64,128]{2,1,0} parameter(0)
+  param.10 = bf16[1,1,64,4,1,32]{5,4,3,2,1,0} parameter(1)
+  all-to-all = bf16[1,1,64,4,1,32]{5,4,3,2,1,0} all-to-all(param.10), channel_id=4, replica_groups={{0,1,2,3}}, dimensions={3}
+  transpose.15 = bf16[1,4,1,64,1,32]{5,4,1,3,2,0} transpose(all-to-all), dimensions={0,3,1,2,4,5}
+  reshape.2170 = bf16[1,4,64,1,32]{4,3,2,1,0} reshape(transpose.15)
+  reshape.2173 = bf16[4,64,1,32]{3,2,1,0} reshape(reshape.2170)
+  transpose.16 = bf16[1,4,32,64]{2,0,3,1} transpose(reshape.2173), dimensions={2,0,3,1}
+  copy.53 = bf16[1,4,32,64]{3,2,1,0} copy(transpose.16)
+  ROOT dot.12 = bf16[1,4,32,128]{3,2,1,0} dot(copy.53, param.9), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EGemmAllToAllDecompose) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,64,128]{2,1,0}, bf16[1,4,32,128]{3,2,1,0})->bf16[1,4,32,64]{3,2,1,0}}, num_partitions=4
+
+ENTRY main.9_spmd {
+  param.9 = bf16[1,64,128]{2,1,0} parameter(0)
+  param.10 = bf16[1,4,32,128]{3,2,1,0} parameter(1)
+  dot.12 = bf16[1,4,32,64]{3,2,1,0} dot(param.10, param.9), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+  ROOT all-to-all = bf16[1,4,32,64]{3,2,1,0} all-to-all(dot.12), channel_id=4, replica_groups={{0,1,2,3}}, dimensions={1}
+}
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EGemmAllToAllTransposeDecompose) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[1,4,32,128]{3,2,1,0}, bf16[1,128,64]{2,1,0})->bf16[1,4,1,1,32,64]{5,4,3,2,1,0}}, num_partitions=4
+
+ENTRY main.9_spmd {
+  param.9 = bf16[1,4,32,128]{3,2,1,0} parameter(0)
+  param.10 = bf16[1,128,64]{2,1,0} parameter(1)
+  dot.13 = bf16[1,4,32,64]{3,2,1,0} dot(param.9, param.10), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  copy.55 = bf16[1,4,32,64]{3,2,1,0} copy(dot.13)
+  transpose.17 = bf16[4,1,32,64]{3,2,0,1} transpose(copy.55), dimensions={1,0,2,3}
+  copy.56 = bf16[4,1,32,64]{3,2,1,0} copy(transpose.17)
+  reshape.2216 = bf16[1,4,1,32,64]{4,3,2,1,0} reshape(copy.56)
+  reshape.2219 = bf16[1,4,1,1,32,64]{5,4,3,2,1,0} reshape(reshape.2216)
+  ROOT all-to-all.1 = bf16[1,4,1,1,32,64]{5,4,3,2,1,0} all-to-all(reshape.2219), channel_id=7, replica_groups={{0,1,2,3}}, dimensions={1}
+}
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+}
+
 }  // namespace
 }  // namespace xla
