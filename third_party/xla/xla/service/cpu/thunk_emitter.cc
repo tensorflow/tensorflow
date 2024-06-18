@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/runtime/all_reduce_thunk.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -195,6 +195,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
 
+    case HloOpcode::kAllReduce:
+      return EmitAllReduceThunk(instruction);
+
     // TODO(ezhulenev): Port pad optimizations from IrEmitter.
     case HloOpcode::kPad:
       return EmitElementalKernelThunk(instruction);
@@ -237,6 +240,25 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
           absl::StrCat("HLO opcode `", HloOpcodeString(instruction->opcode()),
                        "` is not supported by XLA:CPU ThunkEmitter"));
   }
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
+    const HloInstruction* instruction) {
+  std::vector<BufferAllocation::Slice> source_buffers;
+  std::vector<Shape> source_shapes;
+
+  for (const HloInstruction* operand : instruction->operands()) {
+    TF_ASSIGN_OR_RETURN(source_buffers.emplace_back(),
+                        GetAllocationSlice(operand));
+    source_shapes.push_back(operand->shape());
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice destination_buffer,
+                      GetAllocationSlice(instruction));
+
+  return ThunkSequence::Of<AllReduceThunk>(
+      ThunkInfo(instruction), source_buffers, source_shapes, destination_buffer,
+      instruction->shape());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
