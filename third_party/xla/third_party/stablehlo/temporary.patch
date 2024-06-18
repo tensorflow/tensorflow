@@ -2442,7 +2442,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +    // Do a single traversal to recompose CustomCallOp to CHLO ops.
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
-+    config.enableRegionSimplification = true;
++    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
 +    config.maxIterations = 1;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::ExistingOps;
@@ -2754,7 +2754,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +  void runOnOperation() override {
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
-+    config.enableRegionSimplification = true;
++    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
 +    config.maxIterations = 2;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
@@ -2930,7 +2930,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    // upstream, and that might be the reason.
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
-+    config.enableRegionSimplification = true;
++    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
 +    config.maxIterations = 3;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
@@ -2955,4 +2955,41 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -176,7 +176,8 @@
+     GreedyRewriteConfig config;
+     config.maxIterations = 1;
+     config.useTopDownTraversal = true;
+-    config.enableRegionSimplification = false;
++    config.enableRegionSimplification =
++        mlir::GreedySimplifyRegionLevel::Disabled;
+     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+   }
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -300,7 +300,7 @@
+ 
+   LogicalResult initialize(MLIRContext* context) override {
+     config.useTopDownTraversal = true;
+-    config.enableRegionSimplification = true;
++    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
+     config.maxIterations = 2;
+     config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
+     config.strictMode = GreedyRewriteStrictness::AnyOp;
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -728,7 +728,7 @@
+     // There have been recent refactors to applyPatternsAndFoldGreedily
+     // upstream, and that might be the reason.
+     config.useTopDownTraversal = true;
+-    config.enableRegionSimplification = true;
++    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
+     config.maxIterations = 2;
+     config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
+     config.strictMode = GreedyRewriteStrictness::AnyOp;
 
