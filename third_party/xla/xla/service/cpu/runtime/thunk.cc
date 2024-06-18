@@ -23,6 +23,9 @@ limitations under the License.
 #include <utility>
 
 #include "xla/executable_run_options.h"
+#include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/cpu_executable_run_options.h"
+#include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -70,18 +73,29 @@ Thunk::CollectiveExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
+  // If CPU executable run options are set, use the collectives interface
+  // provided by the executable run options. Otherwise, use the in-process
+  // collectives interface.
+  static auto* in_process_collectives = new runtime::InProcessCollectives();
+  CollectivesInterface* collectives =
+      run_options->cpu_executable_run_options()
+          ? run_options->cpu_executable_run_options()->collectives()
+          : in_process_collectives;
+
   return CollectiveExecuteParams{run_options->run_id(), device_ordinal,
                                  GlobalDeviceId(run_options->device_ordinal()),
-                                 run_options->device_assignment()};
+                                 run_options->device_assignment(), collectives};
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assignment)
+    const DeviceAssignment* device_assignment,
+    CollectivesInterface* collectives)
     : run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
-      device_assignment(device_assignment) {}
+      device_assignment(device_assignment),
+      collectives(collectives) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
   static tsl::AsyncValueOwningRef<ExecuteEvent>* event = [] {

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/time/time.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -40,6 +41,10 @@ namespace xla::cpu {
 CollectiveThunk::CollectiveThunk(Kind kind, Thunk::Info info,
                                  OpParams op_params)
     : Thunk(kind, info), op_params_(std::move(op_params)) {}
+
+absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
+  return absl::Minutes(30);
+}
 
 absl::StatusOr<RendezvousKey> CollectiveThunk::GetRendezvousKey(
     const Thunk::CollectiveExecuteParams& params) {
