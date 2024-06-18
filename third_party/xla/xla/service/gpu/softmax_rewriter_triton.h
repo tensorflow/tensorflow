@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -54,7 +55,8 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // Finds and returns all the fusible diamond chains in the module. The
   // resulting vector is sorted according to a post-order matching (i.e. within
   // the same computation, producer diamonds appear before consumer diamonds).
-  std::vector<DiamondChainDescriptor> FindAllFusibleDiamondChains(
+  absl::StatusOr<std::vector<DiamondChainDescriptor>>
+  FindAllFusibleDiamondChains(
       HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 

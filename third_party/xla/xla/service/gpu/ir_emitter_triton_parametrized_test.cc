@@ -838,7 +838,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[param_0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -892,7 +892,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -943,7 +943,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[param_0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -978,84 +978,12 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0_ENTRY]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
   float tolerance = 2e-4;
-  EXPECT_TRUE(RunAndCompare(hlo_text,
-                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
-}
-
-TEST_P(
-    TritonSoftmaxTest,
-    CanFuseAndEmitSoftmaxWithBatchDimMergingAndSplittingBitcastsOnEveryEdge) {
-  PrimitiveType data_type = GetParam();
-
-  if (data_type == F16) {
-    GTEST_SKIP() << "Exponential op does not support F16.";
-  }
-
-  const std::string hlo_text_template = R"(
-HloModule softmax
-max_computation {
-  arg_0 = $0[] parameter(0)
-  arg_1 = $0[] parameter(1)
-  ROOT maximum = $0[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
-
-ENTRY main {
-  param_0 = $0[2,65,125] parameter(0)
-  bitcasted_param_0 = $0[65,2,125] reshape(param_0)
-  constant_neg_inf = $0[] constant(-inf)
-  reduce = $0[65,2]{1,0} reduce(bitcasted_param_0, constant_neg_inf), dimensions={2}, to_apply=max_computation
-  bitcasted_reduce = $0[130] reshape(reduce)
-  broadcast = $0[130,125]{1,0} broadcast(bitcasted_reduce), dimensions={0}
-  bitcasted_broadcast = $0[65,2,125] reshape(broadcast)
-  subtract = $0[65,2,125]{2,1,0} subtract(bitcasted_param_0, bitcasted_broadcast)
-  bitcasted_subtract = $0[130,125] reshape(subtract)
-  exponential = $0[130,125]{1,0} exponential(bitcasted_subtract)
-  constant_zero = $0[] constant(0)
-  bitcasted_exponential = $0[2,65,125] reshape(exponential)
-  second_reduce = $0[2,65]{1,0} reduce(bitcasted_exponential, constant_zero), dimensions={2}, to_apply=add_computation
-  second_bitcasted_reduce = $0[130] reshape(second_reduce)
-  second_broadcast = $0[130,125]{1,0} broadcast(second_bitcasted_reduce), dimensions={0}
-  second_bitcasted_broadcast = $0[2,65,125] reshape(second_broadcast)
-  ROOT divide = $0[2,65,125]{2,1,0} divide(bitcasted_exponential, second_bitcasted_broadcast)
-})";
-  const std::string hlo_text = absl::Substitute(
-      hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
-  const std::string hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = $0[2,65,125]{2,1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)";
-
-  const std::string hlo_ref = absl::Substitute(
-      hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
-
-  MatchOptimizedHlo(hlo_text, hlo_ref);
-
-  float tolerance;
-  switch (data_type) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case BF16:
-      tolerance = 2e-4;
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
   EXPECT_TRUE(RunAndCompare(hlo_text,
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
@@ -1088,7 +1016,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1156,7 +1084,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1217,7 +1145,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1272,7 +1200,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1326,7 +1254,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1383,7 +1311,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1438,7 +1366,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
@@ -1491,7 +1419,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1547,7 +1475,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1606,7 +1534,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1674,7 +1602,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1741,7 +1669,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1841,7 +1769,7 @@ ENTRY main.30 {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1904,7 +1832,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -1967,7 +1895,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -2026,7 +1954,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
 
   const std::string hlo_ref = absl::Substitute(
@@ -2085,7 +2013,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -2144,7 +2072,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -2203,7 +2131,7 @@ ENTRY main {
 ; CHECK:      ROOT
 ; CHECK-SAME: fusion(%[[P0]])
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
+; CHECK-SAME:   __triton
 )";
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));

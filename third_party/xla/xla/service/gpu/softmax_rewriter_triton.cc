@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/triton_support.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -327,7 +329,15 @@ HloInstruction* FindFirstNonFusibleDiamondProducer(
   return diamond_producer;
 }
 
-absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
+// Creates a fusion corresponding to the input diamond chain. The resulting
+// fusion instruction is added to the module, but is not yet inserted into the
+// graph as a replacement of the original instructions.
+//
+// TODO(b/347956491): this awkward abstraction is needed to work around
+// limitations of HloFusionAdaptor, which underpins the implementation of
+// SymbolicTileAnalysis. We need to come up with a better solution.
+absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
+    const DiamondChainDescriptor& diamond_chain) {
   auto [root, producer] = diamond_chain;
 
   std::string suggested_name = "triton_softmax";
@@ -366,6 +376,7 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
     }
   };
   create_computation(root);
+
   HloComputation* computation =
       root->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                            /*is_entry=*/false);
@@ -376,14 +387,20 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
           computation));
 
   softmax_fusion->GetModule()->SetAndUniquifyInstrName(softmax_fusion,
-                                                       suggested_name);
-
+                                                       "triton_softmax");
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       softmax_fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kTritonSoftmaxFusionKind));
+  backend_config.set_kind(std::string(kTritonFusionKind));
   TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(gpu_config));
+  return xla::Cast<HloFusionInstruction>(softmax_fusion);
+}
+
+absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
+                      MakeFusionForDiamondChain(diamond_chain));
+  HloInstruction* root = diamond_chain.root;
 
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_fusion);
@@ -398,7 +415,27 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   return absl::OkStatus();
 }
 
-using DiamondDescriptor = DiamondChainDescriptor;
+// Returns `true` if the diamond chain passed as a parameter can be tiled
+// correctly using `SymbolicTileAnalysis`.
+absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
+    const DiamondChainDescriptor& diamond_chain) {
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
+                      MakeFusionForDiamondChain(diamond_chain));
+  mlir::MLIRContext context;
+  SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *softmax_fusion->called_computation(), &context);
+
+  bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
+      symbolic_tile_analysis_or_error);
+
+  TF_RETURN_IF_ERROR(diamond_chain.root->GetModule()->RemoveEmbeddedComputation(
+      softmax_fusion->called_computation()));
+  TF_RETURN_IF_ERROR(
+      diamond_chain.root->parent()->RemoveInstruction(softmax_fusion));
+
+  return can_tile;
+}
 
 }  // anonymous namespace
 
@@ -477,11 +514,11 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   return producer;
 }
 
-std::vector<DiamondChainDescriptor>
+absl::StatusOr<std::vector<DiamondChainDescriptor>>
 SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-  std::vector<DiamondDescriptor> matched_diamonds;
+  std::vector<DiamondChainDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
        module.MakeNonfusionComputations(execution_threads)) {
@@ -499,10 +536,22 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
 
       auto producer = MatchesTritonCompatibleClosedReductionDiamond(instr);
       if (std::holds_alternative<HloInstruction*>(producer)) {
-        matched_diamonds.push_back(DiamondDescriptor{
-            instr,
-            std::get<HloInstruction*>(producer),
-        });
+        DiamondChainDescriptor diamond_chain{
+            /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
+        // We filter out the diamond chains that cannot be tiled correctly using
+        // `SymbolicTileAnalysis`.
+        TF_ASSIGN_OR_RETURN(
+            bool can_tile_diamond_chain,
+            CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+        if (can_tile_diamond_chain) {
+          matched_diamonds.push_back(diamond_chain);
+        } else {
+          VLOG(5) << "Cannot tile the diamond pattern described by "
+                  << "instructions " << instr->ToString() << " and "
+                  << std::get<HloInstruction*>(producer)->ToString() << ".";
+          continue;
+        }
+
       } else {
         VLOG(5) << "Cannot match the diamond pattern for instruction "
                 << instr->ToString()
@@ -512,7 +561,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   }
 
   if (matched_diamonds.empty()) {
-    return {};
+    return std::vector<DiamondChainDescriptor>();
   }
 
   auto reduction_dimension_size_from_diamond_root =
@@ -614,7 +663,17 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       last_trivially_fusible_user(matched_diamonds.back().root),
       current_fusion_producer});
 
-  return diamond_chains;
+  // We filter out the diamond chains that cannot be tiled correctly using
+  // `SymbolicTileAnalysis`.
+  std::vector<DiamondChainDescriptor> filtered_diamond_chains;
+  for (const DiamondChainDescriptor& diamond_chain : diamond_chains) {
+    TF_ASSIGN_OR_RETURN(bool can_tile_diamond_chain,
+                        CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+    if (can_tile_diamond_chain) {
+      filtered_diamond_chains.push_back(diamond_chain);
+    }
+  }
+  return filtered_diamond_chains;
 }
 
 absl::Status SoftmaxRewriterTriton::FuseDiamondChain(
@@ -638,8 +697,8 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
                      cuda_compute_capability->minor, "."));
   }
 
-  std::vector<DiamondChainDescriptor> diamond_chains =
-      FindAllFusibleDiamondChains(*module, execution_threads);
+  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
+                      FindAllFusibleDiamondChains(*module, execution_threads));
 
   if (diamond_chains.empty()) {
     return false;

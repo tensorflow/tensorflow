@@ -36,6 +36,7 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -52,9 +53,9 @@ absl::StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
     se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
-  std::vector<DiamondChainDescriptor> diamond_chains =
-      softmax_rewriter_triton.FindAllFusibleDiamondChains(
-          *module, /*execution_threads=*/{});
+  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
+                      softmax_rewriter_triton.FindAllFusibleDiamondChains(
+                          *module, /*execution_threads=*/{}));
 
   for (auto diamond_chain = diamond_chains.rbegin();
        diamond_chain != diamond_chains.rend(); ++diamond_chain) {
@@ -229,7 +230,7 @@ ENTRY main {
 }
 
 TEST_P(SoftmaxRewriterTritonTest,
-       CanFuseSoftmaxWithBatchDimMergingAndSplittingBitcastsOnEveryEdge) {
+       CanNotFuseSoftmaxWhenResultingComputationCanNotBeTiledCorrectly) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_string_template = R"(
 HloModule softmax
@@ -270,23 +271,8 @@ ENTRY main {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
+  EXPECT_FALSE(
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-
-  switch (data_type) {
-    case F32:
-    case BF16:
-      EXPECT_THAT(module->entry_computation()->root_instruction(),
-                  GmockMatch(m::Fusion(m::Parameter())));
-      break;
-    case F16:
-      EXPECT_THAT(module->entry_computation()->root_instruction(),
-                  GmockMatch(m::Bitcast(m::Divide())));
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
 }
 
 TEST_P(SoftmaxRewriterTritonTest, CanNotFuseSoftmaxDiamondWithWrongLayout) {

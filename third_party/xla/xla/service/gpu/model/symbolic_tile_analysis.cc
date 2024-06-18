@@ -247,6 +247,9 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
         IndexingMap operand_indexing_map =
             ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
                                 *operand_indexing_map_set.begin());
+        operand_indexing_map.Simplify();
+        operand_indexing_map.RescaleSymbols();
+        operand_indexing_map.RemoveUnusedSymbols();
 
         auto tiled_operand_or =
             get_tiled_hlo_instruction(operand, std::move(operand_indexing_map));
