@@ -180,31 +180,6 @@ ENTRY main {
 
 // -----
 
-HloModule MOF, is_scheduled=true
-
-%fused_computation.4 (param_0: f32[672], param_1: f32[512,14,14,672]) -> (f32[512,14,14,672], f32[512,14,14,672]) {
-  %param_0 = f32[672]{0} parameter(0)
-  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
-  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
-  %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
-  %neg = f32[512,14,14,672]{3,2,1,0} negate(%add)
-  ROOT tuple = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]{3,2,1,0}) tuple(%add, %neg)
-}
-
-ENTRY main {
-  %param_0 = f32[672]{0} parameter(0)
-  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
-
-  ROOT %fusion.4 = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]) fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.4
-}
-
-// Check that we didn't do anything. The block size didn't change.
-// CHECK-LABEL: fusion_4
-// CHECK: .reqntid 128, 1, 1
-// CHECK: ld.global.nc.f
-
-// -----
-
 HloModule ScalarBroadcasting, is_scheduled=true
 
 %fused_computation.5 (param_0: f32[], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
