@@ -20,9 +20,11 @@ limitations under the License.
 #include <optional>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -42,6 +44,9 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
 using ::testing::Matcher;
+using ::testing::SizeIs;
+using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
            block_id_to_tile_offsets_indexing, "") {
@@ -336,37 +341,41 @@ ENTRY main {
   p1 = f32[2,3]{1,0} parameter(1)
   ROOT fusion = f32[1,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
-TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedReshape) {
+TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedReshape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 fusion {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT reshape = f32[2] reshape(p0)
+  p0 = f32[4,2]{1,0} parameter(0)
+  ROOT reshape = f32[8] reshape(p0)
 }
 
 ENTRY main {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
+  p0 = f32[4,2]{1,0} parameter(0)
+  ROOT fusion = f32[8] fusion(p0), kind=kLoop, calls=fusion
 })"));
-  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  EXPECT_THAT(analysis->GetConstraints(), SizeIs(1));
 }
 
-TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedBitcast) {
+TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedBitcast) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 fusion {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT bitcast = f32[2] bitcast(p0)
+  p0 = f32[4,2]{1,0} parameter(0)
+  ROOT bitcast = f32[8] bitcast(p0)
 }
 
 ENTRY main {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fusion
+  p0 = f32[4,2]{1,0} parameter(0)
+  ROOT fusion = f32[8] fusion(p0), kind=kLoop, calls=fusion
 })"));
-  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  EXPECT_THAT(analysis->GetConstraints(), SizeIs(1));
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
@@ -383,7 +392,7 @@ ENTRY main {
   p1 = f32[1,3]{1,0} parameter(1)
   ROOT fusion = f32[2,3] fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
 TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {
@@ -402,7 +411,99 @@ ENTRY main {
   p1 = f32[32] parameter(1)
   ROOT fusion = (f32[32], f32[32]) fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
-  EXPECT_EQ(TryAnalyzeModule(module.get()), std::nullopt);
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[1,8,6,4,8]{4,3,2,1,0} parameter(0)
+  ROOT bitcast = f32[48,32]{1,0} bitcast(p0)
+}
+
+ENTRY main {
+  p0 = f32[1,8,6,4,8]{4,3,2,1,0} parameter(0)
+  ROOT fusion = f32[48,32]{1,0} fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  EXPECT_THAT(analysis->GetConstraints(), SizeIs(2));
+
+  // We expect the constraints here to be
+  //    s0 mod 6 in [0, 0]
+  //    s1 mod 8 in [0, 0]
+  // We expect tile sizes {6, 8} to satisfy these constraints.
+  std::vector<int64_t> possible_tile_parameters({6, 8});
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(possible_tile_parameters),
+              IsOkAndHolds(true));
+
+  // However, we do not expect tile sizes {6, 7} to satisfy these constraints.
+  std::vector<int64_t> impossible_tile_parameters({6, 7});
+  EXPECT_THAT(
+      analysis->ParametersSatisfyConstraints(impossible_tile_parameters),
+      IsOkAndHolds(false));
+
+  // Passing too few tile parameters results in an error since constraints can
+  // not be properly evaluated.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(/*tile_parameters==*/{6}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Passing tile parameters that satisfy the constraints should let us compute
+  // a TiledHloComputation.
+  EXPECT_OK(analysis->ParametersSatisfyConstraints(possible_tile_parameters));
+
+  // Passing tile parameters that do not satisfy the constraints should result
+  // in an error...
+  EXPECT_THAT(analysis->ComputeTiledHloInstructions(impossible_tile_parameters),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // ... unless we pinky-promise (lie) that they satisfy the constraints ;)
+  EXPECT_OK(analysis->ComputeTiledHloInstructions(
+      impossible_tile_parameters, /*constraints_are_known_satisfied=*/true));
+}
+
+TEST_F(SymbolicTileAnalysisTest, ConstraintsAreAggregatedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
+  p1 = f32[1,8,6,32]{3,2,1,0} parameter(1)
+  bitcast_p0 = f32[48,32]{1,0} bitcast(p0)
+  bitcast_p1 = f32[48,32]{1,0} bitcast(p1)
+  ROOT add = f32[48,32]{1,0} add(bitcast_p0, bitcast_p1)
+}
+
+ENTRY main {
+  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
+  p1 = f32[1,8,6,32]{3,2,1,0} parameter(1)
+  ROOT fusion = f32[48,32]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  // Each bitcast in the above module introduces one constraint. Once they are
+  // aggregated, we have two!
+  EXPECT_THAT(analysis->GetConstraints(), SizeIs(2));
+}
+
+TEST_F(SymbolicTileAnalysisTest, BailsOutWhenConstraintsCanNotBeMerged) {
+  // TODO(bchetioui): allow merging a constraint with itself.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
+  p1 = f32[1,48,4,8]{3,2,1,0} parameter(1)
+  bitcast_p0 = f32[48,32]{1,0} bitcast(p0)
+  bitcast_p1 = f32[48,32]{1,0} bitcast(p1)
+  ROOT add = f32[48,32]{1,0} add(bitcast_p0, bitcast_p1)
+}
+
+ENTRY main {
+  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
+  p1 = f32[1,48,4,8]{3,2,1,0} parameter(1)
+  ROOT fusion = f32[48,32]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
 }  // namespace

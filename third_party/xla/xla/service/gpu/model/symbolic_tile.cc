@@ -106,43 +106,6 @@ AffineMap SubstituteAllIndicesAndRangeVarSymbolsWithSameValue(
   return simplifyAffineMap(affine_map.replace(indices, num_dims, num_symbols));
 }
 
-// Merges `maybe_first_map` and `second_map` if
-//  (1) `maybe_first_map` is present, and
-//  (2) `second_map` and `*maybe_first_map` have distinct sets of keys.
-// Otherwise, returns `std::nullopt`.
-//
-//
-// The behaviour of this function is in spirit equivalent to using C++23's
-// `std::optional<T>::and_then` to merge a collection of `ConstraintMap`s.
-//
-// We pass `maybe_first_map` by value here in order to exploit move semantics
-// to avoid copies when possible.
-//
-// TODO(bchetioui): allow merging constraints in more edge cases, e.g. if one
-// of the intervals is contained within the other.
-std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
-    std::optional<ConstraintMap> maybe_first_map,
-    const ConstraintMap& second_map) {
-  if (!maybe_first_map.has_value()) {
-    return std::nullopt;
-  }
-
-  ConstraintMap& first_map = *maybe_first_map;
-
-  for (const auto& [expr, interval] : second_map) {
-    if (first_map.contains(expr)) {
-      AffineMapPrinter printer;
-      VLOG(1) << "Got two different constraints for expression "
-              << printer.ToString(expr);
-      return std::nullopt;
-    }
-
-    first_map.insert({expr, interval});
-  }
-
-  return first_map;
-}
-
 struct SizeAndStrideExpression {
   AffineExpr size;
   AffineExpr stride;
@@ -619,6 +582,29 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
 }
 
 }  // anonymous namespace
+
+std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
+    std::optional<ConstraintMap> maybe_first_map,
+    const ConstraintMap& second_map) {
+  if (!maybe_first_map.has_value()) {
+    return std::nullopt;
+  }
+
+  ConstraintMap& first_map = *maybe_first_map;
+
+  for (const auto& [expr, interval] : second_map) {
+    if (first_map.contains(expr)) {
+      AffineMapPrinter printer;
+      VLOG(1) << "Got two different constraints for expression "
+              << printer.ToString(expr);
+      return std::nullopt;
+    }
+
+    first_map.insert({expr, interval});
+  }
+
+  return first_map;
+}
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {

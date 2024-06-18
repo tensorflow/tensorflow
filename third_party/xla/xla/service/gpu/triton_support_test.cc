@@ -20,11 +20,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/descriptor.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
@@ -41,9 +44,72 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using UnaryElementwiseTest = TritonSupportTestWithParam;
+using ::testing::Not;
+using ::testing::status::IsOk;
+
+auto AllXlaDataTypes() {
+  std::vector<xla::PrimitiveType> xla_data_types;
+  std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
+                                                   TUPLE, OPAQUE_TYPE, TOKEN};
+  const proto2::EnumDescriptor* xla_type_descriptor =
+      proto2::GetEnumDescriptor<xla::PrimitiveType>();
+  for (int enum_ix = 0; enum_ix < xla_type_descriptor->value_count();
+       ++enum_ix) {
+    xla::PrimitiveType xla_type = static_cast<xla::PrimitiveType>(
+        xla_type_descriptor->value(enum_ix)->number());
+    if (!absl::c_linear_search(to_filter_out, xla_type)) {
+      xla_data_types.push_back(xla_type);
+    }
+  }
+  return ::testing::ValuesIn(xla_data_types);
+}
 
 // TODO(b/343158720): remove references to TritonFusionAnalysis in this file.
+// TODO(b/343158720): factor out implication tests into a util in order to
+// simplify the test structure.
+using BitcastOrReshapeTest = TritonSupportTestWithParam;
+
+TEST_P(BitcastOrReshapeTest, IsTritonSupportedBitcastOrReshape) {
+  auto [data_type, opcode] = GetParam();
+  const std::string kHloTestTemplate = R"(
+triton_computation {
+  parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
+  ROOT bitcast_or_reshape = $0[64]{0} $1(parameter_0)
+}
+
+ENTRY e {
+  parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
+  ROOT root_op = $0[64]{0} fusion(parameter_0),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  if (IsTritonSupportedInstruction(ti.Instruction(),
+                                   GetCudaComputeCapability())) {
+    TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
+                                            FromOutputTileSizes({16}),
+                                            "CHECK: tt.func @triton_fn"));
+  } else {
+    const se::DeviceDescription dev_info =
+        TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+    EXPECT_THAT(
+        TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+                      dev_info, FromOutputTileSizes({1}), &llvm_module_,
+                      mlir_context_),
+        Not(IsOk()));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
+    ::testing::Combine(AllXlaDataTypes(),
+                       ::testing::Values(HloOpcode::kBitcast,
+                                         HloOpcode::kReshape)),
+    TritonSupportTestParamsToString);
+
+using UnaryElementwiseTest = TritonSupportTestWithParam;
 
 // TODO(b/331636835): updates elementwise op tests to directly emit single op
 // instead of relying on triton gemm kernel.
