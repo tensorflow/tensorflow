@@ -15,24 +15,39 @@ limitations under the License.
 
 #include "xla/service/dump.h"
 
+#include <cstdint>
 #include <functional>
+#include <iostream>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/util.h"
@@ -40,6 +55,8 @@ limitations under the License.
 #include "tsl/lib/io/zlib_outputbuffer.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
@@ -654,6 +671,9 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
   CanonicalDebugOptions opts(debug_options);
   tsl::Env* env = tsl::Env::Default();
   const std::string& dir = opts.dump_to;
+  if (dir.empty()) {
+    return;
+  }
   if (!env->IsDirectory(dir).ok()) {
     auto status = env->RecursivelyCreateDir(dir);
     if (!status.ok()) {
