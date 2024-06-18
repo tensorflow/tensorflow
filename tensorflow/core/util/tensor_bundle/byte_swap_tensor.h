@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
 
