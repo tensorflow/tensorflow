@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/service/spmd/shardonnay/utils.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -228,7 +230,6 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     }
   }
 
-  HloProto proto;
   // TODO(b/345414638): Delete when we move Shardonnay as the first pass in the
   // XLA pipeline.
   if (use_tuple_args && GetDebugOptionsFromFlags().xla_use_shardonnay()) {
@@ -238,10 +239,16 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
                               mlir::StringAttr::get(context, "t"));
     use_tuple_args = false;
   }
-  TF_RETURN_IF_ERROR(
-      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple));
 
-  xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
+  // create config options use use_tuple_args, return_tuple set:
+  mlir::MlirToHloConversionOptions options;
+  options.use_tuple_args = use_tuple_args;
+  options.return_tuple = return_tuple;
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      mlir::ConvertMlirHloToHloModule(module, options));
+
+  xla_computation = XlaComputation(hlo_module->ToProto());
   return absl::OkStatus();
 }
 
