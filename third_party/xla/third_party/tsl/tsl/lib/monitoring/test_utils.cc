@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/lib/monitoring/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

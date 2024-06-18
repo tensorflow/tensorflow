@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/tstring.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {

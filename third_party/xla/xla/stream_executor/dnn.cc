@@ -41,9 +41,9 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {

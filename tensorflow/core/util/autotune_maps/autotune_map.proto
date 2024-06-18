@@ -21,8 +21,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "xla/tsl/protobuf/dnn.proto";
 import "tensorflow/core/util/autotune_maps/conv_parameters.proto";
-import "tsl/protobuf/dnn.proto";
 
 message ConvMapProto {
   message Entry {

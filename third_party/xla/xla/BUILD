@@ -1206,7 +1206,7 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:dnn_proto"],
+    protodeps = ["//xla/tsl/protobuf:dnn_proto"],
 )
 
 cc_library(

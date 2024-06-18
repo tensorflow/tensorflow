@@ -1,19 +1,20 @@
+load(
+    "@local_tsl//tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
+
 # Placeholder: load py_proto_library
 load(
-    "@local_xla//xla/tsl:tsl.bzl",
+    "//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
-)
-load(
-    "//tsl/platform:build_config.bzl",
-    "tf_proto_library",
 )
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "@local_xla//xla/tsl:internal",
+        "//xla/tsl:internal",
         "//tensorflow_models:__subpackages__",
     ]),
     features = if_google(["-parse_headers"]),
@@ -105,7 +106,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "@local_xla//xla/tsl/util:__pkg__",
+        "//xla/tsl/util:__pkg__",
     ]),
 )
 

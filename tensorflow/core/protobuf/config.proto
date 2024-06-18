@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "xla/tsl/protobuf/coordination_config.proto";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
@@ -9,7 +10,6 @@ import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 import "tensorflow/core/protobuf/rpc_options.proto";
-import "tsl/protobuf/coordination_config.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";

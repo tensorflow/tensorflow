@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel_common.h"
+#include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
 #include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {
 

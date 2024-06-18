@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/lib/monitoring/types.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

@@ -422,6 +422,7 @@ xla_cc_binary(
         "//xla/service:hlo_runner",
         "//xla/service:local_service",
         "//xla/service:platform_util",
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -430,7 +431,6 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:subprocess",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_cuda_or_rocm([
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
@@ -828,6 +828,8 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
@@ -838,8 +840,6 @@ xla_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

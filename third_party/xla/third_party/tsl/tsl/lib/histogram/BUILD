@@ -29,7 +29,7 @@ cc_library(
         "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
     alwayslink = True,
 )
@@ -62,6 +62,6 @@ tsl_cc_test(
         "//tsl/platform:logging",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )

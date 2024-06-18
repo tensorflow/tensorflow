@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 namespace tsl {
 namespace {
 using ::tensorflow::CoordinatedTask;

@@ -41,13 +41,13 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/framework/cancellation.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 using tensorflow::CoordinatedTask;

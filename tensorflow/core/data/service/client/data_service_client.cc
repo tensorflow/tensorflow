@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/client/validate_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/retrying_utils.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

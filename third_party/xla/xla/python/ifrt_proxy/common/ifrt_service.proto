@@ -24,8 +24,8 @@ import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
 import "xla/python/ifrt/sharding.proto";
 import "xla/python/ifrt_proxy/common/types.proto";
+import "xla/tsl/protobuf/status.proto";
 import "xla/xla_data.proto";
-import "tsl/protobuf/status.proto";
 
 option cc_enable_arenas = true;
 

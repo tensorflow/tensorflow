@@ -31,12 +31,12 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tsl {
 namespace {

@@ -184,6 +184,8 @@ ifrt_proxy_cc_test(
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -204,8 +206,6 @@ ifrt_proxy_cc_test(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

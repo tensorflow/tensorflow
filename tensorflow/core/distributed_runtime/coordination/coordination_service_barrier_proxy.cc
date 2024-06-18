@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

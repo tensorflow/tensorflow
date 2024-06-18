@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/allocator_retry.h"
+#include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #include "tsl/lib/core/bits.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/protobuf/bfc_memory_map.pb.h"
 
 namespace tsl {
 

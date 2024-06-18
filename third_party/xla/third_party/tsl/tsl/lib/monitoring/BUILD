@@ -78,7 +78,7 @@ cc_library(
         "//tsl/platform:status",
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -102,7 +102,7 @@ cc_library(
         ":types",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -126,7 +126,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -138,7 +138,7 @@ cc_library(
     deps = [
         ":metric_def",
         ":types",
-        "//tsl/protobuf:histogram_proto_cc",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -201,9 +201,9 @@ cc_library(
         ":types",
         "//tsl/platform:errors",
         "//tsl/platform:statusor",
-        "//tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 

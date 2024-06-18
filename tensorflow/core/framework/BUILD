@@ -1843,9 +1843,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
-        "@local_tsl//tsl/protobuf:histogram_proto",
+        "@local_xla//xla/tsl/protobuf:histogram_proto",
     ],
-    exports = ["@local_tsl//tsl/protobuf:histogram_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(

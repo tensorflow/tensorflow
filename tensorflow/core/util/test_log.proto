@@ -3,4 +3,4 @@ syntax = "proto3";
 
 package tensorflow.dummy;
 
-import public "tsl/protobuf/test_log.proto";
+import public "xla/tsl/protobuf/test_log.proto";

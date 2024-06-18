@@ -635,11 +635,11 @@ xla_cc_test(
         ":plugin_program_serdes",
         ":serdes",
         ":serdes_proto_cc",
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

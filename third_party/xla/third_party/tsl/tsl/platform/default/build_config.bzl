@@ -732,7 +732,7 @@ def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",
         clean_dep("@eigen_archive//:eigen3"),
-        clean_dep("//tsl/protobuf:protos_all_cc"),
+        clean_dep("@local_xla//xla/tsl/protobuf:protos_all_cc"),
     ]
 
 def tf_py_clif_cc(name, visibility = None, **kwargs):
@@ -784,9 +784,9 @@ def tsl_cc_test(
                 clean_dep("@com_google_protobuf//:protobuf"),
                 # TODO(ddunleavy) remove these and add proto deps to tests
                 # granularly
-                clean_dep("//tsl/protobuf:error_codes_proto_impl_cc_impl"),
-                clean_dep("//tsl/protobuf:histogram_proto_cc_impl"),
-                clean_dep("//tsl/protobuf:status_proto_cc_impl"),
+                clean_dep("@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc_impl"),
+                clean_dep("@local_xla//xla/tsl/protobuf:histogram_proto_cc_impl"),
+                clean_dep("@local_xla//xla/tsl/protobuf:status_proto_cc_impl"),
                 clean_dep("//tsl/profiler/protobuf:xplane_proto_cc_impl"),
                 clean_dep("//tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
             ],
@@ -795,7 +795,7 @@ def tsl_cc_test(
     )
 
 def tf_portable_proto_lib():
-    return ["//tensorflow/core:protos_all_cc_impl", clean_dep("//tsl/protobuf:protos_all_cc_impl")]
+    return ["//tensorflow/core:protos_all_cc_impl", clean_dep("@local_xla//xla/tsl/protobuf:protos_all_cc_impl")]
 
 def tf_protobuf_compiler_deps():
     return if_static(

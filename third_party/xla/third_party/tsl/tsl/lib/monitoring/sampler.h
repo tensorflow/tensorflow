@@ -27,11 +27,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {
@@ -121,6 +121,7 @@ class Sampler {
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/lib/histogram/histogram.h"
 #include "tsl/lib/monitoring/collection_registry.h"
 #include "tsl/lib/monitoring/metric_def.h"
@@ -128,7 +129,6 @@ class Sampler {
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

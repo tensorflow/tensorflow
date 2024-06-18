@@ -72,7 +72,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "@local_xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -139,8 +139,8 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
-    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -210,17 +210,17 @@ tf_proto_library(
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
-        "@local_tsl//tsl/protobuf:coordination_config_proto",
-        "@local_tsl//tsl/protobuf:rpc_options_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:coordination_config_proto",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
+        "@local_xla//xla/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
     exports = [
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
-        "@local_tsl//tsl/protobuf:rpc_options_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
+        "@local_xla//xla/tsl/protobuf:status_proto",
     ],
 )
 

@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 

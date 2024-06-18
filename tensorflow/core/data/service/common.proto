@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "xla/tsl/protobuf/status.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
-import "tsl/protobuf/status.proto";
 
 // Next tag: 2
 message DatasetDef {

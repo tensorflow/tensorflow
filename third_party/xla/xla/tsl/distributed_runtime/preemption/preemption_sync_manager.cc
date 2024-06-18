@@ -27,11 +27,11 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {

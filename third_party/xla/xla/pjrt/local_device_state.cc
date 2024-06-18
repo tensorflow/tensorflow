@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 

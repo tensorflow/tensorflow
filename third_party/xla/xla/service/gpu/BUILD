@@ -73,7 +73,7 @@ tf_proto_library(
     protodeps = [
         "//xla:xla_data_proto",
         "//xla:autotuning_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -386,6 +386,7 @@ cc_library(
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/integrations:device_mem_allocator",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -413,7 +414,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@triton//:TritonDialects",
     ] + if_gpu_is_configured([
         ":ir_emitter_triton",
@@ -1224,6 +1224,7 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -1234,7 +1235,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -1744,12 +1744,12 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -4779,6 +4779,7 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
         "//xla/stream_executor",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4789,7 +4790,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",

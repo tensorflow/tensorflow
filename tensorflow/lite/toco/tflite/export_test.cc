@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace toco {
 namespace tflite {

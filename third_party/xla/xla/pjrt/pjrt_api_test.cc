@@ -19,9 +19,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/protobuf/error_codes.pb.h"
 namespace {
 
 using ::testing::HasSubstr;

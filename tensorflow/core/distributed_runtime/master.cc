@@ -34,6 +34,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 

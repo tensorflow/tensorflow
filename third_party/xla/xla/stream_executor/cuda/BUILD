@@ -289,6 +289,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cublas",
         "//xla/tsl/cuda:cublas_lt",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -305,7 +306,6 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
@@ -364,12 +364,12 @@ cc_library(
         "//xla/stream_executor:plugin_registry",
     ]) + [
         "//xla/stream_executor",  # build_cleaner: keep
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -402,6 +402,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cudnn",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -426,7 +427,6 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
     alwayslink = True,
 )

@@ -33,9 +33,9 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/unbounded_work_queue.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace ifrt {

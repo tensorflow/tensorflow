@@ -23,11 +23,11 @@ limitations under the License.
 #include "grpcpp/support/byte_buffer.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
-#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tsl {
 

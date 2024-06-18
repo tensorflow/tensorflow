@@ -16,9 +16,9 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tsl {
 

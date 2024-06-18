@@ -680,6 +680,7 @@ cc_library(
         "//xla/service:algorithm_util",
         "//xla/stream_executor",
         "//xla/stream_executor:host_or_device_scalar",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -687,7 +688,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_cuda_is_configured([
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
     ]) + if_static([
