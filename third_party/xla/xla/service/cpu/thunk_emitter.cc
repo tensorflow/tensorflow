@@ -195,6 +195,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
 
+    // TODO(ezhulenev): Port pad optimizations from IrEmitter.
+    case HloOpcode::kPad:
+      return EmitElementalKernelThunk(instruction);
+
     // TODO(ezhulenev): Implement slice operations as separate Thunks because
     // it's much easier to get peak performance from hand written code.
     case HloOpcode::kSlice:
