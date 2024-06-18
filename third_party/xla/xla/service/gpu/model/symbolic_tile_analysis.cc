@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -61,6 +63,7 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
+using ConstraintMap = SymbolicTile::ConstraintMap;
 
 // Computes indexing map from program id into the tile offset for the given
 // shape and tile sizes.
@@ -162,6 +165,8 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
       const HloInstructionAdaptor&, IndexingMap)>
       get_tiled_hlo_instruction;
 
+  std::optional<ConstraintMap> constraints = ConstraintMap();
+
   // Create a new tiled hlo instruction or return existing instruction from
   // cache for the given hlo and indexing map.
   get_tiled_hlo_instruction =
@@ -180,8 +185,6 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
     // line. This is not an inherent limitation of the approach, but simply
     // issues to be resolved in the current implementation.
     if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kReshape ||
-        hlo->opcode() == HloOpcode::kBitcast ||
         hlo->opcode() == HloOpcode::kConcatenate) {
       return FusionDecision{} << "Bailing out on " << hlo->ToString();
     }
@@ -197,6 +200,22 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
       return FusionDecision{} << "Failed to compute symbolic tile for "
                               << indexing_map.ToString() << " for HLO "
                               << hlo->ToString();
+    }
+
+    if (!symbolic_tile->is_satisfiable()) {
+      return FusionDecision{} << "Symbolic tile " << symbolic_tile->ToString()
+                              << " is not satisfiable for "
+                              << indexing_map.ToString() << " for HLO "
+                              << hlo->ToString();
+    }
+
+    constraints = MergeConstraintMapIfPresentAndCompatible(
+        std::move(constraints), symbolic_tile->constraints());
+
+    if (!constraints.has_value()) {
+      return FusionDecision{} << "Failed to merge constraints of "
+                              << hlo->ToString() << " in pre-existing "
+                              << "constraint map";
     }
 
     tiled_hlo_instructions.push_back(
@@ -258,12 +277,53 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
     return topological_order.at(i1.get()) < topological_order.at(i2.get());
   });
 
-  return SymbolicTileAnalysis(std::move(tiled_hlo_instructions), ctx);
+  return SymbolicTileAnalysis(std::move(tiled_hlo_instructions),
+                              std::move(*constraints), ctx);
+}
+
+absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
+    const std::vector<int64_t>& tile_parameters) const {
+  // Populate parameter map.
+  llvm::SmallVector<AffineExpr> parameters = llvm::to_vector(
+      llvm::map_range(tile_parameters, [this](const int64_t v) -> AffineExpr {
+        return mlir::getAffineConstantExpr(v, context_);
+      }));
+
+  for (auto [constrained_expr, interval] : constraints_) {
+    AffineExpr constrained_expr_value =
+        constrained_expr.replaceSymbols(parameters);
+    if (constrained_expr_value.getKind() != mlir::AffineExprKind::Constant) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to reduce ", AffineMapPrinter().ToString(constrained_expr),
+          " to a constant with tile parameters ",
+          absl::StrJoin(tile_parameters, ", ")));
+    }
+
+    int64_t constrained_value =
+        llvm::cast<mlir::AffineConstantExpr>(constrained_expr_value).getValue();
+
+    if (constrained_value < interval.lower ||
+        constrained_value > interval.upper) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
-    const std::vector<int64_t>& tile_parameters) const {
+    const std::vector<int64_t>& tile_parameters,
+    bool constraints_are_known_satisfied) const {
+  if (!constraints_are_known_satisfied) {
+    TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
+                        ParametersSatisfyConstraints(tile_parameters));
+    if (!constraints_are_satisfied) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
+          " do not satisfy the SymbolicTileAnalysis's constraints."));
+    }
+  }
+
   IndexingMap block_id_to_root_tile_offset = ComputeBlockIdToOutputTileIndexing(
       GetRoot()->hlo()->shape().dimensions(), tile_parameters, context_);
 

@@ -691,6 +691,7 @@ xla_cc_test(
         "//xla/service/gpu:hlo_traversal",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

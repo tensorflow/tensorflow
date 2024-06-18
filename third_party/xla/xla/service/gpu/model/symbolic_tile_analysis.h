@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
@@ -56,8 +57,13 @@ class SymbolicTileAnalysis {
       const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
+  // The provided tile parameters must satisfy the analysis's constraints.
+  // By default, `ComputetiledHloInstructions` performs a check that the
+  // constraints are satisfied by the chosen tiled parameters. Setting
+  // `constraints_are_known_satisfied` to true bypasses this check.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
-      const std::vector<int64_t>& tile_parameters) const;
+      const std::vector<int64_t>& tile_parameters,
+      bool constraints_are_known_satisfied = false) const;
 
   // Returns the tiled root instruction.
   const SymbolicTiledHloInstruction* GetRoot() const {
@@ -70,6 +76,23 @@ class SymbolicTileAnalysis {
     return symbolic_tiled_hlo_instructions_;
   }
 
+  // Returns the constraints for the parameters of the symbolic tiled HLO
+  // computation. This is the union of the constraints of all the symbolic tiles
+  // encountered throughout the computation.
+  const SymbolicTile::ConstraintMap& GetConstraints() const {
+    return constraints_;
+  }
+
+  // Returns true if a list of tile parameters satisfies the symbolic tile
+  // analysis's constraints.
+  //
+  // Returns false if the constraints are not satisfied but can be evaluated
+  // correctly. Returns an error if the constraints cannot be evaluated
+  // correctly. This is typically the case if too few tile parameters are
+  // provided to fully reduce the constraint expressions to constants.
+  absl::StatusOr<bool> ParametersSatisfyConstraints(
+      const std::vector<int64_t>& tile_parameters) const;
+
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
 
@@ -81,14 +104,19 @@ class SymbolicTileAnalysis {
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
                            symbolic_tiled_hlo_instructions,
+                       SymbolicTile::ConstraintMap constraints,
                        mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
+        constraints_(std::move(constraints)),
         context_(context) {}
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       symbolic_tiled_hlo_instructions_;
+
+  // See the documentation of GetConstraints().
+  SymbolicTile::ConstraintMap constraints_;
 
   mlir::MLIRContext* context_;
 };
