@@ -103,26 +103,6 @@ add_mlir_library(MhloPasses
   StablehloBroadcastUtils
 )
 
-add_mlir_library(MhloQuantToIntConversion
-  mhlo_quant_legalize_to_int/mhlo_quant_legalize_to_int.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MhloTypeConversion
-  MLIRIR
-  MLIRPass
-  MLIRMathDialect
-  MLIRTransforms
-  MLIRTransformUtils
-)
-
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
 
@@ -280,7 +260,6 @@ add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
-  MhloQuantToIntConversion
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard

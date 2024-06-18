@@ -398,7 +398,6 @@ cc_library(
         "mhlo/transforms/mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc",
         "mhlo/transforms/mhlo_flatten_tuple/mhlo_flatten_tuple.cc",
         "mhlo/transforms/mhlo_passes.h.inc",
-        "mhlo/transforms/mhlo_quant_legalize_to_int/mhlo_quant_legalize_to_int.cc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo_pass.cc",
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
