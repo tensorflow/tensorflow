@@ -77,12 +77,14 @@ pipeline {
                                 PLATFORM_TAG=${TAGS[4]}
                                 OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
                                 mv dist/*.whl ./$OUTPUT_NAME
-
+                            '''
+                            
+                            sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project_name "tf-nightly-macos" \
-                                    --output_name "$OUTPUT_NAME" \
+                                    --project-name "tf-nightly-macos" \
+                                    --output-name "$OUTPUT_NAME" \
                                     dist
                             '''
                         }
@@ -140,12 +142,14 @@ pipeline {
                                 PLATFORM_TAG=${TAGS[4]}
                                 OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
                                 mv dist/*.whl ./$OUTPUT_NAME
+                            '''
 
+                            sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project_name "tf-nightly-macos" \
-                                    --output_name "$OUTPUT_NAME" \
+                                    --project-name "tf-nightly-macos" \
+                                    --output-name "$OUTPUT_NAME" \
                                     dist
                             '''
                         }
@@ -203,12 +207,14 @@ pipeline {
                                 PLATFORM_TAG=${TAGS[4]}
                                 OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
                                 mv dist/*.whl ./$OUTPUT_NAME
+                            '''
 
+                            sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project_name "tf-nightly-macos" \
-                                    --output_name "$OUTPUT_NAME" \
+                                    --project-name "tf-nightly-macos" \
+                                    --output-name "$OUTPUT_NAME" \
                                     dist
                             '''
                         }
