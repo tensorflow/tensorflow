@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_algorithm_picker.h"
 
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
@@ -107,6 +109,20 @@ ENTRY main {
       conv->shape(),
       GmockMatch(m::Shape().WithSubshape(
           {1}, m::Shape().WithElementType(U8).WithDims({new_scratch_bytes}))));
+
+  // Algorithm 14 is disabled for cuDNN 9 on V100
+  TF_ASSERT_OK_AND_ASSIGN(auto dnn_version, GetDnnVersionInfo(stream_exec));
+  if (dnn_version.major_version() >= 9 && dnn_version.major_version() < 10 &&
+      std::holds_alternative<stream_executor::CudaComputeCapability>(cc) &&
+      std::get<stream_executor::CudaComputeCapability>(cc).major == 7 &&
+      std::get<stream_executor::CudaComputeCapability>(cc).minor == 0) {
+    EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                    ->has_cudnn_conv_backend_config() &&
+                conv->backend_config<GpuBackendConfig>()
+                        ->cudnn_conv_backend_config()
+                        .algorithm()
+                        .algo_id() != 14);
+  }
 }
 
 }  // namespace

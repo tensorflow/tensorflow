@@ -2034,6 +2034,7 @@ xla_test(
         ":autotuner_util",
         ":conv_algorithm_picker",
         ":gpu_conv_rewriter",
+        ":stream_executor_util",
         "//xla:debug_options_flags",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
