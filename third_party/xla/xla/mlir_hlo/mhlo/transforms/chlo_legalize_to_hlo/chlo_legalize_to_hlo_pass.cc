@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
-#include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
