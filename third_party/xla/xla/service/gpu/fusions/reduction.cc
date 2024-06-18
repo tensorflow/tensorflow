@@ -1172,7 +1172,7 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
   }
 
   int vector_size = GetVectorSize(analysis, reduction_dimensions, num_threads_x,
-                                  reduction_tiling, /*for_mlir=*/false);
+                                  reduction_tiling);
 
   absl::InlinedVector<int64_t, 4> num_threads{1, num_threads_y, num_threads_x};
   absl::InlinedVector<int64_t, 4> tiled_shape{shape[0], shape[1],

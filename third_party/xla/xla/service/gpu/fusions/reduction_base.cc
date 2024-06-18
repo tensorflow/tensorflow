@@ -66,7 +66,7 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
 
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
-                  int num_threads, Vector3 reduction_tiling, bool for_mlir) {
+                  int num_threads, Vector3 reduction_tiling) {
   // If the minor dimension is not divisible by 2, we can't currently vectorize.
   int64_t minor_dim = reduction_dimensions.dimensions.back();
   if (minor_dim % 2 != 0) {
@@ -77,42 +77,9 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
   if (num_threads * 2 > minor_dim) {
     return 1;
   }
-
-  if (for_mlir) {
-    // MLIR vectorizes loads/stores explicitly and therefore doesn't need
-    // unrolling and the associated heuristics.
-
-    // MLIR's vectorization doesn't work with complex types. However, complex
-    // load/stores are effectively always vectorized and have a size
-    // of at least 8 bytes, which is sufficient.
-    for (HloInstructionAdaptor hero : analysis.fusion_heroes()) {
-      for (HloInstructionAdaptor operand : hero.GetOperands()) {
-        if (primitive_util::IsComplexType(operand.shape().element_type())) {
-          return 1;
-        }
-      }
-    }
-
-    // 16 byte vector loads are often slower than 8 byte loads.
-    if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
-      return 2;
-    }
-    if (analysis.input_output_info().smallest_input_dtype_bits >= 64) {
-      return 1;
-    }
-
-    // Like above, if the size of the minor dimension is not sufficiently large,
-    // the vectorization is not helpful.
-    if (num_threads * 4 > minor_dim) {
-      return 2;
-    }
-    return minor_dim % 4 == 0 ? 4 : 2;
-  }
-
   if (MayPreventVectorization(analysis.fusion())) {
     return 1;
   }
-
   if (reduction_dimensions.is_row_reduction) {
     constexpr int kRowMinorReduced =
         ReductionDimensions::kRowMinorReducedDimension;
@@ -132,8 +99,44 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
     }
     return 1;
   }
-
   return 1;
+}
+
+int GetVectorSizeForMlir(const HloFusionAnalysis& analysis,
+                         const ReductionDimensions& reduction_dimensions,
+                         int num_threads) {
+  // If the minor dimension is not divisible by 2, we can't currently vectorize.
+  int64_t minor_dim = reduction_dimensions.dimensions.back();
+  if (minor_dim % 2 != 0) {
+    return 1;
+  }
+  // Only enable vectorization if all threads will still have work.
+  if (num_threads * 2 > minor_dim) {
+    return 1;
+  }
+  // MLIR's vectorization doesn't work with complex types. However, complex
+  // load/stores are effectively always vectorized and have a size
+  // of at least 8 bytes, which is sufficient.
+  for (HloInstructionAdaptor hero : analysis.fusion_heroes()) {
+    for (HloInstructionAdaptor operand : hero.GetOperands()) {
+      if (primitive_util::IsComplexType(operand.shape().element_type())) {
+        return 1;
+      }
+    }
+  }
+  // 16 byte vector loads are often slower than 8 byte loads.
+  if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
+    return 2;
+  }
+  if (analysis.input_output_info().smallest_input_dtype_bits >= 64) {
+    return 1;
+  }
+  // Like above, if the size of the minor dimension is not sufficiently large,
+  // the vectorization is not helpful.
+  if (num_threads * 4 > minor_dim) {
+    return 2;
+  }
+  return minor_dim % 4 == 0 ? 4 : 2;
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,

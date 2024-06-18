@@ -86,8 +86,8 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
     return first_reduce_->operand(0)->shape();
   }
 
-  IndexingMap ComputeThreadIdToReductionInputIndexing(
-      mlir::MLIRContext* ctx) const;
+  virtual IndexingMap ComputeThreadIdToReductionInputIndexing(
+      mlir::MLIRContext* ctx) const = 0;
 
   // The reduction heroes for each reduction group.
   std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
@@ -108,6 +108,7 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   absl::InlinedVector<int64_t, 4> num_blocks_;
   int64_t total_num_blocks_;
   int64_t total_num_threads_per_block_;
+  int64_t vector_size_ = -1;
 
   ReductionDimensions reduction_dimensions_;
   ReductionGroups groups_;
@@ -125,6 +126,8 @@ class MlirRowReductionFusion : public MlirReductionFusion {
   int GetRowsPerWarp() const;
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
+  IndexingMap ComputeThreadIdToReductionInputIndexing(
+      mlir::MLIRContext* ctx) const override;
 };
 
 class MlirColumnReductionFusion : public MlirReductionFusion {
@@ -137,6 +140,10 @@ class MlirColumnReductionFusion : public MlirReductionFusion {
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
+  IndexingMap ComputeThreadIdToReductionInputIndexing(
+      mlir::MLIRContext* ctx) const override;
+  int64_t num_warps_per_column_;
+  int64_t num_blocks_per_row_;
 };
 
 std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(
