@@ -86,8 +86,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
   }
 
-  // We observe larger n_div_k can improve tree reduction performance. Swap k
-  // and n_div_k if possible.
+  // We observe larger n_div_k can improve tree reduction performance in most of
+  // the cases by reducing memory store and the launch overhead of blocks. Swap
+  // k and n_div_k if possible.
   bool ShouldSwapInnerAndOuterReducedMinorDimension(uint64_t k,
                                                     uint64_t n_div_k,
                                                     uint64_t n,
@@ -114,8 +115,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       // Don't swap If encountered this situation.
       return n % 2 == 0 || k % 2 != 0;
     }
-    // For column reduction, swap to reduce memory store and the launch overhead
-    // of blocks.
+    // There exists no specific situation where swapping has no performance gain
+    // for column reduction.
     return true;
   }
 
@@ -195,12 +196,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     uint64_t padded_n = n + minimum_padding;
-    // We get the best_k, which only need very small padding and may be power of
-    // 2 to accelerate index computation. But we didn't consider whether n_div_k
-    // is the best. We choose one of the {best_k, padded_n / best_k} as the
-    // best_n_div_k so that keep the advantages brought by the best_k
-    // (regardless choose any, padding is same and still has one dimension that
-    // is power of 2) and achieve better performance within optional range.
+    // We get the best {k, n_div_k} pair by the size of padding and whether
+    // index computation is fast. But we ignored the overhead of memory
+    // read/write and blocks launch, which are also important for kernel
+    // performance. It is obvious that the swapped {k, n_div_k} pairs has same
+    // padding size and consumption of index computation as the original. So we
+    // only need to compare the memory read/write and blocks launch to choose
+    // the better one of them.
     uint64_t best_n_div_k = padded_n / best_k;
     if (ShouldSwapInnerAndOuterReducedMinorDimension(
             best_k, best_n_div_k, n, race_free_bound, is_row_reduction)) {
