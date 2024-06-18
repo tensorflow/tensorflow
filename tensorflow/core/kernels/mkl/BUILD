@@ -99,7 +99,6 @@ tf_mkl_kernel_library(
     ],
     deps = [
         "//tensorflow/core:graph",
-        "@com_google_absl//absl/container:inlined_vector",
     ] + MKL_DEPS,
 )
 
