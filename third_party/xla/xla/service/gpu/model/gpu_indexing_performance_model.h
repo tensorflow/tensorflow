@@ -74,7 +74,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
       const LaunchDimensions& launch_dimensions,
-      const std::vector<int64_t>& output_tile_sizes);
+      absl::Span<const int64_t> output_tile_sizes);
 
   // Estimate the run time of producer and consumer fused together, assuming
   // that they will be emitted with Triton.

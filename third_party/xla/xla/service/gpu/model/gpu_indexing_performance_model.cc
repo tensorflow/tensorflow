@@ -254,7 +254,7 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const LaunchDimensions& launch_dimensions,
-    const std::vector<int64_t>& tile_sizes) {
+    absl::Span<const int64_t> tile_sizes) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
