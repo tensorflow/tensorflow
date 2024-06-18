@@ -139,6 +139,42 @@ CompilationCacheProto KernelReuseCache::Export() const {
   return proto;
 }
 
+absl::Status UpdateDiskKernelCache(
+    absl::string_view path, const bool do_append,
+    const CompilationCacheProto& current_cache,
+    absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache) {
+  CompilationCacheProto disk_cache;
+  if (do_append) {
+    std::string serialized;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                             std::string(path), &serialized));
+    if (!disk_cache.ParseFromString(std::string(serialized))) {
+      return Internal("Failed to parse serialized CompilationCacheProto.");
+    }
+  }
+  auto entries = disk_cache.mutable_entries();
+  int stored_kernel_count = 0;
+  for (const auto& [name, binary] : binaries_to_cache) {
+    auto it_current = current_cache.entries().find(name);
+    TF_RET_CHECK(it_current != current_cache.entries().end());
+    auto [it_disk, inserted] = entries->insert({name, it_current->second});
+    TF_RET_CHECK(inserted);
+    TF_RET_CHECK(!binary.empty());
+    it_disk->second.set_binary(reinterpret_cast<const char*>(binary.data()),
+                               binary.size());
+    VLOG(5) << "Cached kernel: " << name << ": " << binary.size();
+    ++stored_kernel_count;
+  }
+  if (stored_kernel_count > 0) {
+    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
+                                              std::string(path),
+                                              disk_cache.SerializeAsString()));
+    VLOG(2) << "Stored " << stored_kernel_count << " / "
+            << binaries_to_cache.size() << " kernels in the cache file.";
+  }
+  return absl::OkStatus();
+}
+
 std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,

@@ -3425,6 +3425,7 @@ cc_library(
         ":custom_kernel_fusion_rewriter",
         ":dot_dimension_sorter",
         ":dot_operand_converter",
+        ":double_buffer_loop_unrolling",
         ":executable_proto_cc",
         ":fusion_merger",
         ":fusion_wrapper",
@@ -3451,7 +3452,7 @@ cc_library(
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":double_buffer_loop_unrolling",
+        ":kernel_reuse_cache",
         ":matmul_utils",
         ":metrics",
         ":move_copy_to_users",
@@ -5730,7 +5731,9 @@ xla_cc_test(
     deps = [
         ":kernel_reuse_cache",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
     ],
 )

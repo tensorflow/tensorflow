@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
+#include <gtest/gtest.h>
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/env.h"
 
 namespace xla {
 namespace gpu {
@@ -37,6 +38,41 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
   EXPECT_TRUE(cache.IsEmpty());
   TF_EXPECT_OK(cache.Load(proto));
   EXPECT_FALSE(cache.IsEmpty());
+}
+
+TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
+  std::string cache_file_path;
+  CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_path));
+  {
+    const CompilationCacheProto proto = [](std::string kernel_name) {
+      KernelReuseCache cache;
+      auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
+        return KernelReuseCache::Entry{.kernel_name = kernel_name};
+      });
+      return cache.Export();
+    }("k1");
+    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/false,
+                                       proto,
+                                       {{.name = "k1", .binary = {5, 6}}}));
+  }
+  {
+    const CompilationCacheProto proto = [](std::string kernel_name) {
+      KernelReuseCache cache;
+      auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
+        return KernelReuseCache::Entry{.kernel_name = kernel_name};
+      });
+      return cache.Export();
+    }("k2");
+    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/true,
+                                       proto,
+                                       {{.name = "k2", .binary = {7, 8}}}));
+  }
+  std::string serialized;
+  TF_EXPECT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), cache_file_path, &serialized));
+  CompilationCacheProto proto;
+  EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
+  EXPECT_EQ(proto.entries_size(), 2);
 }
 
 }  // namespace
