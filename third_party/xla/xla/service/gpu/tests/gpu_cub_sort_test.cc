@@ -46,13 +46,7 @@ bool HloWasRewrittenToUseCubSort(const HloModule& module) {
 
 class CubSortKeysTest : public HloTestBase,
                         public ::testing::WithParamInterface<
-                            std::tuple<PrimitiveType, bool, int>> {
-  DebugOptions GetDebugOptionsForTest() override {
-    auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_enable_cub_radix_sort(true);
-    return options;
-  }
-};
+                            std::tuple<PrimitiveType, bool, int>> {};
 
 TEST_P(CubSortKeysTest, CompareToReference) {
   int batch_size = std::get<2>(GetParam());
@@ -134,13 +128,7 @@ INSTANTIATE_TEST_SUITE_P(
 class CubSortPairsTest
     : public HloTestBase,
       public ::testing::WithParamInterface<
-          std::tuple<PrimitiveType, PrimitiveType, bool, int>> {
-  DebugOptions GetDebugOptionsForTest() override {
-    auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_enable_cub_radix_sort(true);
-    return options;
-  }
-};
+          std::tuple<PrimitiveType, PrimitiveType, bool, int>> {};
 
 TEST_P(CubSortPairsTest, CompareToReference) {
   int batch_size = std::get<3>(GetParam());
