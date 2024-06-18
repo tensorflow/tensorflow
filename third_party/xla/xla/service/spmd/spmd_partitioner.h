@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/xla_data.pb.h"
 
@@ -529,25 +530,6 @@ class PartitionedHlo {
   PartitioningState state_;
 };
 
-struct DotConvDimsMapping {
-  // The dimension numbers for the operands and output corresponding to a
-  // logical dimension (e.g., batch, contracting, non-contracting). If an
-  // operand or the output doesn't have the logical dimension, it is set to
-  // -1.
-  struct DimsMapping {
-    int64_t lhs;
-    int64_t rhs;
-    int64_t output;
-    // input mapped to index in input_spatial_dimensions().
-    int64_t spatial;
-  };
-  std::vector<DimsMapping> batch_dims;
-  std::vector<DimsMapping> contracting_dims;
-  std::vector<DimsMapping> lhs_non_contracting_dims;
-  std::vector<DimsMapping> rhs_non_contracting_dims;
-  std::vector<DimsMapping> conv_spatial_dims;
-};
-
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
  public:
   SpmdPartitioningVisitor(
@@ -596,7 +578,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   absl::Status HandleDotHelper(
-      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
+      HloInstruction* hlo,
+      const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
       absl::FunctionRef<absl::StatusOr<HloInstruction*>(
           HloInstruction*, HloInstruction*, SpmdBuilder*,
           const Window& conv_window)>

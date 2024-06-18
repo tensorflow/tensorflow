@@ -29,7 +29,7 @@ namespace spmd {
 absl::StatusOr<HloInstruction*> PartitionConvolution(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
-    const DotConvDimsMapping& dims_mapping,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>
