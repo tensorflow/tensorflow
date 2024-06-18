@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -209,8 +208,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 
   if (fusion_backend_config_.kind() == kTritonFusionKind ||
-      fusion_backend_config_.kind() == kTritonGemmFusionKind ||
-      fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
+      fusion_backend_config_.kind() == kTritonGemmFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 

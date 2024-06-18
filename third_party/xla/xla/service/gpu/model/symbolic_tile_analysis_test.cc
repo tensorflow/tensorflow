@@ -670,7 +670,7 @@ fused_computation {
 
 ENTRY entry_computation {
   param_0 = f32[8192,50304] parameter(0)
-  ROOT fusion = f32[4,2048,50304] fusion(param_0), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  ROOT fusion = f32[4,2048,50304] fusion(param_0), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
 }
 )"));
 

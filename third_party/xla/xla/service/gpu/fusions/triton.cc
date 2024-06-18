@@ -167,8 +167,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonFusionKind ||
-        fusion_kind == kTritonSoftmaxFusionKind) {
+    if (fusion_kind == kTritonFusionKind) {
       auto launch_config = *this->launch_config();
       launch_dimensions = launch_config.launch_dimensions;
 
@@ -289,9 +288,6 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     // One rough idea is to have a grid where:
     // - 1 grid dimension corresponds to all batch dimensions in the HLO.
     // - 1-2 grid dimension corresponds to block-able dimensions from the HLO.
-    return CalculateSoftMaxLaunchConfig(analysis_.fusion());
-  } else if (analysis_.fusion_backend_config().kind() ==
-             kTritonSoftmaxFusionKind) {
     return CalculateSoftMaxLaunchConfig(analysis_.fusion());
   }
 

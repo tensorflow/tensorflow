@@ -938,14 +938,14 @@ std::vector<const HloInstruction*> GetFusionRoots(
   return out;
 }
 
-bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+bool IsGenericTritonFusion(const HloInstruction& instr) {
   // TODO(b/332649307): Eventually turn this into a generic fusion.
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
          instr.backend_config<GpuBackendConfig>().ok() &&
          instr.backend_config<GpuBackendConfig>()
                  ->fusion_backend_config()
-                 .kind() == kTritonSoftmaxFusionKind;
+                 .kind() == kTritonFusionKind;
 }
 
 bool MayPreventVectorization(const HloFusionAdaptor& fusion) {

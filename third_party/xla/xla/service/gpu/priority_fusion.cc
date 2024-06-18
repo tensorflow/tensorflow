@@ -421,7 +421,7 @@ class GpuPriorityFusionQueue {
       return "triton softmax fusion is not enabled";
     }
 
-    if (IsTritonSoftmaxFusion(*producer)) {
+    if (IsGenericTritonFusion(*producer)) {
       if (!IsFusible(*consumer)) {
         return "the consumer is not fusible";
       }
@@ -447,7 +447,7 @@ class GpuPriorityFusionQueue {
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
-    if (IsTritonSoftmaxFusion(*producer) || IsTritonSoftmaxFusion(*consumer)) {
+    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer)) {
       return CanFuseTriton(producer, consumer);
     }
 
@@ -842,7 +842,7 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
   HloInstruction* result = fusion_instruction;
   if (producer->opcode() == HloOpcode::kFusion) {
-    if (IsTritonSoftmaxFusion(*producer)) {
+    if (IsGenericTritonFusion(*producer)) {
       TF_CHECK_OK(fusion_instruction->set_backend_config(
           *producer->backend_config<GpuBackendConfig>()));
     }

@@ -71,11 +71,6 @@ inline constexpr absl::string_view kTritonFusionKind = "__triton";
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
-// SoftmaxRewriterTriton sets backend_config of Triton Softmax custom fusions to
-// this string.
-inline constexpr absl::string_view kTritonSoftmaxFusionKind =
-    "__triton_softmax";
-
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 inline constexpr absl::string_view kUncompilableFusion =
