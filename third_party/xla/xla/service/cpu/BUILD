@@ -816,6 +816,7 @@ cc_library(
         "//xla/service/cpu/runtime:conditional_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
         "//xla/service/cpu/runtime:dot_thunk",
+        "//xla/service/cpu/runtime:fft_thunk",
         "//xla/service/cpu/runtime:infeed_thunk",
         "//xla/service/cpu/runtime:kernel_thunk",
         "//xla/service/cpu/runtime:outfeed_thunk",

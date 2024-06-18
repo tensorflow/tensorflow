@@ -42,6 +42,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "conditional";
     case Kind::kDot:
       return "dot";
+    case Kind::kFft:
+      return "fft";
     case Kind::kInfeed:
       return "infeed";
     case Kind::kRngGetAndUpdateState:

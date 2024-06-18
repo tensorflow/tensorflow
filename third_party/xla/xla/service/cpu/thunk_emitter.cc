@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/dot_thunk.h"
+#include "xla/service/cpu/runtime/fft_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
@@ -234,6 +235,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kDot:
       return EmitDotThunk(instruction);
+
+    case HloOpcode::kFft:
+      return EmitFftThunk(instruction);
 
     default:
       return absl::UnimplementedError(
@@ -450,6 +454,27 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
           rhs->shape(), out_slice, instruction->shape());
     }
   }
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
+    const HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+      /*instruction=*/*instruction, /*operands=*/{instruction->operands()},
+      /*supported_types=*/{F32, F64, C64, C128}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSlice(instruction->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSlice(instruction));
+  return ThunkSequence::Of<FftThunk>(
+      /*info=*/ThunkInfo(instruction),
+      /*is_multi_thread_eigen=*/
+      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen(),
+      /*fft_type=*/instruction->fft_type(),
+      /*fft_length=*/instruction->fft_length(),
+      /*input_buffer=*/arg_slice,
+      /*input_shape=*/instruction->operand(0)->shape(),
+      /*output_buffer=*/dest_slice,
+      /*output_shape=*/instruction->shape());
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
