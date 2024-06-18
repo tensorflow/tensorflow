@@ -37,8 +37,6 @@ absl::Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile);
 
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
-
 struct ScheduleMetadata {
   int64_t scheduler_mem_limit;
 };

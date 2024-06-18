@@ -3626,6 +3626,7 @@ cc_library(
         ":command_buffer_scheduling",
         ":execution_stream_assignment",
         ":fusion_pipeline",
+        ":gpu_latency_hiding_scheduler",
         ":ir_emitter_context",
         ":ir_emitter_unnested",
         ":prepare_hlo_for_ir_emitting_pipeline",
@@ -3873,6 +3874,7 @@ xla_test(
     deps = [
         ":gpu_constants",
         ":gpu_hlo_schedule",
+        ":gpu_latency_hiding_scheduler",
         ":nvptx_compiler_impl",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -4232,11 +4234,9 @@ cc_library(
     hdrs = ["gpu_hlo_schedule.h"],
     deps = [
         ":backend_configs_cc",
-        ":cublas_cudnn",
         ":gpu_latency_hiding_scheduler",
         ":gpu_schedule_postprocessing",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
@@ -6260,6 +6260,8 @@ cc_library(
     hdrs = ["gpu_latency_hiding_scheduler.h"],
     deps = [
         ":backend_configs_cc",
+        ":cublas_cudnn",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_ops_utils",

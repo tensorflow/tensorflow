@@ -27,12 +27,29 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
+
+// A threshold for which we consider AR to be costly perf-wise.
+static constexpr int64_t kCostlyAllReduceThreshold = 30 * 1024 * 1024;
+
+// Multiplier which we apply to expand the base cost for the costly AR.
+static constexpr int64_t kCostlyAllReduceMultiplier = 4;
+
+// Classifies `hlo` instruction as noop or not.
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
+}
 
 bool IsAsyncComputeOp(const HloInstruction& hlo) {
   return (hlo.opcode() == HloOpcode::kAsyncStart ||
@@ -74,6 +91,16 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
 
 }  // namespace
 
+int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
+  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
+  if (shape.IsTuple() || shape.is_static()) {
+    return size;
+  }
+  // Each dynamic dimension size is represented as a S32.
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  return size + metadata_size;
+}
+
 CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kSend:
@@ -89,6 +116,7 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
+// GpuAsyncTrackerBase implementations begin
 GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
@@ -132,7 +160,9 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     }
   }
 }
+// GpuAsyncTrackerBase implementations end
 
+// GpuAsyncTracker implementations begin
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
@@ -277,6 +307,68 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
   }
   return num_resources - (found ? 1 : 0);
 }
+
+// GpuAsyncTracker implementations end
+
+// GpuLatencyEstimator implementations begin
+GpuLatencyEstimator::GpuLatencyEstimator(int64_t pointer_size,
+                                         GetCanonicalAsyncOpFunc func)
+    : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
+
+ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
+    const HloInstruction* instr) const {
+  if (IsNopInstruction(*instr)) {
+    return 0.0;
+  }
+  // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
+  // latency between async-start and async-done is 5000 and cost of each
+  // custom call is 1000, the LHS will try to schedule approximately 5 of
+  // these in between each start/end pair.
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+      return ApproximateLatencyEstimator::kMediumCost;
+    }
+    // consider other custom calls as medium cost for now. Keeping the case
+    // explicitly separate for further tuning.
+    return ApproximateLatencyEstimator::kMediumCost;
+  }
+  return ApproximateLatencyEstimator::NodeCost(instr);
+}
+
+ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
+    const HloGraphNode& from, const HloGraphNode& to) const {
+  if (IsAsyncPair(from, to)) {
+    if (from.GetInstr().opcode() == HloOpcode::kRecv) {
+      // Recv -> RecvDone has a low latency.
+      return ApproximateLatencyEstimator::kLowLatency;
+    } else if (from.GetInstr().opcode() == HloOpcode::kSend) {
+      // Send -> SendDone has a very high latency.
+      return ApproximateLatencyEstimator::kHighLatency * 10;
+    }
+
+    bool enable_approx_collectives =
+        from.GetInstr()
+            .GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_enable_approx_costly_collectives();
+    bool is_all_reduce = from.GetInstr().opcode() == HloOpcode::kAllReduceStart;
+    bool collective_size_exceeds_threshold =
+        GetSizeOfShape(from.GetInstr().shape(), pointer_size_) >
+        kCostlyAllReduceThreshold;
+    if (enable_approx_collectives && is_all_reduce &&
+        collective_size_exceeds_threshold) {
+      return ApproximateLatencyEstimator::kHighLatency *
+             kCostlyAllReduceMultiplier;
+    }
+
+    return ApproximateLatencyEstimator::kHighLatency;
+  }
+  // Every other instruction we consider synchronous, which means the
+  // latency between each of them is always one unit.
+  return ApproximateLatencyEstimator::kLowLatency;
+}
+// GpuLatencyEstimator implementations end
 
 }  // namespace gpu
 }  // namespace xla

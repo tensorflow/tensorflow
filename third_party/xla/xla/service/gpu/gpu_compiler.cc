@@ -136,6 +136,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_layout_assignment.h"
 #include "xla/service/gpu/gpu_p2p_pipeliner.h"
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"

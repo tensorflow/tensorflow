@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -28,6 +29,9 @@ namespace gpu {
 // Breaks down higher level collectives into collective primitives.
 // E.g. AllReduceStart is broken down into Reduce + AsyncStart.
 CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+// Returns size of the `shape` given the `pointer_size`.
+int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
 // GPU specific resources for latency hiding scheduler.
 //
@@ -93,6 +97,25 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
   // this instruction.
   int64_t GetNumResourcesPerInstruction(
       int64_t resource_type, const HloInstruction& instr) const override;
+};
+
+// GPU approximate latency estimator. It is a set of hardcoded heuristics
+// for every instruction and async instruction pairs.
+class GpuLatencyEstimator : public ApproximateLatencyEstimator {
+ public:
+  explicit GpuLatencyEstimator(
+      int64_t pointer_size,
+      GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp);
+
+  // Uses the approximate node for an instruction `instr`.
+  TimeCost NodeCost(const HloInstruction* instr) const override;
+
+  // Returns a latency estimation between nodes `from` and `to`.
+  TimeCost GetLatencyBetween(const HloGraphNode& from,
+                             const HloGraphNode& to) const override;
+
+ private:
+  int64_t pointer_size_;
 };
 
 }  // namespace gpu
