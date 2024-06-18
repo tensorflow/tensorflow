@@ -45,7 +45,11 @@ class XlaRuntimeError : public std::runtime_error {
  private:
   static std::string StatusToString(const absl::Status& st) {
     if (!ShowStackTraces()) {
-      return st.ToString(absl::StatusToStringMode::kWithNoExtraData);
+      std::stringstream ss;
+      ss << st.ToString(absl::StatusToStringMode::kWithNoExtraData);
+      ss << "\nNOTE: Set JAX_TRACEBACK_FILTERING=off to see the complete stack "
+            "trace.\n";
+      return ss.str();
     }
     std::stringstream ss;
     ss << st;
@@ -54,7 +58,7 @@ class XlaRuntimeError : public std::runtime_error {
 
   static bool ShowStackTraces() {
     if (char* value = getenv("JAX_TRACEBACK_FILTERING")) {
-      return strcmp(value, "off");
+      return strcmp(value, "off") == 0;
     }
     return false;
   }

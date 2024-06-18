@@ -33,7 +33,7 @@ SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
 
 std::string SequentialThunk::ToStringExtra(int indent) const {
   std::string result = "\n";
-  absl::StrAppend(&result, thunks().ToString(indent + 1, nullptr));
+  absl::StrAppend(&result, thunks().ToString(indent + 1));
   return result;
 }
 
@@ -53,10 +53,8 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
-  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
   for (const auto& thunk : thunks_) {
-    auto annotation =
-        GetKernelAnnotation(annotations, thunk->profile_annotation());
+    auto annotation = GetKernelAnnotation(thunk->profile_annotation());
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();
