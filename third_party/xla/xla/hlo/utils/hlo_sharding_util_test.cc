@@ -21,17 +21,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -554,9 +559,9 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
 
   // Expect the device groups are: {0, 2} and {1, 3}
   EXPECT_THAT(group_sharding.device_groups[0],
-              testing::ElementsAreArray({0, 2}));
+              ::testing::ElementsAreArray({0, 2}));
   EXPECT_THAT(group_sharding.device_groups[1],
-              testing::ElementsAreArray({1, 3}));
+              ::testing::ElementsAreArray({1, 3}));
 }
 
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualAndReplicted) {
@@ -574,9 +579,9 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualAndReplicted) {
 
   // Expect the device groups are: {0, 2, 4, 6} and {1, 3, 5, 7}
   EXPECT_THAT(group_sharding.device_groups[0],
-              testing::ElementsAreArray({0, 2, 4, 6}));
+              ::testing::ElementsAreArray({0, 2, 4, 6}));
   EXPECT_THAT(group_sharding.device_groups[1],
-              testing::ElementsAreArray({1, 3, 5, 7}));
+              ::testing::ElementsAreArray({1, 3, 5, 7}));
 }
 
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ReplicatedAndManual) {
@@ -594,9 +599,9 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ReplicatedAndManual) {
 
   // Expect the device groups are: {0, 1, 4, 5} and {2, 3, 6, 7}
   EXPECT_THAT(group_sharding.device_groups[0],
-              testing::ElementsAreArray({0, 1, 4, 5}));
+              ::testing::ElementsAreArray({0, 1, 4, 5}));
   EXPECT_THAT(group_sharding.device_groups[1],
-              testing::ElementsAreArray({2, 3, 6, 7}));
+              ::testing::ElementsAreArray({2, 3, 6, 7}));
 }
 
 TEST(HloShardingUtilTest, UngroupSharding_ManualOnly) {
@@ -1019,6 +1024,52 @@ TEST(HloShardingUtilTest, UntileShape) {
   const Shape tuple = ShapeUtil::MakeTupleShape({tile_shape_0, tile_shape_1});
   EXPECT_EQ(hlo_sharding_util::UntileShape(sharding, tuple),
             ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
+}
+
+using HloShardingUtilTestWithHlo = HloTestBase;
+
+TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY %main.7 {
+      %p0 = bf16[32,64,128,512] parameter(0), sharding={devices=[8,1,1,4]<=[32]}
+      %p1 = bf16[32,64,256,512] parameter(1), sharding={devices=[1,1,1,2,16]<=[8,2,2]T(1,0,2) last_tile_dim_replicate}
+      ROOT %dot.3 = bf16[32,64,128,256] dot(%p0, %p1), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={3}, sharding={devices=[2,2,2,2,2]<=[32] last_tile_dim_replicate}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(dot);
+
+  bool consider_other_operand = true;
+  bool may_combine_partial_sharding = false;
+  EXPECT_EQ(InferDotOperandSharding(dot, 0, dnums, consider_other_operand,
+                                    may_combine_partial_sharding),
+            HloSharding::PartialTile(TileAssignment({2, 2, 2, 1, 4})));
+  EXPECT_EQ(InferDotOperandSharding(dot, 1, dnums, consider_other_operand,
+                                    may_combine_partial_sharding),
+            HloSharding::IotaTile({8, 1, 1, 4}));
+
+  consider_other_operand = true;
+  may_combine_partial_sharding = true;
+  EXPECT_EQ(InferDotOperandSharding(dot, 0, dnums, consider_other_operand,
+                                    may_combine_partial_sharding),
+            HloSharding::PartialTile(TileAssignment({2, 2, 2, 2, 2})));
+  EXPECT_EQ(InferDotOperandSharding(dot, 1, dnums, consider_other_operand,
+                                    may_combine_partial_sharding),
+            HloSharding::IotaTile({8, 1, 1, 4}));
+
+  consider_other_operand = false;
+  for (bool may_combine_partial_sharding : {false, true}) {
+    EXPECT_EQ(InferDotOperandSharding(dot, 0, dnums, consider_other_operand,
+                                      may_combine_partial_sharding),
+              HloSharding::PartialTile(TileAssignment({2, 2, 2, 1, 4})));
+    EXPECT_EQ(InferDotOperandSharding(dot, 1, dnums, consider_other_operand,
+                                      may_combine_partial_sharding),
+              HloSharding::PartialTile(TileAssignment(
+                  {2, 2, 2, 1, 4}, {2, 2, 2, 2, 2}, {0, 1, 3, 2, 4})));
+  }
 }
 
 }  // namespace

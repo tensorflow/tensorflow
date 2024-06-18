@@ -587,83 +587,6 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
   return true;
 }
 
-HloSharding InferDotOperandSharding(
-    const HloInstruction* instruction,
-    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    int64_t operand_index, bool may_combine_partial_sharding) {
-  auto operand = instruction->operand(operand_index);
-  auto other = instruction->operand(1 - operand_index);
-  std::vector<int64_t> output_dims_to_replicate;
-  std::vector<int64_t> other_operand_dims_to_replicate;
-  for (const auto& dim : operand_index == 0 ? dnums.rhs_non_contracting_dims
-                                            : dnums.lhs_non_contracting_dims) {
-    output_dims_to_replicate.push_back(dim.output);
-    other_operand_dims_to_replicate.push_back(operand_index == 0 ? dim.rhs
-                                                                 : dim.lhs);
-  }
-  // If this dot is interpreted from a conv, then contracting dims may have
-  // corresponding spatial dimensions in the output, and this operand's
-  // non-contracting dims may have corresponding spatial dims in the other
-  // operand.
-  for (const auto& dim : dnums.contracting_dims) {
-    if (dim.output >= 0) {
-      output_dims_to_replicate.push_back(dim.output);
-    }
-  }
-  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
-                                            : dnums.rhs_non_contracting_dims) {
-    int64_t other_dim = operand_index == 0 ? dim.rhs : dim.lhs;
-    if (other_dim >= 0) {
-      other_operand_dims_to_replicate.push_back(other_dim);
-    }
-  }
-  auto output_other_dims_replicated =
-      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          instruction->sharding(), output_dims_to_replicate);
-  std::vector<int64_t> output_to_operand_dims(instruction->shape().rank(), -1);
-  std::vector<int64_t> operand_to_output_dims(operand->shape().rank(), -1);
-  for (const auto& dim : dnums.batch_dims) {
-    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
-    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
-  }
-  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
-                                            : dnums.rhs_non_contracting_dims) {
-    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
-    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
-  }
-  auto sharding = *hlo_sharding_util::TransposeShardingWithCollapsedDims(
-      output_other_dims_replicated, output_to_operand_dims,
-      operand_to_output_dims);
-  if (hlo_sharding_util::IsSpatiallyPartitioned(other)) {
-    auto other_operand_dims_replicated =
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            other->sharding(), other_operand_dims_to_replicate);
-    std::vector<int64_t> other_to_operand_dims(other->shape().rank(), -1);
-    std::vector<int64_t> operand_to_other_dims(operand->shape().rank(), -1);
-    for (const auto& dim : dnums.batch_dims) {
-      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
-          operand_index == 0 ? dim.lhs : dim.rhs;
-      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
-          operand_index == 0 ? dim.rhs : dim.lhs;
-    }
-    for (const auto& dim : dnums.contracting_dims) {
-      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
-          operand_index == 0 ? dim.lhs : dim.rhs;
-      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
-          operand_index == 0 ? dim.rhs : dim.lhs;
-    }
-    HloSharding sharding_from_other =
-        *hlo_sharding_util::TransposeShardingWithCollapsedDims(
-            other_operand_dims_replicated, other_to_operand_dims,
-            operand_to_other_dims);
-    if (hlo_sharding_util::MergeSharding(sharding, &sharding_from_other,
-                                         may_combine_partial_sharding)) {
-      sharding = std::move(sharding_from_other);
-    }
-  }
-  return sharding;
-}
-
 // Checks if two HloShardings have the same metadata attached.
 bool SameShardingMetadata(const HloSharding& a, const HloSharding& b) {
   DCHECK_EQ(a, b);
@@ -1730,8 +1653,9 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       auto dot_dims = dot_as_convolution_util::ParseConvolutionDimsInfo(&user);
       if (dot_dims.conv_spatial_dims.empty()) {
         int64_t op_idx = user.operand_index(&instruction);
-        return InferDotOperandSharding(&user, dot_dims, op_idx,
-                                       may_combine_partial_sharding);
+        return hlo_sharding_util::InferDotOperandSharding(
+            &user, op_idx, dot_dims, /*consider_other_operand=*/true,
+            may_combine_partial_sharding);
       }
       return std::nullopt;
     }
@@ -1867,8 +1791,9 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     case HloOpcode::kDot: {
       int64_t op_idx = user.operand_index(&instruction);
       auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(&user);
-      return InferDotOperandSharding(&user, dnums, op_idx,
-                                     may_combine_partial_sharding);
+      return hlo_sharding_util::InferDotOperandSharding(
+          &user, op_idx, dnums, /*consider_other_operand=*/true,
+          may_combine_partial_sharding);
     }
     case HloOpcode::kReduce: {
       if (instruction.shape().rank() == 0) {

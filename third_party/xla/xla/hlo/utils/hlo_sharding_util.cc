@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -3349,6 +3350,93 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     return std::move(from);
   }
   return std::nullopt;
+}
+
+HloSharding InferDotOperandSharding(
+    const HloInstruction* dot, int64_t operand_index,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool consider_other_operand, bool may_combine_partial_sharding) {
+  CHECK(dot->opcode() == HloOpcode::kDot ||
+        dot->opcode() == HloOpcode::kConvolution);
+  CHECK(operand_index == 0 || operand_index == 1);
+  CHECK(dnums.conv_spatial_dims.empty());
+
+  auto operand = dot->operand(operand_index);
+  auto other = dot->operand(1 - operand_index);
+  std::vector<int64_t> output_dims_to_replicate;
+  std::vector<int64_t> other_operand_dims_to_replicate;
+  for (const auto& dim : operand_index == 0 ? dnums.rhs_non_contracting_dims
+                                            : dnums.lhs_non_contracting_dims) {
+    output_dims_to_replicate.push_back(dim.output);
+    other_operand_dims_to_replicate.push_back(operand_index == 0 ? dim.rhs
+                                                                 : dim.lhs);
+  }
+  // If this dot is interpreted from a conv, then contracting dims may have
+  // corresponding spatial dimensions in the output, and this operand's
+  // non-contracting dims may have corresponding spatial dims in the other
+  // operand.
+  for (const auto& dim : dnums.contracting_dims) {
+    if (dim.output >= 0) {
+      output_dims_to_replicate.push_back(dim.output);
+    }
+  }
+  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
+                                            : dnums.rhs_non_contracting_dims) {
+    int64_t other_dim = operand_index == 0 ? dim.rhs : dim.lhs;
+    if (other_dim >= 0) {
+      other_operand_dims_to_replicate.push_back(other_dim);
+    }
+  }
+  HloSharding output_other_dims_replicated =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          dot->sharding(), output_dims_to_replicate);
+
+  std::vector<int64_t> output_to_operand_dims(dot->shape().rank(), -1);
+  std::vector<int64_t> operand_to_output_dims(operand->shape().rank(), -1);
+  for (const auto& dim : dnums.batch_dims) {
+    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
+  }
+  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
+                                            : dnums.rhs_non_contracting_dims) {
+    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
+  }
+  auto sharding = *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+      output_other_dims_replicated, output_to_operand_dims,
+      operand_to_output_dims);
+
+  if (consider_other_operand &&
+      hlo_sharding_util::IsSpatiallyPartitioned(other)) {
+    auto other_operand_dims_replicated =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            other->sharding(), other_operand_dims_to_replicate);
+
+    std::vector<int64_t> other_to_operand_dims(other->shape().rank(), -1);
+    std::vector<int64_t> operand_to_other_dims(operand->shape().rank(), -1);
+    for (const auto& dim : dnums.batch_dims) {
+      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
+          operand_index == 0 ? dim.lhs : dim.rhs;
+      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
+          operand_index == 0 ? dim.rhs : dim.lhs;
+    }
+    for (const auto& dim : dnums.contracting_dims) {
+      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
+          operand_index == 0 ? dim.lhs : dim.rhs;
+      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
+          operand_index == 0 ? dim.rhs : dim.lhs;
+    }
+    HloSharding sharding_from_other =
+        *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+            other_operand_dims_replicated, other_to_operand_dims,
+            operand_to_other_dims);
+    if (hlo_sharding_util::MergeSharding(sharding, &sharding_from_other,
+                                         may_combine_partial_sharding)) {
+      sharding = std::move(sharding_from_other);
+    }
+  }
+
+  return sharding;
 }
 
 }  // namespace hlo_sharding_util
