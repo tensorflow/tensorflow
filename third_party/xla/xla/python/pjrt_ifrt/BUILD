@@ -272,6 +272,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_attribute_map_util",
+    srcs = ["pjrt_attribute_map_util.cc"],
+    hdrs = ["pjrt_attribute_map_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_common",
+        "//xla/python/ifrt:attribute_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_attribute_map_util_test",
+    srcs = ["pjrt_attribute_map_util_test.cc"],
+    deps = [
+        ":pjrt_attribute_map_util",
+        "//xla/pjrt:pjrt_common",
+        "//xla/python/ifrt:attribute_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "basic_string_array",
     srcs = ["basic_string_array.cc"],
     hdrs = ["basic_string_array.h"],

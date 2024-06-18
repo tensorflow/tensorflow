@@ -78,7 +78,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
@@ -287,12 +286,10 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   }
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
-  if (::tflite::optimize::QuantizeWeights(
-          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
-          ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
-    return absl::InvalidArgumentError(
-        "Quantize weights transformation failed.");
-  }
+  absl::Status quantize_weights_status = ::tflite::optimize::QuantizeWeights(
+      &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+      ::tflite::optimize::QuantizerType::OLD_QUANTIZER);
+  if (!quantize_weights_status.ok()) return quantize_weights_status;
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =
       std::string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
