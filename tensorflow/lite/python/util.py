@@ -50,9 +50,9 @@ get_save_spec = _tflite_keras_util.get_save_spec
 # pylint: disable=g-import-not-at-top
 # pylint: disable=unused-import
 try:
-  from jax import xla_computation as _xla_computation
+  from jax import jit as _jit
 except ImportError:
-  _xla_computation = None
+  _jit = None
 # pylint: enable=g-import-not-at-top
 # pylint: enable=unused-import
 
