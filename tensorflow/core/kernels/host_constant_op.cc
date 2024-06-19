@@ -16,11 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/host_constant_op.h"
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 

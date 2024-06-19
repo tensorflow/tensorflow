@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

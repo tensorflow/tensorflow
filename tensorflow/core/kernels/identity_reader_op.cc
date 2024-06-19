@@ -17,14 +17,20 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

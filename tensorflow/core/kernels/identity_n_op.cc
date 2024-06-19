@@ -18,8 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
