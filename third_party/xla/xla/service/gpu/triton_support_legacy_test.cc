@@ -60,7 +60,7 @@ bool CombinationCrashesTriton(
   return false;
 }
 
-class DotTest : public TritonSupportTestWithParam {
+class DotTest : public TritonSupportTestBaseWithParam {
  protected:
   void TestDotWithTypes(PrimitiveType lhs_type, PrimitiveType rhs_type,
                         PrimitiveType output_type) {
@@ -185,7 +185,7 @@ std::string DynamicSliceTestParamToString(
 // ::testing::ConvertGenerator, which broke the build in some OSS
 // configurations.
 class DynamicSliceTest
-    : public TritonSupportTest,
+    : public TritonSupportTestBase,
       public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType> {};
 
 TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSlice) {
@@ -262,7 +262,8 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Bool()),
     DynamicSliceTestParamToString);
 
-TEST_F(TritonSupportTest, UnsupportedDotOutputTypeFailsGracefullyWithTriton) {
+TEST_F(TritonSupportTestBase,
+       UnsupportedDotOutputTypeFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
 triton_computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
@@ -304,7 +305,7 @@ ENTRY e {
           ::testing::HasSubstr("pm.run(triton_module.get()).succeeded()")));
 }
 
-TEST_F(TritonSupportTest,
+TEST_F(TritonSupportTestBase,
        UnsupportedDotWithMultipleBatchDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
 triton_computation {
@@ -347,7 +348,7 @@ ENTRY e {
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }
 
-TEST_F(TritonSupportTest,
+TEST_F(TritonSupportTestBase,
        UnsupportedDotWithNoNonContractingDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
 triton_computation {

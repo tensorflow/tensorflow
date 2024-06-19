@@ -91,7 +91,7 @@ class TritonFilecheckTest : public TritonTest {
   }
 };
 
-class TritonSupportTest : public TritonFilecheckTest {
+class TritonSupportTestBase : public TritonFilecheckTest {
  protected:
   // An HLO module together with a reference to the instruction of interest
   // that's being tested. See ParseTemplateAndGetInstruction for more details.
@@ -114,7 +114,7 @@ class TritonSupportTest : public TritonFilecheckTest {
     const HloInstruction& Instruction() { return instruction_; }
 
    private:
-    friend TritonSupportTest;
+    friend TritonSupportTestBase;
 
     TestedInstruction(std::unique_ptr<HloModule> module,
                       const HloInstruction& instruction)
@@ -148,9 +148,10 @@ class TritonSupportTest : public TritonFilecheckTest {
   TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
 };
 
-class TritonSupportTestWithParam : public TritonSupportTest,
-                                   public ::testing::WithParamInterface<
-                                       std::tuple<PrimitiveType, HloOpcode>> {};
+class TritonSupportTestBaseWithParam
+    : public TritonSupportTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, HloOpcode>> {};
 
 std::string TritonSupportTestParamsToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>& data);

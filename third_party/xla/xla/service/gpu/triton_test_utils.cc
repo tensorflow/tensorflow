@@ -125,7 +125,7 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheckForDot(
                                     filecheck_pattern);
 }
 
-absl::StatusOr<bool> TritonSupportTest::ApplyFloatNormalization(
+absl::StatusOr<bool> TritonSupportTestBase::ApplyFloatNormalization(
     HloModule* module) {
   const GpuFloatSupport bf16_support(GetCudaComputeCapability(), BF16);
   HloPassPipeline pipeline("hlo float normalization");
@@ -184,8 +184,8 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
-absl::StatusOr<TritonSupportTest::TestedInstruction>
-TritonSupportTest::ParseTemplateAndGetInstruction(
+absl::StatusOr<TritonSupportTestBase::TestedInstruction>
+TritonSupportTestBase::ParseTemplateAndGetInstruction(
     absl::string_view hlo_template, xla::PrimitiveType data_type,
     xla::HloOpcode opcode) {
   const std::string hlo_text = absl::Substitute(

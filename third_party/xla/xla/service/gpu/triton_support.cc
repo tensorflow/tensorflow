@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -112,7 +113,7 @@ bool IsTritonSupportedDataType(PrimitiveType type,
   }
 }
 
-std::vector<HloOpcode> TritonSupportedUnaryElementwise(
+std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   std::vector<HloOpcode> ret = {HloOpcode::kConvert};
   if (element_type == PrimitiveType::PRED) {
@@ -136,7 +137,7 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwise(
   return ret;
 }
 
-std::vector<HloOpcode> TritonSupportedBinaryElementwise(
+std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   if (element_type == PrimitiveType::PRED) {
     return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
@@ -155,19 +156,25 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(
   return ret;
 }
 
-std::vector<HloOpcode> TritonSupportedTernaryElementwise(
+std::vector<HloOpcode> TritonSupportedTernaryElementwiseUpToFloatNormalization(
     PrimitiveType element_type) {
   return {HloOpcode::kSelect, HloOpcode::kClamp};
 }
 
-bool IsTritonSupportedElementwise(HloOpcode opcode,
-                                  PrimitiveType element_type) {
-  return absl::c_linear_search(TritonSupportedUnaryElementwise(element_type),
-                               opcode) ||
-         absl::c_linear_search(TritonSupportedBinaryElementwise(element_type),
-                               opcode) ||
-         absl::c_linear_search(TritonSupportedTernaryElementwise(element_type),
-                               opcode);
+bool IsTritonSupportedElementwiseUpToFloatNormalization(
+    HloOpcode opcode, PrimitiveType element_type) {
+  return absl::c_linear_search(
+             TritonSupportedUnaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedBinaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedTernaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode);
 }
 
 CodegenDecision CanTritonHandleElementwise(
@@ -185,7 +192,7 @@ CodegenDecision CanTritonHandleElementwise(
 
   if (instr.opcode() == HloOpcode::kConstant) {
     return CodegenDecision{};
-  } else if (!IsTritonSupportedElementwise(
+  } else if (!IsTritonSupportedElementwiseUpToFloatNormalization(
                  instr.opcode(), instr.operand(0)->shape().element_type())) {
     return "Unsupported elementwise operation.";
   }
@@ -417,6 +424,82 @@ CodegenDecision IsTritonSupportedInstruction(
 
 }  // namespace legacy_triton
 
+namespace {
+
+// Set of unary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kConvert, HloOpcode::kNot};
+  }
+  absl::flat_hash_set<HloOpcode> ret = {HloOpcode::kConvert, HloOpcode::kAbs,
+                                        HloOpcode::kNegate};
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64) {
+    absl::flat_hash_set<HloOpcode> additional_opcodes{
+        HloOpcode::kCos,   HloOpcode::kExp,   HloOpcode::kExpm1,
+        HloOpcode::kFloor, HloOpcode::kCeil,  HloOpcode::kLog,
+        HloOpcode::kLog1p, HloOpcode::kRsqrt, HloOpcode::kSin,
+        HloOpcode::kSqrt,  HloOpcode::kCbrt,  HloOpcode::kTan,
+        HloOpcode::kTanh,  HloOpcode::kErf};
+    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
+  }
+
+  if (element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16) {
+    absl::flat_hash_set<HloOpcode> additional_opcodes{HloOpcode::kFloor,
+                                                      HloOpcode::kCeil};
+    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
+  }
+  return ret;
+}
+
+// Set of binary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
+            HloOpcode::kCompare};
+  }
+  absl::flat_hash_set<HloOpcode> ret = {
+      HloOpcode::kAdd,     HloOpcode::kCompare,  HloOpcode::kMaximum,
+      HloOpcode::kMinimum, HloOpcode::kMultiply, HloOpcode::kSubtract};
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64) {
+    absl::flat_hash_set<HloOpcode> additional_opcodes{
+        HloOpcode::kAtan2, HloOpcode::kDivide, HloOpcode::kPower};
+    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
+  } else if (element_type == PrimitiveType::BF16) {
+    ret.insert(HloOpcode::kDivide);
+  }
+  return ret;
+}
+
+// Set of ternary elementwise ops that are genuinely supported by Triton.
+// TODO(b/345763510): make sure that this is accurate. At the moment, this is
+// mostly a fork of the same code in legacy_triton::.
+absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
+    PrimitiveType element_type) {
+  return {HloOpcode::kSelect, HloOpcode::kClamp};
+}
+
+// Returns `true` if the given opcode and element type correspond to a n-ary
+// elementwise op that is genuinely supported by Triton. The caller is
+// responsible for ensuring that the relevant data type is supported on the
+// device of interest.
+bool IsTritonSupportedElementwise(HloOpcode opcode,
+                                  PrimitiveType element_type) {
+  return TritonSupportedUnaryElementwiseOps(element_type).contains(opcode) ||
+         TritonSupportedBinaryElementwiseOps(element_type).contains(opcode) ||
+         TritonSupportedTernaryElementwiseOps(element_type).contains(opcode);
+}
+
+}  // namespace
+
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   bool output_type_is_supported = legacy_triton::IsTritonSupportedDataType(
@@ -437,7 +520,11 @@ CodegenDecision IsTritonSupportedInstruction(
   }
 
   if (instr.IsElementwise()) {
-    return legacy_triton::CanTritonHandleElementwise(instr, gpu_version);
+    if (!IsTritonSupportedElementwise(instr.opcode(),
+                                      instr.shape().element_type())) {
+      return "Unsupported elementwise operation.";
+    }
+    return CodegenDecision{};
   }
 
   // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
