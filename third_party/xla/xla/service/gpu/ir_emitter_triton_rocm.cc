@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/triton_sparse_extensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/rocm_rocdl_path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
