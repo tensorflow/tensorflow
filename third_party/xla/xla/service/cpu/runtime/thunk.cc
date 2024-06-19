@@ -58,6 +58,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "outfeed";
     case Kind::kPartitionId:
       return "partition-id";
+    case Kind::kReduceScatter:
+      return "reduce-scatter";
     case Kind::kReplicaId:
       return "replica-id";
     case Kind::kRngGetAndUpdateState:

@@ -15,32 +15,113 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/collective_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/global_device_id.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
 CollectiveThunk::CollectiveThunk(Kind kind, Thunk::Info info,
-                                 OpParams op_params)
-    : Thunk(kind, info), op_params_(std::move(op_params)) {}
+                                 OpParams op_params, OpBuffers op_buffers)
+    : Thunk(kind, info),
+      op_params_(std::move(op_params)),
+      op_buffers_(std::move(op_buffers)) {}
+
+Thunk::BufferUses CollectiveThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(source_buffers().size() + destination_buffers().size());
+  for (auto& source_buffer : source_buffers()) {
+    uses.push_back(BufferUse::Read(source_buffer));
+  }
+  for (auto& destination_buffer : destination_buffers()) {
+    uses.push_back(BufferUse::Write(destination_buffer));
+  }
+
+  // TODO(ezhulenev): It is a hack to make sure that we execute all collective
+  // operations in the same order as in HLO schedule, because otherwise racing
+  // collectives lead to undefined behavior. Instead we should correctly model
+  // side effects of Thunks.
+  static auto* fake_alloc = new BufferAllocation(0, 1, 0);
+  uses.push_back(BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
+
+  return uses;
+}
+
+bool CollectiveThunk::IsDataTypeSupportedByCollectiveReduce(
+    PrimitiveType datatype) {
+  switch (datatype) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+absl::StatusOr<CollectiveThunk::OpDeviceMemory>
+CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
+  size_t num_srcs = source_buffers().size();
+  size_t num_dsts = destination_buffers().size();
+  DCHECK_EQ(num_srcs, num_dsts) << "Number of src and dst buffers must match";
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> source_data(num_srcs);
+  for (int i = 0; i < num_srcs; ++i) {
+    TF_ASSIGN_OR_RETURN(
+        source_data[i],
+        params.buffer_allocations->GetDeviceAddress(source_buffer(i)));
+  }
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> destination_data(num_dsts);
+  for (int i = 0; i < num_dsts; ++i) {
+    TF_ASSIGN_OR_RETURN(
+        destination_data[i],
+        params.buffer_allocations->GetDeviceAddress(destination_buffer(i)));
+  }
+
+  return OpDeviceMemory{std::move(source_data), std::move(destination_data)};
+}
 
 absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
   return absl::Minutes(30);
@@ -82,6 +163,69 @@ absl::StatusOr<int32_t> CollectiveThunk::RankInGlobalDevices(
                       }));
   }
   return std::distance(key.global_devices.begin(), it);
+}
+
+tsl::AsyncValueRef<CollectiveThunk::ExecuteEvent>
+CollectiveThunk::ExecuteWithCommunicator(
+    const Thunk::CollectiveExecuteParams* params, Callback callback) {
+  // Check that we have access to collectives interface implementation and
+  // parameters that define our "position" in a collective clique.
+  TF_RET_CHECK(params)
+      << "Collective parameters are not set for collective operation";
+
+  CollectivesInterface* collectives = params->collectives;
+  TF_RET_CHECK(collectives)
+      << "Collectives interface is not set for collective operation";
+
+  // Find out rendezvous key and rank in global devices for the current device.
+  TF_ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*params));
+  TF_ASSIGN_OR_RETURN(int32_t rank,
+                      RankInGlobalDevices(key, params->global_device_id));
+
+  VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
+
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectivesCommunicator> communicator,
+                      collectives->GetCommunicator(key.global_devices, rank));
+
+  TF_RETURN_IF_ERROR(callback(key, *communicator));
+
+  return OkExecuteEvent();
+}
+
+const BufferAllocation::Slice& CollectiveThunk::source_buffer(
+    int64_t index) const {
+  return op_buffers_.source_buffers[index];
+}
+
+absl::Span<const BufferAllocation::Slice> CollectiveThunk::source_buffers()
+    const {
+  return op_buffers_.source_buffers;
+}
+
+const Shape& CollectiveThunk::source_shape(int64_t index) const {
+  return op_buffers_.source_shapes[index];
+}
+
+absl::Span<const Shape> CollectiveThunk::source_shapes() const {
+  return op_buffers_.source_shapes;
+}
+
+const BufferAllocation::Slice& CollectiveThunk::destination_buffer(
+    int64_t index) const {
+  return op_buffers_.destination_buffers[index];
+}
+
+absl::Span<const BufferAllocation::Slice> CollectiveThunk::destination_buffers()
+    const {
+  return op_buffers_.destination_buffers;
+}
+
+const Shape& CollectiveThunk::destination_shape(int64_t index) const {
+  return op_buffers_.destination_shapes[index];
+}
+
+absl::Span<const Shape> CollectiveThunk::destination_shapes() const {
+  return op_buffers_.destination_shapes;
 }
 
 }  // namespace xla::cpu

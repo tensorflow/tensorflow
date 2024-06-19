@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/runtime/all_reduce_thunk.h"
+#include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -25,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/span.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -43,38 +41,36 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::Create(
+absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> ReduceScatterThunk::Create(
     Info info, ReductionKind reduction_kind, OpParams op_params,
-    OpBuffers op_buffers, bool single_replica) {
+    OpBuffers op_buffers) {
   auto datatype = op_buffers.source_shapes[0].element_type();
   if (!IsDataTypeSupportedByCollectiveReduce(datatype)) {
-    return Unimplemented("AllReduce for datatype '%s' is not supported",
+    return Unimplemented("ReduceScatter for datatype '%s' is not supported",
                          primitive_util::LowercasePrimitiveTypeName(datatype));
   }
 
-  return absl::WrapUnique(new AllReduceThunk(std::move(info), reduction_kind,
-                                             op_params, std::move(op_buffers),
-                                             single_replica));
+  return absl::WrapUnique(new ReduceScatterThunk(
+      std::move(info), reduction_kind, op_params, std::move(op_buffers)));
 }
 
-AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
-                               OpParams op_params, OpBuffers op_buffers,
-                               bool single_replica)
-    : CollectiveThunk(Kind::kAllReduce, info, op_params, std::move(op_buffers)),
-      reduction_kind_(reduction_kind),
-      single_replica_(single_replica) {}
+ReduceScatterThunk::ReduceScatterThunk(Info info, ReductionKind reduction_kind,
+                                       OpParams op_params, OpBuffers op_buffers)
+    : CollectiveThunk(Kind::kReduceScatter, info, op_params,
+                      std::move(op_buffers)),
+      reduction_kind_(reduction_kind) {}
 
-tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
-    const ExecuteParams& params) {
+tsl::AsyncValueRef<ReduceScatterThunk::ExecuteEvent>
+ReduceScatterThunk::Execute(const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
-      "AllReduce: #source_buffers=%d, #destination_buffers=%d, "
-      "reduction_kind=%s, single_replica=%v",
+      "ReduceScatter: #source_buffers=%d, #destination_buffers=%d, "
+      "reduction_kind=%s",
       data.source.size(), data.destination.size(),
-      ReductionKindToString(reduction_kind_), single_replica_);
+      ReductionKindToString(reduction_kind_));
 
   for (int i = 0; i < data.source.size(); ++i) {
     VLOG(3) << absl::StreamFormat(
@@ -88,30 +84,18 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
         destination_buffer(i).ToString(), data.destination[i].opaque());
   }
 
-  // Handle single-replica case by copying the source to the destination.
-  if (single_replica_) {
-    DCHECK_EQ(data.source.size(), data.destination.size());
-    for (int i = 0; i < data.source.size(); ++i) {
-      std::memcpy(data.destination[i].opaque(), data.source[i].opaque(),
-                  data.destination[i].size());
-    }
-    return OkExecuteEvent();
-  }
-
   return ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, CollectivesCommunicator& comm) {
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
-          TF_RETURN_IF_ERROR(comm.AllReduce(
+          TF_RETURN_IF_ERROR(comm.ReduceScatter(
               key, reduction_kind_, shape.element_type(),
               ShapeUtil::ElementsIn(shape), data.source[i].opaque(),
               data.destination[i].opaque(), DefaultCollectiveTimeout()));
         }
         return absl::OkStatus();
       });
-
-  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

@@ -71,6 +71,7 @@ class Thunk {
     kKernel,
     kOutfeed,
     kPartitionId,
+    kReduceScatter,
     kReplicaId,
     kRngGetAndUpdateState,
     kWhile,

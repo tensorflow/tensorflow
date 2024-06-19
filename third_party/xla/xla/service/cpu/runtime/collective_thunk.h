@@ -17,14 +17,24 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_COLLECTIVE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/global_device_id.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
@@ -42,11 +52,39 @@ class CollectiveThunk : public Thunk {
     std::vector<ReplicaGroup> group;
   };
 
-  CollectiveThunk(Kind kind, Thunk::Info info, OpParams op_params);
+  // Source and destination buffers for the collective operation.
+  struct OpBuffers {
+    std::vector<BufferAllocation::Slice> source_buffers;
+    std::vector<Shape> source_shapes;
+
+    std::vector<BufferAllocation::Slice> destination_buffers;
+    std::vector<Shape> destination_shapes;
+  };
+
+  // Device memory resolved for the collective operation buffers.
+  struct OpDeviceMemory {
+    absl::InlinedVector<se::DeviceMemoryBase, 4> source;
+    absl::InlinedVector<se::DeviceMemoryBase, 4> destination;
+  };
+
+  CollectiveThunk(Kind kind, Thunk::Info info, OpParams op_params,
+                  OpBuffers op_buffers);
 
   const OpParams& op_params() const { return op_params_; }
+  const OpBuffers& op_buffers() const { return op_buffers_; }
+
+  // Resolves operation's device memory from the buffers and buffer allocations.
+  absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);
+
+  BufferUses buffer_uses() const final;
 
  protected:
+  // Callback for collective thunk implementations.
+  using Callback = absl::AnyInvocable<absl::Status(
+      const RendezvousKey& key, CollectivesCommunicator& comm)>;
+
+  static bool IsDataTypeSupportedByCollectiveReduce(PrimitiveType datatype);
+
   absl::Duration DefaultCollectiveTimeout();
 
   absl::StatusOr<RendezvousKey> GetRendezvousKey(
@@ -55,8 +93,26 @@ class CollectiveThunk : public Thunk {
   absl::StatusOr<int32_t> RankInGlobalDevices(const RendezvousKey& key,
                                               GlobalDeviceId device);
 
+  // Acquires collective communicator for the given parameters and executes the
+  // user provided callback with acquired rendezvous key, rank and communicator.
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteWithCommunicator(
+      const Thunk::CollectiveExecuteParams* params, Callback callback);
+
+  const BufferAllocation::Slice& source_buffer(int64_t index) const;
+  absl::Span<const BufferAllocation::Slice> source_buffers() const;
+
+  const Shape& source_shape(int64_t index) const;
+  absl::Span<const Shape> source_shapes() const;
+
+  const BufferAllocation::Slice& destination_buffer(int64_t index) const;
+  absl::Span<const BufferAllocation::Slice> destination_buffers() const;
+
+  const Shape& destination_shape(int64_t index) const;
+  absl::Span<const Shape> destination_shapes() const;
+
  private:
   OpParams op_params_;
+  OpBuffers op_buffers_;
 };
 
 }  // namespace xla::cpu

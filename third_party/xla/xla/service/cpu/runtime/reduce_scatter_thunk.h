@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_RUNTIME_ALL_REDUCE_THUNK_H_
-#define XLA_SERVICE_CPU_RUNTIME_ALL_REDUCE_THUNK_H_
+#ifndef XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_
+#define XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_
 
 #include <memory>
 
@@ -26,24 +26,23 @@ limitations under the License.
 
 namespace xla::cpu {
 
-class AllReduceThunk final : public CollectiveThunk {
+class ReduceScatterThunk final : public CollectiveThunk {
  public:
   using CollectiveThunk::OpParams;
 
-  static absl::StatusOr<std::unique_ptr<AllReduceThunk>> Create(
+  static absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> Create(
       Info info, ReductionKind reduction_kind, OpParams op_params,
-      OpBuffers op_buffers, bool single_replica);
+      OpBuffers op_buffers);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
  private:
-  AllReduceThunk(Info info, ReductionKind reduction_kind, OpParams op_params,
-                 OpBuffers op_buffers, bool single_replica);
+  ReduceScatterThunk(Info info, ReductionKind reduction_kind,
+                     OpParams op_params, OpBuffers op_buffers);
 
   ReductionKind reduction_kind_;
-  bool single_replica_;
 };
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_RUNTIME_ALL_REDUCE_THUNK_H_
+#endif  // XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_

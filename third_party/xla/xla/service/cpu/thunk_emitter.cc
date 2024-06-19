@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/all_reduce_thunk.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
+#include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/dot_thunk.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
+#include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/service/cpu/runtime/replica_id_thunk.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -207,6 +209,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kAllReduce:
       return EmitAllReduceThunk(instruction);
+    case HloOpcode::kReduceScatter:
+      return EmitReduceScatterThunk(instruction);
 
     // TODO(ezhulenev): Port pad optimizations from IrEmitter.
     case HloOpcode::kPad:
@@ -255,24 +259,38 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
   }
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
-    const HloInstruction* instruction) {
-  auto* all_reduce = Cast<HloAllReduceInstruction>(instruction);
-
-  // Check that we recognize the reduction computation attached to a collective.
-  auto reduction_kind = MatchReductionComputation(all_reduce->to_apply());
-  if (!reduction_kind.has_value()) {
-    return Unimplemented("AllReduce for computation '%s' is not supported",
-                         all_reduce->to_apply()->ToString());
+static absl::StatusOr<ReductionKind> MatchReductionKind(
+    const HloComputation* computation) {
+  if (auto reduction_kind = MatchReductionComputation(computation)) {
+    return reduction_kind.value();
   }
+  return Unimplemented("Unsupported reduction computation: %s",
+                       computation->ToString());
+}
 
+template <typename CollectiveInstruction>
+static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
+    const CollectiveInstruction* instruction) {
+  return CollectiveThunk::OpParams{
+      /*op_id=*/instruction->channel_id().has_value()
+          ? instruction->channel_id().value()
+          : instruction->GetModule()->unique_id(),
+      /*has_channel_id=*/instruction->channel_id().has_value(),
+      /*use_global_device_ids=*/instruction->use_global_device_ids(),
+      /*replica_groups=*/instruction->replica_groups(),
+  };
+}
+
+static absl::StatusOr<CollectiveThunk::OpBuffers> GetCollectiveOpBuffers(
+    const HloInstruction* instruction,
+    const BufferAssignment& buffer_assignment) {
   // Collect buffer slices for all operands.
   std::vector<BufferAllocation::Slice> source_buffers;
   std::vector<Shape> source_shapes;
 
-  for (const HloInstruction* operand : all_reduce->operands()) {
+  for (const HloInstruction* operand : instruction->operands()) {
     TF_ASSIGN_OR_RETURN(source_buffers.emplace_back(),
-                        GetAllocationSlice(operand));
+                        buffer_assignment.GetUniqueSlice(operand, {}));
     source_shapes.push_back(operand->shape());
   }
 
@@ -281,27 +299,54 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
   std::vector<Shape> destination_shapes;
 
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(destination_buffers.emplace_back(),
-                        GetAllocationSlice(instruction, indexed.index));
+    TF_ASSIGN_OR_RETURN(
+        destination_buffers.emplace_back(),
+        buffer_assignment.GetUniqueSlice(instruction, indexed.index));
     destination_shapes.push_back(indexed.shape);
   }
 
-  AllReduceThunk::OpParams op_params = {
-      /*op_id=*/all_reduce->channel_id().has_value()
-          ? all_reduce->channel_id().value()
-          : all_reduce->GetModule()->unique_id(),
-      /*has_channel_id=*/all_reduce->channel_id().has_value(),
-      /*use_global_device_ids=*/all_reduce->use_global_device_ids(),
-      /*replica_groups=*/all_reduce->replica_groups(),
+  return CollectiveThunk::OpBuffers{
+      /*source_buffers=*/std::move(source_buffers),
+      /*source_shapes=*/std::move(source_shapes),
+      /*destination_buffers=*/std::move(destination_buffers),
+      /*destination_shapes=*/std::move(destination_shapes),
   };
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
+    const HloInstruction* instruction) {
+  auto* all_reduce = Cast<HloAllReduceInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                      MatchReductionKind(all_reduce->to_apply()));
+  TF_ASSIGN_OR_RETURN(AllReduceThunk::OpParams op_params,
+                      GetCollectiveOpParams(all_reduce));
+  TF_ASSIGN_OR_RETURN(AllReduceThunk::OpBuffers op_buffers,
+                      GetCollectiveOpBuffers(all_reduce, buffer_assignment_));
 
   bool single_replica = hlo_module_config_.replica_count() == 1 &&
                         hlo_module_config_.num_partitions() == 1;
 
   return ThunkSequence::Of<AllReduceThunk>(
-      ThunkInfo(all_reduce), *reduction_kind, std::move(op_params),
-      source_buffers, source_shapes, destination_buffers, destination_shapes,
-      single_replica);
+      ThunkInfo(all_reduce), reduction_kind, std::move(op_params),
+      std::move(op_buffers), single_replica);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
+    const HloInstruction* instruction) {
+  auto* reduce_scatter = Cast<HloReduceScatterInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                      MatchReductionKind(reduce_scatter->to_apply()));
+  TF_ASSIGN_OR_RETURN(ReduceScatterThunk::OpParams op_params,
+                      GetCollectiveOpParams(reduce_scatter));
+  TF_ASSIGN_OR_RETURN(
+      ReduceScatterThunk::OpBuffers op_buffers,
+      GetCollectiveOpBuffers(reduce_scatter, buffer_assignment_));
+
+  return ThunkSequence::Of<ReduceScatterThunk>(
+      ThunkInfo(reduce_scatter), reduction_kind, std::move(op_params),
+      std::move(op_buffers));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(

@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
