@@ -129,6 +129,13 @@ class TritonSupportTest : public TritonFilecheckTest {
   // The provided template must contain a computation called
   // `triton_computation`. If the template contains parameters $0 and $1, they
   // will be replaced with the data type and opcode respectively.
+  // If the template's entry computation does not have a root fusion
+  // instruction, a new entry computation will be created. The new computation
+  // will have a root fusion instruction that has the same parameters as the
+  // `triton_computation` and contains a fusion instruction that calls the
+  // `triton_computation` with the generic Triton emitter. Tests that need
+  // the `__triton_gemm` backend kind should provide their own ENTRY
+  // computation.
   absl::StatusOr<TestedInstruction> ParseTemplateAndGetInstruction(
       absl::string_view hlo_template, xla::PrimitiveType data_type,
       xla::HloOpcode opcode);

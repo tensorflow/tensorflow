@@ -72,16 +72,9 @@ using BitcastOrReshapeTest = TritonSupportTestWithParam;
 TEST_P(BitcastOrReshapeTest, IsTritonSupportedBitcastOrReshape) {
   auto [data_type, opcode] = GetParam();
   const std::string kHloTestTemplate = R"(
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
   ROOT bitcast_or_reshape = $0[64]{0} $1(parameter_0)
-}
-
-ENTRY e {
-  parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
-  ROOT root_op = $0[64]{0} fusion(parameter_0),
-    kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -120,17 +113,10 @@ TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[33,68]{1,0} parameter(0)
   unary = $0[33,68]{1,0} $1(parameter_0)
   ROOT convert = f32[33,68]{1,0} convert(unary)
-}
-
-ENTRY e {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT root_op = f32[33,68]{1,0} fusion(parameter_0),
-    kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -184,18 +170,10 @@ TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
-}
-
-ENTRY e {
-  parameter_0 = $0[11,63]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT triton_op = $0[11,63]{1,0} fusion(parameter_0, parameter_1),
-    kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -251,19 +229,11 @@ TEST_P(CompareTest, IsTritonSupportedCompare) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
   ROOT convert = f32[11,63]{1,0} convert(compare)
-}
-
-ENTRY e {
-  parameter_0 = $0[11,63]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT triton_op = f32[11,63]{1,0} fusion(parameter_0, parameter_1),
-    kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -298,21 +268,12 @@ TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   }
 
   const std::string kHloTestTemplate = R"(
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[13,63]{1,0} parameter(0)
   parameter_1 = $0[13,63]{1,0} parameter(1)
   parameter_2 = pred[13,63]{1,0} parameter(2)
   ternary = $0[13,63]{1,0} $1(parameter_2, parameter_0, parameter_1)
   ROOT convert = f32[13,63]{1,0} convert(ternary)
-}
-
-ENTRY e {
-  parameter_0 = $0[13,63]{1,0} parameter(0)
-  parameter_1 = $0[13,63]{1,0} parameter(1)
-  parameter_2 = pred[13,63]{1,0} parameter(2)
-  ROOT triton_op = f32[13,63]{1,0} fusion(parameter_0, parameter_1, parameter_2),
-    kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -353,18 +314,10 @@ add {
   ROOT add = $0[] add(Arg_0, Arg_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = $0[125,127]{1,0} parameter(0)
   constant_0 = $0[] constant(0)
   ROOT reduce = $0[125]{0} $1(parameter_0, constant_0), dimensions={1}, to_apply=add
-}
-
-ENTRY main {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
-  ROOT triton_op = $0[125]{0} fusion(parameter_0),
-                          kind=kCustom, calls=triton_computation,
-                          backend_config={"fusion_backend_config":
-                                           {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -406,19 +359,11 @@ add {
   ROOT add = f32[] add(Arg_0, Arg_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[125,127]{1,0} parameter(0)
   constant_0 = bf16[] constant(0)
   convert_0 = f32[] convert(constant_0)
   ROOT reduce = f32[125]{0} reduce(parameter_0, convert_0), dimensions={1}, to_apply=add
-}
-
-ENTRY main {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_op = f32[125]{0} fusion(parameter_0), kind=kCustom,
-  calls=triton_computation,
-                        backend_config={"fusion_backend_config":
-                        {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -442,18 +387,10 @@ add {
   ROOT add = f32[] add(Arg_0, Arg_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[2,125,127]{2,1,0} parameter(0)
   constant_0 = f32[] constant(0)
   ROOT reduce = f32[2]{0} reduce(parameter_0, constant_0), dimensions={1,2}, to_apply=add
-}
-
-ENTRY main {
-  parameter_0 = f32[2,125,127]{2,1,0} parameter(0)
-  ROOT triton_op = f32[2]{0} fusion(parameter_0),
-                          kind=kCustom, calls=triton_computation,
-                          backend_config={"fusion_backend_config":
-                                            {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -479,18 +416,10 @@ add {
   ROOT add = f32[] add(Arg_0, Arg_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[125,127]{1,0} parameter(0)
   constant_0 = f32[] constant(0)
   ROOT reduce = f32[127]{0} reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
-}
-
-ENTRY main {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_op = f32[127]{0} fusion(parameter_0),
-                          kind=kCustom, calls=triton_computation,
-                          backend_config={"fusion_backend_config":
-                                            {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -520,19 +449,11 @@ add {
   ROOT pair = (f32[], f32[]) tuple(add_0, add_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[125,127] parameter(0)
   constant_0 = f32[] constant(0)
   tuple_0 = (f32[125]{0}, f32[125]{0}) reduce(parameter_0, parameter_0, constant_0, constant_0), dimensions={1}, to_apply=add
   ROOT reduce = f32[125]{0} get-tuple-element(tuple_0), index=0
-}
-
-ENTRY main {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_op = f32[125]{0} fusion(parameter_0),
-                          kind=kCustom, calls=triton_computation,
-                          backend_config={"fusion_backend_config":
-                                           {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -557,19 +478,10 @@ add {
   ROOT add = f32[] add(Arg_0, Arg_1)
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[125,127]{1,0} parameter(0)
   init = f32[] parameter(1)
   ROOT reduce = f32[125]{0} reduce(parameter_0, init), dimensions={1}, to_apply=add
-}
-
-ENTRY main {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  parameter_1 = f32[] parameter(1)
-  ROOT triton_op = f32[125]{0} fusion(parameter_0, parameter_1),
-                          kind=kCustom, calls=triton_computation,
-                        backend_config={"fusion_backend_config":
-                                         {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
@@ -599,18 +511,10 @@ custom_call {
   ROOT custom_call = f32[] custom-call(Arg_0, Arg_1), custom_call_target="foo"
 }
 
-triton_computation {
+ENTRY triton_computation {
   parameter_0 = f32[125,127]{1,0} parameter(0)
   constant_0 = f32[] constant(0)
   ROOT reduce = f32[125]{0} reduce(parameter_0, constant_0), dimensions={1}, to_apply=custom_call
-}
-
-ENTRY main {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_op = f32[125]{0} fusion(parameter_0),
-                          kind=kCustom, calls=triton_computation,
-                          backend_config={"fusion_backend_config":
-                                         {"kind":"__triton"}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(

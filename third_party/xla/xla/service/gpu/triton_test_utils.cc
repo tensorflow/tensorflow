@@ -20,8 +20,10 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/service/float_normalization.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -48,6 +51,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -140,6 +144,46 @@ std::string TritonSupportTestParamsToString(
       absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
 }
 
+namespace {
+
+// This function does nothing if the input module already has an entry
+// computation whose root is a fusion. Otherwise, creates a new entry
+// computation whose root is a fusion instruction that calls the original entry
+// computation. The new fusion instruction uses the generic Triton backend kind.
+absl::Status ConvertEntryToTritonFusion(HloModule* module) {
+  if (module->entry_computation()->root_instruction()->opcode() ==
+      HloOpcode::kFusion) {
+    return absl::OkStatus();
+  }
+  auto builder = HloComputation::Builder("entry");
+  std::vector<HloInstruction*> params;
+  for (auto& param : module->entry_computation()->parameter_instructions()) {
+    TF_ASSIGN_OR_RETURN(
+        auto param_clone,
+        builder.AddParameter(HloInstruction::CreateParameter(
+            param->parameter_number(), param->shape(),
+            absl::StrCat("param_", param->parameter_number()))));
+    params.push_back(param_clone);
+  }
+
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      module->entry_computation()->root_instruction()->shape(),
+      HloInstruction::FusionKind::kCustom, params,
+      module->entry_computation()));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
+  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+
+  auto new_entry =
+      module->AddComputationAndUnifyNamesAndIds(builder.Build(),
+                                                /*is_entry=*/false);
+  module->ReplaceEntryComputation(new_entry);
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 absl::StatusOr<TritonSupportTest::TestedInstruction>
 TritonSupportTest::ParseTemplateAndGetInstruction(
     absl::string_view hlo_template, xla::PrimitiveType data_type,
@@ -149,8 +193,14 @@ TritonSupportTest::ParseTemplateAndGetInstruction(
       HloOpcodeString(opcode));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_text));
+  TF_RETURN_IF_ERROR(ConvertEntryToTritonFusion(module.get()));
   const HloComputation* computation =
       module->GetComputationWithName("triton_computation");
+  if (computation == module->entry_computation()) {
+    return absl::InvalidArgumentError(
+        "The `triton_computation` and the module's entry computation cannot be "
+        "the same.");
+  }
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   if (fusion == nullptr) {
