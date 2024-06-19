@@ -250,58 +250,60 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
   return absl::OkStatus();
 }
 
-// PrelinearizeOp is used to linearize one tensor to the device format.
-class PrelinearizeOp : public OpKernel {
- public:
-  explicit PrelinearizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-    xla::Shape shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &shape));
-    OP_REQUIRES_OK(ctx,
-                   GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
-  }
+// // PrelinearizeOp is used to linearize one tensor to the device format.
+// class PrelinearizeOp : public OpKernel {
+//  public:
+//   explicit PrelinearizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+//     OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
+//     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+//     xla::Shape shape;
+//     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &shape));
+//     OP_REQUIRES_OK(ctx,
+//                    GetInfeedShapeWithLayout(ctx, "layout", shape,
+//                    &xla_shape_));
+//   }
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& input_tensor = ctx->input(0);
-    // Validate input.
-    OP_REQUIRES(
-        ctx, input_tensor.dtype() == dtype_,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Prelinearize dtype mismatch; expected ", DataType_Name(dtype_),
-            ", got ", DataType_Name(input_tensor.dtype()))));
-    OP_REQUIRES(
-        ctx, input_tensor.shape() == shape_,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Prelinearize shape mismatch; expected ", shape_.DebugString(),
-            ", got ", input_tensor.shape().DebugString())));
-    // Auto-transpose and prelinearize.
-    LinearizerBufferList linearized_buffers;
-    std::vector<Tensor> saved_input_tensors;
-    auto status =
-        AutoTransposeAndLinearize(ctx, input_tensor, xla_shape_,
-                                  &linearized_buffers, &saved_input_tensors);
-    OP_REQUIRES_OK(ctx, status);
+//   void Compute(OpKernelContext* ctx) override {
+//     const Tensor& input_tensor = ctx->input(0);
+//     // Validate input.
+//     OP_REQUIRES(
+//         ctx, input_tensor.dtype() == dtype_,
+//         absl::InvalidArgumentError(absl::StrCat(
+//             "Prelinearize dtype mismatch; expected ", DataType_Name(dtype_),
+//             ", got ", DataType_Name(input_tensor.dtype()))));
+//     OP_REQUIRES(
+//         ctx, input_tensor.shape() == shape_,
+//         absl::InvalidArgumentError(absl::StrCat(
+//             "Prelinearize shape mismatch; expected ", shape_.DebugString(),
+//             ", got ", input_tensor.shape().DebugString())));
+//     // Auto-transpose and prelinearize.
+//     LinearizerBufferList linearized_buffers;
+//     std::vector<Tensor> saved_input_tensors;
+//     auto status =
+//         AutoTransposeAndLinearize(ctx, input_tensor, xla_shape_,
+//                                   &linearized_buffers, &saved_input_tensors);
+//     OP_REQUIRES_OK(ctx, status);
 
-    // Write to output.
-    tensorflow::Tensor* output;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, tensorflow::TensorShape{}, &output));
-    output->scalar<tensorflow::Variant>()() = LinearizedBuffersWrapper{
-        std::move(linearized_buffers), std::move(saved_input_tensors)};
-  }
+//     // Write to output.
+//     tensorflow::Tensor* output;
+//     OP_REQUIRES_OK(ctx,
+//                    ctx->allocate_output(0, tensorflow::TensorShape{},
+//                    &output));
+//     output->scalar<tensorflow::Variant>()() = LinearizedBuffersWrapper{
+//         std::move(linearized_buffers), std::move(saved_input_tensors)};
+//   }
 
-  bool IsExpensive() override { return true; }
+//   bool IsExpensive() override { return true; }
 
- private:
-  TensorShape shape_;
-  DataType dtype_;
-  xla::Shape xla_shape_;
+//  private:
+//   TensorShape shape_;
+//   DataType dtype_;
+//   xla::Shape xla_shape_;
 
-  // PrelinearizeOp is neither copyable nor movable.
-  PrelinearizeOp(const PrelinearizeOp&) = delete;
-  PrelinearizeOp& operator=(const PrelinearizeOp&) = delete;
-};
+//   // PrelinearizeOp is neither copyable nor movable.
+//   PrelinearizeOp(const PrelinearizeOp&) = delete;
+//   PrelinearizeOp& operator=(const PrelinearizeOp&) = delete;
+// };
 
 // PrelinearizeTupleOp is used to linearize multiple tensors to the device
 // format.
@@ -587,8 +589,8 @@ REGISTER_KERNEL_BUILDER(Name("InfeedEnqueueTuple").Device(DEVICE_CPU),
                         StreamExecutorInfeedEnqueueTupleOp);
 
 // Prelinearize ops run on CPU as part of tf.data input pipeline.
-REGISTER_KERNEL_BUILDER(Name("Prelinearize").Device(DEVICE_CPU),
-                        PrelinearizeOp);
+// REGISTER_KERNEL_BUILDER(Name("Prelinearize").Device(DEVICE_CPU),
+//                         PrelinearizeOp);
 REGISTER_KERNEL_BUILDER(Name("PrelinearizeTuple").Device(DEVICE_CPU),
                         PrelinearizeTupleOp);
 
