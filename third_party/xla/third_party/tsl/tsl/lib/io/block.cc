@@ -98,7 +98,7 @@ class Block::Iter : public Iterator {
   uint32 restart_index_;  // Index of restart block in which current_ falls
   string key_;
   StringPiece value_;
-  Status status_;
+  absl::Status status_;
 
   inline int Compare(const StringPiece& a, const StringPiece& b) const {
     return a.compare(b);
@@ -135,7 +135,7 @@ class Block::Iter : public Iterator {
   }
 
   bool Valid() const override { return current_ < restarts_; }
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
   StringPiece key() const override {
     assert(Valid());
     return key_;
