@@ -28,8 +28,6 @@ namespace xla::cpu {
 
 class AllReduceThunk final : public CollectiveThunk {
  public:
-  using CollectiveThunk::OpParams;
-
   static absl::StatusOr<std::unique_ptr<AllReduceThunk>> Create(
       Info info, ReductionKind reduction_kind, OpParams op_params,
       OpBuffers op_buffers, bool single_replica);

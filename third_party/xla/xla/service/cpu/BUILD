@@ -812,6 +812,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
+        "//xla/service/cpu/runtime:all_gather_thunk",
         "//xla/service/cpu/runtime:all_reduce_thunk",
         "//xla/service/cpu/runtime:call_thunk",
         "//xla/service/cpu/runtime:collective_thunk",

@@ -13,34 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_
-#define XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_
+#ifndef XLA_SERVICE_CPU_RUNTIME_ALL_GATHER_THUNK_H_
+#define XLA_SERVICE_CPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class ReduceScatterThunk final : public CollectiveThunk {
+class AllGatherThunk final : public CollectiveThunk {
  public:
-  static absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> Create(
-      Info info, ReductionKind reduction_kind, OpParams op_params,
-      OpBuffers op_buffers);
+  static absl::StatusOr<std::unique_ptr<AllGatherThunk>> Create(
+      Info info, OpParams op_params, OpBuffers op_buffers);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
  private:
-  ReduceScatterThunk(Info info, ReductionKind reduction_kind,
-                     OpParams op_params, OpBuffers op_buffers);
-
-  ReductionKind reduction_kind_;
+  AllGatherThunk(Info info, OpParams op_params, OpBuffers op_buffers);
 };
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_RUNTIME_REDUCE_SCATTER_THUNK_H_
+#endif  // XLA_SERVICE_CPU_RUNTIME_ALL_GATHER_THUNK_H_

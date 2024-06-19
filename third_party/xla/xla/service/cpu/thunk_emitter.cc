@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/runtime/all_gather_thunk.h"
 #include "xla/service/cpu/runtime/all_reduce_thunk.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/collective_thunk.h"
@@ -207,6 +208,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kReplicaId:
       return EmitReplicaIdThunk(instruction);
 
+    case HloOpcode::kAllGather:
+      return EmitAllGatherThunk(instruction);
     case HloOpcode::kAllReduce:
       return EmitAllReduceThunk(instruction);
     case HloOpcode::kReduceScatter:
@@ -311,6 +314,19 @@ static absl::StatusOr<CollectiveThunk::OpBuffers> GetCollectiveOpBuffers(
       /*destination_buffers=*/std::move(destination_buffers),
       /*destination_shapes=*/std::move(destination_shapes),
   };
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllGatherThunk(
+    const HloInstruction* instruction) {
+  auto* all_gather = Cast<HloAllGatherInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(AllGatherThunk::OpParams op_params,
+                      GetCollectiveOpParams(all_gather));
+  TF_ASSIGN_OR_RETURN(AllGatherThunk::OpBuffers op_buffers,
+                      GetCollectiveOpBuffers(all_gather, buffer_assignment_));
+
+  return ThunkSequence::Of<AllGatherThunk>(
+      ThunkInfo(all_gather), std::move(op_params), std::move(op_buffers));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
