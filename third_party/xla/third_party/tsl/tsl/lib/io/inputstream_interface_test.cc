@@ -27,21 +27,21 @@ class TestStringStream : public InputStreamInterface {
  public:
   explicit TestStringStream(const string& content) : content_(content) {}
 
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (pos_ + bytes_to_read > content_.size()) {
       return errors::OutOfRange("limit reached");
     }
     *result = content_.substr(pos_, bytes_to_read);
     pos_ += bytes_to_read;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Tell() const override { return pos_; }
 
-  Status Reset() override {
+  absl::Status Reset() override {
     pos_ = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

@@ -1654,6 +1654,7 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":compiler",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Core",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
