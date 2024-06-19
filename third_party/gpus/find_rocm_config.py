@@ -89,7 +89,10 @@ def _find_rocm_config(rocm_install_path):
     patch = _get_header_version(version_file, "ROCM_VERSION_PATCH")
     return major, minor, patch
 
-  major, minor, patch = rocm_version_numbers(rocm_install_path)
+  if "ROCM_CORE_PATH" in os.environ:
+    major, minor, patch = rocm_version_numbers(os.environ["ROCM_CORE_PATH"])
+  else:
+    major, minor, patch = rocm_version_numbers(rocm_install_path)
 
   rocm_config = {
       "rocm_version_number": _get_composite_version_number(major, minor, patch)
@@ -123,8 +126,13 @@ def _find_hipruntime_config(rocm_install_path):
     minor = _get_header_version(version_file, "HIP_VERSION_MINOR")
     return 100 * major + minor
 
+  if "HIP_PATH" in os.environ:
+    version_number = hipruntime_version_number(os.environ["HIP_PATH"])
+  else:
+    version_number = hipruntime_version_number(rocm_install_path)
+
   hipruntime_config = {
-      "hipruntime_version_number": hipruntime_version_number(rocm_install_path)
+      "hipruntime_version_number": version_number
   }
 
   return hipruntime_config
@@ -151,7 +159,10 @@ def _find_miopen_config(rocm_install_path):
     patch = _get_header_version(version_file, "MIOPEN_VERSION_PATCH")
     return major, minor, patch
 
-  major, minor, patch = miopen_version_numbers(rocm_install_path)
+  if "MIOPEN_PATH" in os.environ:
+    major, minor, patch = miopen_version_numbers(os.environ["MIOPEN_PATH"])
+  else:
+    major, minor, patch = miopen_version_numbers(rocm_install_path)
 
   miopen_config = {
       "miopen_version_number":
@@ -183,7 +194,10 @@ def _find_rocblas_config(rocm_install_path):
     patch = _get_header_version(version_file, "ROCBLAS_VERSION_PATCH")
     return major, minor, patch
 
-  major, minor, patch = rocblas_version_numbers(rocm_install_path)
+  if "ROCBLAS_PATH" in os.environ:
+    major, minor, patch = rocblas_version_numbers(os.environ["ROCBLAS_PATH"])
+  else:
+    major, minor, patch = rocblas_version_numbers(rocm_install_path)
 
   rocblas_config = {
       "rocblas_version_number":
@@ -212,8 +226,13 @@ def _find_rocrand_config(rocm_install_path):
     version_number = _get_header_version(version_file, "ROCRAND_VERSION")
     return version_number
 
+  if "ROCRAND_PATH" in os.environ:
+    version_number = rocrand_version_number(os.environ["ROCRAND_PATH"])
+  else:
+    version_number = rocrand_version_number(rocm_install_path)
+
   rocrand_config = {
-      "rocrand_version_number": rocrand_version_number(rocm_install_path)
+      "rocrand_version_number": version_number
   }
 
   return rocrand_config
@@ -240,7 +259,10 @@ def _find_rocfft_config(rocm_install_path):
     patch = _get_header_version(version_file, "rocfft_version_patch")
     return major, minor, patch
 
-  major, minor, patch = rocfft_version_numbers(rocm_install_path)
+  if "ROCFFT_PATH" in os.environ:
+    major, minor, patch = rocfft_version_numbers(os.environ["ROCFFT_PATH"])
+  else:
+    major, minor, patch = rocfft_version_numbers(rocm_install_path)
 
   rocfft_config = {
       "rocfft_version_number":
@@ -271,7 +293,10 @@ def _find_hipfft_config(rocm_install_path):
     patch = _get_header_version(version_file, "hipfftVersionPatch")
     return major, minor, patch
 
-  major, minor, patch = hipfft_version_numbers(rocm_install_path)
+  if "HIPFFT_PATH" in os.environ:
+    major, minor, patch = hipfft_version_numbers(os.environ["HIPFFT_PATH"])
+  else:
+    major, minor, patch = hipfft_version_numbers(rocm_install_path)
 
   hipfft_config = {
       "hipfft_version_number":
@@ -303,7 +328,10 @@ def _find_roctracer_config(rocm_install_path):
     patch = 0
     return major, minor, patch
 
-  major, minor, patch = roctracer_version_numbers(rocm_install_path)
+  if "ROCTRACER_PATH" in os.environ:
+    major, minor, patch = roctracer_version_numbers(os.environ["ROCTRACER_PATH"])
+  else:
+    major, minor, patch = roctracer_version_numbers(rocm_install_path)
 
   roctracer_config = {
       "roctracer_version_number":
@@ -334,7 +362,10 @@ def _find_hipsparse_config(rocm_install_path):
     patch = _get_header_version(version_file, "hipsparseVersionPatch")
     return major, minor, patch
 
-  major, minor, patch = hipsparse_version_numbers(rocm_install_path)
+  if "HIPSPARSE_PATH" in os.environ:
+    major, minor, patch = hipsparse_version_numbers(os.environ["HIPSPARSE_PATH"])
+  else:
+    major, minor, patch = hipsparse_version_numbers(rocm_install_path)
 
   hipsparse_config = {
       "hipsparse_version_number":
@@ -365,7 +396,10 @@ def _find_hipsolver_config(rocm_install_path):
     patch = _get_header_version(version_file, "hipsolverVersionPatch")
     return major, minor, patch
 
-  major, minor, patch = hipsolver_version_numbers(rocm_install_path)
+  if "HIPSOLVER_PATH" in os.environ:
+    major, minor, patch = hipsolver_version_numbers(os.environ["HIPSOLVER_PATH"])
+  else:
+    major, minor, patch = hipsolver_version_numbers(rocm_install_path)
 
   hipsolver_config = {
       "hipsolver_version_number":
@@ -396,7 +430,10 @@ def _find_rocsolver_config(rocm_install_path):
     patch = _get_header_version(version_file, "ROCSOLVER_VERSION_PATCH")
     return major, minor, patch
 
-  major, minor, patch = rocsolver_version_numbers(rocm_install_path)
+  if "ROCSOLVER_PATH" in os.environ:
+    major, minor, patch = rocsolver_version_numbers(os.environ["ROCSOLVER_PATH"])
+  else:
+    major, minor, patch = rocsolver_version_numbers(rocm_install_path)
 
   rocsolver_config = {
       "rocsolver_version_number":
