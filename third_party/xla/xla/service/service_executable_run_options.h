@@ -85,8 +85,6 @@ class ServiceExecutableRunOptions {
                               "No stream borrower");
   }
 
-  bool HasStreamBorrower() const { return stream_borrower_ != nullptr; }
-
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower stream_borrower_;
