@@ -63,6 +63,9 @@ class PyClient {
   virtual ~PyClient();
 
   ifrt::Client* ifrt_client() const { return ifrt_client_.get(); }
+  const std::shared_ptr<ifrt::Client>& shared_ptr_ifrt_client() const {
+    return ifrt_client_;
+  }
 
   // Short-term escape hatch to get PjRtClient from PyClient.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
