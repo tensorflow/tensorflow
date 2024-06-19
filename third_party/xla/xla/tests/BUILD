@@ -3042,6 +3042,25 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "sort_test",
+    srcs = ["sort_test.cc"],
+    # There is nothing backend specific in this test, so just pick an arbitrary backend.
+    backends = ["cpu"],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//xla:test",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],

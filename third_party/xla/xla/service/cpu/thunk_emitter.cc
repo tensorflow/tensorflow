@@ -201,6 +201,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
+    case HloOpcode::kSort:
       return EmitElementalKernelThunk(instruction);
 
     // ReplicaId and PartitionId identify the location of the current device in
