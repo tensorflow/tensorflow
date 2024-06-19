@@ -159,6 +159,9 @@ message BlockLevelFusionConfig {
   // The output tile sizes of the associated instruction. The length of this
   // field is expected to be the rank of the output shape.
   repeated int64 output_tile_sizes = 1;
+
+  // The number of warps to use for the kernel.
+  int64 num_warps = 2;
 }
 
 message FusionBackendConfig {

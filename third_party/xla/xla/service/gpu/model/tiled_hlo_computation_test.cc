@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -29,11 +30,27 @@ TEST(BlockLevelParametersTest,
   BlockLevelFusionConfig block_level_fusion_config;
   block_level_fusion_config.mutable_output_tile_sizes()->Add(18);
   block_level_fusion_config.mutable_output_tile_sizes()->Add(19);
+  block_level_fusion_config.set_num_warps(12);
 
-  EXPECT_THAT(BlockLevelParameters::FromBlockLevelFusionConfig(
-                  block_level_fusion_config)
-                  .output_tile_sizes,
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          block_level_fusion_config);
+  EXPECT_THAT(block_level_parameters.output_tile_sizes, ElementsAre(18, 19));
+  EXPECT_THAT(block_level_parameters.num_warps, 12);
+}
+
+TEST(BlockLevelParametersTest,
+     BlockLevelParametersCanBeConvertedToBlockLevelFusionConfig) {
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {18, 19};
+  block_level_parameters.num_warps = 12;
+
+  BlockLevelFusionConfig block_level_fusion_config =
+      block_level_parameters.ToBlockLevelFusionConfig();
+
+  EXPECT_THAT(block_level_fusion_config.output_tile_sizes(),
               ElementsAre(18, 19));
+  EXPECT_THAT(block_level_fusion_config.num_warps(), 12);
 }
 
 }  // namespace

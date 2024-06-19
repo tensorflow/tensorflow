@@ -36,7 +36,7 @@ struct BlockLevelParameters {
   std::vector<int64_t> output_tile_sizes;
 
   // Triton-specific parameters.
-  int num_warps = 1;
+  int64_t num_warps = 1;
   int num_ctas = 1;
   int num_stages = 1;
 
@@ -46,7 +46,17 @@ struct BlockLevelParameters {
     return BlockLevelParameters{
         /*output_tile_sizes=*/
         std::vector<int64_t>(config.output_tile_sizes().begin(),
-                             config.output_tile_sizes().end())};
+                             config.output_tile_sizes().end()),
+        /*num_warps=*/config.num_warps()};
+  }
+
+  // Returns a BlockLevelFusionConfig proto from a BlockLevelParameters struct.
+  BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
+    BlockLevelFusionConfig config;
+    config.mutable_output_tile_sizes()->Add(output_tile_sizes.begin(),
+                                            output_tile_sizes.end());
+    config.set_num_warps(num_warps);
+    return config;
   }
 };
 

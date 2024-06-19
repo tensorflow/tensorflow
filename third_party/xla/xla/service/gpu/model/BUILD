@@ -636,7 +636,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
     ],
 )
@@ -646,6 +645,7 @@ xla_cc_test(
     srcs = ["tiled_hlo_computation_test.cc"],
     deps = [
         ":tiled_hlo_computation",
+        "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
