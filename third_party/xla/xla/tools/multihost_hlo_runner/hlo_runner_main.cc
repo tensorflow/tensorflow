@@ -66,7 +66,7 @@ If multiple HLOs are launched, we assume that they are encoded in the same
 format (HLO text by default). Running multiple HLOs is convenient when replaying
 all HLOs from an execution dump, with e.g.:
 
-  bazel run hlo_runner_main -- /dump/*before_optimizations.txt
+  bazel run hlo_runner_main -- /dump/hlo_*before_optimizations.txt
 
 
 Mock GPU usage:
@@ -101,6 +101,7 @@ struct HloRunnerConfig {
   bool remove_infeed_outfeed = true;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
+  int64_t gpu_client_initialization_timeout_sec = 300;
 };
 
 }  // namespace
@@ -226,25 +227,23 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK(opts.dump_output_literal_to.empty() || argc == 2)
       << "Can only dump output literal when single input file is specified";
 
-  std::unique_ptr<DistributedRuntimeService> service;
-  std::shared_ptr<KeyValueStoreInterface> kv_store;
-
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtClient> client,
+      PjRtEnvironment env,
       GetPjRtClient(opts.device_type_str, opts.address_str, opts.task_id,
-                    opts.num_nodes, opts.enable_mock_nccl, service, kv_store));
+                    opts.num_nodes, opts.enable_mock_nccl,
+                    absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
 
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
     std::cout << "\n** Running " << filename << " **\n";
     if (opts.should_run) {
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
-          *client, GetDebugOptionsFromFlags(), preproc_options,
+          *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, filename, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *client, GetDebugOptionsFromFlags(), preproc_options,
+          *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
     }
   }
@@ -314,7 +313,11 @@ int main(int argc, char** argv) {
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
                 "A path to a protobuf text file which stores the "
-                "ExecutionOptions message for this HLO module.")};
+                "ExecutionOptions message for this HLO module."),
+      tsl::Flag("gpu_client_initialization_timeout_sec",
+                &opts.gpu_client_initialization_timeout_sec,
+                "A timeout, in seconds, for the GPU client initialization. "
+                "Only used for multi-node GPU runs")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 

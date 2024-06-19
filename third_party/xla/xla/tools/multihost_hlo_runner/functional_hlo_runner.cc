@@ -76,11 +76,12 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
+static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     absl::string_view device_type, absl::string_view address, int node_id,
-    int num_nodes, bool enable_mock_nccl,
+    int num_nodes, bool enable_mock_nccl, absl::Duration init_timeout,
     std::unique_ptr<xla::DistributedRuntimeService>& service,
-    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store) {
+    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store,
+    std::shared_ptr<xla::DistributedRuntimeClient>& distributed_client) {
   if (device_type == "host") {
     CHECK_EQ(num_nodes, 1);
     return xla::FunctionalHloRunner::CreateHostClient();
@@ -97,6 +98,11 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     if (num_nodes == 1) {
       return xla::FunctionalHloRunner::CreateGpuClient({});
     } else {
+      TF_RET_CHECK(num_nodes == 1 || !address.empty());
+      TF_RET_CHECK(node_id >= 0)
+          << "Node id is expected to be in range [0, num_nodes)";
+      TF_RET_CHECK(node_id < num_nodes)
+          << "Node id is expected to be in range [0, num_nodes)";
       CHECK_GT(address.length(), 0);
       // Multinode. Start service on task 0.
       if (node_id == 0) {
@@ -111,8 +117,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
       }
       xla::DistributedRuntimeClient::Options options;
       options.node_id = node_id;
-      options.init_timeout = absl::Seconds(300);
-      auto distributed_client =
+      options.init_timeout = init_timeout;
+      distributed_client =
           GetDistributedRuntimeClient(std::string(address), options);
       TF_QCHECK_OK(distributed_client->Connect());
       kv_store = GetDistributedKeyValueStore(distributed_client,
@@ -125,6 +131,20 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
           std::move(gpu_client_options));
     }
   }
+}
+
+absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
+                                              absl::string_view address,
+                                              int node_id, int num_nodes,
+                                              bool enable_mock_nccl,
+
+                                              absl::Duration init_timeout) {
+  PjRtEnvironment env;
+  TF_ASSIGN_OR_RETURN(env.client,
+                      GetPjRtClient(device_type, address, node_id, num_nodes,
+                                    enable_mock_nccl, init_timeout, env.service,
+                                    env.kv_store, env.distributed_client));
+  return env;
 }
 
 namespace {

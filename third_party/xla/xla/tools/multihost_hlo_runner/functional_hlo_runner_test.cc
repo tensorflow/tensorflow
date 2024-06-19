@@ -288,31 +288,31 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
 absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   tsl::setenv("CUDA_VISIBLE_DEVICES", std::to_string(node_id).data(),
               /*overwrite=*/true);
-  std::unique_ptr<xla::DistributedRuntimeService> service = nullptr;
-  std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                      GetPjRtClient("gpu", "127.0.0.1:12345", node_id,
-                                    kNumNodes, false, service, kv_store));
-  CHECK(kv_store != nullptr);
+  TF_ASSIGN_OR_RETURN(
+      PjRtEnvironment env,
+      xla::GetPjRtClient("gpu", "127.0.0.1:12345", node_id, kNumNodes,
+                         /*enable_mock_nccl=*/false,
+                         /*init_timeout=*/absl::Seconds(120)));
+  CHECK(env.kv_store != nullptr);
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-      *client, GetDebugOptionsFromFlags(),
+      *env.client, GetDebugOptionsFromFlags(),
       FunctionalHloRunner::PreprocessingOptions{},
       FunctionalHloRunner::RawCompileOptions{},
       GetHloPath("multiple_gemm_fusions.hlo"), InputFormat::kText));
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(
-        std::string results0,
-        kv_store->Get("gemm_fusion_autotuning_results_1_0", absl::Seconds(1)));
+    TF_ASSIGN_OR_RETURN(std::string results0,
+                        env.kv_store->Get("gemm_fusion_autotuning_results_1_0",
+                                          absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
-    TF_ASSIGN_OR_RETURN(
-        std::string results1,
-        kv_store->Get("gemm_fusion_autotuning_results_1_1", absl::Seconds(1)));
+    TF_ASSIGN_OR_RETURN(std::string results1,
+                        env.kv_store->Get("gemm_fusion_autotuning_results_1_1",
+                                          absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
     // First two nodes autotune two different fusions.
     CHECK_NE(results0, results1);
-    TF_ASSIGN_OR_RETURN(
-        std::string results2,
-        kv_store->Get("gemm_fusion_autotuning_results_1_2", absl::Seconds(1)));
+    TF_ASSIGN_OR_RETURN(std::string results2,
+                        env.kv_store->Get("gemm_fusion_autotuning_results_1_2",
+                                          absl::Seconds(1)));
     // Third node has nothing to autotune.
     CHECK(!absl::StrContains(results2, "run_time"));
   }

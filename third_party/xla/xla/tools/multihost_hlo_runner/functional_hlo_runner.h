@@ -40,11 +40,18 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    absl::string_view device_type, absl::string_view address, int node_id,
-    int num_nodes, bool enable_mock_nccl,
-    std::unique_ptr<xla::DistributedRuntimeService>& service,
-    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store);
+struct PjRtEnvironment {
+  std::unique_ptr<xla::PjRtClient> client;
+  std::unique_ptr<xla::DistributedRuntimeService> service;
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
+  std::shared_ptr<xla::DistributedRuntimeClient> distributed_client;
+};
+
+absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
+                                              absl::string_view address,
+                                              int node_id, int num_nodes,
+                                              bool enable_mock_nccl,
+                                              absl::Duration init_timeout);
 
 // Supported input formats for the input HLO module.
 enum class InputFormat {
