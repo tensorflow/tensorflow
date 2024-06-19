@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -250,25 +252,11 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimes(
   return {time_unfused, time_fused};
 }
 
-absl::StatusOr<EstimateRunTimeData>
-GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
+EstimateRunTimeData
+GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     const HloFusionAdaptor& fusion_adaptor,
-    const LaunchDimensions& launch_dimensions,
-    absl::Span<const int64_t> tile_sizes) {
-  // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
-  SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
-  if (!std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("SymbolicTileAnalysis failed. ",
-                     std::get<FusionDecision>(analysis_or_error).Explain()));
-  }
-  SymbolicTileAnalysis analysis =
-      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
-
-  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tile_sizes));
-
+    const TiledHloComputation& tiled_hlo_computation,
+    const LaunchDimensions& launch_dimensions) {
   absl::flat_hash_map<const HloInstruction*, int64_t> n_bytes_total_map;
 
   int64_t flops = 0;
@@ -335,6 +323,29 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
 }
 
 absl::StatusOr<EstimateRunTimeData>
+GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
+    const HloFusionAdaptor& fusion_adaptor,
+    const LaunchDimensions& launch_dimensions,
+    absl::Span<const int64_t> tile_sizes) {
+  // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+  if (const auto* fusion_decision =
+          std::get_if<FusionDecision>(&analysis_or_error)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "SymbolicTileAnalysis failed. ", fusion_decision->Explain()));
+  }
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                      analysis.ComputeTiledHloInstructions(tile_sizes));
+
+  return EstimateRunTimeForTiledHloComputation(
+      fusion_adaptor, tiled_hlo_computation, launch_dimensions);
+}
+
+absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
     const HloInstruction* producer, const HloInstruction* consumer) {
   const auto& fusion_analysis =
@@ -350,6 +361,80 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
   return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
                                        launch_config->launch_dimensions,
                                        launch_config->output_tile_sizes);
+}
+
+// Returns the number of warps to use based on the tile size. The numbers were
+// originally selected from Triton SoftMax reduction row length.
+// TODO(b/332714755): Make it smarter.
+int64_t GetNumWarps(int64_t tile_size) {
+  if (tile_size <= 512) return 1;
+  if (tile_size <= 1024) return 2;
+  if (tile_size <= 16384) return 4;
+  if (tile_size <= 32768) return 8;
+  if (tile_size <= 65536) return 16;
+  return 32;
+}
+
+LaunchDimensions GetLaunchDimensionsForTiledFusion(
+    const TiledHloComputation& tiled_hlo_computation) {
+  const auto* tiled_root = tiled_hlo_computation.GetRoot();
+  int64_t num_blocks = tiled_root->block_id_to_tile_offsets_indexing()
+                           .GetDimensionBound(0)
+                           .GetLoopTripCount();
+
+  int64_t num_warps = GetNumWarps(Product(tiled_root->tile_sizes()));
+
+  return {static_cast<uint64_t>(num_blocks),
+          static_cast<uint64_t>(num_warps * WarpSize())};
+}
+
+absl::StatusOr<std::variant<TiledRunTimeData, FusionDecision>>
+GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
+    const HloFusionAdaptor& fusion_adaptor) {
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+
+  if (const auto* fusion_decision =
+          std::get_if<FusionDecision>(&analysis_or_error)) {
+    return *fusion_decision;
+  }
+
+  SymbolicTileAnalysis analysis =
+      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+
+  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTilings());
+
+  std::optional<TiledRunTimeData> best_tiled_run_time_data;
+
+  for (const auto& tiling : tilings) {
+    TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                        analysis.ComputeTiledHloInstructions(tiling));
+
+    LaunchDimensions launch_dimensions =
+        GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
+
+    EstimateRunTimeData estimate_run_time_data =
+        EstimateRunTimeForTiledHloComputation(
+            fusion_adaptor, tiled_hlo_computation, launch_dimensions);
+
+    if (!best_tiled_run_time_data.has_value() ||
+        estimate_run_time_data.exec_time <
+            best_tiled_run_time_data->runtime_data.exec_time) {
+      BlockLevelParameters block_level_parameters;
+      block_level_parameters.output_tile_sizes =
+          std::vector<int64_t>(tiling.begin(), tiling.end());
+      block_level_parameters.num_warps =
+          launch_dimensions.num_threads_per_block() / WarpSize();
+
+      best_tiled_run_time_data =
+          TiledRunTimeData{estimate_run_time_data, block_level_parameters};
+    }
+  }
+
+  if (!best_tiled_run_time_data.has_value()) {
+    return FusionDecision("No valid tilings found.");
+  }
+  return *best_tiled_run_time_data;
 }
 
 }  // namespace gpu

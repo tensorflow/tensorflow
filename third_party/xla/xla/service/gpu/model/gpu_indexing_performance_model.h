@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -30,12 +31,21 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+
+// Contains informations about block level parameters and run time of a fusion.
+struct TiledRunTimeData {
+  EstimateRunTimeData runtime_data;
+  BlockLevelParameters block_level_parameters;
+};
 
 // Implementation of Cost Model that uses indexing analysis to estimate amount
 // of compute and memory access time.
@@ -65,6 +75,11 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const HloInstruction* producer,
       absl::Span<const HloInstruction* const> fused_consumers = {});
 
+  EstimateRunTimeData EstimateRunTimeForTiledHloComputation(
+      const HloFusionAdaptor& fusion_adaptor,
+      const TiledHloComputation& tiled_hlo_computation,
+      const LaunchDimensions& launch_dimensions);
+
   // Estimate the run time of the fusion with the given launch dimensions and
   // output tile sizes.
   //
@@ -81,6 +96,17 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // If consumer is nullptr, estimate run time of the producer alone.
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTriton(
       const HloInstruction* producer, const HloInstruction* consumer = nullptr);
+
+  // Estimates the best tile sizes for the given fusion. Iterates over all the
+  // good tile sizes provided by SymbolicTileAnalysis, estimates the run time
+  // for each of them.
+  //
+  // Returns status if there is an error that we can't recover from.
+  // Returns FusionDecision if the fusion can't be tiled or there are no valid
+  // block level parameters.
+  // Otherwise returns block level parameters that give the best execution time.
+  absl::StatusOr<std::variant<TiledRunTimeData, FusionDecision>>
+  TryFindBestTilingForFusion(const HloFusionAdaptor& fusion_adaptor);
 
  private:
   // Returns an estimate how many FLOPs will be used to produce one element of
