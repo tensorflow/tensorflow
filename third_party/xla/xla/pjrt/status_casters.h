@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_PJRT_STATUS_CASTERS_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/exceptions.h"
-#include "xla/statusor.h"
 #include "tsl/platform/macros.h"
 
 namespace xla {
