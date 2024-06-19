@@ -744,7 +744,7 @@ TEST_F(SymbolicTileTest,
 }
 
 TEST_F(SymbolicTileTest,
-       CanPropagateTileWhenPreexistingConstraintsCanBeSimplifiedAway) {
+       CanDeriveTileWhenPreexistingConstraintsCanBeSimplifiedAway) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
@@ -762,6 +762,23 @@ TEST_F(SymbolicTileTest,
         offset_map: ()[s0, s1, s2] -> (0, 0)
         size_map: ()[s0, s1, s2] -> (s0 * s1, 50304)
         stride_map: ()[s0, s1, s2] -> (((-s1 + 2049) floordiv 2048) * ((-((-s0 + 5) floordiv 4) + 1) * 2048) + -((-s1 + 2049) floordiv 2048) + 1, 1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, CanDeriveTileWhenTheIndexingMapHasSymbolsInASum) {
+  // The example is from
+  // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
+                     &mlir_context_),
+      {4, 2048, 393}, {128});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: ()[s0, s1, s2] -> (0, 0, 0)
+        size_map: ()[s0, s1, s2] -> (s0, s1, s2 * 128)
+        stride_map: ()[s0, s1, s2] -> (1, 1, 1)
       )")));
 }
 

@@ -640,13 +640,13 @@ TEST_F(SymbolicTileAnalysisTest, GetGoodTilingsWorksForSoftmaxExample) {
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
 
-region {
+max_computation {
   param_0 = f32[] parameter(0)
   param_1 = f32[] parameter(1)
   ROOT maximum = f32[] maximum(param_0, param_1)
 }
 
-region.1 {
+add_computation {
   param_0 = f32[] parameter(0)
   param_1 = f32[] parameter(1)
   ROOT add = f32[] add(param_0, param_1)
@@ -656,13 +656,13 @@ fused_computation {
   param_0 = f32[8192,50304] parameter(0)
   bitcast = f32[4,2048,50304] bitcast(param_0)
   constant = f32[] constant(-inf)
-  reduce = f32[8192] reduce(param_0, constant), dimensions={1}, to_apply=region
+  reduce = f32[8192] reduce(param_0, constant), dimensions={1}, to_apply=max_computation
   bitcast.1 = f32[4,2048] bitcast(reduce)
   broadcast = f32[4,2048,50304] broadcast(bitcast.1), dimensions={0,1}
   subtract = f32[4,2048,50304] subtract(bitcast, broadcast)
   exponential = f32[4,2048,50304] exponential(subtract)
   constant.1 = f32[] constant(0)
-  reduce.1 = f32[4,2048] reduce(exponential, constant.1), dimensions={2}, to_apply=region.1
+  reduce.1 = f32[4,2048] reduce(exponential, constant.1), dimensions={2}, to_apply=add_computation
   log = f32[4,2048] log(reduce.1)
   broadcast.1 = f32[4,2048,50304] broadcast(log), dimensions={0,1}
   ROOT subtract.1 = f32[4,2048,50304] subtract(subtract, broadcast.1)
@@ -671,6 +671,70 @@ fused_computation {
 ENTRY entry_computation {
   param_0 = f32[8192,50304] parameter(0)
   ROOT fusion = f32[4,2048,50304] fusion(param_0), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> opt_analysis =
+      TryAnalyzeModule(module.get());
+  ASSERT_TRUE(opt_analysis.has_value());
+  const SymbolicTileAnalysis& analysis = opt_analysis.value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
+      analysis.GetGoodTilings());
+  EXPECT_THAT(good_tilings, Not(IsEmpty()));
+  LogTilingsIfVlog1(good_tilings);
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       GetGoodTilingsWorksForSoftmaxAndReduceExample) {
+  // The example is from
+  // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+max_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(param_0, param_1)
+}
+
+add_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+fused_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  param_1 = s32[4,2048] parameter(1)
+  broadcast = s32[4,2048,50304] broadcast(param_1), dimensions={0,1}
+  iota = s32[4,2048,50304] iota(), iota_dimension=2
+  compare = pred[4,2048,50304] compare(broadcast, iota), direction=EQ
+  bitcast = f32[4,2048,50304] bitcast(param_0)
+  constant = f32[] constant(-inf)
+  reduce = f32[8192] reduce(param_0, constant), dimensions={1}, to_apply=max_computation
+  bitcast.1 = f32[4,2048] bitcast(reduce)
+  broadcast.1 = f32[4,2048,50304] broadcast(bitcast.1), dimensions={0,1}
+  subtract = f32[4,2048,50304] subtract(bitcast, broadcast.1)
+  exponential = f32[4,2048,50304] exponential(subtract)
+  constant.1 = f32[] constant(0)
+  reduce.1 = f32[4,2048] reduce(exponential, constant.1), dimensions={2}, to_apply=add_computation
+  log = f32[4,2048] log(reduce.1)
+  broadcast.2 = f32[4,2048,50304] broadcast(log), dimensions={0,1}
+  subtract.1 = f32[4,2048,50304] subtract(subtract, broadcast.2)
+  constant.2 = f32[] constant(0)
+  broadcast.3 = f32[4,2048,50304] broadcast(constant.2), dimensions={}
+  select = f32[4,2048,50304] select(compare, subtract.1, broadcast.3)
+  bitcast.2 = f32[4,2048,393,128] bitcast(select)
+  ROOT reduce.2 = f32[4,2048,393] reduce(bitcast.2, constant.2), dimensions={3}, to_apply=add_computation
+}
+
+ENTRY entry_computation {
+  param_0 = f32[8192,50304] parameter(0)
+  param_1 = s32[4,2048] parameter(1)
+  ROOT fusion = f32[4,2048,393] fusion(param_0, param_1), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
 }
 )"));
 
