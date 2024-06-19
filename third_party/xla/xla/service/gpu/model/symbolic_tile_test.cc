@@ -148,6 +148,8 @@ TEST_F(SymbolicTileTest,
 
 TEST_F(SymbolicTileTest,
        CanPropagateTileThroughNonTrivialSplitReshapeFromOutputToInput) {
+  // TODO(b/334043867): we need disjunctions here to derive the proper
+  // constraints for the tile sizes.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
