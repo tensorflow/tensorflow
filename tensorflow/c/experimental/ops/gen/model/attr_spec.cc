@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/model/attr_spec.h"
 
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
