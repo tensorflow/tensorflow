@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"

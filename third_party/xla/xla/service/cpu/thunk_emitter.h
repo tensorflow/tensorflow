@@ -107,6 +107,9 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitDotThunk(const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitReplicaIdThunk(
+      const HloInstruction* instruction);
+
   // Returns the list of buffer allocation slices assigned to the given
   // instruction that will be passed to the host kernel as arguments: a
   // flattened list of all the leaf buffers for all operands and result. We do

@@ -821,6 +821,7 @@ cc_library(
         "//xla/service/cpu/runtime:infeed_thunk",
         "//xla/service/cpu/runtime:kernel_thunk",
         "//xla/service/cpu/runtime:outfeed_thunk",
+        "//xla/service/cpu/runtime:replica_id_thunk",
         "//xla/service/cpu/runtime:rng_state_thunk",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/cpu/runtime:while_thunk",

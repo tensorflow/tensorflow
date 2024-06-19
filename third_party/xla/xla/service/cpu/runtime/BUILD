@@ -339,6 +339,30 @@ cc_library(
 )
 
 cc_library(
+    name = "replica_id_thunk",
+    srcs = ["replica_id_thunk.cc"],
+    hdrs = ["replica_id_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:cpu_runtime",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "infeed_thunk",
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],

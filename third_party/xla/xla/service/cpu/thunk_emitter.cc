@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
+#include "xla/service/cpu/runtime/replica_id_thunk.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
@@ -198,6 +199,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
+
+    // ReplicaId and PartitionId identify the location of the current device in
+    // a logical grid of communicating devices.
+    case HloOpcode::kReplicaId:
+      return EmitReplicaIdThunk(instruction);
 
     case HloOpcode::kAllReduce:
       return EmitAllReduceThunk(instruction);
@@ -487,6 +493,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
           rhs->shape(), out_slice, instruction->shape());
     }
   }
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaIdThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice replica_id_buffer,
+                      GetAllocationSlice(instruction));
+  return ThunkSequence::Of<ReplicaIdThunk>(ThunkInfo(instruction),
+                                           replica_id_buffer);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
