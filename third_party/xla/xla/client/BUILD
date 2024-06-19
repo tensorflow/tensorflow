@@ -29,7 +29,6 @@ filegroup(
 
 cc_library(
     name = "global_data",
-    srcs = ["global_data.cc"],
     hdrs = ["global_data.h"],
     deps = [
         "//xla:types",

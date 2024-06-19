@@ -55,22 +55,22 @@ class StringDest : public WritableFile {
  public:
   explicit StringDest(string* contents) : contents_(contents) {}
 
-  Status Close() override { return OkStatus(); }
-  Status Flush() override { return OkStatus(); }
-  Status Sync() override { return OkStatus(); }
-  Status Append(StringPiece slice) override {
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
+  absl::Status Append(StringPiece slice) override {
     contents_->append(slice.data(), slice.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 #if defined(TF_CORD_SUPPORT)
-  Status Append(const absl::Cord& data) override {
+  absl::Status Append(const absl::Cord& data) override {
     contents_->append(std::string(data));
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
-  Status Tell(int64_t* pos) override {
+  absl::Status Tell(int64_t* pos) override {
     *pos = contents_->size();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -82,8 +82,8 @@ class StringSource : public RandomAccessFile {
   explicit StringSource(string* contents)
       : contents_(contents), force_error_(false) {}
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override {
+  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                    char* scratch) const override {
     if (force_error_) {
       force_error_ = false;
       return errors::DataLoss("read error");
@@ -97,7 +97,7 @@ class StringSource : public RandomAccessFile {
       n = contents_->size() - offset;
     }
     *result = StringPiece(contents_->data() + offset, n);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void force_error() { force_error_ = true; }
@@ -150,7 +150,7 @@ class RecordioTest : public ::testing::Test {
       reading_ = true;
     }
     tstring record;
-    Status s = reader_->ReadRecord(&readpos_, &record);
+    absl::Status s = reader_->ReadRecord(&readpos_, &record);
     if (s.ok()) {
       return record;
     } else if (errors::IsOutOfRange(s)) {
@@ -184,7 +184,7 @@ class RecordioTest : public ::testing::Test {
     reading_ = true;
     uint64 offset = WrittenBytes() + offset_past_end;
     tstring record;
-    Status s = reader_->ReadRecord(&offset, &record);
+    absl::Status s = reader_->ReadRecord(&offset, &record);
     ASSERT_TRUE(errors::IsOutOfRange(s)) << s;
   }
 };
@@ -317,7 +317,7 @@ void TestReadError(const RecordWriterOptions& writer_options,
   uint64 offset = 0;
   tstring read;
   file.force_error();
-  Status status = reader.ReadRecord(&offset, &read);
+  absl::Status status = reader.ReadRecord(&offset, &read);
   ASSERT_TRUE(errors::IsDataLoss(status));
   ASSERT_EQ(0, offset);
 

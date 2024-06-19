@@ -33,9 +33,9 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
 
 InputBuffer::~InputBuffer() { delete[] buf_; }
 
-Status InputBuffer::FillBuffer() {
+absl::Status InputBuffer::FillBuffer() {
   StringPiece data;
-  Status s = file_->Read(file_pos_, size_, &data, buf_);
+  absl::Status s = file_->Read(file_pos_, size_, &data, buf_);
   if (data.data() != buf_) {
     memmove(buf_, data.data(), data.size());
   }
@@ -46,9 +46,9 @@ Status InputBuffer::FillBuffer() {
 }
 
 template <typename T>
-Status InputBuffer::ReadLine(T* result) {
+absl::Status InputBuffer::ReadLine(T* result) {
   result->clear();
-  Status s;
+  absl::Status s;
   do {
     size_t buf_remain = limit_ - pos_;
     char* newline = static_cast<char*>(memchr(pos_, '\n', buf_remain));
@@ -59,7 +59,7 @@ Status InputBuffer::ReadLine(T* result) {
       if (!result->empty() && result->back() == '\r') {
         result->resize(result->size() - 1);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (buf_remain > 0) result->append(pos_, buf_remain);
     // Get more data into buffer
@@ -70,7 +70,7 @@ Status InputBuffer::ReadLine(T* result) {
     result->resize(result->size() - 1);
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }
@@ -78,7 +78,8 @@ Status InputBuffer::ReadLine(T* result) {
 template Status InputBuffer::ReadLine<std::string>(std::string* result);
 template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
-Status InputBuffer::ReadNBytes(int64_t bytes_to_read, std::string* result) {
+absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read,
+                                     std::string* result) {
   result->clear();
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
@@ -86,18 +87,18 @@ Status InputBuffer::ReadNBytes(int64_t bytes_to_read, std::string* result) {
   }
   result->resize(bytes_to_read);
   size_t bytes_read = 0;
-  Status status = ReadNBytes(bytes_to_read, &(*result)[0], &bytes_read);
+  absl::Status status = ReadNBytes(bytes_to_read, &(*result)[0], &bytes_read);
   if (bytes_read < bytes_to_read) result->resize(bytes_read);
   return status;
 }
 
-Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
-                               size_t* bytes_read) {
+absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
+                                     size_t* bytes_read) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
   }
-  Status status;
+  absl::Status status;
   *bytes_read = 0;
   while (*bytes_read < static_cast<size_t>(bytes_to_read)) {
     if (pos_ == limit_) {
@@ -117,21 +118,21 @@ Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
   }
   if (errors::IsOutOfRange(status) &&
       (*bytes_read == static_cast<size_t>(bytes_to_read))) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return status;
 }
 
-Status InputBuffer::ReadVarint32Fallback(uint32* result) {
-  Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
+absl::Status InputBuffer::ReadVarint32Fallback(uint32* result) {
+  absl::Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
   if (errors::IsDataLoss(s)) {
     return errors::DataLoss("Stored data is too large to be a varint32.");
   }
   return s;
 }
 
-Status InputBuffer::ReadVarint64Fallback(uint64* result) {
-  Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
+absl::Status InputBuffer::ReadVarint64Fallback(uint64* result) {
+  absl::Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
   if (errors::IsDataLoss(s)) {
     return errors::DataLoss("Stored data is too large to be a varint64.");
   }
@@ -139,7 +140,7 @@ Status InputBuffer::ReadVarint64Fallback(uint64* result) {
 }
 
 template <typename T>
-Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
+absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   uint8 scratch = 0;
   auto* p = reinterpret_cast<char*>(&scratch);
   size_t unused_bytes_read = 0;
@@ -149,18 +150,18 @@ Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
     int shift = 7 * index;
     TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
     *result |= (static_cast<T>(scratch) & 127) << shift;
-    if (!(scratch & 128)) return OkStatus();
+    if (!(scratch & 128)) return absl::OkStatus();
   }
   return errors::DataLoss("Stored data longer than ", max_bytes, " bytes.");
 }
 
-Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
+absl::Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",
                                    bytes_to_skip);
   }
   int64_t bytes_skipped = 0;
-  Status s;
+  absl::Status s;
   while (bytes_skipped < bytes_to_skip) {
     if (pos_ == limit_) {
       // Get more data into buffer
@@ -175,12 +176,12 @@ Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
     pos_ += bytes_to_advance;
   }
   if (errors::IsOutOfRange(s) && bytes_skipped == bytes_to_skip) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }
 
-Status InputBuffer::Seek(int64_t position) {
+absl::Status InputBuffer::Seek(int64_t position) {
   if (position < 0) {
     return errors::InvalidArgument("Seeking to a negative position: ",
                                    position);
@@ -196,10 +197,10 @@ Status InputBuffer::Seek(int64_t position) {
     pos_ = limit_ = buf_;
     file_pos_ = position;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status InputBuffer::Hint(int64_t bytes_to_read) {
+absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
@@ -207,14 +208,14 @@ Status InputBuffer::Hint(int64_t bytes_to_read) {
 
   // The internal buffer is too small. Do nothing.
   if (bytes_to_read > size_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const int64_t bytes_remain_in_buf = static_cast<int64_t>(limit_ - pos_);
 
   // There are enough data in the buffer. Do nothing.
   if (bytes_to_read <= bytes_remain_in_buf) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Additional read from file is necessary. Make some room.
@@ -225,7 +226,7 @@ Status InputBuffer::Hint(int64_t bytes_to_read) {
 
   // Read the remaining bytes from file.
   StringPiece data;
-  Status s = file_->Read(file_pos_, bytes_to_read, &data, limit_);
+  absl::Status s = file_->Read(file_pos_, bytes_to_read, &data, limit_);
   if (data.data() != limit_) {
     memmove(limit_, data.data(), data.size());
   }
@@ -233,7 +234,7 @@ Status InputBuffer::Hint(int64_t bytes_to_read) {
   file_pos_ += data.size();
 
   if (errors::IsOutOfRange(s) && data.size() == bytes_to_read) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return s;
   }
