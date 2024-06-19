@@ -20,6 +20,8 @@ message PowerComponentMetrics {
   double max_moving_avg_power_10ms = 6;
   // (FW only) The timescale in us to compute moving averages.
   uint32 timescale_us = 7;
+  // The number of samples.
+  uint64 sample_count = 8;
 }
 
 message PowerMetrics {
