@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -31,12 +30,16 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -146,14 +149,17 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
     return OkExecuteEvent();
   }
 
-  // For multi-replica case, we need collective parameters to be able to
-  // perform the all-reduce operation collectively with other replicas.
+  // For multi-replica case, we need access to collectives implementation to be
+  // able to perform the all-reduce operation collectively with other replicas.
   CollectiveExecuteParams* collective_params = params.collective_params;
-  if (collective_params == nullptr) {
-    return Internal(
-        "Collective parameters are not set for all-reduce operation");
-  }
+  TF_RET_CHECK(collective_params)
+      << "Collective parameters are not set for all-reduce operation";
 
+  CollectivesInterface* collectives = collective_params->collectives;
+  TF_RET_CHECK(collectives)
+      << "Collectives interface is not set for all-reduce operation";
+
+  // Find out rendezvous key and rank in global devices for the current device.
   TF_ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*collective_params));
   TF_ASSIGN_OR_RETURN(
       int32_t rank,
@@ -161,7 +167,18 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
 
   VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
 
-  return absl::UnimplementedError("AllReduceThunk::Execute not implemented");
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectivesCommunicator> communicator,
+                      collectives->GetCommunicator(key.global_devices, rank));
+
+  for (int32_t i = 0; i < num_srcs; ++i) {
+    const Shape& shape = source_shapes_[i];
+    TF_RETURN_IF_ERROR(communicator->AllReduce(
+        key, reduction_kind_, shape.element_type(),
+        ShapeUtil::ElementsIn(shape), source_data[i].opaque(),
+        destination_data[i].opaque(), DefaultCollectiveTimeout()));
+  }
+
+  return OkExecuteEvent();
 }
 
 Thunk::BufferUses AllReduceThunk::buffer_uses() const {
@@ -173,6 +190,14 @@ Thunk::BufferUses AllReduceThunk::buffer_uses() const {
   for (auto& destination_buffer : destination_buffers_) {
     uses.push_back(BufferUse::Write(destination_buffer));
   }
+
+  // TODO(ezhulenev): It is a hack to make sure that we execute all collective
+  // operations in the same order as in HLO schedule, because otherwise racing
+  // collectives lead to undefined behavior. Instead we should correctly model
+  // side effects of Thunks.
+  static auto* fake_alloc = new BufferAllocation(0, 1, 0);
+  uses.push_back(BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
+
   return uses;
 }
 

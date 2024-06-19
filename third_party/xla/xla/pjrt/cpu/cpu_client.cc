@@ -1582,10 +1582,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       }
 
       cpu::BufferAllocations allocations(buffer_device_mem);
+
+      TF_ASSIGN_OR_RETURN(
+          cpu::Thunk::CollectiveExecuteParams collective_params,
+          cpu::Thunk::CollectiveExecuteParams::Create(&run_options));
+
       cpu::Thunk::ExecuteParams execute_params = {
           &cpu_executable->host_kernels(), &allocations,
           cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-          run_options.intra_op_thread_pool()};
+          run_options.intra_op_thread_pool(), &collective_params};
 
       auto execute_event = cpu_executable->thunks().Execute(
           execute_params, [&](cpu::ThunkExecutor::Task task) {
@@ -1703,22 +1708,31 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
 
             cpu::BufferAllocations allocations(buffer_device_mem);
-            cpu::Thunk::ExecuteParams execute_params = {
-                &cpu_executable->host_kernels(), &allocations,
-                cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-                run_options.intra_op_thread_pool()};
 
-            auto execute_event = cpu_executable->thunks().Execute(
-                execute_params, [&](cpu::ThunkExecutor::Task task) {
-                  eigen_device->getPool()->Schedule(
-                      cpu::ToCopyableTask(std::move(task)));
-                });
+            absl::StatusOr<cpu::Thunk::CollectiveExecuteParams>
+                collective_params =
+                    cpu::Thunk::CollectiveExecuteParams::Create(&run_options);
 
-            tsl::profiler::TraceMe trace(
-                "ThunkExecutor::Execute (wait for completion)");
-            tsl::BlockUntilReady(execute_event);
-            status = execute_event.IsError() ? execute_event.GetError()
-                                             : absl::OkStatus();
+            if (collective_params.ok()) {
+              cpu::Thunk::ExecuteParams execute_params = {
+                  &cpu_executable->host_kernels(), &allocations,
+                  cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+                  run_options.intra_op_thread_pool(), &*collective_params};
+
+              auto execute_event = cpu_executable->thunks().Execute(
+                  execute_params, [&](cpu::ThunkExecutor::Task task) {
+                    eigen_device->getPool()->Schedule(
+                        cpu::ToCopyableTask(std::move(task)));
+                  });
+
+              tsl::profiler::TraceMe trace(
+                  "ThunkExecutor::Execute (wait for completion)");
+              tsl::BlockUntilReady(execute_event);
+              status = execute_event.IsError() ? execute_event.GetError()
+                                               : absl::OkStatus();
+            } else {
+              status = collective_params.status();
+            }
 
           } else {
             status =

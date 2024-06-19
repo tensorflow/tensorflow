@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/global_device_id.h"
@@ -46,6 +47,8 @@ class CollectiveThunk : public Thunk {
   const OpParams& op_params() const { return op_params_; }
 
  protected:
+  absl::Duration DefaultCollectiveTimeout();
+
   absl::StatusOr<RendezvousKey> GetRendezvousKey(
       const Thunk::CollectiveExecuteParams& params);
 

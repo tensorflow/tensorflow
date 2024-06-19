@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
@@ -126,11 +127,13 @@ class Thunk {
     GlobalDeviceId global_device_id;
 
     const DeviceAssignment* device_assignment = nullptr;
+    CollectivesInterface* collectives = nullptr;
 
    private:
     CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
                             GlobalDeviceId global_device_id,
-                            const DeviceAssignment* device_assignment);
+                            const DeviceAssignment* device_assignment,
+                            CollectivesInterface* collectives);
   };
 
   //===--------------------------------------------------------------------===//
