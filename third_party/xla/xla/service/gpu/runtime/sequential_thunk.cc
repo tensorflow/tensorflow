@@ -33,7 +33,7 @@ SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
 
 std::string SequentialThunk::ToStringExtra(int indent) const {
   std::string result = "\n";
-  absl::StrAppend(&result, thunks().ToString(indent + 1, nullptr));
+  absl::StrAppend(&result, thunks().ToString(indent + 1));
   return result;
 }
 

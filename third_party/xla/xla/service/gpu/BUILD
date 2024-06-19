@@ -671,6 +671,7 @@ cc_library(
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_float_support",
+        ":ir_emission_utils",
         ":ir_emitter_triton",
         ":matmul_utils",
         "//xla:shape_util",
@@ -684,6 +685,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tests:filecheck",
         "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -693,6 +695,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

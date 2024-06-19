@@ -1045,6 +1045,7 @@ xla_test(
         "//xla:status_macros",
         "//xla:test",
         "//xla/client:xla_builder",
+        "//xla/service",
     ],
 )
 

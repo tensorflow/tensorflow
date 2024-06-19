@@ -460,9 +460,7 @@ class Thunk {
 // A sequence of thunks.
 class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
-  std::string ToString(int indent = 0,
-                       std::function<std::string(const Thunk*)>
-                           get_thunk_annotation = nullptr) const;
+  std::string ToString(int indent = 0) const;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

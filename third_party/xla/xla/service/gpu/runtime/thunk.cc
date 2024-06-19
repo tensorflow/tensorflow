@@ -303,9 +303,7 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
   return os << Thunk::KindToString(kind);
 }
 
-std::string ThunkSequence::ToString(
-    int indent,
-    std::function<std::string(const Thunk*)> get_thunk_annotation) const {
+std::string ThunkSequence::ToString(int indent) const {
   const std::string indent_str(indent * 2, ' ');
   if (empty()) return indent_str + "No thunks.";
 
@@ -324,9 +322,6 @@ std::string ThunkSequence::ToString(
     absl::StrAppend(&result, indent_str, kind_str,
                     std::string(max_thunk_kind_len - kind_str.length(), ' '),
                     "\t");
-    if (get_thunk_annotation) {
-      absl::StrAppend(&result, get_thunk_annotation(thunk.get()));
-    }
     absl::StrAppend(&result, thunk->ToStringExtra(indent));
     absl::StrAppend(&result, "\n");
   }
