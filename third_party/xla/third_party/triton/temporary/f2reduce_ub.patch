@@ -1,0 +1,15 @@
+==== triton/lib/Tools/LinearLayout.cpp#6 - /google/src/cloud/csigg/CS-LinearLayout-2024-06-19_163043/triton/lib/Tools/LinearLayout.cpp ====
+# action=edit type=text
+--- triton/lib/Tools/LinearLayout.cpp	2024-06-19 01:55:15.000000000 -0700
++++ triton/lib/Tools/LinearLayout.cpp	2024-06-19 07:42:23.000000000 -0700
+@@ -119,6 +119,10 @@
+ // outDim as columns.  In other words, finds the number of linearly-independent
+ // bases for this output dimension.
+ int getMatrixRank(std::unique_ptr<uint64_t[]> m, int numRows, int numCols) {
++  // Early out for empty matrices to avoid UB in f2reduce.
++  if (numRows == 0 || numCols == 0)
++    return 0;
++
+   // stride is specified in number of 64-bit words per row, and we pack our
+   // matrix so that there's only one uint64_t per row.
+   assert(numCols <= 64);

@@ -247,6 +247,12 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
         IndexingMap operand_indexing_map =
             ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
                                 *operand_indexing_map_set.begin());
+        if (operand_indexing_map.IsUndefined()) {
+          return FusionDecision{}
+                 << "Couldn't derive indexing map for instruction "
+                 << tiled_hlo_instruction->hlo()->ToString() << " and operand "
+                 << operand.instruction().ToString();
+        }
         operand_indexing_map.Simplify();
         operand_indexing_map.RescaleSymbols();
         operand_indexing_map.RemoveUnusedSymbols();

@@ -952,7 +952,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.operand_count() > 0 &&
-             legacy_triton::IsTritonSupportedElementwise(
+             legacy_triton::IsTritonSupportedElementwiseUpToFloatNormalization(
                  hlo.opcode(), hlo.operand(0)->shape().element_type())) {
     return GetPropagatedDimOrdersForElementwise(hlo, direction, src_dim_order);
   } else if (hlo.opcode() == HloOpcode::kBitcast) {
