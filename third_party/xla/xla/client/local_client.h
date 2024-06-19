@@ -171,7 +171,7 @@ class LocalClient : public Client {
       se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
-  absl::StatusOr<TransferToServerResponse> TransferToLocalServer(
+  absl::StatusOr<GlobalDataHandle> TransferToLocalServer(
       const ::xla::BorrowingLiteral& literal, int device_ordinal);
 
   // Copy the data from the device contained in the given ShapedBuffer and

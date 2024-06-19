@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -43,6 +44,8 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 namespace xla {
+
+class Service;
 
 // Options to configure the service when it is created.
 class ServiceOptions {
@@ -73,6 +76,59 @@ class ServiceOptions {
   std::optional<std::set<int>> allowed_devices_;
 };
 
+// A GlobalData object represents a globally-accessible allocation of
+// data in the associated XLA service.
+class GlobalData {
+ public:
+  // Gives ownership of the global data handle to this object.
+  GlobalData(Service* parent, GlobalDataHandle handle);
+
+  // Unregisters the wrapped handle, which causes the service to
+  // deallocate the associated data.
+  ~GlobalData();
+
+  const GlobalDataHandle& handle() const { return handle_; }
+
+  // Releases a set of GlobalData handles. A single RPC will be issued
+  // per unique Service of the given GlobalData objects.
+  static void Release(std::vector<std::unique_ptr<GlobalData>> instances);
+
+ private:
+  // Detaches the global data handle from the object, such that the destructor
+  // will not try to release it.
+  GlobalDataHandle Release() {
+    parent_ = nullptr;
+    return handle_;
+  }
+
+  GlobalDataHandle handle_;  // Handle being wrapped.
+  Service* parent_;          // Service used to unregister handle_.
+
+  GlobalData(const GlobalData&) = delete;
+  GlobalData& operator=(const GlobalData&) = delete;
+};
+
+// A struct to represent a computation instance to be executed.
+// * If execution_options.device_handles is not empty, the computation is
+//   executed on the devices associated with the handles by partitioning the
+//   computation based on the attached sharding attributes. Otherwise, a
+//   device is chosen by the service.
+struct XlaComputationInstance {
+  const XlaComputation& computation;
+  std::vector<GlobalData*> arguments;
+  ExecutionOptions execution_options;
+  ExecutionProfile* execution_profile;
+
+  XlaComputationInstance(const XlaComputation& computation,
+                         std::vector<GlobalData*> arguments,
+                         ExecutionOptions execution_options,
+                         ExecutionProfile* execution_profile)
+      : computation(computation),
+        arguments(std::move(arguments)),
+        execution_options(execution_options),
+        execution_profile(execution_profile) {}
+};
+
 // The XLA service object, which is the same across all platforms. It maintains
 // the service state of computations and allocations, and delegates
 // target-specific requests to the target-specific infrastructure
@@ -83,30 +139,32 @@ class Service {
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
   // returned.
-  virtual absl::Status Unregister(const UnregisterRequest* arg,
-                                  UnregisterResponse* result);
+  virtual absl::Status Unregister(const GlobalDataHandle& data);
 
   // Deconstructs a tuple. Returns a newly created GlobalDataHandle for each
   // element in the tuple.
-  virtual absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
-                                        DeconstructTupleResponse* result);
+  virtual absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
+  DeconstructTuple(const GlobalData& data);
 
   // Compiles a computation into an executable. The request contains the whole
   // computation graph. Returns the handle to the executable.
-  virtual absl::Status Compile(const CompileRequest* arg,
-                               CompileResponse* result);
+  virtual absl::StatusOr<ExecutionHandle> Compile(
+      const XlaComputation& computation,
+      absl::Span<const Shape> argument_shapes,
+      const ExecutionOptions& execution_options);
 
   // Executes an executable with the provided global data passes as immutable
   // arguments. The request contains the handle to the executable. Returns
   // global data output and execution timing.
-  virtual absl::Status Execute(const ExecuteRequest* arg,
-                               ExecuteResponse* result);
+  virtual absl::StatusOr<std::unique_ptr<GlobalData>> Execute(
+      const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
+      ExecutionProfile* execution_profile);
 
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
   // computation.
-  virtual absl::Status ExecuteGraphParallel(
-      const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result);
+  absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteGraphParallel(
+      absl::Span<const XlaComputationInstance> computations);
 
   // Requests one or more device handles from the target.
   //
@@ -116,27 +174,28 @@ class Service {
   // the first set of replicas, and the next R devices to the second set of
   // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
-  virtual absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                        GetDeviceHandlesResponse* result);
+  virtual absl::StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(
+      int64_t device_count);
 
   // Requests that global data be transferred to the client in literal form.
-  virtual absl::Status TransferToClient(const TransferToClientRequest* arg,
-                                        TransferToClientResponse* result);
+  virtual absl::StatusOr<Literal> TransferToClient(
+      const GlobalData& data, const Shape* shape_with_layout);
 
   // Transfers data from a literal provided by the client, into device memory.
-  virtual absl::Status TransferToServer(const TransferToServerRequest* arg,
-                                        TransferToServerResponse* result);
+  virtual absl::StatusOr<std::unique_ptr<GlobalData>> TransferToServer(
+      const LiteralSlice& literal_slice, const DeviceHandle* device_handle);
 
   // Transfers data from a literal provided by the client, into the Infeed
   // buffer of the device.
-  virtual absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                                        TransferToInfeedResponse* result);
+  virtual absl::Status TransferToInfeed(const LiteralSlice& literal,
+                                        int64_t replica_id,
+                                        const DeviceHandle* device_handle);
 
   // Transfers data from the Outfeed othe device to the literal provided by the
   // client.
-  virtual absl::Status TransferFromOutfeed(
-      const TransferFromOutfeedRequest* arg,
-      TransferFromOutfeedResponse* result);
+  virtual absl::StatusOr<Literal> TransferFromOutfeed(
+      const Shape* shape_with_layout, int64_t replica_id,
+      const DeviceHandle* device_handle);
 
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
@@ -147,22 +206,19 @@ class Service {
   // ResetDevice should be called before an Execution that expect the device to
   // be in the reset state. For example, if the prior Execution modifies device
   // state (e.g., architectural state) that the next Execution depends on.
-  virtual absl::Status ResetDevice(const ResetDeviceRequest* arg,
-                                   ResetDeviceResponse* result);
+  virtual absl::Status ResetDevice();
 
-  virtual absl::Status ComputeConstantGraph(
-      const ComputeConstantGraphRequest* arg, ComputeConstantResponse* result);
+  virtual absl::StatusOr<Literal> ComputeConstantGraph(
+      const XlaComputation& computation, const Layout* output_layout);
 
   // Returns the shape (with layout) of an array associated with a given data
   // handle.
-  virtual absl::Status GetShape(const GetShapeRequest* arg,
-                                GetShapeResponse* result);
+  virtual absl::StatusOr<Shape> GetShape(const GlobalData& data);
 
   // Creates a unique channel handle that can be used for Send/Recv
   // instructions.
-  virtual absl::Status CreateChannelHandle(
-      const CreateChannelHandleRequest* arg,
-      CreateChannelHandleResponse* result);
+  virtual absl::StatusOr<ChannelHandle> CreateChannelHandle(
+      ChannelHandle::ChannelType type);
 
   // Returns the backend used to execute computations.
   const Backend& backend() const { return *execute_backend_; }
@@ -201,7 +257,7 @@ class Service {
   // Prepare the arguments for executing parallel.
   absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
       const ExecutionOptions& execution_options,
-      absl::Span<const GlobalDataHandle* const> arguments) const;
+      absl::Span<const GlobalData* const> arguments) const;
 
  protected:
   friend class LocalExecutable;
@@ -217,7 +273,7 @@ class Service {
   // the corresponding replica.
   absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
-      absl::Span<const GlobalDataHandle* const> arguments,
+      absl::Span<const GlobalData* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
 
  public:

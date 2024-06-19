@@ -128,14 +128,14 @@ XLA_TEST_F(ClientTest,
   // We can't really test parallel execution on CPU since all of the cores in a
   // CPU are presented as a single device.  So for now we test "parallel"
   // execution on a single device.
-  std::vector<Client::XlaComputationInstance> computation_instances;
+  std::vector<XlaComputationInstance> computation_instances;
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   ASSERT_EQ(devices.size(), 1);
 
   ExecutionOptions options = execution_options_;
   *options.add_device_handles() = devices[0];
-  computation_instances.push_back(Client::XlaComputationInstance(
+  computation_instances.push_back(XlaComputationInstance(
       add_with_one_arg, {const_arg.get()}, options, nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
