@@ -53,10 +53,8 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
-  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
   for (const auto& thunk : thunks_) {
-    auto annotation =
-        GetKernelAnnotation(annotations, thunk->profile_annotation());
+    auto annotation = GetKernelAnnotation(thunk->profile_annotation());
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();

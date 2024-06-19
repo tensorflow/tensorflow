@@ -527,7 +527,7 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod) : top_level{mod} {
       // range based on the content of `inst`, including `called` etc.
       // FIXME: using try_emplace here was sensitive to
       // https://github.com/abseil/abseil-cpp/issues/388.
-      kernels.insert({inst->name(), {top_level, *inst}});
+      kernels.insert({inst->name(), KernelAnnotation{top_level, *inst}});
     }
   }
 }
@@ -548,19 +548,15 @@ ScopedModuleAnnotations::~ScopedModuleAnnotations() {
   std::exchange(current_annotations, restore_);
 }
 
-const ModuleAnnotations* GetCurrentModuleAnnotations() {
-  return current_annotations;
-}
-
 std::optional<ScopedAnnotation> GetKernelAnnotation(
-    const ModuleAnnotations* annotations, std::string_view profile_annotation) {
+    std::string_view profile_annotation) {
   if (profile_annotation.empty()) {
     return {};
   }
-  if (annotations) {
+  if (current_annotations) {
     // Have a set of pre-prepared thunk/kernel annotations to use
-    const auto iter = annotations->kernels.find(profile_annotation);
-    if (iter != annotations->kernels.end()) {
+    const auto iter = current_annotations->kernels.find(profile_annotation);
+    if (iter != current_annotations->kernels.end()) {
       // Have a pre-prepared annotation, use it
       return std::optional<ScopedAnnotation>{[&] { return iter->second; }};
     }

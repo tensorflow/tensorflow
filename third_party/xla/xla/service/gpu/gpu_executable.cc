@@ -359,8 +359,7 @@ absl::Status ExecuteThunks(
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
-    const ModuleAnnotations& module_annotations) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
   int64_t collective_max_nchannels =
       debug_options ? debug_options->xla_gpu_nccl_collective_max_nchannels()
                     : 0;
@@ -487,8 +486,7 @@ absl::Status ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    auto scoped_annotation =
-        GetKernelAnnotation(&module_annotations, thunk->profile_annotation());
+    auto scoped_annotation = GetKernelAnnotation(thunk->profile_annotation());
     VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {
@@ -1022,7 +1020,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     TF_RETURN_IF_ERROR(ExecuteThunks(
         has_module() ? &module_config().debug_options() : nullptr, module_name_,
         unique_id, *thunks_, executable_source, run_options, buffer_allocations,
-        block_host_until_done, execution_stream_ids_, module_annotations_));
+        block_host_until_done, execution_stream_ids_));
   }
 
   TF_RETURN_IF_ERROR(
