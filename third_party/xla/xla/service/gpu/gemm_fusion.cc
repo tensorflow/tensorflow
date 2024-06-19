@@ -61,17 +61,16 @@ namespace gpu {
 
 namespace {
 
-using triton_fusion::CombineRequirements;
+using triton_fusion::CombineDotRequirements;
 using triton_fusion::DimensionOrder;
 using triton_fusion::DimOrderMap;
 using triton_fusion::DimOrdersAndReqs;
 using triton_fusion::DimOrdersAndReqsOrError;
+using triton_fusion::DotProperties;
 using triton_fusion::DotRequirements;
+using triton_fusion::DotRequirementsOrError;
 using triton_fusion::FusionContext;
 using triton_fusion::GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible;
-using triton_fusion::HeroProperties;
-using triton_fusion::Requirements;
-using triton_fusion::RequirementsOrError;
 using triton_fusion::TransformDirection;
 
 // This represents a directed graph.
@@ -139,7 +138,7 @@ struct FusionPlan {
 
 struct FusionPlanAndRequirements {
   FusionPlan fusion_plan;
-  Requirements requirements;
+  DotRequirements requirements;
 };
 
 struct HlosAndRequirements {
@@ -154,7 +153,7 @@ struct HlosAndRequirements {
   //
   // If we fuse further operations they may have to conform to these
   // requirements.
-  Requirements requirements;
+  DotRequirements requirements;
 };
 
 // Clones the hero kDot operation into the fusion.
@@ -192,32 +191,32 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
     const HloInstruction& hlo, const DimensionOrder& dim_order,
-    const HeroProperties& properties,
+    const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
           hlo, dim_order, TransformDirection::kOutputToInput, properties);
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
     const HloInstruction& hlo, const DimensionOrder& dim_order,
-    const HeroProperties& properties,
+    const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           hlo, TransformDirection::kOutputToInput,
@@ -226,23 +225,23 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
     const HloInstruction& hlo, const DimensionOrder& hlo_dim_order,
-    const HloInstruction& user, const HeroProperties& properties,
+    const HloInstruction& user, const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           user, TransformDirection::kInputToOutput, user.operand_index(&hlo),
@@ -250,15 +249,15 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Builds the fusion map and the requirements which can later be used to
@@ -267,7 +266,8 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
     const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements_so_far) {
+    const DotProperties& properties,
+    const DotRequirements& requirements_so_far) {
   CHECK(!max_params.has_value() || max_params.value() >= 1);
 
   // The graph describing the structure of the fusion that we build - nodes
@@ -290,7 +290,7 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
   // The requirements imposed by the fusion choices made in this function,
   // combined with the existing requirements. This is one of the outputs of this
   // function.
-  Requirements combined_reqs = requirements_so_far;
+  DotRequirements combined_reqs = requirements_so_far;
 
   auto get_or_create_fusion_node =
       [&](const HloInstruction& hlo, const DimensionOrder& dim_order,
@@ -453,7 +453,7 @@ HlosAndRequirements FuseTowardOperands(
     const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
     const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements_so_far,
+    const DotProperties& properties, const DotRequirements& requirements_so_far,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
@@ -491,7 +491,7 @@ absl::StatusOr<HlosAndRequirements> FuseDotOperand(
   const HloInstruction& operand = *dot.operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
                             TritonFusionAnalysis::kMaxParameterPerDotOperand,
-                            gpu_version, context.hero_properties(),
+                            gpu_version, context.dot_properties(),
                             context.requirements(), builder, fusion_params);
 }
 
@@ -512,7 +512,7 @@ HlosAndRequirements FuseTowardUsers(
     const HloInstruction& hlo, const HloInstruction& fused_hlo,
     const DimensionOrder& hlo_dim_order,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements,
+    const DotProperties& properties, const DotRequirements& requirements,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
@@ -533,7 +533,7 @@ HlosAndRequirements FuseTowardUsers(
     return existing_hlos_and_requirements;
   }
   DimensionOrder user_dim_order = opt_user_result->dim_orders.at(&user);
-  Requirements combined_requirements = opt_user_result->requirements;
+  DotRequirements combined_requirements = opt_user_result->requirements;
 
   HloInstruction::InstructionVector new_operands;
   if (user.operand_count() == 1) {
@@ -601,7 +601,7 @@ HlosAndRequirements FuseDotOutput(
   const auto context =
       FusionContext::FromDotOutput(dot, /*split_k=*/1, requirements);
   return FuseTowardUsers(dot, fused_dot, context.dim_orders().at(&dot),
-                         gpu_version, context.hero_properties(),
+                         gpu_version, context.dot_properties(),
                          context.requirements(), builder, fusion_params);
 }
 
@@ -656,8 +656,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
-      FuseDotOutput(dot, fused_dot, gpu_version,
-                    std::get<DotRequirements>(lhs_hlos_and_reqs.requirements),
+      FuseDotOutput(dot, fused_dot, gpu_version, lhs_hlos_and_reqs.requirements,
                     builder, fusion_inputs);
 
   if (fusion_output_ptr != nullptr) {
