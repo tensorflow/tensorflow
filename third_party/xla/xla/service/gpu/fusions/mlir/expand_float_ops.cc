@@ -321,7 +321,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
       from_bits.shrui(value.getType().getIntOrFloatBitWidth() - 1) != 0;
 
   from_bits =
-      from_bits & ((1LL << (value.getType().getIntOrFloatBitWidth() - 1)) - 1);
+      from_bits & ((1ULL << (value.getType().getIntOrFloatBitWidth() - 1)) - 1);
 
   Value result_is_inf = IsInf(value, b);
   Value input_is_nan = IsNaN(value, b);
