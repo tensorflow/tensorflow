@@ -1081,7 +1081,6 @@ cc_library(
     deps = [
         ":thunk",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:global_device_id",
@@ -1092,6 +1091,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",

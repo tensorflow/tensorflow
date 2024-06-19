@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/tuple_points_to_analysis.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

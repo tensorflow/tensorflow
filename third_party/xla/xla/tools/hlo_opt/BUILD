@@ -32,7 +32,6 @@ cc_library(
     hdrs = ["opt_lib.h"],
     deps = [
         "//xla:debug_options_flags",
-        "//xla:statusor",
         "//xla:types",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -61,7 +60,6 @@ cc_library(
     deps = [
         ":opt_lib",
         "//xla:debug_options_flags",
-        "//xla:statusor",
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
@@ -123,7 +121,6 @@ cc_library(
         "cpu_opt",
         ":opt_lib",
         "//xla:debug_options_flags",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
@@ -132,6 +129,7 @@ cc_library(
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",

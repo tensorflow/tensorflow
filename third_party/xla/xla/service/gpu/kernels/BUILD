@@ -205,7 +205,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla:statusor",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
@@ -260,7 +259,6 @@ cc_library(
         ":custom_kernel",
         ":cutlass_gemm",
         ":cutlass_gemm_kernels",  # build_cleaner: keep
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
         "//xla/stream_executor:kernel_spec",

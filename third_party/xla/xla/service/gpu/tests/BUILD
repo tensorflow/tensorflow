@@ -225,7 +225,6 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
-        "//xla:statusor",
         "//xla:test",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -999,7 +998,6 @@ xla_test(
         "//xla:literal_util",
         "//xla:reference_util",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:test_helpers",
         "//xla:types",
         "//xla:xla_data_proto_cc",

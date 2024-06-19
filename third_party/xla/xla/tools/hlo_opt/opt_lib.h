@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/types.h"
 

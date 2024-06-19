@@ -388,7 +388,6 @@ xla_cc_test(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt/distributed:in_memory_key_value_store",
