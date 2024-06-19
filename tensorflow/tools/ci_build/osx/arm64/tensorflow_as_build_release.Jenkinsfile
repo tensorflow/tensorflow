@@ -64,25 +64,11 @@ pipeline {
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
 
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
-
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
-                                --project-name "tensorflow_macos" \
-                                --output-name "$OUTPUT_NAME"
-                                dist
+                                --output-name "${OUTPUT_NAME}" \
+                                --project-name "tensorflow_macos"
                             '''
                         }
                             
@@ -121,25 +107,11 @@ pipeline {
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
 
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
-
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
-                                --project-name tensorflow_macos \
-                                --output-name "$OUTPUT_NAME"
-                                dist
+                                --output-name "${OUTPUT_NAME}" \
+                                --project-name "tensorflow_macos" 
                             '''
                         }
                             
@@ -173,36 +145,16 @@ pipeline {
                                 pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
                             '''
 
-                            // The main reason to add the below script is to generate the BUILD file from BUILD.tpl
-                            // We are doing that because we are fetching the username of the user's system, and 
-                            // dynamically setting that to the path to fetch the "PYHTON_BIN_PATH_WINDOWS" 
-                            // environment variable in the BUILD.tpl files, and then running the bazel build command.  
-                            // sh 'python tensorflow/tools/ci_build/generate_build.py'
-
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
 
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
-
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
-                                --project-name tensorflow_macos \
-                                --output-name "$OUTPUT_NAME"
-                                dist
+                                --output-name "${OUTPUT_NAME}" \
+                                --project-name "tensorflow_macos" 
                             '''
                         }
                             

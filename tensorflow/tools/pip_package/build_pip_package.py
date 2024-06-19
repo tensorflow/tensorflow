@@ -32,11 +32,11 @@ import subprocess
 import sys
 import tempfile
 
-from tensorflow.tools.pip_package.utils.utils import copy_file
-from tensorflow.tools.pip_package.utils.utils import create_init_files
-from tensorflow.tools.pip_package.utils.utils import is_macos
-from tensorflow.tools.pip_package.utils.utils import is_windows
-from tensorflow.tools.pip_package.utils.utils import replace_inplace
+from utils.utils import copy_file
+from utils.utils import create_init_files
+from utils.utils import is_macos
+from utils.utils import is_windows
+from utils.utils import replace_inplace
 
 
 # The "default" argument must be added because the "required" is set to "True".
@@ -63,9 +63,9 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
       "--headers", help="header files for the wheel", action="append")
   parser.add_argument("--srcs", help="source files for the wheel",
-                      action="append")
+                      action="append", default=[])
   parser.add_argument("--xla_aot", help="xla aot compiled sources",
-                      action="append")
+                      action="append", default=[])
   parser.add_argument("--version", help="TF version")
   parser.add_argument("--collab", help="True if collaborator build")
   return parser.parse_args()
@@ -314,7 +314,7 @@ def create_local_config_python(dst_dir: str) -> None:
   shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 
-def build_wheel(dir_path: str, cwd: str, project_name: str,
+def build_wheel(dir_path, project_location: str, project_name: str,
                 collab: str = False) -> None:
   """Build the wheel in the target directory.
   
@@ -327,34 +327,46 @@ def build_wheel(dir_path: str, cwd: str, project_name: str,
   env = os.environ.copy()
   if is_windows():
     # HOMEPATH is not set by bazel but it's required by setuptools.
-    env["HOMEPATH"] = "C:"
+    env["HOMEPATH"] = env.get("HOMEPATH", "C:")
   # project_name is needed by setup.py.
   env["project_name"] = project_name
 
   if collab == "True":
-    env["collaborator_build"] = True
+    env["collaborator_build"] = "1"
+
+  # constructing a full path to setup.py within the project.
+  setup_py_path = os.path.join(project_location, 'tensorflow', 'tools', 'pip_package', 'setup.py')
 
   subprocess.run(
       [
           sys.executable,
-          "tensorflow/tools/pip_package/setup.py",
+          setup_py_path,
           "bdist_wheel",
           f"--dist-dir={dir_path}",
       ],
       check=True,
-      cwd=cwd,
+      cwd=project_location,
       env=env,
   )
+
+  # listing the files in the directory where the wheel file should be stored.
+  wheel_files = os.listdir(dir_path)
+  if wheel_files:
+      # fetch the name of the first wheel file created.
+      output_name = wheel_files[0]
+      # determining the final output path, defaulting to dir_path if WHEEL_OUTPUT_DIR is not set.
+      final_output_path = os.environ.get('WHEEL_OUTPUT_DIR', dir_path)
+      print('---------------------', final_output_path)
+      # Now, we move the wheel file to the final output directory.
+      os.rename(os.path.join(dir_path, output_name),
+                os.path.join(final_output_path, output_name))
 
 
 if __name__ == "__main__":
   args = parse_args()
-  temp_dir = tempfile.TemporaryDirectory(prefix="tensorflow_wheel")
-  temp_dir_path = temp_dir.name
-  try:
-    prepare_wheel_srcs(args.headers, args.srcs, args.xla_aot,
-                       temp_dir_path, args.version)
-    build_wheel(os.path.join(os.getcwd(), args.output_name),
-                temp_dir_path, args.project_name, args.collab)
-  finally:
-    temp_dir.cleanup()
+  project_location = os.getcwd()  
+  # creating a temporary directory for the wheel building process.
+  with tempfile.TemporaryDirectory(prefix="tensorflow_wheel") as temp_dir_path:
+      if args.headers or args.srcs or args.xla_aot:
+          prepare_wheel_srcs(args.headers, args.srcs, args.xla_aot, temp_dir_path, args.version)
+      build_wheel(temp_dir_path, project_location, args.project_name, args.collab)

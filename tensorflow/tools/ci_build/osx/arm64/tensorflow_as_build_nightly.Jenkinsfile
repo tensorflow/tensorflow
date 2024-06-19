@@ -65,27 +65,13 @@ pipeline {
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
-
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
                             
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project-name "tf-nightly-macos" \
-                                    --output-name "$OUTPUT_NAME" \
-                                    dist
+                                    --output-name "${OUTPUT_NAME}" \
+                                    --project-name "tf-nightly-macos" 
                             '''
                         }
                             
@@ -131,26 +117,12 @@ pipeline {
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
 
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
-
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project-name "tf-nightly-macos" \
-                                    --output-name "$OUTPUT_NAME" \
-                                    dist
+                                    --output-name "${OUTPUT_NAME}" \
+                                    --project-name "tf-nightly-macos" 
                             '''
                         }
                             
@@ -196,26 +168,12 @@ pipeline {
                                 //tensorflow/tools/pip_package:build_pip_package
                             '''
 
-                            sh 'python setup.py bdist_wheel'
-
-                            sh '''
-                                WHEEL_FILE=$(ls dist/*.whl)
-                                IFS='-' read -ra TAGS <<< "$WHEEL_FILE"
-                                VERSION=${TAGS[1]}
-                                PYTHON_TAG=${TAGS[2]}
-                                ABI_TAG=${TAGS[3]}
-                                PLATFORM_TAG=${TAGS[4]}
-                                OUTPUT_NAME="tensorflow-${VERSION}-${PYTHON_TAG}-${ABI_TAG}-${PLATFORM_TAG}.whl"
-                                mv dist/*.whl ./$OUTPUT_NAME
-                            '''
-
                             sh '''
                                 # Use the dynamically set variables in the final packaging command
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
                                     --nightly_flag \
-                                    --project-name "tf-nightly-macos" \
-                                    --output-name "$OUTPUT_NAME" \
-                                    dist
+                                    --output-name "${OUTPUT_NAME}" \
+                                    --project-name "tf-nightly-macos" 
                             '''
                         }
                             

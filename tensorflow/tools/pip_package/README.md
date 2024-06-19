@@ -69,3 +69,33 @@ An error - "Target NOT Declared" surfaced when the build command that is execute
 28) Regarding the **interpreter path** for **Windows**, it is important to mention that currently in the "**WORKSPACE**" file in the the path **/ci/official/wheel_test**, the interpreter path is set to "**C:/Python311/python.exe**". This has to be **changed** based on the **OS** that the developer is working on, the "**python version**" and the "**standard bazel format of mentioning the interpreter path**" to make the "build" successful, going forward. 
 
 29) The path and the required Environment Variables must also be added accordingly.
+
+30) A typo with the variable name in the Jenkins file that I have pushed was causing issue in creating the ".whl" file. The issue was - In the build_pip_package.py file, the format of the name given --output-name and --project-name. But I have written it incorrectly which was --output_name and --project_name. The underscore was causing an issue.
+
+##### Couple of changes were made in the build_pip_package.py file to enhance the ".whl" file creation.
+
+1) Some changes and configuration might be small and not at all times the change will be an end-to-end "package creation. In this kind of case where a simple fixing and refractors are done and "Not an entire new Python Scripts are written which might include C/C++ extensions or in some case Python Modules" as well, the **.whl** file creation would not have any "**headers**" or "**srcs**" or "**aot**". 
+
+2) The "**build_pip_package.py**" file in its previous format is not handling to "**bypass the check**" for ``--headers``, ``--srcs`` and ``--aot``. The **Bazel-Generated Packaging**, strictly expects to pass all the 3 parameters along with the ``--output-name`` and ``--project-name``.
+
+3) Therefore as I mentioned in previous points, a condition was added to bypass headers, srcs and aot when not passed in the **Bazel-Generated Packaging** in the Jenkins job which is how it is, currently. The change was made keeping the "**action=append**" parameter fro both the headers and the srcs file. 
+
+4) The import statement in the build_pip_package.py file were also corrected. It would make understanding better since both build_pip_package.py and utils folder are in the same directory/leve, we could simply do ``from utils.utils import is_windows`` and so on for the rest of the files that are imported from the setup.py file. To make this work, one should **initially set a New "Environment Variable" under "System Variables" with the "Variable" as "PYTHONPATH" and the "Value" will be the "ABSOLUTE PATH" upto the "PARENT DIRECTORY" of the setup.py file**.
+
+Therefore, the value for the PYTHONPATH variable will be ``"C:/Users/your_username/tensorflow/tensorflow/tools/pip_package"`` for **Windows**. For **Linux**, the equivalent path would be ``"/home/your_username/tensorflow/tensorflow/tools/pip_package"``. For **Mac OS X**, the equivalent path would be ``/Users/your_username/tensorflow/tensorflow/tools/pip_package``
+
+5) An empty ``__init__.py`` file was added in the utils folder as the utils.py file in that folder has couple of functions that were being imported to the build_pip_package.py file. 
+
+6) The argument name ``cwd`` was replaced with ``project_location``, providing a clearer and more explicit description of what the variable represents.
+
+7) The ``env.get("HOMEPATH", "C:")`` which checks for the existence of HOMEPATH and only sets it to "C:" if it isn’t already defined. This is safer as it doesn't overwrite existing environment settings unless necessary.
+
+8) Replaced with ``env["collaborator_build"]`` to ``"1"`` instead of ``True``, ensuring consistency in environment variable types (storing strings instead of boolean values).
+
+9) The **path** to ``setup.py`` was "hardcoded" as ``tensorflow/tools/pip_package/setup.py``. Now, changed it in such a way that it constructs the "**path dynamically**" using ``project_location``, making the script more flexible and adaptable to changes in directory structure without requiring code changes.
+
+10) Previously, a **try...finally block** was set to ensure cleanup of the temporary directory. It is changed to handle the ``temporary directory`` using a **context manager** ``with()`` statement, which automatically takes care of cleanup. This makes the code cleaner and reduces the risk of leaving temporary files or directories if exceptions occur.
+
+11) The previous version does not explicitly handle the renaming or moving of the wheel file after creation. Now, it is updated to check the list of wheel files in the specified directory, rename them, and move them to a final output directory based on the **environment variable** ``WHEEL_OUTPUT_DIR``. This addition makes the script handle end-to-end processing of wheel files, making deployment and distribution easier and more automated.
+
+The, ``WHEEL_OUTPUT_DIR`` is basically added for clarification and handling of build outputs within the workflow. It doesn't directly participate in the distribution of the wheel file. It just plays a critical role in defining where automated scripts or manual processes should look for the wheel file, effectively supporting the distribution process indirectly.
