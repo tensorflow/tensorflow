@@ -600,7 +600,7 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
   auto thread_ids =
       mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
 
-  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
+  Value lane_id = b.create<mlir::gpu::LaneIdOp>(/*upper_bound=*/nullptr);
   Value warp_id = b.create<ma::DivUIOp>(
       thread_ids[ReductionDimensions::kRowMinorReducedDimension],
       b.create<ma::ConstantIndexOp>(WarpSize()));
@@ -829,7 +829,7 @@ llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
   Value cst_true = b.create<ma::ConstantOp>(b.getOneAttr(b.getI1Type()));
 
   Value thread_id = state.thread_and_block_ids[0];
-  Value lane_id = b.create<mlir::gpu::LaneIdOp>();
+  Value lane_id = b.create<mlir::gpu::LaneIdOp>(/*upper_bound=*/nullptr);
   Value warp_id = b.create<ma::DivUIOp>(
       thread_id, b.create<ma::ConstantIndexOp>(WarpSize()));
 
