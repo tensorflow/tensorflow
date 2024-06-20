@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -558,16 +559,7 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-class GemmFusionAutotunerDumpTest : public GemmFusionAutotunerTest {
- public:
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options =
-        GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_cublas_fallback(true);
-    debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
-    return debug_options;
-  }
-};
+using GemmFusionAutotunerDumpTest = GemmFusionAutotunerTest;
 
 TEST_F(GemmFusionAutotunerDumpTest, Fp8CublasltFallbackSupport) {
   const std::string kHloText = R"(
@@ -639,24 +631,69 @@ ENTRY main {
   EXPECT_TRUE(filecheck_matches);
 }
 
-TEST_F(GemmFusionAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
+TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsForTest();
+  options.set_xla_gpu_cublas_fallback(true);
+  options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
+  std::string output_directory;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
+    output_directory = tsl::testing::TmpDir();
+  }
+  options.set_xla_dump_to(output_directory);
+  config.set_debug_options(options);
   // Computation is chosen such that relatively heavy math operations before the
   // GEMM are not worth fusing because they would get duplicated many times and
   // slow down execution. Therefore autotuning picks cuBLAS here.
-  const std::string kHloText = R"(
-ENTRY e {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion1 {
   p0 = f32[3333,3333] parameter(0)
   s = f32[3333,3333] sine(p0)
   p1 = f32[3333,3333] parameter(1)
   c = f32[3333,3333] cosine(p1)
   ROOT dot = f32[3333,3333] dot(s, c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}
 
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: cublas
-; CHECK-NOT: triton
-)");
+ENTRY e {
+  p0 = f32[3333,3333] parameter(0)
+  p1 = f32[3333,3333] parameter(1)
+  ROOT rr = f32[3333,3333] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+})",
+                                                       config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+
+  std::string dump;
+  TF_EXPECT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(output_directory,
+                        FilenameFor(*optimized_module, /*prefix=*/"",
+                                    /*suffix=*/"gemm_fusion_0.rr.txt")),
+      &dump));
+  EXPECT_TRUE(*RunFileCheck(dump, R"(
+CHECK: HloModule rr
+CHECK-NOT: cublas
+CHECK: __triton_gemm
+CHECK-NOT: block_m
+)"));
+
+  dump.clear();
+
+  TF_EXPECT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(
+          output_directory,
+          FilenameFor(*optimized_module, /*prefix=*/"",
+                      /*suffix=*/"gemm_fusion_0.rr.optimized.txt")),
+      &dump));
+  EXPECT_TRUE(*RunFileCheck(dump, R"(
+CHECK: HloModule rr
+CHECK-NOT: triton
+CHECK: cublas
+)"));
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {

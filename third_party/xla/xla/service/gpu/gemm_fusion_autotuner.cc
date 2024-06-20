@@ -421,12 +421,18 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   return new_module;
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> CudnnGemmAutotuneExtractor(
-    const AutotuneConfig& autotune_config, const HloFusionInstruction* fusion,
-    const DebugOptions& debug_opts, const int plan_id) {
-  std::unique_ptr<HloModule> new_module =
-      ExtractInstructionIntoNewModule(*fusion);
-  new_module->mutable_config().set_debug_options(debug_opts);
+absl::StatusOr<std::unique_ptr<HloModule>> FusionExtractor(
+    const HloFusionInstruction& fusion, const DebugOptions& debug_opts) {
+  std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(fusion);
+  module->mutable_config().set_debug_options(debug_opts);
+  return module;
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
+    const HloFusionInstruction& fusion, const DebugOptions& debug_opts,
+    const int plan_id) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      FusionExtractor(fusion, debug_opts));
 
   GpuBackendConfig gpu_config;
   FusionBackendConfig& backend_config =
@@ -435,10 +441,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> CudnnGemmAutotuneExtractor(
   // Provided a plan ID the autotuner just compiles one plan.
   backend_config.mutable_cudnn_fusion_config()->set_plan_id(plan_id);
   TF_RETURN_IF_ERROR(
-      new_module->entry_computation()->root_instruction()->set_backend_config(
+      module->entry_computation()->root_instruction()->set_backend_config(
           gpu_config));
-
-  return new_module;
+  return module;
 }
 
 bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind) {
@@ -476,6 +481,26 @@ AutotuneResult FromConfig(const Config& config) {
   return res;
 }
 
+absl::Status DumpOriginalFusion(AutotunerCompileUtil& util,
+                                const HloFusionInstruction& fusion,
+                                int fusion_id) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      util.ExtractModule([&](const DebugOptions& debug_opts) {
+                        return FusionExtractor(fusion, debug_opts);
+                      }));
+  module->set_name(std::string(fusion.name()));
+  // Using the original module for its debug info and name in the first
+  // parameter. It's better to include the name of both the original module
+  // and the extracted module, to avoid name clashes.
+  DumpToFileInDirOrStdout(
+      /*module=*/*fusion.GetModule(),
+      /*file_prefix=*/"",
+      /*file_suffix=*/
+      absl::StrCat("gemm_fusion_", fusion_id, ".", module->name(), ".txt"),
+      /*contents=*/module->ToString());
+  return absl::OkStatus();
+}
+
 absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
                                  const int32_t toolkit_version,
                                  AutotunerCompileUtil& util,
@@ -483,12 +508,7 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
                                  const HloFusionInstruction* fusion,
                                  int fusion_id) {
   TritonGemmConfig triton_gemm_config;
-  if (!result.has_triton()) {
-    LOG(WARNING) << "Using empty triton GEMM config for op " << fusion->name();
-    // Empty TritonGemmConfig has all zero values which is good enough to keep
-    // fused computation in the dump but illustrate that Triton is not used for
-    // it after autotuning.
-  } else {
+  if (result.has_triton()) {
     TF_ASSIGN_OR_RETURN(triton_gemm_config,
                         TritonGemmConfig::FromProto(result.triton()));
   }
@@ -498,8 +518,8 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
       std::unique_ptr<HloModule> module,
       util.ExtractModule([&](const DebugOptions& debug_opts) {
         if (result.has_algorithm()) {
-          return CudnnGemmAutotuneExtractor(autotune_config, fusion, debug_opts,
-                                            result.algorithm().algo_id());
+          return CuDnnFusionExtractor(*fusion, debug_opts,
+                                      result.algorithm().algo_id());
         } else if (result.has_triton()) {
           return TritonGemmAutotuneExtractor(
               triton_gemm_config, device_desc, fusion, debug_opts,
@@ -519,7 +539,7 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
       /*module=*/*fusion->GetModule(),
       /*file_prefix=*/"",
       /*file_suffix=*/
-      absl::StrCat("triton_fusion_", fusion_id, ".", module->name(),
+      absl::StrCat("gemm_fusion_", fusion_id, ".", module->name(),
                    ".optimized.txt"),
       /*contents=*/module->ToString());
   return absl::OkStatus();
@@ -745,13 +765,13 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
                 allow_filtering_kernels_spilling_registers);
           }));
     } else if (std::holds_alternative<CuDnnConfig>(config)) {
-      executable = compile_util
-                       .Compile([&](const DebugOptions& opts) {
-                         return CudnnGemmAutotuneExtractor(
-                             config_, fusion, opts,
-                             std::get<CuDnnConfig>(config).plan_id);
-                       })
-                       .value_or(nullptr);
+      executable =
+          compile_util
+              .Compile([&](const DebugOptions& opts) {
+                return CuDnnFusionExtractor(
+                    *fusion, opts, std::get<CuDnnConfig>(config).plan_id);
+              })
+              .value_or(nullptr);
     } else if (std::holds_alternative<CuBlasConfig>(config)) {
       TF_ASSIGN_OR_RETURN(executable,
                           compile_util.Compile([&](const DebugOptions& opts) {
@@ -1094,6 +1114,7 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
             << tsl::proto_utils::FromDurationProto(best.run_time());
 
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {
+      TF_RETURN_IF_ERROR(DumpOriginalFusion(compile_util, *fusion, fusion_id));
       TF_RETURN_IF_ERROR(DumpAutotunedFusion(
           config_, toolkit_version_, compile_util, best, fusion, fusion_id++));
     }
