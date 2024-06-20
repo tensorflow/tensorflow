@@ -1992,47 +1992,7 @@ MsaAlgorithm::AllocationRequest MsaAlgorithm::CreateAllocationRequest(
       latest_prefetch_time =
           std::min(computation_span.start - 1, latest_prefetch_time);
     }
-    if (hlo_use.instruction->opcode() == HloOpcode::kWhile) {
-      // Given an example while loop and flattened schedule (logical times
-      // shown on the left):
-      //
-      // 0:  a = ...
-      // 1:  ...
-      //     cond {
-      // 2:   p = param(0)
-      // 3:   ...
-      //     }
-      //     body {
-      // 4:   p = param(0)
-      // 5:   ...
-      // 6:   ROOT ...
-      //     }
-      // 7:  w = while(a), body=body, cond=cond
-      //
-      // When processing "a" (time 0) and its while use (time 7), we update
-      // the interval to time 0-4. This is so that the remaining interval
-      // (5-6) can be allocated separately and this buffer doesn't waste
-      // alternate memory space within the while loop body.
-      HloComputation* while_body = hlo_use.instruction->while_body();
-      // We require while body ROOTs to be the last in the schedule.
-      CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
-               instruction_schedule.at(hlo_use.instruction))
-          << "While body ROOTs need to be the last in the schedule! "
-             "Please run RootInstructionSinker.";
-      // Replace the use time with the parameter time so that we can decide
-      // on alternate memory allocations within the while loop body when we
-      // look at uses within the while loop body.
-      use_time = instruction_schedule.at(while_body->parameter_instruction(0));
-    } else if (hlo_use.instruction->opcode() == HloOpcode::kConditional) {
-      // Replace the use time with the earliest parameter of called
-      // computations.
-      for (const HloComputation* called_computation :
-           hlo_use.instruction->called_computations()) {
-        use_time = std::min(use_time,
-                            instruction_schedule.at(
-                                called_computation->parameter_instruction(0)));
-      }
-    }
+    use_time = GetCorrectedUseTime(hlo_use);
   }
 
   // Add a required assignment in default memory if the use not allowed in
