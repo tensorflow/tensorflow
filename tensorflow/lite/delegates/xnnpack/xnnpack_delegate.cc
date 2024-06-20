@@ -4773,9 +4773,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
-                                           node->inputs->data[0],
-                                           BuiltinOperator_MEAN, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorNonDynamicAllocation(delegate, logging_context, input_tensor,
                                         node->inputs->data[0], node_index));
@@ -4796,6 +4793,10 @@ class Subgraph {
     bool all_reductions_supported = false;
     if (input_tensor.type == kTfLiteFloat32) {
       all_reductions_supported = true;
+    } else {
+      TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                             node->inputs->data[0],
+                                             BuiltinOperator_MEAN, node_index));
     }
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
