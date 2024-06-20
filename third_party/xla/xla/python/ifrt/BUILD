@@ -137,6 +137,31 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "attribute_map",
+    srcs = ["attribute_map.cc"],
+    hdrs = ["attribute_map.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":attribute_map_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "attribute_map_test",
+    size = "small",
+    srcs = ["attribute_map_test.cc"],
+    deps = [
+        ":attribute_map",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 xla_cc_test(
     name = "future_test",
     size = "small",
@@ -283,6 +308,11 @@ xla_cc_test(
         ":array_impl_test_lib",
         ":no_impl_test_main",
     ],
+)
+
+tf_proto_library(
+    name = "attribute_map_proto",
+    srcs = ["attribute_map.proto"],
 )
 
 cc_library(
