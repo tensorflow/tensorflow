@@ -388,7 +388,7 @@ LaunchDimensions GetLaunchDimensionsForTiledFusion(
           static_cast<uint64_t>(num_warps * WarpSize())};
 }
 
-absl::StatusOr<std::variant<TiledRunTimeData, FusionDecision>>
+absl::StatusOr<TiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
     const HloFusionAdaptor& fusion_adaptor) {
   SymbolicTileAnalysisOrError analysis_or_error =

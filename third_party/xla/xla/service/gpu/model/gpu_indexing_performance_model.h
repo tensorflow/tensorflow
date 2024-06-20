@@ -47,6 +47,8 @@ struct TiledRunTimeData {
   BlockLevelParameters block_level_parameters;
 };
 
+using TiledRunTimeDataOrError = std::variant<TiledRunTimeData, FusionDecision>;
+
 // Implementation of Cost Model that uses indexing analysis to estimate amount
 // of compute and memory access time.
 class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
@@ -105,8 +107,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // Returns FusionDecision if the fusion can't be tiled or there are no valid
   // block level parameters.
   // Otherwise returns block level parameters that give the best execution time.
-  absl::StatusOr<std::variant<TiledRunTimeData, FusionDecision>>
-  TryFindBestTilingForFusion(const HloFusionAdaptor& fusion_adaptor);
+  absl::StatusOr<TiledRunTimeDataOrError> TryFindBestTilingForFusion(
+      const HloFusionAdaptor& fusion_adaptor);
 
  private:
   // Returns an estimate how many FLOPs will be used to produce one element of
