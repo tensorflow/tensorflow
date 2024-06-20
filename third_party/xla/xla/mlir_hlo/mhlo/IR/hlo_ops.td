@@ -230,7 +230,7 @@ def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
   }];
 }
 def MHLO_CeilOp: MHLO_UnaryElementwiseOp<"ceil",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrQuantizedIntTensor> {
   let summary = "Ceil operation";
   let description = [{
     Performs element-wise ceil of `operand` tensor and produces a `result` tensor.
@@ -357,7 +357,7 @@ def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
   }];
 }
 def MHLO_FloorOp: MHLO_UnaryElementwiseOp<"floor",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrQuantizedIntTensor> {
   let summary = "Floor operation";
   let description = [{
     Performs element-wise floor of `operand` tensor and produces a `result`

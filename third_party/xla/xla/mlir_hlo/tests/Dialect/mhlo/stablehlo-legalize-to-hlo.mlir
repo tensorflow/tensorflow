@@ -520,6 +520,13 @@ func.func @op_ceil(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "quantized_op_ceil"
+func.func @quantized_op_ceil(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "mhlo.ceil"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "stablehlo.ceil"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+}
+
 // CHECK-LABEL: "op_cholesky"
 func.func @op_cholesky(%arg0: tensor<1x16x16xf32>) -> tensor<1x16x16xf32> {
   //      CHECK: "mhlo.cholesky"([[ARG0:%arg[0-9]+]]) <{
@@ -939,6 +946,13 @@ func.func @op_floor(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: "quantized_op_floor"
+func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "mhlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "stablehlo.floor"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
 // CHECK-LABEL: "op_gather"

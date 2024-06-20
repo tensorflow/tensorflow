@@ -23,3 +23,17 @@ func.func @uniform_quantized_c1(%arg0: tensor<2x!quant.uniform<i8:f32, 0.1>>) {
   %0 = "mhlo.uniform_quantize"(%arg0) : (tensor<2x!quant.uniform<i8:f32, 0.1>>) -> tensor<2x!quant.uniform<i8:f64, 0.1>>
   func.return
 }
+
+// -----
+
+func.func @quantized_ceil_valid(%arg0: tensor<2x!quant.uniform<i8:f32, 0.1>>) {
+  %0 = mhlo.ceil %arg0 : tensor<2x!quant.uniform<i8:f32, 0.1>>
+  func.return
+}
+
+// -----
+
+func.func @quantized_floor_valid(%arg0: tensor<2x!quant.uniform<i8:f32, 0.1>>) {
+  %0 = mhlo.floor %arg0 : tensor<2x!quant.uniform<i8:f32, 0.1>>
+  func.return
+}
