@@ -39,16 +39,6 @@ void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
-absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
-                                            const DeviceMemoryBase &dev_src,
-                                            uint64_t size) {
-  AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
-    // Ignore errors.
-    absl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
-  });
-  return AsExecutorStream(stream)->BlockUntilDone();
-}
-
 absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);

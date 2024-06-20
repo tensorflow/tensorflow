@@ -143,17 +143,6 @@ absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::Memcpy(Stream* stream, void* host_dst,
-                                  const DeviceMemoryBase& gpu_src,
-                                  uint64_t size) {
-  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
-  // with the HostExecutor.
-  void* src_mem = const_cast<void*>(gpu_src.opaque());
-  AsHostStream(stream)->EnqueueTask(
-      [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
-  return absl::OkStatus();
-}
-
 bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
                                         DeviceMemoryBase* gpu_dst,
                                         const DeviceMemoryBase& gpu_src,

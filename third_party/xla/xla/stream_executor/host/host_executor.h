@@ -90,8 +90,6 @@ class HostExecutor : public StreamExecutorCommon {
     delete[] static_cast<char*>(mem);
   }
 
-  absl::Status Memcpy(Stream* stream, void* host_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,
                             uint64_t size) override;
