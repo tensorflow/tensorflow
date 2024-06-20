@@ -143,12 +143,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
              << sub_stream;
 }
 
-absl::Status StreamCommon::Memcpy(void *host_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  return parent_->Memcpy(this, host_dst, gpu_src, size);
-}
-
 absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
                                   const DeviceMemoryBase &gpu_src,
                                   uint64_t size) {

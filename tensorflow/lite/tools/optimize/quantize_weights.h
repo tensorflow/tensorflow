@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -59,7 +60,7 @@ constexpr bool kUseUpdatedHybridSchemeDefault = true;
 // A tflite::Model can be obtained from the builder with:
 //   const uint8_t* buffer = builder->GetBufferPointer();
 //   tflite::Model* model = GetModel(buffer);
-TfLiteStatus QuantizeWeights(
+absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     BufferType quant_type = BufferType::QUANTIZED_INT8,
     bool use_updated_hybrid_scheme = kUseUpdatedHybridSchemeDefault,
@@ -67,13 +68,13 @@ TfLiteStatus QuantizeWeights(
 
 // Same as above, but only weights with greater than or equal
 // weights_min_num_elements elements will be quantized.
-TfLiteStatus QuantizeWeights(
+absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     uint64_t weights_min_num_elements,
     QuantizerType quantizer_type = QuantizerType::OLD_QUANTIZER);
 
 // Same as above, but with entry point of quantizing custom ops.
-TfLiteStatus QuantizeWeights(
+absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
     QuantizerType quantizer_type = QuantizerType::OLD_QUANTIZER);
@@ -81,7 +82,7 @@ TfLiteStatus QuantizeWeights(
 // Same as above, but if use updated_hybrid_scheme is false,
 // use previous quantization scheme. Optional op_denylist argument
 // disables hybrid evaluation for provided BuiltinOperators.
-TfLiteStatus QuantizeWeights(
+absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     uint64_t weights_min_num_elements, const CustomOpMap& custom_op_map,
     bool use_updated_hybrid_scheme,
@@ -94,7 +95,7 @@ namespace internal {
 //
 // We use this internal QuantizeWeights call to test models with hybrid
 // evaluation disabled.
-TfLiteStatus QuantizeWeights(
+absl::Status QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
     uint64_t weights_min_num_elements, bool use_hybrid_evaluation,
     QuantizerType quantizer_type = QuantizerType::OLD_QUANTIZER);

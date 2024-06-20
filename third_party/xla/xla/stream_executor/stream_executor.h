@@ -231,12 +231,6 @@ class StreamExecutor {
     return absl::InternalError("Not implemented");
   }
 
-  // Enqueues a memcpy operation onto stream, with a host destination location
-  // host_dst and a device memory source, with target size size.
-  virtual absl::Status Memcpy(Stream* stream, void* host_dst,
-                              const DeviceMemoryBase& device_src,
-                              uint64_t size) = 0;
-
   // Enqueues a memcpy operation onto stream, with a device destination location
   // and a device source location, with target size size. Peer access should
   // have been enabled between the StreamExecutors owning the device memory

@@ -64,9 +64,7 @@ class HostStream : public StreamCommon {
     return StreamCommon::Memcpy(gpu_dst, gpu_src, size);
   }
   absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
-                      uint64_t size) override {
-    return StreamCommon::Memcpy(host_dst, gpu_src, size);
-  }
+                      uint64_t size) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

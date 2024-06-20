@@ -97,10 +97,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status Memcpy(Stream* stream, void* host_dst,
-                      const DeviceMemoryBase& device_src,
-                      uint64_t size) override;
-
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& host_src,
                             uint64_t size) override;
