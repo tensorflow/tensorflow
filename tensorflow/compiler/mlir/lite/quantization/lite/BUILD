@@ -168,7 +168,6 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools/optimize:test_util",
         "@com_google_absl//absl/container:flat_hash_set",

@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 // Note: branched from tensorflow/lite/tools/optimize/quantize_model_test.cc
@@ -71,7 +70,8 @@ ModelT UnPackFlatBufferModel(const Model& flatbuffer_model) {
 
 TfLiteStatus QuantizeModel(
     ModelT* model, const TensorType& input_type, const TensorType& output_type,
-    const bool allow_float, const std::unordered_set<string>& operator_names,
+    const bool allow_float,
+    const std::unordered_set<std::string>& operator_names,
     const TensorType& activations_type, std::string& output_buffer,
     const bool disable_per_channel = false,
     const absl::flat_hash_set<std::string>& blocked_ops = {},
@@ -156,7 +156,7 @@ TfLiteStatus QuantizeModelAllOperators(
                        disable_per_channel_for_dense_layers);
 }
 
-std::unique_ptr<FlatBufferModel> ReadModel(const string& model_name) {
+std::unique_ptr<FlatBufferModel> ReadModel(const std::string& model_name) {
   auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model_name);
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
