@@ -307,6 +307,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -326,7 +327,9 @@ xla_cc_test(
     deps = [
         ":basic_string_array",
         ":tfrt_cpu_client_test_lib",
+        "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:ref_count",

@@ -32,7 +32,9 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -53,6 +55,11 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
+
+// ////////////////////////////////////////////////////////////////////////////
+//
+// Common utility functions.
+//
 
 // Makes a simple single device sharded `BasicStringArray` from the
 // user-supplied buffers and on_done_with_buffer callback by means of the
@@ -118,6 +125,51 @@ CreateNonReadyTestArray(
 
   return std::make_pair(std::move(array), std::move(buffers_promise));
 }
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Tests related to BasicStringArrayLayout.
+//
+
+TEST(BasicStringArrayLayoutTest, Serialize) {
+  BasicStringArrayLayout layout;
+  // Seerialize currently has no state to serialize, and so the returned value
+  // should be an empty string.
+  EXPECT_TRUE(layout.Serialize().empty());
+}
+
+TEST(BasicStringArrayLayoutTest, ToString) {
+  BasicStringArrayLayout layout;
+  auto output_str = layout.ToString();
+  EXPECT_THAT(output_str, HasSubstr("major-to-minor"));
+}
+
+TEST(BasicStringArrayLayoutTest, Equality) {
+  BasicStringArrayLayout layout_1;
+
+  // In the equality comparisons below, use the PjRtLayout interface for the
+  // second object so we can avoid the error: `ambiguity is between a regular
+  // call to this operator and a call with the argument order reversed`.
+
+  // Any two BasicStringArrayLayouts are equal.
+  BasicStringArrayLayout layout_2;
+  const PjRtLayout& layout_3 = layout_2;
+  EXPECT_EQ(layout_1, layout_3);
+
+  // In the next test, EXPECT_NE is not used because the version of EXCEPT_NE
+  // available in the open sourced libraries requires the operator `!=` to be
+  // overloaded.
+
+  // Non-BasicStringArrayLayouts are not equal to BasicStringArrayLayouts.
+  xla::PjRtXlaLayout layout_6((xla::Layout()));
+  const PjRtLayout& layout_7 = layout_6;
+  EXPECT_FALSE(layout_7 == layout_1);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Tests related to BasicStringArray.
+//
 
 TEST(BasicStringArrayTest, CreateSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
@@ -881,6 +933,42 @@ TEST(FullyReplicatedShardTest, FailsAfterDeletion) {
 
   EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
               StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST(LayoutTest, Success) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  constexpr char kContents[] = "abc";
+  auto [buffers, on_done_with_buffer] =
+      MakeBuffersAndOnDoneWithBuffer({kContents});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      CreateTestArray(client.get(),
+                      Future<BasicStringArray::Buffers>(std::move(buffers)),
+                      std::move(on_done_with_buffer)));
+
+  // The number of dimensions for the testArray should be 1. Typical usage of
+  // BasicStringArrayLayout does not require an accessor to retrieve the number
+  // of dimensions. Instead of adding a test only method, we could just check
+  // the serialized layout.
+  TF_ASSERT_OK_AND_ASSIGN(auto layout, array->layout());
+  EXPECT_TRUE(layout->Serialize().empty());
+}
+
+TEST(LayoutTest, FailsAfterDeletion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  constexpr char kContents[] = "abc";
+  auto [buffers, on_done_with_buffer] =
+      MakeBuffersAndOnDoneWithBuffer({kContents});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
+                      std::move(on_done_with_buffer)));
+
+  array->Delete();
+
+  EXPECT_THAT(array->layout(), StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

@@ -283,9 +283,12 @@ absl::Status ParseArguments(
     signature.dynamic_arg_treedefs.reserve(positional_args.size());
 
     // Positional arguments.
+    int num_positional_args = positional_args.size();
     for (int i = 0; i < positional_args.size(); ++i) {
-      if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
-          static_argnums.end()) {
+      if (std::find_if(static_argnums.begin(), static_argnums.end(),
+                       [i, num_positional_args](int t) {
+                         return t >= 0 ? i == t : i == t + num_positional_args;
+                       }) == static_argnums.end()) {
         signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
         xla::PyTreeDef& pytree_def = signature.dynamic_arg_treedefs.back();
         pytree_def.Flatten(positional_args[i], flat_dynamic_args);
