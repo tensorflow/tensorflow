@@ -2774,7 +2774,7 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
   b_.CreateLifetimeEnd(args_ptr, b_.getInt64(-1));
   result_stack_alloca.EmitLifetimeEnd();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {

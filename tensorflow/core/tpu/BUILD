@@ -277,7 +277,6 @@ cc_library(
         "@local_xla//xla:shape_layout",
         "@local_xla//xla:shape_tree",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:status",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",

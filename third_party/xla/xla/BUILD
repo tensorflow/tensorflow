@@ -301,6 +301,7 @@ xla_cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
+    deprecation = "Use @com_google_absl//absl/status instead.",
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log:check",
@@ -337,7 +338,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":status",
         ":status_macros",
         ":types",
         ":xla_data_proto_cc",
@@ -350,6 +350,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

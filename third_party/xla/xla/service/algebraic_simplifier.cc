@@ -9167,7 +9167,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvolution(
   TF_ASSIGN_OR_RETURN(bool can_rewrite_bf16_conv_to_onednn,
                       IsOneDnnRewritableBF16Conv(&convolution));
   if (can_rewrite_bf16_conv_to_onednn) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   // Try to replace the convolution with a kDot or a kMultiply instruction.

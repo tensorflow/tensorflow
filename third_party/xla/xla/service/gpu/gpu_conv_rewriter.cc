@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -55,7 +55,8 @@ namespace gpu {
 
 namespace {
 
-Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc) {
+absl::Status CheckTypes(HloInstruction* conv,
+                        const se::GpuComputeCapability cc) {
   auto valid_shape = [conv, &cc](const Shape& shape) -> absl::Status {
     PrimitiveType type = shape.element_type();
     if (!primitive_util::IsFloatingPointType(type) &&
@@ -90,13 +91,13 @@ Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc) {
             conv->ToString());
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_RETURN_IF_ERROR(valid_shape(conv->shape()));
   TF_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
   TF_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 using ConvolutionMatch = std::optional<
