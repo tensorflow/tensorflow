@@ -262,7 +262,10 @@ LogicalResult ApplyUnrealizedCastCanonicalization(ModuleOp module) {
   RewritePatternSet patterns(context);
   ConversionTarget target(*context);
   target.addIllegalOp<UnrealizedConversionCastOp>();
-  populateReconcileUnrealizedCastsPatterns(patterns);
+  // MLIR Integrate note: removed `populateReconcileUnrealizedCastsPatterns` as
+  // per https://github.com/llvm/llvm-project/pull/95700, but leaving this
+  // dialect conversion pass here for now to confirm that there are no
+  // unrealized casts left.
   if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
     return module->emitError("Failed to fold unrealized cast");
   }
