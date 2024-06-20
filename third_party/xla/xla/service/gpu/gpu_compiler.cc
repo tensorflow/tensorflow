@@ -250,9 +250,7 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
-#endif  // PLATFORM_GOOGLE
 
 namespace xla {
 namespace gpu {
@@ -565,7 +563,6 @@ absl::Status RunSPMDPasses(
         hlo_module, layout_insensitive_algsimp_opts,
         gpu_target_config.device_description.gpu_compute_capability(),
         spmd_pipeline,
-#ifdef PLATFORM_GOOGLE
         [&](HloPassPipeline& pipeline) {
           if (auto_sharding) {
             AutoShardingOption option;
@@ -598,9 +595,6 @@ absl::Status RunSPMDPasses(
             spmd_pipeline.AddPass<AutoSharding>(option);
           }
         });
-#else
-        std::nullopt);
-#endif  // PLATFORM_GOOGLE
     return spmd_pipeline.Run(hlo_module).status();
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");

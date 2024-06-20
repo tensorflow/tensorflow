@@ -87,38 +87,40 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  absl::InlinedVector<se::DeviceMemoryBase, 8> buffers_data;
-  buffers_data.reserve(arguments_buffers_.size() + results_buffers_.size());
+  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args;
+  kernel_args.reserve(arguments_buffers_.size() + results_buffers_.size());
 
   int64_t arg_num = 0;
   for (BufferAllocation::Slice& buffer : arguments_buffers_) {
-    TF_ASSIGN_OR_RETURN(buffers_data.emplace_back(),
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
+    kernel_args.push_back(
+        SE_HOST_KernelArg{arg_data.opaque(), arg_data.size()});
     VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", arg_num++,
-                                  buffer.ToString(),
-                                  buffers_data.back().opaque());
+                                  buffer.ToString(), kernel_args.back().data);
   }
 
   int64_t res_num = 0;
   for (BufferAllocation::Slice& buffer : results_buffers_) {
-    TF_ASSIGN_OR_RETURN(buffers_data.emplace_back(),
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
+    kernel_args.push_back(
+        SE_HOST_KernelArg{result_data.opaque(), result_data.size()});
     VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)", res_num++,
-                                  buffer.ToString(),
-                                  buffers_data.back().opaque());
+                                  buffer.ToString(), kernel_args.back().data);
   }
 
   // Check that all buffers are aligned to the minimum alignment. We codegen
   // with the assumption that all buffers are aligned, and if they are not, we
   // will crash with a segmentation fault, or worse, produce incorrect results.
   if (min_alignment_.has_value()) {
-    for (int64_t i = 0; i < buffers_data.size(); ++i) {
-      auto ptr = reinterpret_cast<uintptr_t>(buffers_data[i].opaque());
+    for (int64_t i = 0; i < kernel_args.size(); ++i) {
+      auto ptr = reinterpret_cast<uintptr_t>(kernel_args[i].data);
       if (ABSL_PREDICT_FALSE((ptr & (*min_alignment_ - 1)) != 0)) {
         return Internal(
             "Host kernel %s buffer argument #%d (%p) is not aligned to a "
             "required minimum alignment of %d bytes",
-            info().op_name, i, buffers_data[i].opaque(), *min_alignment_);
+            info().op_name, i, kernel_args[i].data, *min_alignment_);
       }
     }
   }
@@ -134,7 +136,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
                         params.host_kernels->Find(kernel_name_));
 
     absl::MutexLock lock(&mutex_);
-    kernel_.emplace(buffers_data.size(), kernel_fn, nullptr);
+    kernel_.emplace(kernel_args.size(), kernel_fn, nullptr);
     kernel_ptr_.store(kernel = &kernel_.value());
   }
 
@@ -142,14 +144,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_FALSE(params.intra_op_threadpool && use_task_runner_)) {
-    return kernel->Launch(thread_dim_, buffers_data,
+    return kernel->Launch(thread_dim_, kernel_args,
                           [&params](se::host::HostKernel::Task task) {
                             params.intra_op_threadpool->getPool()->Schedule(
                                 ToCopyableTask(std::move(task)));
                           });
   }
 
-  TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, buffers_data));
+  TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));
   return OkExecuteEvent();
 }
 

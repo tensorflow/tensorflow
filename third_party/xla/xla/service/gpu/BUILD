@@ -3626,6 +3626,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/experimental/auto_sharding",
         "//xla/service:buffer_value",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:hlo_cost_analysis",

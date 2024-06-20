@@ -10,3 +10,15 @@ diff --git a/src/ortools/base/file.cc b/src/ortools/base/file.cc
    return absl::Status(absl::StatusCode::kInvalidArgument,
                        absl::StrCat("Could not read from '", filename, "'."));
  }
+diff --git a/ortools/linear_solver/BUILD.bazel b/ortools/linear_solver/BUILD.bazel
+--- a/ortools/linear_solver/BUILD.bazel
++++ b/ortools/linear_solver/BUILD.bazel
+@@ -79,7 +79,7 @@
+         "linear_expr.cc",
+         "linear_solver_callback.cc",
+         "linear_solver.cc",
+-        "lpi_glop.cpp",
++        # "lpi_glop.cpp",
+         "pdlp_interface.cc",
+         "sat_interface.cc",
+         "scip_callback.cc",

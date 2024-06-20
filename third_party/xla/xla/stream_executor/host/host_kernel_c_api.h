@@ -71,7 +71,7 @@ typedef struct SE_HOST_KernelCallFrame {
   SE_HOST_KernelThread* thread;
 
   size_t num_args;
-  SE_HOST_KernelArg* args;
+  const SE_HOST_KernelArg* args;
 } SE_HOST_KernelCallFrame;
 
 // Error reporting for host kernels. NULL means success.
