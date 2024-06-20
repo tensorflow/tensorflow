@@ -63,7 +63,9 @@ class Thunk {
   enum class Kind {
     kAllGather,
     kAllReduce,
+    kAllToAll,
     kCall,
+    kCollectivePermute,
     kCopy,
     kConditional,
     kDot,

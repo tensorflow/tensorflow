@@ -38,7 +38,9 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/all_gather_thunk.h"
 #include "xla/service/cpu/runtime/all_reduce_thunk.h"
+#include "xla/service/cpu/runtime/all_to_all_thunk.h"
 #include "xla/service/cpu/runtime/call_thunk.h"
+#include "xla/service/cpu/runtime/collective_permute_thunk.h"
 #include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
@@ -214,6 +216,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitAllReduceThunk(instruction);
     case HloOpcode::kReduceScatter:
       return EmitReduceScatterThunk(instruction);
+    case HloOpcode::kAllToAll:
+      return EmitAllToAllThunk(instruction);
+    case HloOpcode::kCollectivePermute:
+      return EmitCollectivePermuteThunk(instruction);
 
     // TODO(ezhulenev): Port pad optimizations from IrEmitter.
     case HloOpcode::kPad:
@@ -284,6 +290,36 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
   };
 }
 
+// TODO(ezhulenev): Figure out why AllToAll instruction does not have
+// `use_global_device_ids` field and how to unify it with every other collective
+// operation.
+static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
+    const HloAllToAllInstruction* instruction) {
+  return CollectiveThunk::OpParams{
+      /*op_id=*/instruction->channel_id().has_value()
+          ? instruction->channel_id().value()
+          : instruction->GetModule()->unique_id(),
+      /*has_channel_id=*/instruction->channel_id().has_value(),
+      /*use_global_device_ids=*/std::nullopt,
+      /*replica_groups=*/instruction->replica_groups(),
+  };
+}
+
+// TODO(ezhulenev): Figure out why CollectivePermute instruction does not have
+// `use_global_device_ids` field and how to unify it with every other collective
+// operation.
+static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
+    const HloCollectivePermuteInstruction* instruction) {
+  return CollectiveThunk::OpParams{
+      /*op_id=*/instruction->channel_id().has_value()
+          ? instruction->channel_id().value()
+          : instruction->GetModule()->unique_id(),
+      /*has_channel_id=*/instruction->channel_id().has_value(),
+      /*use_global_device_ids=*/std::nullopt,
+      /*replica_groups=*/{},  // collective permute does not have replica groups
+  };
+}
+
 static absl::StatusOr<CollectiveThunk::OpBuffers> GetCollectiveOpBuffers(
     const HloInstruction* instruction,
     const BufferAssignment& buffer_assignment) {
@@ -346,6 +382,34 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
   return ThunkSequence::Of<AllReduceThunk>(
       ThunkInfo(all_reduce), reduction_kind, std::move(op_params),
       std::move(op_buffers), single_replica);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllToAllThunk(
+    const HloInstruction* instruction) {
+  auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(AllToAllThunk::OpParams op_params,
+                      GetCollectiveOpParams(all_to_all));
+  TF_ASSIGN_OR_RETURN(AllToAllThunk::OpBuffers op_buffers,
+                      GetCollectiveOpBuffers(all_to_all, buffer_assignment_));
+
+  return ThunkSequence::Of<AllToAllThunk>(
+      ThunkInfo(all_to_all), std::move(op_params), std::move(op_buffers));
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermuteThunk(
+    const HloInstruction* instruction) {
+  auto* collective_permute = Cast<HloCollectivePermuteInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(CollectivePermuteThunk::OpParams op_params,
+                      GetCollectiveOpParams(collective_permute));
+  TF_ASSIGN_OR_RETURN(
+      CollectivePermuteThunk::OpBuffers op_buffers,
+      GetCollectiveOpBuffers(collective_permute, buffer_assignment_));
+
+  return ThunkSequence::Of<CollectivePermuteThunk>(
+      ThunkInfo(collective_permute), std::move(op_params),
+      std::move(op_buffers), collective_permute->source_target_pairs());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
