@@ -190,12 +190,6 @@ absl::Status TpuExecutor::SynchronousMemcpy(
   return status.status();
 }
 
-bool TpuExecutor::MemcpyDeviceToDevice(
-    Stream* stream, ::stream_executor::DeviceMemoryBase* gpu_dst,
-    const ::stream_executor::DeviceMemoryBase& host_src, uint64_t size) {
-  LOG(FATAL) << __func__ << " not supported on TpuExecutor";
-}
-
 absl::Status TpuExecutor::UnloadAllPrograms() {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_UnloadAllProgramsFn(executor_, status.c_status);

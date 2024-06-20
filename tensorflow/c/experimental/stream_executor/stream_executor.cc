@@ -312,21 +312,6 @@ class CStreamExecutor : public StreamExecutorCommon {
                              size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
-                            const DeviceMemoryBase& gpu_src,
-                            uint64 size) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    SP_DeviceMemoryBase device_mem_dst = DeviceMemoryBaseToC(gpu_dst);
-    SP_DeviceMemoryBase device_mem_src = DeviceMemoryBaseToC(&gpu_src);
-    stream_executor_->memcpy_dtod(&device_, stream_handle, &device_mem_dst,
-                                  &device_mem_src, size, c_status.get());
-    if (TF_GetCode(c_status.get()) != TF_OK) {
-      LOG(ERROR) << TF_Message(c_status.get());
-      return false;
-    }
-    return true;
-  }
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override {
     SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();

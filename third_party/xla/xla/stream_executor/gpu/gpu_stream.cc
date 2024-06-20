@@ -77,6 +77,19 @@ absl::Status GpuStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
+absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst,
+                               const DeviceMemoryBase& gpu_src, uint64_t size) {
+  if (GpuDriver::AsynchronousMemcpyD2D(
+          parent_->gpu_context(),
+          reinterpret_cast<GpuDevicePtr>(gpu_dst->opaque()),
+          reinterpret_cast<GpuDevicePtr>(gpu_src.opaque()), size,
+          gpu_stream())) {
+    return absl::OkStatus();
+  }
+
+  return absl::InternalError("Failed to memcpy from device to device.");
+}
+
 absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
                                uint64_t size) {
   bool ok = GpuDriver::AsynchronousMemcpyH2D(

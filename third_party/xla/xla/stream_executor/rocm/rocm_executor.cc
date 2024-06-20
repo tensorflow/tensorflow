@@ -597,15 +597,6 @@ absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
   return absl::OkStatus();
 }
 
-bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
-                                       DeviceMemoryBase* gpu_dst,
-                                       const DeviceMemoryBase& gpu_src,
-                                       uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyD2D(context_, AsROCmDevicePtr(gpu_dst),
-                                          AsROCmDevicePtr(gpu_src), size,
-                                          AsGpuStreamValue(stream));
-}
-
 bool GpuExecutor::HostCallback(Stream* stream,
                                absl::AnyInvocable<absl::Status() &&> callback) {
   auto callback_ptr =

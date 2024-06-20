@@ -134,7 +134,8 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
   absl::Status Memcpy(stream_executor::DeviceMemoryBase* device_dst,
                       const stream_executor::DeviceMemoryBase& device_src,
                       uint64_t size) override {
-    return StreamCommon::Memcpy(device_dst, device_src, size);
+    return absl::UnimplementedError(
+        "Memcpy from device to deviceis not implemented for TPU");
   }
   absl::Status Memcpy(void* host_dst,
                       const stream_executor::DeviceMemoryBase& device_src,

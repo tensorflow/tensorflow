@@ -143,15 +143,6 @@ void StreamCommon::ReturnSubStream(Stream *sub_stream) {
              << sub_stream;
 }
 
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const DeviceMemoryBase &gpu_src,
-                                  uint64_t size) {
-  if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
-}
-
 absl::Status StreamCommon::DoHostCallback(
     absl::AnyInvocable<void() &&> callback) {
   return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
