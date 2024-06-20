@@ -596,11 +596,6 @@ cc_library(
     testonly = 1,
     srcs = ["odml_sdpa_tester.cc"],
     hdrs = ["odml_sdpa_tester.h"],
-    data = [
-        "odml_sdpa_composite_gqa.tflite",
-        "odml_sdpa_composite_mha.tflite",
-        "odml_sdpa_composite_mqa.tflite",
-    ],
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
@@ -1632,6 +1627,11 @@ cc_test(
 cc_test(
     name = "odml_sdpa_test",
     srcs = ["odml_sdpa_test.cc"],
+    data = [
+        ":odml_sdpa_composite_gqa.tflite",
+        ":odml_sdpa_composite_mha.tflite",
+        ":odml_sdpa_composite_mqa.tflite",
+    ],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],

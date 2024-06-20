@@ -119,11 +119,13 @@ void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
 std::vector<char> ODMLSDPATester::CreateTfLiteModel() const {
   if (!model_name_.empty() && model_name_ != kOdmlSdpaCustom) {
     const char kTestModelFolder[] =
-        "/tensorflow/lite/delegates/xnnpack/";
-    const std::string test_model =
-        testing::SrcDir() + kTestModelFolder + model_name_ + ".tflite";
+        "third_party/tensorflow/lite/delegates/xnnpack/";
+    const std::string test_model = kTestModelFolder + model_name_ + ".tflite";
     std::string model_data;
-    flatbuffers::LoadFile(test_model.c_str(), /*binary=*/true, &model_data);
+    if (!flatbuffers::LoadFile(test_model.c_str(), /*binary=*/true,
+                               &model_data)) {
+      ADD_FAILURE() << "file not loaded: " << test_model;
+    }
     return std::vector<char>(model_data.begin(), model_data.end());
   } else {
     flatbuffers::FlatBufferBuilder builder;
