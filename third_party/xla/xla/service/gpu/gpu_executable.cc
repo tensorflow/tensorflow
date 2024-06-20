@@ -382,9 +382,11 @@ absl::Status ExecuteThunks(
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
       kAsyncStreamTotal, nullptr);
   se::Stream* command_buffer_trace_stream = nullptr;
+  std::vector<StreamPool::Ptr> async_comms_streams_ownr;
+  StreamPool::Ptr borrowed_command_buffer_trace_stream;
   if (run_options->HasStreamBorrower()) {
     TF_ASSIGN_OR_RETURN(
-        std::vector<StreamPool::Ptr> async_comms_streams_ownr,
+        async_comms_streams_ownr,
         run_options->BorrowStreams(executor->device_ordinal(),
                                    kAsyncStreamTotal, stream_priority));
     for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
@@ -392,7 +394,7 @@ absl::Status ExecuteThunks(
     }
 
     // Borrow stream for tracing command buffers.
-    TF_ASSIGN_OR_RETURN(StreamPool::Ptr borrowed_command_buffer_trace_stream,
+    TF_ASSIGN_OR_RETURN(borrowed_command_buffer_trace_stream,
                         run_options->BorrowStream(executor->device_ordinal()));
     command_buffer_trace_stream = borrowed_command_buffer_trace_stream.get();
   }
