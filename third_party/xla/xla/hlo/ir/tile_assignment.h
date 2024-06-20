@@ -53,11 +53,11 @@ class IotaTileAssignment {
   // `reshape_dims`: is the dimensions the 1D iota array is reshaped to.
   // `transpose_perm`: is the dimension permutation to transpose `reshape_dims`.
   //
-  // e.g. dims=[8,8,8] reshape_dims=[4,2,2], transpose_perm=[0,1,2] (no
-  // transpose) corresponds to [8,8,8]<=[16] which in full array V1 format is
+  // e.g. dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[0,1,2] (no
+  // transpose) corresponds to [4,4,1]<=[16] which in full array V1 format is
   // [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].
-  // e.g. dims=[8,8,8] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
-  // and dim 1) corresponds to [8,8,8]<=[4,2,2]T(1,0,2) which in full array V1
+  // e.g. dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
+  // and dim 1) corresponds to [4,4,1]<=[4,2,2]T(1,0,2) which in full array V1
   // format is [0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15].
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    absl::Span<const int64_t> reshape_dims,
