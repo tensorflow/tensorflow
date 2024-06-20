@@ -42,6 +42,7 @@ load(
     "tsl_copts",
     "tsl_gpu_library",
 )
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -352,10 +353,25 @@ gpu_only_cc_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_timer_kernel_cuda_cu",
+    srcs = [
+        "gpu_timer_kernel_cuda.cu.cc",
+        "gpu_timer_kernel_cuda.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    tags = ["manual"],
+    deps = [
+        ":gpu_semaphore",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
     name = "gpu_timer_kernel_cuda",
     srcs = [
         "gpu_timer_kernel.h",
-        "gpu_timer_kernel_cuda.cu.cc",
+        "gpu_timer_kernel_cuda.cc",
+        "gpu_timer_kernel_cuda.h",
     ],
     tags = ["manual"],
     deps = [
@@ -363,7 +379,8 @@ gpu_kernel_library(
         ":gpu_executor_header",
         ":gpu_semaphore",
         ":gpu_stream",
-        "//xla/stream_executor",
+        ":gpu_timer_kernel_cuda_cu",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:typed_kernel_factory",
         "@com_google_absl//absl/status:statusor",
     ],
