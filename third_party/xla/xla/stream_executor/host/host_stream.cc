@@ -57,6 +57,15 @@ HostStream::~HostStream() {
   parent()->DeallocateStream(this);
 }
 
+absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                                uint64_t size) {
+  void* dst_mem = gpu_dst->opaque();
+  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+  return absl::OkStatus();
+}
+
 absl::Status HostStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
                                   uint64_t size) {
   void* gpu_mem = location->opaque();

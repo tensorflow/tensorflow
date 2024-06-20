@@ -113,10 +113,6 @@ class MockStreamExecutor : public StreamExecutor {
               (Stream * stream, void* host_dst,
                const DeviceMemoryBase& device_src, uint64_t size),
               (override));
-  MOCK_METHOD(absl::Status, Memcpy,
-              (Stream * stream, DeviceMemoryBase* device_dst,
-               const void* host_src, uint64_t size),
-              (override));
   MOCK_METHOD(bool, MemcpyDeviceToDevice,
               (Stream * stream, DeviceMemoryBase* device_dst,
                const DeviceMemoryBase& device_src, uint64_t size),

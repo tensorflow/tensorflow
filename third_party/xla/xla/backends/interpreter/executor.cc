@@ -49,17 +49,6 @@ absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
   return AsExecutorStream(stream)->BlockUntilDone();
 }
 
-absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream,
-                                            DeviceMemoryBase *dev_dst,
-                                            const void *host_src,
-                                            uint64_t size) {
-  AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
-    // Ignore errors.
-    absl::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
-  });
-  return AsExecutorStream(stream)->BlockUntilDone();
-}
-
 absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);

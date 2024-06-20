@@ -235,7 +235,25 @@ class CStream : public StreamCommon {
                                size, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
-
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                      uint64_t size) override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    SP_DeviceMemoryBase device_mem_dst = DeviceMemoryBaseToC(gpu_dst);
+    stream_executor_->memcpy_htod(device_, stream_handle_, &device_mem_dst,
+                                  host_src, size, c_status.get());
+    if (TF_GetCode(c_status.get()) != TF_OK) {
+      LOG(ERROR) << TF_Message(c_status.get());
+    }
+    return tensorflow::StatusFromTF_Status(c_status.get());
+  }
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override {
+    return StreamCommon::Memcpy(gpu_dst, gpu_src, size);
+  }
+  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                      uint64_t size) override {
+    return StreamCommon::Memcpy(host_dst, gpu_src, size);
+  }
   SP_Stream Handle() { return stream_handle_; }
 
  private:

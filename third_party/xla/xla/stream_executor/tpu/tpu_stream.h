@@ -123,6 +123,25 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
+  absl::Status Memcpy(stream_executor::DeviceMemoryBase* device_dst,
+                      const void* host_src, uint64_t size) override {
+    StatusHelper status;
+    SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
+    stream_executor::tpu::ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
+        se_executor_, stream_, &se_base, host_src, size, status.c_status);
+    return status.status();
+  }
+  absl::Status Memcpy(stream_executor::DeviceMemoryBase* gpu_dst,
+                      const stream_executor::DeviceMemoryBase& gpu_src,
+                      uint64_t size) override {
+    return StreamCommon::Memcpy(gpu_dst, gpu_src, size);
+  }
+  absl::Status Memcpy(void* host_dst,
+                      const stream_executor::DeviceMemoryBase& gpu_src,
+                      uint64_t size) override {
+    return StreamCommon::Memcpy(host_dst, gpu_src, size);
+  }
+
   SE_Stream* se_stream() const { return stream_; }
 
  private:

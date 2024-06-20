@@ -150,11 +150,6 @@ absl::Status StreamCommon::Memcpy(void *host_dst,
 }
 
 absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
-                                  const void *host_src, uint64_t size) {
-  return parent_->Memcpy(this, gpu_dst, host_src, size);
-}
-
-absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
                                   const DeviceMemoryBase &gpu_src,
                                   uint64_t size) {
   if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {

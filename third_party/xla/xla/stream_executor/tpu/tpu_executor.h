@@ -101,9 +101,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                       const DeviceMemoryBase& device_src,
                       uint64_t size) override;
 
-  absl::Status Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
-                      const void* host_src, uint64_t size) override;
-
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& host_src,
                             uint64_t size) override;
@@ -115,7 +112,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& device_src,
                                  uint64_t size) override;
-
   absl::Status UnloadAllPrograms() override;
 
   absl::Status EnqueueCompactionOnStreamForHbm(
