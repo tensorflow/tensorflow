@@ -1,0 +1,144 @@
+==== triton/lib/Dialect/Triton/IR/Ops.cpp#34 - /google/src/cloud/joelwee/mlir_2c1ae801e1b66a09a15028ae4ba614e0911eec00_1718810061/triton/lib/Dialect/Triton/IR/Ops.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/IR/Ops.cpp	2024-06-18 01:09:34.000000000 -0700
++++ triton/lib/Dialect/Triton/IR/Ops.cpp	2024-06-19 09:46:57.000000000 -0700
+@@ -15,7 +15,7 @@
+ void LoadOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Read::get(), getPtr(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getPtrMutable(),
+                        triton::GlobalMemory::get());
+   if (getIsVolatile())
+     effects.emplace_back(MemoryEffects::Write::get(),
+==== triton/lib/Dialect/TritonGPU/IR/Dialect.cpp#51 - /google/src/cloud/joelwee/mlir_2c1ae801e1b66a09a15028ae4ba614e0911eec00_1718810061/triton/lib/Dialect/TritonGPU/IR/Dialect.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonGPU/IR/Dialect.cpp	2024-06-19 07:20:43.000000000 -0700
++++ triton/lib/Dialect/TritonGPU/IR/Dialect.cpp	2024-06-19 09:48:52.000000000 -0700
+@@ -2993,7 +2993,8 @@
+   effects.emplace_back(MemoryEffects::Allocate::get(),
+                        mlir::triton::gpu::SharedMemory::get());
+   if (getSrc())
+-    effects.emplace_back(MemoryEffects::Write::get(), getResult(),
++    effects.emplace_back(MemoryEffects::Write::get(),
++                         getOperation()->getOpResult(0),
+                          mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -3001,7 +3002,7 @@
+ void LocalLoadOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Read::get(), getSrc(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getSrcMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -3009,7 +3010,7 @@
+ void LocalStoreOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Write::get(), getDst(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getDstMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -3017,9 +3018,9 @@
+ void AsyncCopyGlobalToLocalOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Read::get(), getSrc(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getSrcMutable(),
+                        mlir::triton::GlobalMemory::get());
+-  effects.emplace_back(MemoryEffects::Write::get(), getResult(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getResultMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+==== triton/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp#8 - /google/src/cloud/joelwee/mlir_2c1ae801e1b66a09a15028ae4ba614e0911eec00_1718810061/triton/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp	2024-06-07 10:43:52.000000000 -0700
++++ triton/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp	2024-06-19 09:50:49.000000000 -0700
+@@ -60,13 +60,13 @@
+ void WarpGroupDotOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  auto a = getA();
+-  auto b = getB();
+-  if (isa<MemDescType>(a.getType()))
+-    effects.emplace_back(MemoryEffects::Read::get(), a,
++  auto& a = getAMutable();
++  auto& b = getBMutable();
++  if (isa<MemDescType>(a.get().getType()))
++    effects.emplace_back(MemoryEffects::Read::get(), &a,
+                          mlir::triton::gpu::SharedMemory::get());
+-  if (isa<MemDescType>(b.getType()))
+-    effects.emplace_back(MemoryEffects::Read::get(), b,
++  if (isa<MemDescType>(b.get().getType()))
++    effects.emplace_back(MemoryEffects::Read::get(), &b,
+                          mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -99,7 +99,7 @@
+ void InitBarrierOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Write::get(), getAlloc(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getAllocMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -113,7 +113,7 @@
+ void InvalBarrierOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Write::get(), getAlloc(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getAllocMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -127,7 +127,7 @@
+ void BarrierExpectOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Write::get(), getAlloc(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getAllocMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -141,7 +141,7 @@
+ void WaitBarrierOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Read::get(), getAlloc(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getAllocMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+   // Need a side effect to prevent compiler from reordering and removing
+   // the wait operation.
+@@ -161,11 +161,11 @@
+ void AsyncTMACopyGlobalToLocalOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Read::get(), getDescPtr(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getDescPtrMutable(),
+                        mlir::triton::GlobalMemory::get());
+-  effects.emplace_back(MemoryEffects::Write::get(), getBarrier(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getBarrierMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+-  effects.emplace_back(MemoryEffects::Write::get(), getResult(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getResultMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
+@@ -173,9 +173,9 @@
+ void AsyncTMACopyLocalToGlobalOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+         &effects) {
+-  effects.emplace_back(MemoryEffects::Write::get(), getDescPtr(),
++  effects.emplace_back(MemoryEffects::Write::get(), &getDescPtrMutable(),
+                        mlir::triton::GlobalMemory::get());
+-  effects.emplace_back(MemoryEffects::Read::get(), getSrc(),
++  effects.emplace_back(MemoryEffects::Read::get(), &getSrcMutable(),
+                        mlir::triton::gpu::SharedMemory::get());
+ }
+ 
