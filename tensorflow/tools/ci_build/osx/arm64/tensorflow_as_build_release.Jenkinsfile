@@ -46,6 +46,15 @@ pipeline {
                     steps {
                         dir('tensorflow') {
 
+                            // Diagnostic echo statements to check environment variables
+                            sh 'echo PYENV_ROOT: $PYENV_ROOT'
+                            sh 'echo PATH: $PATH'
+                            sh 'echo TF_PYTHON_VERSION: $TF_PYTHON_VERSION'
+                            sh 'echo PYTHONPATH: $PYTHONPATH'
+                            sh 'echo WORKSPACE: $WORKSPACE'
+                            sh 'echo USERPROFILE: $USERPROFILE'
+
+
                             sh '''
                                 pyenv init -
                                 pyenv global 3.9.13
@@ -110,6 +119,14 @@ pipeline {
                     }
                     steps {
                         dir('tensorflow') {
+
+                            // Diagnostic echo statements to check environment variables
+                            sh 'echo PYENV_ROOT: $PYENV_ROOT'
+                            sh 'echo PATH: $PATH'
+                            sh 'echo TF_PYTHON_VERSION: $TF_PYTHON_VERSION'
+                            sh 'echo PYTHONPATH: $PYTHONPATH'
+                            sh 'echo WORKSPACE: $WORKSPACE'
+                            sh 'echo USERPROFILE: $USERPROFILE'
 
                             sh '''
                                 pyenv init -
