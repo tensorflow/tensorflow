@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 namespace xla {
 namespace interpreter {
