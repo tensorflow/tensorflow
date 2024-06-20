@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/buffer_value.h"
@@ -76,6 +77,7 @@ limitations under the License.
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/optimize_input_output_buffer_alias.h"
@@ -4386,7 +4388,20 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
+  // Run HloConstantSplitter for modules with manually partitioned sub-graphs to
+  // avoid having constant ops that are used as part of such manually
+  // partitioned sub-graphs, as well as outside those, leading to conflicts
+  // during sharding. However, constant splitting can cause increased
+  // auto-sharding times, and hence we enable this only when needed.
   bool module_is_manually_partitioned = ModuleIsManuallyPartitioned(module);
+  if (module_is_manually_partitioned) {
+    HloConstantSplitter constant_splitter(
+        /*split_expressions=*/option_.enable_expression_constant_splitter,
+        /*extra_constraints=*/spmd::OpEncountersShardToFull);
+    CHECK_OK(constant_splitter.Run(module, execution_threads));
+    CHECK_OK(HloDCE().Run(module, execution_threads));
+  }
+
   std::vector<std::vector<int64_t>> mesh_shapes;
   if (option_.try_multiple_mesh_shapes || module_is_manually_partitioned) {
     bool asymmetrical_mesh_dims = false;

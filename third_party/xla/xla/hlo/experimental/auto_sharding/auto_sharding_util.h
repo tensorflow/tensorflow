@@ -676,6 +676,10 @@ HloSharding ReplaceGivenShardingsWithUnknownForTuple(
 // Extract the reduction_dim of a PartialReduce custom call
 absl::StatusOr<int64_t> GetPartialReduceReductionDim(const HloInstruction* ins);
 
+// Returns true if an HLO op flows to a SPMDShardToFullShape custom call without
+// encountering a SPMDFullToShardShape custom call on the call.
+bool OpEncountersShardToFull(const HloInstruction* op);
+
 }  // namespace spmd
 }  // namespace xla
 

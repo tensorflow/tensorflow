@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -53,9 +54,11 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace spmd {
 namespace {
+using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::Eq;
 using ::testing::FieldsAre;
 using ::testing::IsEmpty;
 using ::testing::IsFalse;
@@ -432,7 +435,7 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
-TEST_F(AutoShardingTest, SPMDShardToFullShapeTest) {
+TEST_F(AutoShardingTest, SPMDShardToFullShapeWithConstantTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule rng_bit_generator
 
@@ -444,11 +447,16 @@ add.6.clone {
 
 ENTRY main {
   input.1 = bf16[512,512]{1,0} parameter(0)
+  constant.1 = bf16[] constant(16.7)
+  broadcast.1 = bf16[128,128]{1,0} broadcast(constant.1), dimensions={}
+  broadcast.2 = bf16[512,512]{1,0} broadcast(constant.1), dimensions={}
   custom-call.1 = bf16[512,512]{1,0} custom-call(input.1), custom_call_target="Sharding", sharding={devices=[4,4]<=[16]}
   custom-call.2 = bf16[128,128]{1,0} custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
   all-reduce.1 = bf16[128,128]{1,0} all-reduce(custom-call.2), channel_id=621, replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, use_global_device_ids=true, to_apply=add.6.clone, frontend_attributes={from-cross-replica-sharding="true"}, backend_config={"flag_configs":[],"barrier_config":{"barrier_type":"CUSTOM","id":"9"},"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
-  custom-call.3 = bf16[512,512]{1,0} custom-call(all-reduce.1), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,4]<=[16]last_tile_dim_replicate}
-  ROOT copy.1 = copy(custom-call.3)
+  add.1 = bf16[128,128]{1,0} add(bf16[128,128]{1,0} all-reduce.1, bf16[128,128]{1,0} broadcast.1)
+  custom-call.3 = bf16[512,512]{1,0} custom-call(add.1), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,4]<=[16]last_tile_dim_replicate}
+  add.2 = bf16[512,512]{1,0} add(bf16[512,512]{1,0} custom-call.3, bf16[512,512]{1,0} broadcast.2)
+  ROOT copy.1 = bf16[512,512]{1,0} copy(add.2)
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -481,6 +489,19 @@ ENTRY main {
   const HloInstruction* custom_call1 = custom_call2->operand(0);
   ASSERT_NE(custom_call1, nullptr);
   EXPECT_THAT(custom_call1, op::Sharding("{devices=[4,4]<=[16]}"));
+
+  // Check that there are two constant instructions as we split one that is
+  // shared
+  std::vector<const HloInstruction*> instructions(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
+  EXPECT_THAT(
+      module->entry_computation()->instructions(),
+      Contains(ResultOf(
+                   "opcode",
+                   [](const HloInstruction* ins) { return ins->opcode(); },
+                   Eq(HloOpcode::kConstant)))
+          .Times(2));
 }
 
 TEST_F(AutoShardingTest, SPMDShardToFullShapeMultipleValidMeshShapeTest) {
