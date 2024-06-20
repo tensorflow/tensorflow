@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/statusor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {

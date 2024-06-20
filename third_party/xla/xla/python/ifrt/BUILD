@@ -90,7 +90,6 @@ cc_library(
         ":sharding_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -220,8 +219,8 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":ifrt",
-        "//xla:statusor",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
