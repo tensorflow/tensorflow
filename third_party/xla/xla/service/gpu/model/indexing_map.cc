@@ -193,13 +193,13 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   new_lhs = new_lhs + (extracted_constant % m);
 
   Interval no_multiplier_range{0, 0};
-  int64_t multiplier_gcd = -1;
+  std::optional<int64_t> multiplier_gcd = std::nullopt;
   VisitSummands(new_lhs, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
-      if (multiplier_gcd == -1) {
-        multiplier_gcd = *multiplier;
+      if (multiplier_gcd.has_value()) {
+        multiplier_gcd = std::gcd(*multiplier_gcd, *multiplier);
       } else {
-        multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
+        multiplier_gcd = *multiplier;
       }
     } else {
       auto range = range_evaluator_->ComputeExpressionRange(expr);
@@ -209,17 +209,20 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   });
 
   mlir::AffineExpr extracted = getAffineConstantExpr(0, mod.getContext());
-  if (m % multiplier_gcd == 0 && no_multiplier_range.lower >= 0 &&
-      no_multiplier_range.upper < multiplier_gcd) {
-    // Remove everything that doesn't have a multiplier.
-    new_lhs = RemoveSummands(new_lhs, [&](AffineExpr expr) {
-      if (GetConstantRhs(expr, AffineExprKind::Mul)) {
-        return false;
-      }
-      extracted = extracted + expr;
-      return true;
-    });
+  if (multiplier_gcd.has_value()) {
+    if (m % *multiplier_gcd == 0 && no_multiplier_range.lower >= 0 &&
+        no_multiplier_range.upper < *multiplier_gcd) {
+      // Remove everything that doesn't have a multiplier.
+      new_lhs = RemoveSummands(new_lhs, [&](AffineExpr expr) {
+        if (GetConstantRhs(expr, AffineExprKind::Mul)) {
+          return false;
+        }
+        extracted = extracted + expr;
+        return true;
+      });
+    }
   }
+
   return new_lhs % mod.getRHS() + extracted;
 }
 
@@ -293,16 +296,17 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     return extracted;
   }
 
-  int64_t multiplier_gcd = -1;
-  // The maximum GCD of any remaining multiplier inside the div and the divisor.
-  int64_t max_remaining_multiplier_gcd = -1;
+  std::optional<int64_t> multiplier_gcd = std::nullopt;
+  // The maximum GCD of (divisor, any multiplier inside the div).
+  int64_t max_remaining_multiplier_gcd = 1;
   VisitSummands(new_dividend, [&](AffineExpr summand) {
     if (auto multiplier = GetConstantRhs(summand, AffineExprKind::Mul)) {
-      if (multiplier_gcd == -1) {
-        multiplier_gcd = *multiplier;
+      if (multiplier_gcd.has_value()) {
+        multiplier_gcd = std::gcd(*multiplier_gcd, *multiplier);
       } else {
-        multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
+        multiplier_gcd = multiplier;
       }
+
       max_remaining_multiplier_gcd =
           std::max(max_remaining_multiplier_gcd, std::gcd(*multiplier, d));
     } else {
@@ -312,19 +316,24 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     }
   });
 
-  if ((d % multiplier_gcd) == 0) {
-    if (no_multiplier_range.lower >= 0 &&
-        no_multiplier_range.upper < multiplier_gcd) {
-      // Remove everything that doesn't have a multiplier.
-      new_dividend = RemoveSummands(new_dividend, [&](AffineExpr expr) {
-        auto mult = GetConstantRhs(expr, AffineExprKind::Mul);
-        return !mult.has_value();
-      });
+  if (multiplier_gcd.has_value()) {
+    if ((d % *multiplier_gcd) == 0) {
+      if (no_multiplier_range.lower >= 0 &&
+          no_multiplier_range.upper < *multiplier_gcd) {
+        // Remove everything that doesn't have a multiplier.
+        new_dividend = RemoveSummands(new_dividend, [&](AffineExpr expr) {
+          auto mult = GetConstantRhs(expr, AffineExprKind::Mul);
+          return !mult.has_value();
+        });
+      }
     }
   }
 
   // If we have a gcd > 1, we can split the div into two:
   // (x * 128 + y) // 192 -> (x * 2 + y // 64) // 3
+  // TODO(jreiffers): This is currently required for some simplifications, but
+  // it increases the number of divisions, which is not really a simplification.
+  // See if we can avoid this rewrite.
   if (max_remaining_multiplier_gcd > 1) {
     AffineExpr partially_extracted = getAffineConstantExpr(0, mlir_context);
     new_dividend = RemoveSummands(new_dividend, [&](AffineExpr expr) {
