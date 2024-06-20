@@ -108,7 +108,6 @@ limitations under the License.
 #endif
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
