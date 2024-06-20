@@ -31,11 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-ABSL_DEPRECATED("Use tensorflow::tf2xla::api::ConvertMlirToGraphdef instead.")
-// Given an MLIR module, returns a GraphDef.
-absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::ModuleOp module, const GraphExportConfig& configs);
-
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library.

@@ -809,24 +809,4 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                             &control_ret_nodes);
 }
 
-absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::ModuleOp module, const GraphExportConfig& configs) {
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
-                                     FunctionDefLibrary());
-  std::unique_ptr<Graph> graph;
-  TF_RETURN_IF_ERROR(ConvertMlirToGraph(module, configs, &graph, &flib_def));
-
-  // If the entry function is exported to flib, then no graph is constructed.
-  // Construct one in that case.
-  if (configs.export_entry_func_to_flib) {
-    graph = std::make_unique<Graph>(OpRegistry::Global());
-    TF_RETURN_IF_ERROR(
-        graph->mutable_flib_def()->AddLibrary(std::move(flib_def)));
-  }
-
-  auto graphdef = std::make_unique<GraphDef>();
-  graph->ToGraphDef(graphdef.get());
-  return graphdef;
-}
-
 }  // namespace tensorflow
