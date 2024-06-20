@@ -99,8 +99,8 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
-                                                  bool is_emission_phase) {
+std::unique_ptr<FusionInterface> GetFusionEmitter(
+    const FusionInfo& fusion_info) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
@@ -120,24 +120,6 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
         << "Unsupported fusion: "
         << analysis.fusion_root(0).instruction().parent()->ToString();
 
-    static int num_mlir_emitters = 0;
-    if (is_emission_phase) {
-      // This kernel can be emitted with MLIR, but we need to check if there are
-      // limits to how many kernels can be emitted.
-      ++num_mlir_emitters;
-      if (num_mlir_emitters <= opts.xla_gpu_skip_mlir_kernels()) {
-        VLOG(5)
-            << "Skipping MLIR emission because initial skips were requested.";
-        return false;
-      }
-
-      int n_emitted = num_mlir_emitters - opts.xla_gpu_skip_mlir_kernels();
-      if (opts.xla_gpu_max_mlir_kernels() > 0 &&
-          n_emitted > opts.xla_gpu_max_mlir_kernels()) {
-        VLOG(5) << "Skipping MLIR emission because max_mlir_emitters was set.";
-        return false;
-      }
-    }
     VLOG(5) << "Emitting with MLIR.";
     return true;
   };

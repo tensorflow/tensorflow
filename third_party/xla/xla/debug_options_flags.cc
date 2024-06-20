@@ -239,8 +239,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
   opts.set_xla_gpu_mlir_emitter_level(0);
-  opts.set_xla_gpu_max_mlir_kernels(0);
-  opts.set_xla_gpu_skip_mlir_kernels(0);
 
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
@@ -1698,16 +1696,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_mlir_emitter_level(),
                 "Enable new MLIR-based emitters. Level 0 means disabled, "
                 "higher levels enable more of the emitters."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_max_mlir_kernels",
-                int64_setter_for(&DebugOptions::set_xla_gpu_max_mlir_kernels),
-                debug_options->xla_gpu_max_mlir_kernels(),
-                "Maximum number of kernels to emit with MLIR."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_skip_mlir_kernels",
-                int64_setter_for(&DebugOptions::set_xla_gpu_skip_mlir_kernels),
-                debug_options->xla_gpu_skip_mlir_kernels(),
-                "Number of initial kernels to skip MLIR emission for."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(
