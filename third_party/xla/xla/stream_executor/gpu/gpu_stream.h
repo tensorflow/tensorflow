@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -100,8 +99,6 @@ class GpuStream : public StreamCommon {
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
   absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
-
-  void set_name(absl::string_view name) override;
 
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.
