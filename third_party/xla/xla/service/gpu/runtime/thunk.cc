@@ -303,31 +303,6 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
   return os << Thunk::KindToString(kind);
 }
 
-std::string ThunkSequence::ToString(int indent) const {
-  const std::string indent_str(indent * 2, ' ');
-  if (empty()) return indent_str + "No thunks.";
-
-  auto thunk_with_longest_kind = absl::c_max_element(
-      *this,
-      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
-        return Thunk::KindToString(a->kind()).length() <
-               Thunk::KindToString(b->kind()).length();
-      });
-  int64_t max_thunk_kind_len =
-      Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
-  std::string result;
-  for (const std::unique_ptr<Thunk>& thunk : *this) {
-    // Write out the thunk kind, padded out to max_thunk_kind_len.
-    absl::string_view kind_str = Thunk::KindToString(thunk->kind());
-    absl::StrAppend(&result, indent_str, kind_str,
-                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
-                    "\t");
-    absl::StrAppend(&result, thunk->ToStringExtra(indent));
-    absl::StrAppend(&result, "\n");
-  }
-  return result;
-}
-
 bool IsReductionCollective(Thunk::Kind kind) {
   return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
          kind == Thunk::kNcclReduceScatter ||

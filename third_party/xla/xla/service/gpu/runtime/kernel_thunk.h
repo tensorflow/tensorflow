@@ -77,7 +77,7 @@ class KernelThunk : public Thunk {
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
-  std::string ToStringExtra(int indent) const override;
+  std::string ToString(int indent) const override;
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -130,7 +130,7 @@ class CustomKernelThunk : public Thunk {
   CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
                     absl::Span<const KernelArgument> kernel_arguments);
 
-  std::string ToStringExtra(int indent) const override;
+  std::string ToString(int indent) const override;
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;

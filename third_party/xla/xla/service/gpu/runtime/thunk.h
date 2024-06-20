@@ -410,7 +410,7 @@ class Thunk {
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
-  virtual std::string ToStringExtra(int indent) const { return ""; }
+  virtual std::string ToString(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string_view profile_annotation() const { return profile_annotation_; }
 
@@ -458,10 +458,7 @@ class Thunk {
 };
 
 // A sequence of thunks.
-class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
- public:
-  std::string ToString(int indent = 0) const;
-};
+using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
