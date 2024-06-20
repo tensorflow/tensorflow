@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/lib/core/status.h"
