@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"

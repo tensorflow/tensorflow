@@ -327,7 +327,6 @@ xla_cc_test(
         ":cost_analysis",
         ":simulator",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_alias_analysis",

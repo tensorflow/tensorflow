@@ -40,7 +40,7 @@ class Client {
   explicit Client(Service* stub);
   virtual ~Client();
 
-  using XlaComputationInstance = XlaComputationInstance;
+  using XlaComputationInstance = xla::XlaComputationInstance;
 
   // Compile the computation with the given argument shapes and returns the
   // handle to the compiled executable. The compiled executable is cached on the

@@ -60,10 +60,12 @@ bool OneDnnConvolutionRewriter::ShouldRewrite(const HloInstruction* conv) {
 
 class OneDnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleConvolution(HloInstruction* conv) override {
+  absl::Status HandleConvolution(HloInstruction* conv) override {
     auto pattern = match::Op(&conv).WithOpcode(HloOpcode::kConvolution);
-    if (!Match(conv, pattern)) return OkStatus();
-    if (!OneDnnConvolutionRewriter::ShouldRewrite(conv)) return OkStatus();
+    if (!Match(conv, pattern)) return absl::OkStatus();
+    if (!OneDnnConvolutionRewriter::ShouldRewrite(conv)) {
+      return absl::OkStatus();
+    }
 
     const Shape& conv_shape = conv->shape();
     auto dims = conv->window().dimensions().size();
@@ -95,7 +97,7 @@ class OneDnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
          it != conv->window().dimensions().end(); it++) {
       if ((*it).padding_low() < 0 || (*it).padding_high() < 0 ||
           (*it).stride() < 0) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       conv_config->mutable_window()->add_pad_left((*it).padding_low() + 1);
       conv_config->mutable_window()->add_pad_right((*it).padding_high() + 1);
@@ -103,7 +105,7 @@ class OneDnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
       conv_config->mutable_window()->add_window_dilations(
           (*it).window_dilation() + 1);
       if ((*it).base_dilation() != 1 || (*it).window_reversal()) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 
@@ -123,11 +125,11 @@ class OneDnnConvolutionRewriterVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
-StatusOr<bool> OneDnnConvolutionRewriter::Run(
+absl::StatusOr<bool> OneDnnConvolutionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   OneDnnConvolutionRewriterVisitor visitor;

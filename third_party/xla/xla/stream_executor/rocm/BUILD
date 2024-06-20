@@ -544,7 +544,6 @@ cc_library(
         ":rocm_executor",
         ":rocm_platform_id",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
@@ -578,7 +577,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         # keep sorted
-        "//xla:status",
         "//xla:types",
         "//xla/stream_executor",
         "//xla/stream_executor:host_or_device_scalar",
