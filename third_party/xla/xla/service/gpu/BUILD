@@ -627,8 +627,6 @@ xla_test(
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
         ":ir_emitter_triton",
-        ":matmul_utils",
-        ":triton_fusion_analysis",
         ":triton_test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
@@ -639,6 +637,7 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:filecheck",
@@ -681,9 +680,9 @@ cc_library(
         "//xla/service:float_normalization",
         "//xla/service:hlo_pass_pipeline",
         "//xla/service/gpu/model:tiled_hlo_computation",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1258,14 +1257,9 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "triton_support_test",
-    srcs = if_gpu_is_configured(["triton_support_test.cc"]),
-    backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_amd_any",
-    ],
+    srcs = ["triton_support_test.cc"],
     deps = [
         ":gpu_device_info_for_tests",
         ":ir_emitter_triton",

@@ -49,6 +49,11 @@ namespace {
 using ::testing::Not;
 using ::testing::status::IsOk;
 
+se::GpuComputeCapability GetComputeCapability() {
+  // TODO(b/348572380) Make this more general and test additional platforms.
+  return se::CudaComputeCapability::Ampere();
+}
+
 auto AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
   std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
@@ -88,18 +93,18 @@ class TritonSupportTest : public TritonSupportTestBase {
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
     if (IsTritonSupportedInstruction(ti.Instruction(),
-                                     GetCudaComputeCapability())) {
+                                     GetComputeCapability())) {
       TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
                                               block_level_parameters,
                                               "CHECK: tt.func @triton_fn"));
     } else {
       if (!skip_failure_branch_to_avoid_crash) {
         const se::DeviceDescription dev_info =
-            TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+            TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
         EXPECT_THAT(
-            TritonWrapper("test_fn", &ti.TritonFusion(),
-                          GetCudaComputeCapability(), dev_info,
-                          block_level_parameters, &llvm_module_, mlir_context_),
+            TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
+                          dev_info, block_level_parameters, &llvm_module_,
+                          mlir_context_),
             Not(IsOk()));
       }
     }
@@ -138,7 +143,7 @@ using UnaryElementwiseTest = TritonSupportTestWithParam;
 // instead of relying on triton gemm kernel.
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
+  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
 
@@ -181,7 +186,7 @@ using BinaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
   auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
+  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
 
@@ -230,7 +235,7 @@ using CompareTest = TritonSupportTestWithParam;
 
 TEST_P(CompareTest, IsTritonSupportedCompare) {
   auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
+  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
 
@@ -257,7 +262,7 @@ using TernaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
+  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
 
@@ -285,7 +290,7 @@ using ReduceConstTest = TritonSupportTestWithParam;
 
 TEST_P(ReduceConstTest, IsTritonSupportedReduceWithConstInit) {
   auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && SkipBF16Tests()) {
+  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
 
@@ -316,7 +321,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(TritonSupportTest,
        SupportedReduceWithConvertConstantIsCodegenedSuccessfullyWithTriton) {
-  if (SkipBF16Tests()) {
+  if (!SupportsBF16(GetComputeCapability())) {
     GTEST_SKIP();
   }
   const std::string kHloTest = R"(
@@ -336,9 +341,10 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   EXPECT_TRUE(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .CanFuse());
-  TF_EXPECT_OK(ApplyFloatNormalization(ti.Module().get()));
+  TF_EXPECT_OK(
+      ApplyFloatNormalization(ti.Module().get(), GetComputeCapability()));
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
                                           FromOutputTileSizes({1}),
                                           "CHECK: tt.func @triton_fn"));
@@ -363,14 +369,14 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .Explain(),
       ::testing::HasSubstr(
           "Reduction is not a row-reduction of a single operand."));
   const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       Not(IsOk()));
@@ -394,14 +400,14 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .Explain(),
       ::testing::HasSubstr(
           "Reduction is not a row-reduction of a single operand."));
   const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       Not(IsOk()));
@@ -430,13 +436,13 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .Explain(),
       ::testing::HasSubstr("Unsupported output data type"));
   const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       Not(IsOk()));
@@ -460,14 +466,14 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .Explain(),
       ::testing::HasSubstr("Reduction init value should be a constant "
                            "or a convert of a constant."));
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       tsl::testing::StatusIs(
@@ -493,13 +499,13 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
   const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetCudaComputeCapability());
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetCudaComputeCapability())
+      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
           .Explain(),
       ::testing::HasSubstr("Unsupported reduction computation by Triton."));
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetCudaComputeCapability(),
+      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, FromOutputTileSizes({1}), &llvm_module_,
                     mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
