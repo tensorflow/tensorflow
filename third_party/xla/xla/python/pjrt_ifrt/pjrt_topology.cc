@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
