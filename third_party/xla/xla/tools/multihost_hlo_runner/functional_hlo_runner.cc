@@ -98,11 +98,12 @@ static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
     if (num_nodes == 1) {
       return xla::FunctionalHloRunner::CreateGpuClient({});
     } else {
-      TF_RET_CHECK(num_nodes == 1 || !address.empty());
+      TF_RET_CHECK(!address.empty());
       TF_RET_CHECK(node_id >= 0)
           << "Node id is expected to be in range [0, num_nodes)";
       TF_RET_CHECK(node_id < num_nodes)
           << "Node id is expected to be in range [0, num_nodes)";
+
       CHECK_GT(address.length(), 0);
       // Multinode. Start service on task 0.
       if (node_id == 0) {

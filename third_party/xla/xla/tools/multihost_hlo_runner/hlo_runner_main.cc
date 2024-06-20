@@ -70,7 +70,7 @@ all HLOs from an execution dump, with e.g.:
 
 
 Mock GPU usage:
-  bazel run hlo_runner_main -- --enable_mock_gpu=true /path/to/hlo_module.hlo
+  bazel run hlo_runner_main -- --enable_mock_nccl=true /path/to/hlo_module.hlo
 
 Tip: If the input generation takes too long or uses too much host memory,
 consider using --hlo_argument_mode=uninitialized.

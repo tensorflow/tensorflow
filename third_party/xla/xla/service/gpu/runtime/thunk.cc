@@ -186,7 +186,12 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
-                       additional_compute_streams);
+                       additional_compute_streams,
+                       run_options.run_options().gpu_executable_run_options()
+                           ? run_options.run_options()
+                                 .gpu_executable_run_options()
+                                 ->enable_mock_nccl_collectives()
+                           : false);
 }
 
 Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
@@ -209,7 +214,7 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams)
+    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -220,7 +225,8 @@ Thunk::ExecuteParams::ExecuteParams(
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
-      additional_compute_streams(additional_compute_streams) {}
+      additional_compute_streams(additional_compute_streams),
+      mock_collectives(mock_collectives) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -320,6 +326,36 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
                            gpu_backend_config->operation_queue_id());
   }
   return thunk_info;
+}
+
+bool Thunk::IsCollective() const {
+  switch (kind()) {
+    case kNcclAllGather:
+    case kNcclAllGatherStart:
+    case kNcclAllGatherDone:
+    case kNcclAllReduce:
+    case kNcclAllReduceStart:
+    case kNcclAllReduceDone:
+    case kNcclCollectiveBroadcast:
+    case kNcclCollectiveBroadcastStart:
+    case kNcclCollectiveBroadcastDone:
+    case kNcclCollectivePermute:
+    case kNcclCollectivePermuteStart:
+    case kNcclCollectivePermuteDone:
+    case kNcclReduceScatter:
+    case kNcclReduceScatterStart:
+    case kNcclReduceScatterDone:
+    case kNcclAllToAll:
+    case kNcclAllToAllStart:
+    case kNcclAllToAllDone:
+    case kNcclSend:
+    case kNcclSendDone:
+    case kNcclRecv:
+    case kNcclRecvDone:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace gpu

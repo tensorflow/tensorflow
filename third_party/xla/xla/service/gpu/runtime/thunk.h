@@ -382,6 +382,8 @@ class Thunk {
     // Additional compute streams on which thunks launch operations.
     ExecutionStreamIdMap additional_compute_streams;
 
+    bool mock_collectives = false;
+
    private:
     friend class CommandBufferThunk;
 
@@ -394,7 +396,8 @@ class Thunk {
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
-                  ExecutionStreamIdMap additional_compute_streams = {});
+                  ExecutionStreamIdMap additional_compute_streams = {},
+                  bool mock_collectives = false);
   };
 
   //===--------------------------------------------------------------------===//
@@ -450,6 +453,9 @@ class Thunk {
 
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
       ExecutionStreamId stream_id, const ExecuteParams& params);
+
+  // Returns `true` if this thunk requires inter-GPU communication.
+  bool IsCollective() const;
 
  private:
   Kind kind_;

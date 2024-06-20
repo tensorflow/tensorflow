@@ -75,6 +75,9 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(thunk->profile_annotation());
+    if (params.mock_collectives && thunk->IsCollective()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();

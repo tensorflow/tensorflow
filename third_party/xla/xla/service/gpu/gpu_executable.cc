@@ -360,6 +360,13 @@ absl::Status ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+  bool mock_collectives =
+      run_options->run_options().gpu_executable_run_options()
+          ? run_options->run_options()
+                .gpu_executable_run_options()
+                ->enable_mock_nccl_collectives()
+          : false;
+
   int64_t collective_max_nchannels =
       debug_options ? debug_options->xla_gpu_nccl_collective_max_nchannels()
                     : 0;
@@ -448,9 +455,12 @@ absl::Status ExecuteThunks(
   }
 
   // Acquire collective cliques requested by thunks.
-  TF_ASSIGN_OR_RETURN(
-      Thunk::CollectiveCliques collective_cliques,
-      resource_requests.AcquireCollectiveCliques(collective_params));
+  Thunk::CollectiveCliques collective_cliques;
+  if (!mock_collectives) {
+    TF_ASSIGN_OR_RETURN(
+        collective_cliques,
+        resource_requests.AcquireCollectiveCliques(collective_params));
+  }
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
