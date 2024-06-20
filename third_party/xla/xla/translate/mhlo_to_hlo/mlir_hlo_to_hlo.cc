@@ -2707,12 +2707,6 @@ LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
-  // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
-  // operands.
-  return failure();
-}
-
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   xla::XlaComputation condition;
   xla::XlaComputation body;
