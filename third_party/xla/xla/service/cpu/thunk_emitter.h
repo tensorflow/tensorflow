@@ -116,6 +116,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitAllToAllThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitCollectivePermuteThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitReduceScatterThunk(
       const HloInstruction* instruction);
 

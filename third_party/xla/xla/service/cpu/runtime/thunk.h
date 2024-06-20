@@ -65,6 +65,7 @@ class Thunk {
     kAllReduce,
     kAllToAll,
     kCall,
+    kCollectivePermute,
     kCopy,
     kConditional,
     kDot,

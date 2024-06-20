@@ -816,6 +816,7 @@ cc_library(
         "//xla/service/cpu/runtime:all_reduce_thunk",
         "//xla/service/cpu/runtime:all_to_all_thunk",
         "//xla/service/cpu/runtime:call_thunk",
+        "//xla/service/cpu/runtime:collective_permute_thunk",
         "//xla/service/cpu/runtime:collective_thunk",
         "//xla/service/cpu/runtime:conditional_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
