@@ -59,15 +59,15 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
     (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:
-  th_x in [0, 127]
-  th_y in [0, 0]
-  th_z in [0, 0]
-  bl_x in [0, 1007]
-  bl_y in [0, 0]
-  bl_z in [0, 0]
-  chunk_id in [0, 11]
-  unroll_id in [0, 3]
-  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+  th_x in [0, 128)
+  th_y in [0, 1)
+  th_z in [0, 1)
+  bl_x in [0, 1008)
+  bl_y in [0, 1)
+  bl_z in [0, 1)
+  chunk_id in [0, 12)
+  unroll_id in [0, 4)
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999997)
 )"));
 }
 
@@ -97,14 +97,14 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
-              th_x in [0, 19]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 0]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              chunk_id in [0, 0]
-              unroll_id in [0, 0]
+              th_x in [0, 20)
+              th_y in [0, 1)
+              th_z in [0, 1)
+              bl_x in [0, 1)
+              bl_y in [0, 1)
+              bl_z in [0, 1)
+              chunk_id in [0, 1)
+              unroll_id in [0, 1)
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -112,14 +112,14 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
-              th_x in [0, 19]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 0]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              chunk_id in [0, 0]
-              unroll_id in [0, 0]
+              th_x in [0, 20)
+              th_y in [0, 1)
+              th_z in [0, 1)
+              bl_x in [0, 1)
+              bl_y in [0, 1)
+              bl_z in [0, 1)
+              chunk_id in [0, 1)
+              unroll_id in [0, 1)
             )"));
 }
 
@@ -153,15 +153,15 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
                   (bl_x * 128 + th_x) mod 30
                 )
                 domain:
-                th_x in [0, 127]
-                th_y in [0, 0]
-                th_z in [0, 0]
-                bl_x in [0, 46]
-                bl_y in [0, 0]
-                bl_z in [0, 0]
-                chunk_id in [0, 0]
-                unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                th_x in [0, 128)
+                th_y in [0, 1)
+                th_z in [0, 1)
+                bl_x in [0, 47)
+                bl_y in [0, 1)
+                bl_z in [0, 1)
+                chunk_id in [0, 1)
+                unroll_id in [0, 1)
+                th_x + bl_x * 128 in [0, 6000)
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -170,15 +170,15 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
                 (((bl_x * 128 + th_x) floordiv 30) mod 20)
                 domain:
-                th_x in [0, 127]
-                th_y in [0, 0]
-                th_z in [0, 0]
-                bl_x in [0, 46]
-                bl_y in [0, 0]
-                bl_z in [0, 0]
-                chunk_id in [0, 0]
-                unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                th_x in [0, 128)
+                th_y in [0, 1)
+                th_z in [0, 1)
+                bl_x in [0, 47)
+                bl_y in [0, 1)
+                bl_z in [0, 1)
+                chunk_id in [0, 1)
+                unroll_id in [0, 1)
+                th_x + bl_x * 128 in [0, 6000)
             )"));
 }
 

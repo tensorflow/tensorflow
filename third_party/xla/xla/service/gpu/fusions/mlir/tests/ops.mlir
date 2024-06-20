@@ -58,7 +58,7 @@ func.func @caller(%a: f32, %b: f32) -> f32 {
 
 #map0 = affine_map<(d0, d1)[s0] -> (d0, d1 + s0)>
 func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) {
-  %0:2 = xla_gpu.apply_indexing #map0 (%d0 in [0, 2], %d1 in [1, 3])[%s0 in [2, 4]]
+  %0:2 = xla_gpu.apply_indexing #map0 (%d0 in [0, 3), %d1 in [1, 4))[%s0 in [2, 5)]
   func.return %0#0, %0#1 : index, index
 }
 // CHECK: #[[$MAP0:.*]] = affine_map<(d0, d1)[s0] -> (d0, d1 + s0)>
@@ -66,13 +66,13 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
 // CHECK-LABEL: @apply_indexing
 // CHECK: (%[[d0:.*]]: index, %[[d1:.*]]: index, %[[s0:.*]]: index)
 // CHECK: xla_gpu.apply_indexing #[[$MAP0]]
-// CHECK-SAME:  (%[[d0]] in [0, 2], %[[d1]] in [1, 3])[%[[s0]] in [2, 4]]
+// CHECK-SAME:  (%[[d0]] in [0, 3), %[[d1]] in [1, 4))[%[[s0]] in [2, 5)]
 
 // -----
 
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 func.func @apply_indexing_no_symbols(%d0: index, %d1: index) -> (index, index) {
-  %0:2 = xla_gpu.apply_indexing #map0 (%d0 in [0, 2], %d1 in [1, 3])
+  %0:2 = xla_gpu.apply_indexing #map0 (%d0 in [0, 3), %d1 in [1, 4))
   func.return %0#0, %0#1 : index, index
 }
 // CHECK: #[[$MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -80,17 +80,17 @@ func.func @apply_indexing_no_symbols(%d0: index, %d1: index) -> (index, index) {
 // CHECK-LABEL: @apply_indexing_no_symbols
 // CHECK: (%[[d0:.*]]: index, %[[d1:.*]]: index)
 // CHECK: xla_gpu.apply_indexing #[[$MAP0]]
-// CHECK-SAME:  (%[[d0]] in [0, 2], %[[d1]] in [1, 3])
+// CHECK-SAME:  (%[[d0]] in [0, 3), %[[d1]] in [1, 4))
 
 // -----
 
 #map0 = affine_map<()[s0] -> (s0, s0)>
 func.func @apply_indexing_no_dims(%s0: index) -> (index, index) {
-  %0:2 = xla_gpu.apply_indexing #map0 [%s0 in [2, 4]]
+  %0:2 = xla_gpu.apply_indexing #map0 [%s0 in [2, 5)]
   func.return %0#0, %0#1 : index, index
 }
 // CHECK: #[[$MAP0:.*]] = affine_map<()[s0] -> (s0, s0)>
 
 // CHECK-LABEL: @apply_indexing_no_dims
 // CHECK: (%[[s0:.*]]: index)
-// CHECK: xla_gpu.apply_indexing #[[$MAP0]][%[[s0]] in [2, 4]]
+// CHECK: xla_gpu.apply_indexing #[[$MAP0]][%[[s0]] in [2, 5)]

@@ -63,7 +63,7 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
   %1 = gpu.block_id  x
   scf.for %i = %c0 to %c4 step %c1 {
     %2 = xla_gpu.apply_indexing affine_map<()[s0, s1, s2] -> (s0 * 512 + s1 * 4 + s2 + (s1 floordiv 128) + (s2 floordiv 4))>
-      [%1 in [0, 3071], %0 in [0, 127], %i in [0, 3]]
+      [%1 in [0, 3072), %0 in [0, 128), %i in [0, 4)]
     %3 = arith.index_castui %2 : index to i64
     %4 = llvm.getelementptr %arg0[%3] : (!llvm.ptr, i64) -> !llvm.ptr, f32
     %5 = llvm.load %4 invariant : !llvm.ptr -> f32
@@ -92,7 +92,7 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
 func.func @arg_ranges(%arg0: index, %arg1: index) -> index {
   %0 = xla_gpu.apply_indexing
     affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100)>
-    [%arg0 in [0, 42], %arg1 in [0, 1000]]
+    [%arg0 in [0, 43), %arg1 in [0, 1001)]
   return %0 : index
 }
 
@@ -106,7 +106,7 @@ func.func @arg_ranges(%arg0: index, %arg1: index) -> index {
 func.func @cant_lower(%arg0: index, %arg1: index) -> (index, index) {
   %0:2 = xla_gpu.apply_indexing
     affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100, s0 + s1)>
-    [%arg0 in [-10, 42], %arg1 in [0, 1000]]
+    [%arg0 in [-10, 43), %arg1 in [0, 1001)]
   return %0#0, %0#1 : index, index
 }
 
@@ -124,7 +124,7 @@ func.func @order_summands(%arg1: index) {
     scf.for %arg3 = %c0 to %c4 step %c1 {
       %0 = xla_gpu.apply_indexing
         affine_map<()[s0, s1, s2] -> ((s0 + s1) floordiv 3 + s0 * 512 + s1 * 4 + s2 * 10)>
-        [%arg2 in [0, 3], %arg1 in [0, 3], %arg3 in [0, 3]]
+        [%arg2 in [0, 4), %arg1 in [0, 4), %arg3 in [0, 4)]
       "dummy.op"(%0) : (index) -> ()
     }
   }

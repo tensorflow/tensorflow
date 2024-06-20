@@ -21,23 +21,23 @@ module {
     %1 = arith.cmpi eq, %0, %c0 : index
     %2 = arith.divui %thread_id_x, %c32 : index
     %3 = arith.cmpi ult, %thread_id_x, %c8 : index
-    %4 = xla_gpu.apply_indexing #map(%block_id_x in [0, 31])
-    %5 = xla_gpu.apply_indexing #map1(%block_id_x in [0, 31])
+    %4 = xla_gpu.apply_indexing #map(%block_id_x in [0, 32))
+    %5 = xla_gpu.apply_indexing #map1(%block_id_x in [0, 32))
     %extracted = tensor.extract %arg2[%4, %5] : tensor<4x8xf32>
     %6 = arith.mulf %extracted, %cst : f32
     %7 = arith.addf %6, %cst : f32
     %8 = math.rsqrt %7 : f32
     %9:2 = scf.for %arg7 = %c0 to %c8 step %c1 iter_args(%arg8 = %arg6, %arg9 = %cst) -> (tensor<4x8x4096xf32>, f32) {
-      %18 = xla_gpu.apply_indexing #map2(%c0 in [0, 1], %thread_id_x in [0, 255])[%arg7 in [0, 7]]
+      %18 = xla_gpu.apply_indexing #map2(%c0 in [0, 2), %thread_id_x in [0, 256))[%arg7 in [0, 8)]
       %19 = vector.transfer_read %arg1[%18], %cst_1 {in_bounds = [true]} : tensor<4096xbf16>, vector<2xbf16>
-      %20 = xla_gpu.apply_indexing #map2(%c0 in [0, 1], %thread_id_x in [0, 255])[%arg7 in [0, 7]]
+      %20 = xla_gpu.apply_indexing #map2(%c0 in [0, 2), %thread_id_x in [0, 256))[%arg7 in [0, 8)]
       %21 = vector.transfer_read %arg3[%20], %cst_1 {in_bounds = [true]} : tensor<4096xbf16>, vector<2xbf16>
-      %22 = xla_gpu.apply_indexing #map2(%c0 in [0, 1], %thread_id_x in [0, 255])[%arg7 in [0, 7]]
+      %22 = xla_gpu.apply_indexing #map2(%c0 in [0, 2), %thread_id_x in [0, 256))[%arg7 in [0, 8)]
       %23 = vector.transfer_read %arg4[%4, %5, %22], %cst_1 {in_bounds = [true]} : tensor<4x8x4096xbf16>, vector<2xbf16>
-      %24 = xla_gpu.apply_indexing #map2(%c0 in [0, 1], %thread_id_x in [0, 255])[%arg7 in [0, 7]]
+      %24 = xla_gpu.apply_indexing #map2(%c0 in [0, 2), %thread_id_x in [0, 256))[%arg7 in [0, 8)]
       %25 = vector.transfer_read %arg0[%4, %5, %24], %cst {in_bounds = [true]} : tensor<4x8x4096xf32>, vector<2xf32>
       %26:2 = scf.for %arg10 = %c0 to %c2 step %c1 iter_args(%arg11 = %arg8, %arg12 = %arg9) -> (tensor<4x8x4096xf32>, f32) {
-        %27 = xla_gpu.apply_indexing #map2(%arg10 in [0, 1], %thread_id_x in [0, 255])[%arg7 in [0, 7]]
+        %27 = xla_gpu.apply_indexing #map2(%arg10 in [0, 2), %thread_id_x in [0, 256))[%arg7 in [0, 8)]
         %28 = vector.extract %25[%arg10] : f32 from vector<2xf32>
         %29 = vector.extract %23[%arg10] : bf16 from vector<2xbf16>
         %30 = arith.extf %29 : bf16 to f32
@@ -151,7 +151,7 @@ module {
     %cst = arith.constant dense<[0.0, 0.0]> : vector<2xf32>
     %cst0  = arith.constant 0.0 : f32
     %ret = scf.for %i = %c0 to %c17 step %c1 iter_args (%iter = %cst) -> (vector<2xf32>) {
-      %base = xla_gpu.apply_indexing affine_map<(d0) -> (d0 * 2)>(%i in [0, 15])
+      %base = xla_gpu.apply_indexing affine_map<(d0) -> (d0 * 2)>(%i in [0, 16))
       %val = vector.transfer_read %arg[%base], %cst0 : tensor<34xf32>, vector<2xf32>
       %log = math.log %val : vector<2xf32>
       %add = arith.addf %log, %iter : vector<2xf32>

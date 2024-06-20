@@ -149,7 +149,7 @@ TEST_F(SymbolicTileTest,
         size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, s1)
         stride_map: ()[s0, s1] -> (0, 1, 1, 1)
         constraints:
-          6 mod s0 in [0, 0] || s0 mod 6 in [0, 0]
+          6 mod s0 in [0, 1) || s0 mod 6 in [0, 1)
       )")));
 }
 
@@ -430,10 +430,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
         size_map: ()[s0, s1, s2] -> (1, s1, s2)
         stride_map: ()[s0, s1, s2] -> (0, 1, 1)
         rt_vars:
-          s3 in [0, 1]
+          s3 in [0, 2)
             hlo: %of1 = s32[] parameter(1)
             (d0, d1, d2) -> ()
-          s4 in [0, 226]
+          s4 in [0, 227)
             hlo: %of3 = s32[] parameter(3)
             (d0, d1, d2) -> ()
       )")));
@@ -482,10 +482,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
         size_map: ()[s0, s1] -> (s0, s1)
         stride_map: ()[s0, s1] -> (1, 1)
         rt_vars:
-          s2 in [0, 15]
+          s2 in [0, 16)
             hlo: %of1 = s32[] parameter(2)
             (d0, d1) -> ()
-          s3 in [0, 20]
+          s3 in [0, 21)
             hlo: %of2 = s32[] parameter(3)
             (d0, d1) -> ()
       )")));
@@ -525,10 +525,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
         size_map: ()[s0, s1, s2, s3] -> (s1, s2, s3)
         stride_map: ()[s0, s1, s2, s3] -> (1, 1, 1)
         rt_vars:
-          s4 in [0, 26]
+          s4 in [0, 27)
             hlo: %indices = s32[1806,2]{1,0} parameter(1)
             (d0, d1, d2, d3) -> (d0, 0)
-          s5 in [0, 68]
+          s5 in [0, 69)
             hlo: %indices = s32[1806,2]{1,0} parameter(1)
             (d0, d1, d2, d3) -> (d0, 1)
       )")));
@@ -720,10 +720,10 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
         size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, (s1 + 7) floordiv 8, s1 - ((s1 - 1) floordiv 8) * 8)
         stride_map: ()[s0, s1] -> (0, 1, 1, 1, 1)
         constraints:
-          6 mod s0 in [0, 0] && 8 mod s1 in [0, 0] ||
-          6 mod s0 in [0, 0] && s1 mod 8 in [0, 0] ||
-          8 mod s1 in [0, 0] && s0 mod 6 in [0, 0] ||
-          s0 mod 6 in [0, 0] && s1 mod 8 in [0, 0]
+          6 mod s0 in [0, 1) && 8 mod s1 in [0, 1) ||
+          6 mod s0 in [0, 1) && s1 mod 8 in [0, 1) ||
+          8 mod s1 in [0, 1) && s0 mod 6 in [0, 1) ||
+          s0 mod 6 in [0, 1) && s1 mod 8 in [0, 1)
       )")));
 }
 
@@ -803,7 +803,7 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   constraints.Or(std::move(conjunction_1));
   constraints.Or(std::move(conjunction_2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+                               "d0 in [0, 6) && d1 in [0, 6) || d2 in [0, 6)"));
 }
 
 TEST_F(ConstraintExpressionTest,
@@ -811,11 +811,11 @@ TEST_F(ConstraintExpressionTest,
   ConstraintExpression constraints;
 
   constraints.And(GetConjointConstraints({{"d0", Interval{0, 5}}}));
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 5]"));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 6)"));
 
   // Constraints are intersected.
   constraints.And(GetConjointConstraints({{"d0", Interval{3, 6}}}));
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 5]"));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 6)"));
 
   // Empty intersection results in unsatisfiability.
   constraints.And(GetConjointConstraints({{"d0", Interval{7, 8}}}));
@@ -864,7 +864,7 @@ TEST_F(
   constraints.Or(std::move(conjunction_1));
   constraints.Or(std::move(conjunction_2));
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
+              MatchConstraintExpressionString("d0 in [0, 6) || d1 in [0, 6)"));
 
   // `conjunction_1` && `conjunction_3` is an unsatisfiable constraint. Taking
   // the conjunction of the existing constraint expression with `conjunction_3`
@@ -875,7 +875,7 @@ TEST_F(
   constraints.And(std::move(conjunction_3));
 
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
+              MatchConstraintExpressionString("d0 in [6, 7) && d1 in [0, 6)"));
 
   // But becomes unsatisfiable if we eliminate the last remaining constraint by
   // constructing another unsatisfiable conjunction.
