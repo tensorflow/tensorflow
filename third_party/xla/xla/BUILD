@@ -778,6 +778,7 @@ xla_cc_test(
     deps = [
         ":array2d",
         ":test",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
