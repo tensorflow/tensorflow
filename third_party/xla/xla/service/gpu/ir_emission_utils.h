@@ -29,8 +29,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
@@ -122,22 +120,17 @@ llvm::Value* EmitFullWarpShuffleDown(
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
-llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
-
-bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
-
-absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
-    std::string* constant_name = nullptr);
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
 
+// Returns whether 'fusion' can be emitted with the dynamic update slice
+// in-place emitter.
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
-    const BufferAssignment* buffer_assignment,
+    std::function<absl::StatusOr<BufferAllocation::Slice>(
+        const HloInstruction* instr, const ShapeIndex& index)>
+        get_allocation_slice,
     absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns the dynamic-update-slice instructions defining the results of a
@@ -147,8 +140,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // handled as a no-op.
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     absl::Span<HloInstructionAdaptor const> roots);
-
-Shape GetShape(mlir::Value value);
 
 // Returns the first hero instruction reachable from `instr` as root. Hero
 // instruction can be in a different computation if the parent HloFusionAdaptor
@@ -208,13 +199,6 @@ void VerifyModule(const llvm::Module& module);
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
                                   int64_t launch_size, llvm::IRBuilder<>* b);
-
-// The same as GetIndexTypeForKernel, but works with MLIR ops.
-llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
-                                  llvm::IRBuilder<>* b);
-
-// Returns a sanitized (doesn't need quoting) identifier name from a location.
-std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
