@@ -2,6 +2,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
+load("//tools/build_defs/cc:cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -591,17 +592,27 @@ cc_library(
     ],
 )
 
+cc_embed_data(
+    name = "odml_sdpa_tester_data",
+    testonly = 1,
+    srcs = [
+        "odml_sdpa_composite_gqa.tflite",
+        "odml_sdpa_composite_mha.tflite",
+        "odml_sdpa_composite_mqa.tflite",
+    ],
+    outs = [
+        "odml_sdpa_tester_data.cc",
+        "odml_sdpa_tester_data.h",
+    ],
+)
+
 cc_library(
     name = "odml_sdpa_tester",
     testonly = 1,
     srcs = ["odml_sdpa_tester.cc"],
     hdrs = ["odml_sdpa_tester.h"],
-    data = [
-        "odml_sdpa_composite_gqa.tflite",
-        "odml_sdpa_composite_mha.tflite",
-        "odml_sdpa_composite_mqa.tflite",
-    ],
     deps = [
+        ":odml_sdpa_tester_data",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:framework",

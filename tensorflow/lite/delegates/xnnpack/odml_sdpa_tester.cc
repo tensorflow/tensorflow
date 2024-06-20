@@ -34,11 +34,11 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
-#include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/delegates/xnnpack/odml_sdpa_tester_data.h"
 #include "tensorflow/lite/experimental/genai/genai_ops.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -61,6 +61,7 @@ void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
 
   std::vector<char> buffer = CreateTfLiteModel();
+  ASSERT_FALSE(buffer.empty());
   const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
@@ -118,13 +119,19 @@ void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
 
 std::vector<char> ODMLSDPATester::CreateTfLiteModel() const {
   if (!model_name_.empty() && model_name_ != kOdmlSdpaCustom) {
-    const char kTestModelFolder[] =
-        "/tensorflow/lite/delegates/xnnpack/";
-    const std::string test_model =
-        testing::SrcDir() + kTestModelFolder + model_name_ + ".tflite";
-    std::string model_data;
-    flatbuffers::LoadFile(test_model.c_str(), /*binary=*/true, &model_data);
-    return std::vector<char>(model_data.begin(), model_data.end());
+    const FileToc* file_desc = nullptr;
+    const FileToc* const embeded_files = odml_sdpa_tester_data_create();
+    for (size_t i = 0; i < odml_sdpa_tester_data_size(); ++i) {
+      if (model_name_ + ".tflite" == embeded_files[i].name) {
+        file_desc = embeded_files + i;
+        break;
+      }
+    }
+    if (!file_desc) {
+      return {};
+    }
+    return std::vector<char>(file_desc->data,
+                             file_desc->data + file_desc->size);
   } else {
     flatbuffers::FlatBufferBuilder builder;
     flatbuffers::Offset<OperatorCode> operator_code = CreateOperatorCode(
