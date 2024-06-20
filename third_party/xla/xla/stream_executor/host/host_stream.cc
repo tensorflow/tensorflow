@@ -17,7 +17,10 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "xla/stream_executor/host/host_stream.h"
 
+#include <string.h>
+
 #include <cfenv>  // NOLINT
+#include <cstdint>
 #include <memory>
 #include <queue>
 #include <utility>
@@ -27,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/stream.h"
@@ -51,6 +55,15 @@ HostStream::~HostStream() {
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
   parent()->DeallocateStream(this);
+}
+
+absl::Status HostStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                                  uint64_t size) {
+  void* gpu_mem = location->opaque();
+  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
+  return absl::OkStatus();
 }
 
 absl::Status HostStream::MemZero(DeviceMemoryBase* location, uint64_t size) {

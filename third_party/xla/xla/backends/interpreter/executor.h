@@ -104,10 +104,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
                       uint8_t pattern, uint64_t size) override {
     return absl::InternalError("Interpreter can not memset");
   }
-  absl::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32_t pattern, uint64_t size) override {
-    return absl::InternalError("Interpreter can not memset");
-  }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }

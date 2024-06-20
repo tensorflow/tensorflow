@@ -681,18 +681,6 @@ absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                             AsGpuStreamValue(stream));
 }
 
-absl::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32_t pattern, uint64_t size) {
-  VLOG(2) << "enqueueing memset32 operation onto stream " << stream
-          << " at location " << location << " with size " << size
-          << " and pattern " << std::hex << pattern;
-  CHECK(reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
-        size % 4 == 0);
-  return GpuDriver::AsynchronousMemsetUint32(
-      context_, AsCudaDevicePtr(location), pattern, size / 4,
-      AsGpuStreamValue(stream));
-}
-
 absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) {

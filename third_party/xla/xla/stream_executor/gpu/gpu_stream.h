@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
+#include <cstdint>
 #include <variant>
 
 #include "absl/log/check.h"
@@ -99,6 +100,8 @@ class GpuStream : public StreamCommon {
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
   absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override;
 
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.

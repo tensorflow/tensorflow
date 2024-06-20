@@ -209,7 +209,10 @@ class Stream {
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
   virtual absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
-                                uint64_t size) = 0;
+                                uint64_t size) {
+    return absl::UnimplementedError(
+        "Memset32 is not supported on this stream.");
+  }
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
