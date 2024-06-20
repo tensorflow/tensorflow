@@ -556,8 +556,9 @@ void ReductionGroupEmitter::EmitFullWarpShuffleDownLoopForReduce(
           builder->CreateLoad(shuffled_value_type, partial_result_address,
                               "partial_reduction_result");
       builder->CreateStore(
-          EmitFullWarpShuffleDown(partial_result, builder->getInt32(distance),
-                                  builder),
+          EmitFullWarpShuffleDown(
+              partial_result, builder->getInt32(distance), builder,
+              reduction_emitter_.ir_emitter_context_.gpu_device_info()),
           result_from_other_lane);
     }
 
