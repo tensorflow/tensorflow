@@ -5560,15 +5560,6 @@ LogicalResult TupleOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// UnaryEinsumOp
-//===----------------------------------------------------------------------===//
-
-void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                                MLIRContext* context) {
-  results.add<UnaryEinsumToEinsum>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // CompareOp
 //===----------------------------------------------------------------------===//
 

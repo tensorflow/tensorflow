@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"

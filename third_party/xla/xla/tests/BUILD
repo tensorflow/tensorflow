@@ -2186,8 +2186,8 @@ xla_test(
 )
 
 xla_test(
-    name = "collective_ops_test_e2e",
-    srcs = ["collective_ops_test_e2e.cc"],
+    name = "collective_ops_e2e_test",
+    srcs = ["collective_ops_e2e_test.cc"],
     backend_tags = {
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests

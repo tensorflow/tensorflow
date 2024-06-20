@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -68,7 +69,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/byte_order.h"

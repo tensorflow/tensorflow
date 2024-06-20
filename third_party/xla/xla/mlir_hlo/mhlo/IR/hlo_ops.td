@@ -2687,37 +2687,6 @@ def MHLO_EinsumOp: MHLO_Op<"einsum", [Pure]> {
   // side HLO ops.
 }
 
-def MHLO_UnaryEinsumOp: MHLO_Op<"unary_einsum", [Pure]> {
-  let summary = "UnaryEinsum operation";
-  let description = [{
-    This operation is on its way out of StableHLO, so it is not included in
-    the specification: https://github.com/openxla/stablehlo/issues/3.
-
-    Informally, this operation does the same thing as TF's einsum:
-    https://www.tensorflow.org/api_docs/python/tf/einsum
-
-    Example:
-    ```mlir
-    %result = "mhlo.unary_einsum"(%operand) {
-      einsum_config = "ab->a"
-    } : (tensor<4x16xf32>) -> tensor<4xf32>
-    ```
-  }];
-
-  let arguments = (ins
-    MHLO_Tensor:$operand,
-    StrAttr:$einsum_config
-  );
-
-  let results = (outs MHLO_Tensor);
-
-  let hasCanonicalizer = 1;
-
-  // UnaryEinsumOp is unconditionally canonicalized to the binary EinsumOp so
-  // the HLO converter shouldn't be invoked.
-  let hasCustomHLOConverter = 1;
-}
-
 def MHLO_FftOp: MHLO_Op<"fft", [InferTensorType, Pure]> {
   let summary = "Fft operation";
   let description = [{
