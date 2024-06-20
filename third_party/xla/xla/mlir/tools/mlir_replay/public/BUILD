@@ -65,12 +65,10 @@ tf_proto_library(
     name = "execution_trace_proto",
     srcs = ["execution_trace.proto"],
     cc_api_version = 2,
-    make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "compiler_trace_proto",
     srcs = ["compiler_trace.proto"],
     cc_api_version = 2,
-    make_default_target_header_only = True,
 )

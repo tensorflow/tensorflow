@@ -50,7 +50,6 @@ tf_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
     cc_api_version = 2,
-    make_default_target_header_only = True,
     protodeps = ["//xla:xla_data_proto"],
     visibility = ["//visibility:public"],
 )
@@ -8031,7 +8030,6 @@ tf_proto_library(
     name = "buffer_assignment_proto",
     srcs = ["buffer_assignment.proto"],
     cc_api_version = 2,
-    make_default_target_header_only = True,
 )
 
 cc_library(
@@ -8106,7 +8104,6 @@ cc_library(
 tf_proto_library(
     name = "xla_compile_result_proto",
     srcs = ["xla_compile_result.proto"],
-    make_default_target_header_only = True,
     protodeps = [
         ":hlo_proto",
         "@local_tsl//tsl/protobuf:status_proto",
