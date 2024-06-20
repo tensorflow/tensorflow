@@ -23,10 +23,22 @@ pipeline {
                     agent {
                         label "nightly-build"
                     }
+
+                    // LINUX FORMAT:
+
+                    // environment {
+                    //     PYENV_ROOT="$HOME/.pyenv"
+                    //     PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                    //     TF_PYTHON_VERSION=3.9
+                    // }
+
+                    // WINDOWS FORMAT:
+
                     environment {
-                        PYENV_ROOT="$HOME/.pyenv"
-                        PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        PYENV_ROOT="$env:USERPROFILE/.pyenv"
+                        PATH="$PYENV_ROOT/shims;C:/opt/homebrew/bin;$env:PATH"
                         TF_PYTHON_VERSION=3.9
+                        PYTHONPATH="$WORKSPACE/tensorflow/tools/pip_package"  
                     }
                     steps {
                         dir('tensorflow') {
@@ -85,10 +97,22 @@ pipeline {
                     agent {
                         label "nightly-build"
                     }
+
+                    // LINUX FORMAT:
+
+                    // environment {
+                    //     PYENV_ROOT="$HOME/.pyenv"
+                    //     PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                    //     TF_PYTHON_VERSION=3.10
+                    // }
+
+                    // WINDOWS FORMAT:
+
                     environment {
-                        PYENV_ROOT="$HOME/.pyenv"
-                        PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        PYENV_ROOT="$env:USERPROFILE/.pyenv"
+                        PATH="$PYENV_ROOT/shims;C:/opt/homebrew/bin;$env:PATH"
                         TF_PYTHON_VERSION=3.10
+                        PYTHONPATH="$WORKSPACE/tensorflow/tools/pip_package"  
                     }
                     steps {
                         dir('tensorflow') {
@@ -135,10 +159,22 @@ pipeline {
                     agent {
                         label "nightly-build"
                     }
+
+                    // LINUX FORMAT:
+
+                    // environment {
+                    //     PYENV_ROOT="$HOME/.pyenv"
+                    //     PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                    //     TF_PYTHON_VERSION=3.11
+                    // }
+
+                    // WINDOWS FORMAT:
+
                     environment {
-                        PYENV_ROOT="$HOME/.pyenv"
-                        PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        PYENV_ROOT="$env:USERPROFILE/.pyenv"
+                        PATH="$PYENV_ROOT/shims;C:/opt/homebrew/bin;$env:PATH"
                         TF_PYTHON_VERSION=3.11
+                        PYTHONPATH="$WORKSPACE/tensorflow/tools/pip_package"  
                     }
                     steps {
 

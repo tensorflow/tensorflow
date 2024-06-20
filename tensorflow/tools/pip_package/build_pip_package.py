@@ -32,11 +32,7 @@ import subprocess
 import sys
 import tempfile
 
-from utils.utils import copy_file
-from utils.utils import create_init_files
-from utils.utils import is_macos
-from utils.utils import is_windows
-from utils.utils import replace_inplace
+from utils import utils as utils_module
 
 
 # The "default" argument must be added because the "required" is set to "True".
@@ -108,10 +104,10 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
 
     for path, val in path_to_replace.items():
       if path in file:
-        copy_file(file, os.path.join(srcs_dir, val), path)
+        utils_module.copy_file(file, os.path.join(srcs_dir, val), path)
         break
     else:
-      copy_file(file, srcs_dir)
+      utils_module.copy_file(file, srcs_dir)
 
   create_local_config_python(os.path.join(srcs_dir,
                                           "external/local_config_python"))
@@ -141,12 +137,12 @@ def prepare_srcs(deps: list[str], srcs_dir: str) -> None:
   for file in deps:
     for path, val in path_to_replace.items():
       if path in file:
-        copy_file(file, os.path.join(srcs_dir, val), path)
+        utils_module.copy_file(file, os.path.join(srcs_dir, val), path)
         break
     else:
       # exclude external py files
       if "external" not in file:
-        copy_file(file, srcs_dir)
+        utils_module.copy_file(file, srcs_dir)
 
 
 def prepare_aot(aot: list[str], srcs_dir: str) -> None:
@@ -158,11 +154,11 @@ def prepare_aot(aot: list[str], srcs_dir: str) -> None:
   """
   for file in aot:
     if "external/local_tsl/" in file:
-      copy_file(file, srcs_dir, "external/local_tsl/")
+      utils_module.copy_file(file, srcs_dir, "external/local_tsl/")
     elif "external/local_xla/" in file:
-      copy_file(file, srcs_dir, "external/local_xla/")
+      utils_module.copy_file(file, srcs_dir, "external/local_xla/")
     else:
-      copy_file(file, srcs_dir)
+      utils_module.copy_file(file, srcs_dir)
 
   shutil.move(
       os.path.join(
@@ -189,7 +185,7 @@ def prepare_wheel_srcs(
   prepare_aot(aot, os.path.join(srcs_dir, "tensorflow/xla_aot_runtime_src"))
 
   # Every directory that contains a .py file gets an empty __init__.py file.
-  create_init_files(os.path.join(srcs_dir, "tensorflow"))
+  utils_module.create_init_files(os.path.join(srcs_dir, "tensorflow"))
 
   # move MANIFEST and THIRD_PARTY_NOTICES to the root
   shutil.move(
@@ -203,21 +199,21 @@ def prepare_wheel_srcs(
   )
 
   update_xla_tsl_imports(os.path.join(srcs_dir, "tensorflow"))
-  if not is_windows():
+  if not utils_module.is_windows():
     rename_libtensorflow(os.path.join(srcs_dir, "tensorflow"), version)
-  if not is_macos() and not is_windows():
+  if not utils_module.is_macos() and not utils_module.is_windows():
     patch_so(srcs_dir)
 
 
 def update_xla_tsl_imports(srcs_dir: str) -> None:
   """Workaround for TSL and XLA vendoring."""
-  replace_inplace(srcs_dir, "from tsl", "from tensorflow.tsl")
-  replace_inplace(
+  utils_module.replace_inplace(srcs_dir, "from tsl", "from tensorflow.tsl")
+  utils_module.replace_inplace(
       srcs_dir,
       "from local_xla.xla",
       "from tensorflow.compiler.xla",
       )
-  replace_inplace(
+  utils_module.replace_inplace(
       srcs_dir, "from xla", "from tensorflow.compiler.xla"
   )
 
@@ -273,7 +269,7 @@ def rename_libtensorflow(srcs_dir: str, version: str):
     version: Major version to be set.
   """
   major_version = version.split(".")[0]
-  if is_macos():
+  if utils_module.is_macos():
     shutil.move(
         os.path.join(srcs_dir, "libtensorflow_cc.{}.dylib".format(version)),
         os.path.join(
@@ -307,7 +303,7 @@ def create_local_config_python(dst_dir: str) -> None:
       "external/pypi_numpy/site-packages/numpy/core/include",
       os.path.join(dst_dir, "numpy_include"),
   )
-  if is_windows():
+  if utils_module.is_windows():
     path = "external/python_*/include"
   else:
     path = "external/python_*/include/python*"
@@ -325,7 +321,7 @@ def build_wheel(dir_path, project_location: str, project_name: str,
     collab: defines if this is a collab build
   """
   env = os.environ.copy()
-  if is_windows():
+  if utils_module.is_windows():
     # HOMEPATH is not set by bazel but it's required by setuptools.
     env["HOMEPATH"] = env.get("HOMEPATH", "C:")
   # project_name is needed by setup.py.

@@ -72,6 +72,8 @@ An error - "Target NOT Declared" surfaced when the build command that is execute
 
 30) A typo with the variable name in the Jenkins file that I have pushed was causing issue in creating the ".whl" file. The issue was - In the build_pip_package.py file, the format of the name given --output-name and --project-name. But I have written it incorrectly which was --output_name and --project_name. The underscore was causing an issue.
 
+31) The ``environment`` **stage** which was previously set up in the **Jenins jobs** was again not supported for **Windows**. The necessary changes were made to make sure that jenkins is pointing to the right executable.
+
 ##### Couple of changes were made in the build_pip_package.py file to enhance the ".whl" file creation.
 
 1) Some changes and configuration might be small and not at all times the change will be an end-to-end "package creation. In this kind of case where a simple fixing and refractors are done and "Not an entire new Python Scripts are written which might include C/C++ extensions or in some case Python Modules" as well, the **.whl** file creation would not have any "**headers**" or "**srcs**" or "**aot**". 
@@ -80,9 +82,9 @@ An error - "Target NOT Declared" surfaced when the build command that is execute
 
 3) Therefore as I mentioned in previous points, a condition was added to bypass headers, srcs and aot when not passed in the **Bazel-Generated Packaging** in the Jenkins job which is how it is, currently. The change was made keeping the "**action=append**" parameter fro both the headers and the srcs file. 
 
-4) The import statement in the build_pip_package.py file were also corrected. It would make understanding better since both build_pip_package.py and utils folder are in the same directory/leve, we could simply do ``from utils.utils import is_windows`` and so on for the rest of the files that are imported from the setup.py file. To make this work, one should **initially set a New "Environment Variable" under "System Variables" with the "Variable" as "PYTHONPATH" and the "Value" will be the "ABSOLUTE PATH" upto the "PARENT DIRECTORY" of the setup.py file**.
+4) The import statement in the build_pip_package.py file were also corrected. It would make understanding better since both build_pip_package.py and utils folder are in the same directory/leve, we could simply do ``from utils import utils as utils_module``. By doing this, I simply did ``utils_module.copy_file()`` and so on to use the functions that are imported from the setup.py file. To make this work, one should **initially set a New "Environment Variable" under "System Variables" with the "Variable" as "PYTHONPATH" and the "Value" will be the "ABSOLUTE PATH" upto the "PARENT DIRECTORY" of the setup.py file**.
 
-Therefore, the value for the PYTHONPATH variable will be ``"C:/Users/your_username/tensorflow/tensorflow/tools/pip_package"`` for **Windows**. For **Linux**, the equivalent path would be ``"/home/your_username/tensorflow/tensorflow/tools/pip_package"``. For **Mac OS X**, the equivalent path would be ``/Users/your_username/tensorflow/tensorflow/tools/pip_package``
+Therefore, the value for the PYTHONPATH variable will be ``"C:/Users/your_username/tensorflow/tensorflow/tools/pip_package"`` for **Windows**. For **Linux**, the equivalent path would be ``"/home/your_username/tensorflow/tensorflow/tools/pip_package"``. For **Mac OS X**, the equivalent path would be ``/Users/your_username/tensorflow/tensorflow/tools/pip_package``.
 
 5) An empty ``__init__.py`` file was added in the utils folder as the utils.py file in that folder has couple of functions that were being imported to the build_pip_package.py file. 
 
