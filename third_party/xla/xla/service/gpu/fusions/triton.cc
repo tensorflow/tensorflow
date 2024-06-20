@@ -171,17 +171,25 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       auto launch_config = *this->launch_config();
       launch_dimensions = launch_config.launch_dimensions;
 
-      // TODO(bchetioui): parse block-level parameters from backend config
-      // where available.
       BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes = std::vector<int64_t>(
-          hlo_computation->root_instruction()->shape().rank() - 1, 1);
-      block_level_parameters.output_tile_sizes.push_back(
-          hlo_computation->root_instruction()->shape().dimensions().back());
-      block_level_parameters.num_warps =
-          launch_dimensions.num_threads_per_block() / WarpSize();
-      block_level_parameters.num_ctas = 1;
-      block_level_parameters.num_stages = 1;
+      if (backend_config.has_block_level_fusion_config()) {
+        block_level_parameters =
+            BlockLevelParameters::FromBlockLevelFusionConfig(
+                backend_config.block_level_fusion_config());
+      } else {
+        // TODO(shyshkov): Make sure that all "__triton" fusions have
+        // BlockLevelFusionConfig set in the backend config. If necessary, move
+        // this heuristic up the stack to one of the passes that generates
+        // Triton fusions.
+        block_level_parameters.output_tile_sizes = std::vector<int64_t>(
+            hlo_computation->root_instruction()->shape().rank() - 1, 1);
+        block_level_parameters.output_tile_sizes.push_back(
+            hlo_computation->root_instruction()->shape().dimensions().back());
+        block_level_parameters.num_warps =
+            launch_dimensions.num_threads_per_block() / WarpSize();
+        block_level_parameters.num_ctas = 1;
+        block_level_parameters.num_stages = 1;
+      }
 
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,

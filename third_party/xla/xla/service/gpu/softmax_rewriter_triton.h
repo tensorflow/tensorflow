@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -43,8 +45,10 @@ using DiamondMatchingDecision = std::variant<FusionDecision, HloInstruction*>;
 // with the Triton-based Softmax emitter.
 class SoftmaxRewriterTriton : public HloModulePass {
  public:
-  explicit SoftmaxRewriterTriton(se::GpuComputeCapability gpu_version)
-      : gpu_version_(gpu_version) {}
+  explicit SoftmaxRewriterTriton(const se::DeviceDescription& device_info,
+                                 HloCostAnalysis::ShapeSizeFunction shape_size)
+      : device_info_(device_info), shape_size_(shape_size) {}
+
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
   using HloPassInterface::Run;
@@ -86,7 +90,9 @@ class SoftmaxRewriterTriton : public HloModulePass {
       HloInstruction* instr) const;
 
  private:
-  se::GpuComputeCapability gpu_version_;
+  const se::DeviceDescription& device_info_;
+  const HloCostAnalysis::ShapeSizeFunction shape_size_;
+  mlir::MLIRContext mlir_context_;
 };
 
 }  // namespace gpu

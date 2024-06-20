@@ -1380,7 +1380,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
-      pipeline.AddPass<SoftmaxRewriterTriton>(gpu_version);
+      pipeline.AddPass<SoftmaxRewriterTriton>(
+          gpu_target_config.device_description, ShapeSizeBytesFunction());
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();

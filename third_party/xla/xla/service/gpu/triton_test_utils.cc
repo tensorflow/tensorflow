@@ -79,22 +79,24 @@ stream_executor::GpuComputeCapability TritonTest::CudaAmpereOrRocm() {
 }
 
 absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
-    absl::string_view hlo_text,
-    const BlockLevelParameters& block_level_parameters,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
+    absl::string_view hlo_text, absl::string_view triton_fusion_name,
+    absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
-  return CreateTritonIrAndFileCheck(*comp, block_level_parameters,
-                                    filecheck_pattern);
+  return CreateTritonIrAndFileCheck(*comp, filecheck_pattern);
 }
 
 absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
-    const HloComputation& computation,
-    const BlockLevelParameters& block_level_parameters,
-    absl::string_view filecheck_pattern) {
+    const HloComputation& computation, absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
+
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      fusion->backend_config<GpuBackendConfig>());
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          backend_config.fusion_backend_config().block_level_fusion_config());
 
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
@@ -110,19 +112,6 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     return absl::InternalError("FileCheck failed.");
   }
   return absl::OkStatus();
-}
-
-absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheckForDot(
-    absl::string_view hlo_text, absl::string_view triton_fusion_name,
-    absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(hlo_text, /*block_level_parameters=*/{},
-                                    triton_fusion_name, filecheck_pattern);
-}
-
-absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheckForDot(
-    const HloComputation& computation, absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(computation, /*block_level_parameters=*/{},
-                                    filecheck_pattern);
 }
 
 absl::StatusOr<bool> TritonSupportTestBase::ApplyFloatNormalization(
