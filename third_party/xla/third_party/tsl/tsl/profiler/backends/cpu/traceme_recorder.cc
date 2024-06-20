@@ -17,7 +17,6 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <optional>
@@ -28,40 +27,20 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/profiler/utils/per_thread.h"
 
 namespace tsl {
 namespace profiler {
-namespace internal {
-
-#ifdef _WIN32
-#define DECL_DLL_EXPORT __declspec(dllexport)
-#else
-#define DECL_DLL_EXPORT
-#endif
-// DLL imported variables cannot be initialized on Windows. This file is
-// included only on DLL exports.
-DECL_DLL_EXPORT std::atomic<int> g_trace_level(
-    TraceMeRecorder::kTracingDisabled);
-
-// g_trace_level implementation must be lock-free for faster execution of the
-// TraceMe API. This can be commented (if compilation is failing) but execution
-// might be slow (even when tracing is disabled).
-static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
-
-}  // namespace internal
-
 namespace {
 
-// Track events created by ActivityStart and merge their data into events
-// created by ActivityEnd. TraceMe records events in its destructor, so this
-// results in complete events sorted by their end_time in the thread they ended.
-// Within the same thread, the record created by ActivityStart must appear
-// before the record created by ActivityEnd. Cross-thread events must be
-// processed in a separate pass. A single map can be used because the
-// activity_id is globally unique.
+// Track events created by TraceMe::ActivityStart and merge their data into
+// events created by TraceMe::ActivityEnd. TraceMe records events in its
+// destructor, so this results in complete events sorted by their end_time in
+// the thread they ended. Within the same thread, the record created by
+// ActivityStart must appear before the record created by ActivityEnd.
+// Cross-thread events must be processed in a separate pass. A single map can be
+// used because the activity_id is globally unique.
 class SplitEventTracker {
  public:
   void AddStart(TraceMeRecorder::Event&& event) {
@@ -84,19 +63,20 @@ class SplitEventTracker {
 
  private:
   // Finds the start of the given event and merges data into it.
-  bool FindStartAndMerge(TraceMeRecorder::Event* event) {
-    auto iter = start_events_.find(event->ActivityId());
+  bool FindStartAndMerge(TraceMeRecorder::Event* end_event) {
+    auto iter = start_events_.find(end_event->ActivityId());
     if (iter == start_events_.end()) return false;
     auto& start_event = iter->second;
-    event->name = std::move(start_event.name);
-    event->start_time = start_event.start_time;
+    end_event->name = std::move(start_event.name);
+    end_event->start_time = start_event.start_time;
     start_events_.erase(iter);
     return true;
   }
 
   // Start events are collected from each ThreadLocalRecorder::Consume() call.
   // Their data is merged into end_events.
-  absl::flat_hash_map<int64_t, TraceMeRecorder::Event> start_events_;
+  absl::flat_hash_map<int64_t /*activity_id*/, TraceMeRecorder::Event>
+      start_events_;
 
   // End events are stored in the output of TraceMeRecorder::Consume().
   std::vector<TraceMeRecorder::Event*> end_events_;
@@ -150,52 +130,39 @@ class ThreadLocalRecorder {
 
 // This method is performance critical and should be kept fast. It is called
 // when tracing starts.
-/* static */ void TraceMeRecorder::Clear() {
-  auto recorders = PerThread<ThreadLocalRecorder>::StartRecording();
-  for (auto& recorder : recorders) {
-    recorder->Clear();
-  };
-}
-
-// This method is performance critical and should be kept fast. It is called
-// when tracing stops.
-/* static */ TraceMeRecorder::Events TraceMeRecorder::Consume() {
-  TraceMeRecorder::Events result;
-  SplitEventTracker split_event_tracker;
-  auto recorders = PerThread<ThreadLocalRecorder>::StopRecording();
-  for (auto& recorder : recorders) {
-    auto events = recorder->Consume(&split_event_tracker);
-    if (!events.empty()) {
-      result.push_back({recorder->Info(), std::move(events)});
-    }
-  };
-  split_event_tracker.HandleCrossThreadEvents();
-  return result;
-}
-
 /* static */ bool TraceMeRecorder::Start(int level) {
-  level = std::max(0, level);
-  int expected = kTracingDisabled;
-  bool started = internal::g_trace_level.compare_exchange_strong(
-      expected, level, std::memory_order_acq_rel);
+  bool started = trace_level_.Set(level);
   if (started) {
     // We may have old events in buffers because Record() raced with Stop().
-    Clear();
+    auto recorders = PerThread<ThreadLocalRecorder>::StartRecording();
+    for (auto& recorder : recorders) {
+      recorder->Clear();
+    };
   }
   return started;
 }
 
-/* static */ void TraceMeRecorder::Record(Event&& event) {
-  PerThread<ThreadLocalRecorder>::Get().Record(std::move(event));
+// This method is performance critical and should be kept fast. It is called
+// when tracing stops.
+/* static */ TraceMeRecorder::Events TraceMeRecorder::Stop() {
+  TraceMeRecorder::Events result;
+  if (trace_level_.Clear()) {
+    SplitEventTracker split_event_tracker;
+    auto recorders = PerThread<ThreadLocalRecorder>::StopRecording();
+    result.reserve(recorders.size());
+    for (auto& recorder : recorders) {
+      auto events = recorder->Consume(&split_event_tracker);
+      if (!events.empty()) {
+        result.push_back({recorder->Info(), std::move(events)});
+      }
+    };
+    split_event_tracker.HandleCrossThreadEvents();
+  }
+  return result;
 }
 
-/* static */ TraceMeRecorder::Events TraceMeRecorder::Stop() {
-  TraceMeRecorder::Events events;
-  if (internal::g_trace_level.exchange(
-          kTracingDisabled, std::memory_order_acq_rel) != kTracingDisabled) {
-    events = Consume();
-  }
-  return events;
+/* static */ void TraceMeRecorder::Record(Event&& event) {
+  PerThread<ThreadLocalRecorder>::Get().Record(std::move(event));
 }
 
 /*static*/ int64_t TraceMeRecorder::NewActivityId() {
@@ -203,10 +170,10 @@ class ThreadLocalRecorder {
   // the originating thread, the bottom 32 bits name the event within a thread.
   // IDs may be reused after 4 billion events on one thread, or 2 billion
   // threads.
-  static std::atomic<int32> thread_counter(1);  // avoid kUntracedActivity
+  static std::atomic<int32_t> thread_counter(1);  // avoid kUntracedActivity
   const thread_local static int32_t thread_id =
       thread_counter.fetch_add(1, std::memory_order_relaxed);
-  thread_local static uint32 per_thread_activity_id = 0;
+  thread_local static uint32_t per_thread_activity_id = 0;
   return static_cast<int64_t>(thread_id) << 32 | per_thread_activity_id++;
 }
 
