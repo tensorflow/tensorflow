@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

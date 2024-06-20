@@ -23,10 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
