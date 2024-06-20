@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -96,6 +97,52 @@ class AutotuneCacheKey {
   std::string hlo_canonical_;
 };
 
+enum ExternalCacheItemType { kAutotuneResult };
+std::string ExternalCacheItemTypeToString(ExternalCacheItemType type);
+
+// An interface for reading and writing to an external cache.
+class ExternalCacheInterface {
+ public:
+  virtual ~ExternalCacheInterface() = default;
+
+  // Get item from cache if it is already there.
+  //
+  // External libraries may want to handle the storage of different cache items
+  // in a different way, `type` helps in that.
+  virtual absl::StatusOr<std::optional<std::string>> Get(
+      ExternalCacheItemType type, absl::string_view key) = 0;
+
+  // Store item in cache.
+  //
+  // External libraries may want to handle the storage of different cache items
+  // in a different way, `type` helps in that.
+  virtual absl::Status Set(ExternalCacheItemType type, absl::string_view key,
+                           absl::string_view value) = 0;
+};
+
+// An external cache that is backed by a directory of files.
+class FileBasedCache : public ExternalCacheInterface {
+ public:
+  // Exposed for testing.
+  static absl::StatusOr<std::string> GetCacheFilePath(
+      absl::string_view cache_dir, ExternalCacheItemType type,
+      absl::string_view key);
+
+  explicit FileBasedCache(std::string cache_dir) : cache_dir_(cache_dir) {}
+
+  absl::StatusOr<std::optional<std::string>> Get(
+      ExternalCacheItemType type, absl::string_view key) override;
+
+  absl::Status Set(ExternalCacheItemType type, absl::string_view key,
+                   absl::string_view value) override;
+
+  // Exposed for testing.
+  const std::string& cache_dir() { return cache_dir_; }
+
+ private:
+  std::string cache_dir_;
+};
+
 class AutotuneConfig {
  public:
   bool should_init_buffers() const { return autotune_level_ >= 2; }
@@ -107,30 +154,17 @@ class AutotuneConfig {
   bool should_require_complete_aot_autotune_results() const {
     return require_complete_aot_autotune_results_;
   }
-  // Empty string means no cache is used.
-  const std::string& autotune_cache_dir() const { return autotune_cache_dir_; }
-
-  AutotuneConfig(const AutotuneConfig& right)
-      : config_(right.config_),
-        autotune_level_(right.autotune_level_),
-        should_crash_on_check_failure_(right.should_crash_on_check_failure_),
-        exhaustive_tiling_search_(right.exhaustive_tiling_search_),
-        require_complete_aot_autotune_results_(
-            right.require_complete_aot_autotune_results_),
-        autotune_cache_dir_(right.autotune_cache_dir_) {}
+  // Can return nullptr.
+  ExternalCacheInterface* external_cache() const {
+    return external_cache_.get();
+  }
 
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
-                 const DebugOptions& debug_options)
-      : config_(config),
-        autotune_level_(debug_options.xla_gpu_autotune_level()),
-        should_crash_on_check_failure_(
-            debug_options.xla_gpu_crash_on_verification_failures()),
-        exhaustive_tiling_search_(
-            debug_options.xla_gpu_exhaustive_tiling_search()),
-        require_complete_aot_autotune_results_(
-            debug_options.xla_gpu_require_complete_aot_autotune_results()),
-        autotune_cache_dir_(
-            debug_options.xla_gpu_per_fusion_autotune_cache_dir()) {}
+                 const DebugOptions& debug_options);
+  // For testing.
+  AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
+                 std::shared_ptr<ExternalCacheInterface> external_cache);
+  AutotuneConfig(const AutotuneConfig& right);
 
   absl::string_view GetModelStr() const {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
@@ -184,7 +218,8 @@ class AutotuneConfig {
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
   mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
-  std::string autotune_cache_dir_;
+  // Can be nullptr.
+  std::shared_ptr<ExternalCacheInterface> external_cache_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
@@ -314,14 +349,6 @@ struct AutotunerUtil {
 
 absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto);
-
-// Exposed only for testing. Returns the SHA-256 hash of the input string,
-// encoded in base64.
-//
-// SHA-256 was chosen to follow industry best practices and avoid collisions.
-// Git is also transitioning to SHA-256. This is probably better than
-// tsl::Fingerprint128.
-absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s);
 
 }  // namespace gpu
 }  // namespace xla

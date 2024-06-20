@@ -19,9 +19,11 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -75,31 +78,7 @@ static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
-absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
-  llvm::SHA256 sha256;
-  sha256.update(llvm::StringRef(s));
-  std::array<uint8_t, 32> hash = sha256.final();
-  // C++ strict aliasing rules allow reinterpret casting to (const) char*.
-  absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
-                              hash.size());
-  std::string base64_encoded_hash;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
-  return base64_encoded_hash;
-}
-
 namespace {
-
-// Get the path corresponding to the given key.
-absl::StatusOr<std::string> GetCacheFilePath(absl::string_view cache_dir,
-                                             const AutotuneCacheKey& key) {
-  if (cache_dir.empty()) {
-    return absl::InvalidArgumentError("autotune_cache_dir should not be empty");
-  }
-
-  TF_ASSIGN_OR_RETURN(std::string key_hash,
-                      GetBase64EncodedSha256Hash(key.ToString()));
-  return tsl::io::JoinPath(cache_dir, absl::StrCat(key_hash, ".textproto"));
-}
 
 struct ResultAndInserted {
   // The result that ended up in the cache. This is the existing result if
@@ -119,43 +98,26 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
   return {it->second, inserted};
 }
 
-absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
-                                                AutotuneResult result,
-                                                std::string_view cache_dir)
-    ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  if (cache_dir.empty()) {
-    return absl::OkStatus();
-  }
-
-  TF_ASSIGN_OR_RETURN(const std::string file_path,
-                      GetCacheFilePath(cache_dir, key));
-
-  VLOG(1) << "Writing autotune result to file: " << file_path;
-
-  std::string result_str;
-  if (!tsl::protobuf::TextFormat::PrintToString(result, &result_str)) {
+absl::Status AddResultToExternalCache(const AutotuneCacheKey& key,
+                                      AutotuneResult result,
+                                      ExternalCacheInterface& cache) {
+  std::string value;
+  if (!tsl::protobuf::TextFormat::PrintToString(result, &value)) {
     return absl::InternalError("Failed to serialize autotune result.");
   }
 
-  // Rename trick: Write to a temporary file, then rename it to the final file
-  // to avoid mingled files when multiple processes are writing to the same
-  // file. Also avoids reading incomplete files. (This may not work on all file
-  // systems.)
-  std::string temp_file_path = tsl::io::GetTempFilename(".textproto");
-  tsl::Env* default_env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(
-      tsl::WriteStringToFile(default_env, temp_file_path, result_str));
-  return default_env->RenameFile(temp_file_path, file_path);
+  return cache.Set(ExternalCacheItemType::kAutotuneResult, key.ToString(),
+                   value);
 }
 
-absl::StatusOr<ResultAndInserted> AddResultToCaches(const AutotuneCacheKey& key,
-                                                    AutotuneResult result,
-                                                    std::string_view cache_dir)
+absl::StatusOr<ResultAndInserted> AddResultToCaches(
+    const AutotuneCacheKey& key, AutotuneResult result,
+    ExternalCacheInterface* external_cache)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);
-  if (result_and_inserted.inserted) {
-    TF_RETURN_IF_ERROR(AddResultToFileBasedCacheIfEnabled(
-        key, result_and_inserted.result, cache_dir));
+  if (result_and_inserted.inserted && external_cache != nullptr) {
+    TF_RETURN_IF_ERROR(AddResultToExternalCache(key, result_and_inserted.result,
+                                                *external_cache));
   }
   return result_and_inserted;
 }
@@ -170,28 +132,16 @@ std::optional<AutotuneResult> TryToFindInInMemoryCache(
   return it->second;
 }
 
-absl::StatusOr<std::optional<AutotuneResult>>
-TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
-                                   absl::string_view cache_dir)
-    ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  if (cache_dir.empty()) {
+absl::StatusOr<std::optional<AutotuneResult>> TryToFindInExternalCache(
+    const AutotuneCacheKey& key, ExternalCacheInterface& external_cache) {
+  TF_ASSIGN_OR_RETURN(std::optional<std::string> value,
+                      external_cache.Get(ExternalCacheItemType::kAutotuneResult,
+                                         key.ToString()));
+  if (!value.has_value()) {
     return std::nullopt;
   }
-
-  TF_ASSIGN_OR_RETURN(const std::string file_path,
-                      GetCacheFilePath(cache_dir, key));
-  if (!tsl::Env::Default()->FileExists(file_path).ok()) {
-    VLOG(1) << "Autotune result file not found: " << file_path;
-    return std::nullopt;
-  }
-
-  VLOG(1) << "Autotune result file found: " << file_path;
-  std::string autotune_result_str;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), file_path,
-                                           &autotune_result_str));
   AutotuneResult result;
-  if (!tsl::protobuf::TextFormat::ParseFromString(autotune_result_str,
-                                                  &result)) {
+  if (!tsl::protobuf::TextFormat::ParseFromString(value.value(), &result)) {
     return absl::InvalidArgumentError("Failed to parse autotune result.");
   }
   return result;
@@ -312,8 +262,8 @@ AutotuneCacheKey::AutotuneCacheKey(absl::string_view model_str,
     : AutotuneCacheKey(model_str, ToCanonicalString(&instr)) {}
 
 namespace {
-absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
-    const AutotuneCacheKey& key, absl::string_view cache_dir)
+absl::StatusOr<std::optional<AutotuneResult>> TryToFindInCache(
+    const AutotuneCacheKey& key, ExternalCacheInterface* external_cache)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   std::optional<AutotuneResult> opt_result = TryToFindInInMemoryCache(key);
   if (opt_result.has_value()) {
@@ -325,17 +275,19 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
     return opt_result;
   }
 
-  TF_ASSIGN_OR_RETURN(opt_result,
-                      TryToFindInFileBasedCacheIfEnabled(key, cache_dir));
-  if (opt_result.has_value()) {
-    AddResultToInMemoryCache(key, opt_result.value());
+  if (external_cache != nullptr) {
+    TF_ASSIGN_OR_RETURN(opt_result,
+                        TryToFindInExternalCache(key, *external_cache));
+    if (opt_result.has_value()) {
+      AddResultToInMemoryCache(key, opt_result.value());
 
-    if (VLOG_IS_ON(1)) {
-      LOG(INFO) << "File-based autotune cache hit";
-    } else if (VLOG_IS_ON(2)) {
-      LOG(INFO) << "File-based autotune cache hit: key = " << key.ToString();
+      if (VLOG_IS_ON(1)) {
+        LOG(INFO) << "File-based autotune cache hit";
+      } else if (VLOG_IS_ON(2)) {
+        LOG(INFO) << "File-based autotune cache hit: key = " << key.ToString();
+      }
+      return opt_result;
     }
-    return opt_result;
   }
 
   if (VLOG_IS_ON(1)) {
@@ -355,7 +307,7 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 /*static*/ absl::StatusOr<bool> AutotunerUtil::IsInCache(
     const AutotuneCacheKey& key, const AutotuneConfig& config) {
   TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
-                      TryFindInCache(key, config.autotune_cache_dir()));
+                      TryToFindInCache(key, config.external_cache()));
   return opt_res.has_value();
 }
 
@@ -364,7 +316,7 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
     const AutotuneConfig& config) {
   TF_ASSIGN_OR_RETURN(
       ResultAndInserted result_and_inserted,
-      AddResultToCaches(key, std::move(result), config.autotune_cache_dir()));
+      AddResultToCaches(key, std::move(result), config.external_cache()));
   return result_and_inserted.inserted;
 }
 
@@ -373,7 +325,7 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
     const AutotuneNoCacheFn& autotune_fn) {
   const AutotuneCacheKey key = GetKey(instr, config);
   TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
-                      TryFindInCache(key, config.autotune_cache_dir()));
+                      TryToFindInCache(key, config.external_cache()));
   if (opt_res.has_value()) {
     return opt_res.value();
   }
@@ -390,7 +342,7 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 
   TF_ASSIGN_OR_RETURN(ResultAndInserted result_and_inserted,
                       AddResultToCaches(key, std::move(autotune_result),
-                                        config.autotune_cache_dir()));
+                                        config.external_cache()));
   return result_and_inserted.result;
 }
 
@@ -498,6 +450,126 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
           ? opts.xla_gpu_redzone_padding_bytes()
           : 0);
 }
+
+std::string ExternalCacheItemTypeToString(ExternalCacheItemType type) {
+  switch (type) {
+    case ExternalCacheItemType::kAutotuneResult:
+      return "autotune_result";
+  }
+}
+
+namespace {
+
+// Returns the SHA-256 hash of the input string, encoded in base64.
+//
+// SHA-256 was chosen to follow industry best practices and avoid collisions.
+// Git is also transitioning to SHA-256. This is probably better than
+// tsl::Fingerprint128.
+absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
+  llvm::SHA256 sha256;
+  sha256.update(llvm::StringRef(s));
+  std::array<uint8_t, 32> hash = sha256.final();
+  // C++ strict aliasing rules allow reinterpret casting to (const) char*.
+  absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
+                              hash.size());
+  std::string base64_encoded_hash;
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
+  return base64_encoded_hash;
+}
+
+}  // namespace
+
+// Get the path corresponding to the given key.
+/*static*/ absl::StatusOr<std::string> FileBasedCache::GetCacheFilePath(
+    absl::string_view cache_dir, ExternalCacheItemType type,
+    absl::string_view key) {
+  if (cache_dir.empty()) {
+    return absl::InvalidArgumentError("cache_dir should not be empty");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string key_hash,
+                      GetBase64EncodedSha256Hash(absl::StrCat(
+                          ExternalCacheItemTypeToString(type), ":", key)));
+  return tsl::io::JoinPath(cache_dir, absl::StrCat(key_hash, ".textproto"));
+}
+
+absl::StatusOr<std::optional<std::string>> FileBasedCache::Get(
+    ExternalCacheItemType type, absl::string_view key) {
+  TF_ASSIGN_OR_RETURN(const std::string file_path,
+                      GetCacheFilePath(cache_dir_, type, key));
+
+  if (!tsl::Env::Default()->FileExists(file_path).ok()) {
+    VLOG(1) << "Autotune result file not found: " << file_path;
+    return std::nullopt;
+  }
+
+  VLOG(1) << "Autotune result file found: " << file_path;
+  std::string value;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), file_path, &value));
+  return value;
+}
+
+absl::Status FileBasedCache::Set(ExternalCacheItemType type,
+                                 absl::string_view key,
+                                 absl::string_view value) {
+  TF_ASSIGN_OR_RETURN(const std::string file_path,
+                      GetCacheFilePath(cache_dir_, type, key));
+
+  VLOG(1) << "Writing autotune result to file: " << file_path;
+
+  // Rename trick: Write to a temporary file, then rename it to the final file
+  // to avoid mingled files when multiple processes are writing to the same
+  // file. Also avoids reading incomplete files. (This may not work on all file
+  // systems.)
+  std::string temp_file_path = tsl::io::GetTempFilename(".textproto");
+  tsl::Env* default_env = tsl::Env::Default();
+  TF_RETURN_IF_ERROR(
+      tsl::WriteStringToFile(default_env, temp_file_path, value));
+  return default_env->RenameFile(temp_file_path, file_path);
+}
+
+namespace {
+
+std::shared_ptr<ExternalCacheInterface> CreateCacheIfNotEmptyString(
+    std::string cache_dir) {
+  if (cache_dir.empty()) {
+    return nullptr;
+  }
+  return std::make_shared<FileBasedCache>(cache_dir);
+}
+
+}  // namespace
+
+AutotuneConfig::AutotuneConfig(
+    const std::variant<DeviceConfig, DevicelessConfig>& config,
+    const DebugOptions& debug_options)
+    : config_(config),
+      autotune_level_(debug_options.xla_gpu_autotune_level()),
+      should_crash_on_check_failure_(
+          debug_options.xla_gpu_crash_on_verification_failures()),
+      exhaustive_tiling_search_(
+          debug_options.xla_gpu_exhaustive_tiling_search()),
+      require_complete_aot_autotune_results_(
+          debug_options.xla_gpu_require_complete_aot_autotune_results()),
+      external_cache_(CreateCacheIfNotEmptyString(
+          debug_options.xla_gpu_per_fusion_autotune_cache_dir())) {}
+
+AutotuneConfig::AutotuneConfig(
+    const std::variant<DeviceConfig, DevicelessConfig>& config,
+    std::shared_ptr<ExternalCacheInterface> external_cache)
+    : AutotuneConfig(config, DebugOptions()) {
+  external_cache_ = std::move(external_cache);
+}
+
+AutotuneConfig::AutotuneConfig(const AutotuneConfig& right)
+    : config_(right.config_),
+      autotune_level_(right.autotune_level_),
+      should_crash_on_check_failure_(right.should_crash_on_check_failure_),
+      exhaustive_tiling_search_(right.exhaustive_tiling_search_),
+      require_complete_aot_autotune_results_(
+          right.require_complete_aot_autotune_results_),
+      external_cache_(right.external_cache_) {}
 
 }  // namespace gpu
 }  // namespace xla
