@@ -156,6 +156,7 @@ cc_library(
         ":thunk",
         ":thunk_executor",
         "//xla:util",
+        "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor",
         "//xla/tsl/concurrency:async_value",
@@ -167,6 +168,27 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "conditional_thunk_test",
+    srcs = ["conditional_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":conditional_thunk",
+        ":thunk",
+        "//xla:shape_util",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

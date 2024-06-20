@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
@@ -96,7 +97,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
 }
 
 ConditionalThunk::BufferUses ConditionalThunk::buffer_uses() const {
-  BufferUses buffer_uses;
+  BufferUses buffer_uses = {BufferUse::Read(branch_index_buffer_)};
   for (const auto& branch_executor : branch_executors_) {
     BufferUses uses = branch_executor.buffer_uses();
     buffer_uses.insert(buffer_uses.end(), uses.begin(), uses.end());
