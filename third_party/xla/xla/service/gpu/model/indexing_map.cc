@@ -228,21 +228,18 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
 
 AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto mlir_context = range_evaluator_->GetMLIRContext();
-  auto lhs_simplified = SimplifyOnce(div.getLHS());
-  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
-  auto rhs = range_evaluator_->ComputeExpressionRange(div.getRHS());
+  auto rhs_range = range_evaluator_->ComputeExpressionRange(div.getRHS());
 
   // TODO(jreiffers): Split this function into multiple (one for each rewrite
   // rule).
-  if (0 <= lhs.lower && lhs.upper < rhs.lower) {
-    return getAffineConstantExpr(0, mlir_context);
-  }
 
   // The logic below assumes we have a constant RHS.
-  if (!rhs.IsPoint()) {
+  if (!rhs_range.IsPoint()) {
     return div;
   }
-  int64_t d = rhs.lower;
+  int64_t d = rhs_range.lower;
+
+  auto lhs_simplified = SimplifyOnce(div.getLHS());
 
   // Rewrite `(c % ab) // a` to `(c // a) % b`.
   //   (c % ab) // a
@@ -253,13 +250,6 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   if (auto mod = GetConstantRhs(lhs_simplified, AffineExprKind::Mod);
       mod && (*mod % d == 0)) {
     return GetLhs(lhs_simplified).floorDiv(d) % (*mod / d);
-  }
-
-  // If the dividend's range has a single element, return its value.
-  int64_t a = FloorDiv(lhs.lower, d);
-  int64_t b = FloorDiv(lhs.upper, d);
-  if (a == b) {
-    return getAffineConstantExpr(a, mlir_context);
   }
 
   // Rewrite `(a / b) / c` to `a / (b * c)` if `a >= 0` and `b` and `c` are
@@ -432,6 +422,12 @@ AffineExpr CanonicalizeOrder(AffineExpr in) {
 }
 
 AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
+  auto bounds = range_evaluator_->ComputeExpressionRange(expr);
+  if (bounds.IsPoint()) {
+    return getAffineConstantExpr(bounds.lower,
+                                 range_evaluator_->GetMLIRContext());
+  }
+
   switch (expr.getKind()) {
     case AffineExprKind::Mul: {
       auto lhs = SimplifyOnce(GetLhs(expr));
@@ -525,16 +521,6 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
       return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
     case AffineExprKind::FloorDiv:
       return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
-    case AffineExprKind::DimId:
-    case AffineExprKind::SymbolId: {
-      auto bounds = range_evaluator_->ComputeExpressionRange(expr);
-      if (bounds.IsPoint()) {
-        return getAffineConstantExpr(bounds.lower,
-                                     range_evaluator_->GetMLIRContext());
-      }
-      return expr;
-    }
-
     default:
       return expr;
   }
