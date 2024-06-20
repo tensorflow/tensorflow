@@ -18,17 +18,31 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include <gmock/gmock.h>
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {

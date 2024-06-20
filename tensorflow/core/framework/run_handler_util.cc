@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
