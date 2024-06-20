@@ -765,7 +765,6 @@ cc_library(
         "transforms/generic_host_to_llvm.cc",
         "transforms/lower_index_cast_pass.cc",
         "transforms/naive_copy_removal.cc",
-        "transforms/propagate_static_shapes_to_kernel.cc",
         "transforms/tile_loops_pass.cc",
         "transforms/unbufferize_pass.cc",
         "transforms/unroll_loops.cc",
