@@ -22,7 +22,7 @@ extern "C" {
 
 extern void __xla_cpu_runtime_HandleFfiCall(
     const void* run_options_ptr, const char* target_name_ptr,
-    int64_t target_name_len, void* output, void** inputs,
+    int64_t target_name_len, void** outputs, void** inputs,
     const char* opaque_str_ptr, int64_t opaque_str_len, void* status_opaque,
     int32_t* operand_types, int64_t operand_count, int64_t* operand_dims,
     int32_t* result_types, int64_t result_count, int64_t* result_dims);

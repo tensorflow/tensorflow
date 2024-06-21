@@ -87,6 +87,7 @@ limitations under the License.
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/onednn_memory_util.h"
@@ -2836,48 +2837,71 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());
-  llvm::AllocaInst* operands_alloca =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(b_.getPtrTy(),
-                                                  b_.getInt32(operands.size()),
-                                                  "cc_operands_alloca", &b_);
-  for (size_t i = 0; i < operands.size(); ++i) {
-    llvm::Value* slot_in_operands_alloca = InBoundsGEP(
-        operands_alloca->getAllocatedType(), operands_alloca, {b_.getInt64(i)});
-    Store(GetEmittedValueFor(operands[i]), slot_in_operands_alloca);
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  auto is_typed_ffi = typed_custom_call->api_version() ==
+                      CustomCallApiVersion::API_VERSION_TYPED_FFI;
+  std::vector<llvm::Value*> operand_values;
+  operand_values.reserve(operands.size());
+
+  for (int64_t i = 0; i < operands.size(); ++i) {
+    HloInstruction* operand = operands[i];
+    if (is_typed_ffi) {
+      // Emit nested tuples as flat buffer pointers
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+          operand->shape(), [&](const Shape& shape, const ShapeIndex& index) {
+            if (!shape.IsArray()) {
+              return absl::OkStatus();
+            }
+            TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                                assignment_.GetUniqueSlice(operand, index));
+            operand_values.push_back(EmitBufferPointer(slice, shape));
+            return absl::OkStatus();
+          }));
+    } else {
+      operand_values.push_back(GetEmittedValueFor(operand));
+    }
   }
+  llvm::AllocaInst* operands_alloca =
+      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+          b_.getPtrTy(), b_.getInt32(operand_values.size()),
+          "cc_operands_alloca", &b_);
   if (emit_code_for_msan_) {
     // Mark the alloca as initialized for msan. The buffer gets read by the
     // custom callee, which might be msan-instrumented.
     // TODO(b/66051036): Run the msan instrumentation pass instead.
     const llvm::DataLayout& dl = module_->getDataLayout();
     llvm::Type* intptr_type = b_.getIntPtrTy(dl);
-    EmitCallToFunc(
-        "__msan_unpoison",
-        {operands_alloca,
-         llvm::ConstantInt::get(
-             intptr_type, *operands_alloca->getAllocationSizeInBits(dl) / 8)},
-        b_.getVoidTy());
+    EmitCallToFunc("__msan_unpoison",
+                   {operands_alloca,
+                    llvm::ConstantInt::get(
+                        intptr_type, *operands_alloca->getAllocationSize(dl))},
+                   b_.getVoidTy());
+  }
+  for (int64_t i = 0; i < operand_values.size(); ++i) {
+    llvm::Value* slot_in_operands_alloca = InBoundsGEP(
+        operands_alloca->getAllocatedType(), operands_alloca, {b_.getInt64(i)});
+    Store(operand_values[i], slot_in_operands_alloca);
   }
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   // Write the tuple table if the output is a tuple.
+  std::vector<llvm::Value*> tuple_ptrs;
   if (custom_call->shape().IsTuple()) {
-    std::vector<llvm::Value*> base_ptrs;
     for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
          ++i) {
       const Shape& elem_shape =
           ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
-      TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
+      if (!is_typed_ffi) {
+        TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
+      }
       TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(custom_call, {i}));
-      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
-      base_ptrs.push_back(addr);
+      tuple_ptrs.push_back(EmitBufferPointer(slice, elem_shape));
     }
-    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_);
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), tuple_ptrs, &b_);
   }
   auto* output_address = GetEmittedValueFor(custom_call);
 
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   switch (typed_custom_call->api_version()) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
       EmitCallToFunc(custom_call->custom_call_target(),
@@ -2900,7 +2924,45 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       break;
     }
     case CustomCallApiVersion::API_VERSION_TYPED_FFI: {
-      EmitCallToFfi(typed_custom_call, output_address, operands_alloca);
+      // Flatten into raw buffers to avoid (nested) tuples
+      std::vector<llvm::Value*> buffer_ptrs;
+      if (custom_call->shape().IsTuple()) {
+        buffer_ptrs.reserve(ShapeUtil::TupleElementCount(custom_call->shape()));
+      }
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+          custom_call->shape(),
+          [&](const Shape& shape, const ShapeIndex& index) {
+            if (!shape.IsArray()) {
+              return absl::OkStatus();
+            }
+            TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                                assignment_.GetUniqueSlice(custom_call, index));
+            buffer_ptrs.push_back(EmitBufferPointer(slice, shape));
+            return absl::OkStatus();
+          }));
+      llvm::AllocaInst* results_alloca =
+          llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+              b_.getPtrTy(), b_.getInt32(buffer_ptrs.size()),
+              "ffi_results_alloca", &b_);
+      if (emit_code_for_msan_) {
+        // Mark the alloca as initialized for msan
+        // TODO(b/66051036): Run the msan instrumentation pass instead.
+        const llvm::DataLayout& dl = module_->getDataLayout();
+        llvm::Type* intptr_type = b_.getIntPtrTy(dl);
+        EmitCallToFunc(
+            "__msan_unpoison",
+            {results_alloca,
+             llvm::ConstantInt::get(intptr_type,
+                                    *results_alloca->getAllocationSize(dl))},
+            b_.getVoidTy());
+      }
+      for (int i = 0; i < buffer_ptrs.size(); ++i) {
+        llvm::Value* tuple_slot_in_results_alloca =
+            InBoundsGEP(results_alloca->getAllocatedType(), results_alloca,
+                        {b_.getInt64(i)});
+        Store(buffer_ptrs[i], tuple_slot_in_results_alloca);
+      }
+      EmitCallToFfi(typed_custom_call, results_alloca, operands_alloca);
       EmitEarlyReturnIfErrorStatus();
       break;
     }
@@ -3159,24 +3221,45 @@ static const Shape& GetShape(T&& arg) {
   }
 };
 
-template <typename T>
-llvm::AllocaInst* IrEmitter::StoreTypes(std::string_view alloca_name,
-                                        T&& args) {
-  auto* types_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-      b_.getInt32Ty(), b_.getInt64(args.size()), alloca_name, &b_);
-
-  for (int64_t i = 0; i < args.size(); ++i) {
-    llvm::Value* slot_in_types_alloca =
-        ConstInBoundsGEP1_32(b_.getInt32Ty(), types_alloca, i);
-    Store(b_.getInt32(GetShape(args[i]).element_type()), slot_in_types_alloca);
-  }
-  return types_alloca;
+struct EncodedInfo {
+  llvm::AllocaInst* alloca;
+  int64_t size;
 };
 
-template <typename T>
-llvm::Value* IrEmitter::StoreShapes(std::string_view alloca_name, T&& args) {
-  // Prepare metadata for all buffers
-  // Shapes metadata is encoded using contiguous flattened dimension values:
+template <typename Args>
+static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
+                                     const Args& args, llvm::IRBuilder<>& ir) {
+  // Store the types of `args` into the allocated memory. These types are stored
+  // as int32_t values contiguously. All tuples are flattened to bare elements.
+  int64_t total_elements = 0;
+  for (int64_t i = 0; i < args.size(); ++i) {
+    total_elements += ShapeUtil::GetLeafCount(GetShape(args[i]));
+  }
+  llvm::AllocaInst* types_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      ir.getInt32Ty(), ir.getInt64(total_elements), alloca_name, &ir);
+  int64_t element_id = 0;
+  auto store_type = [&](const Shape& shape, const ShapeIndex& index) {
+    if (shape.IsTuple()) {
+      return;
+    }
+    llvm::Value* slot_in_types_alloca = ir.CreateConstInBoundsGEP1_32(
+        ir.getInt32Ty(), types_alloca, element_id++);
+    ir.CreateStore(ir.getInt32(shape.element_type()), slot_in_types_alloca);
+  };
+
+  for (int64_t i = 0; i < args.size(); ++i) {
+    ShapeUtil::ForEachSubshape(GetShape(args[i]), store_type);
+  }
+  CHECK_EQ(element_id, total_elements);
+  return {types_alloca, total_elements};
+};
+
+template <typename Args>
+static EncodedInfo StoreEncodedShapes(std::string_view alloca_name,
+                                      const Args& args, llvm::IRBuilder<>& ir) {
+  // Prepare metadata for all buffers. A tuple shape is flattened to only encode
+  // information about its elements (buffers). Shapes metadata is encoded using
+  // contiguous flattened dimension values:
   //    {
   // 1:   DIMCOUNT_1, DIM_1[1], DIM_1[2], ..., DIM_1[DIMCOUNT_1],
   //                  \______________DIMCOUNT_1 _______________/
@@ -3187,47 +3270,65 @@ llvm::Value* IrEmitter::StoreShapes(std::string_view alloca_name, T&& args) {
   //                  \______________DIMCOUNT_N _______________/
   //    }
   //  where N is `operand_count`, and `DIMCOUNT_i` is the # of dimensions
-  std::size_t total_dims =
-      absl::c_accumulate(args, int64_t{0}, [](int64_t acc, auto&& arg) {
-        return acc + GetShape(arg).dimensions().size();
-      });
-  int64_t encoded_shapes_size = args.size()  // the dimension count identifiers
-                                + total_dims;  // the # of dimension values
+  int64_t total_dims = 0;
+  int64_t total_dim_counts = 0;
+  for (int64_t i = 0; i < args.size(); ++i) {
+    ShapeUtil::ForEachSubshape(
+        GetShape(args[i]), [&](const Shape& shape, const ShapeIndex& index) {
+          if (!shape.IsArray()) {
+            return;
+          }
+          total_dims += shape.dimensions().size();
+          ++total_dim_counts;
+        });
+  }
+  int64_t shapes_encoding_size = total_dim_counts  // the # of dimension counts
+                                 + total_dims;     // the # of dimension values
 
-  llvm::Value* shapes_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-      b_.getInt64Ty(), b_.getInt64(encoded_shapes_size), alloca_name, &b_);
+  llvm::AllocaInst* shapes_alloca = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      ir.getInt64Ty(), ir.getInt64(shapes_encoding_size), alloca_name, &ir);
 
   int64_t slot_id = 0;
-  for (int64_t i = 0; i < args.size(); ++i) {
-    auto dims = GetShape(args[i]).dimensions();
-    llvm::Value* alloca_slot =
-        ConstInBoundsGEP1_64(b_.getInt64Ty(), shapes_alloca, slot_id++);
-    // Store the operand count
-    Store(b_.getInt64(dims.size()), alloca_slot);
-    // Store the operand dimensions
-    for (int64_t dim : dims) {
-      alloca_slot =
-          ConstInBoundsGEP1_64(b_.getInt64Ty(), shapes_alloca, slot_id++);
-      Store(b_.getInt64(dim), alloca_slot);
+  auto store_shape = [&](const Shape& shape, const ShapeIndex& index) {
+    if (!shape.IsArray()) {
+      return;
     }
+    llvm::Value* alloca_slot = ir.CreateConstInBoundsGEP1_64(
+        ir.getInt64Ty(), shapes_alloca, slot_id++);
+    // Store the operand count
+    ir.CreateStore(ir.getInt64(shape.dimensions().size()), alloca_slot);
+    // Store the operand dimensions
+    for (int64_t dim : shape.dimensions()) {
+      alloca_slot = ir.CreateConstInBoundsGEP1_64(ir.getInt64Ty(),
+                                                  shapes_alloca, slot_id++);
+      ir.CreateStore(ir.getInt64(dim), alloca_slot);
+    }
+  };
+
+  for (int64_t i = 0; i < args.size(); ++i) {
+    ShapeUtil::ForEachSubshape(GetShape(args[i]), store_shape);
   }
-  CHECK_EQ(slot_id, encoded_shapes_size);  // All slots are filled
-  return shapes_alloca;
+  CHECK_EQ(slot_id, shapes_encoding_size);  // All slots are filled
+  return {shapes_alloca, shapes_encoding_size};
 };
 
 llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
-                                      llvm::Value* output_address,
+                                      llvm::AllocaInst* results_alloca,
                                       llvm::AllocaInst* operands_alloca) {
   const auto& operands = absl::MakeSpan(custom_call->operands());
   const auto& shape = custom_call->shape();
   const auto& result_shapes =
       shape.IsTuple() ? shape.tuple_shapes() : std::vector<Shape>({shape});
 
-  auto operand_types_alloca = StoreTypes("meta_types_operands", operands);
-  auto operand_shapes_alloca = StoreShapes("meta_shapes_operands", operands);
+  EncodedInfo operand_types_encoded =
+      StoreEncodedTypes("operands_types", operands, b_);
+  EncodedInfo operand_shapes_encoded =
+      StoreEncodedShapes("operands_shapes", operands, b_);
 
-  auto result_types_alloca = StoreTypes("meta_types_results", result_shapes);
-  auto result_shapes_alloca = StoreShapes("meta_shapes_results", result_shapes);
+  EncodedInfo result_types_encoded =
+      StoreEncodedTypes("results_types", result_shapes, b_);
+  EncodedInfo result_shapes_encoded =
+      StoreEncodedShapes("results_shapes", result_shapes, b_);
 
   const absl::string_view target = custom_call->custom_call_target();  // name
   const absl::string_view opaque = custom_call->opaque();
@@ -3236,20 +3337,20 @@ llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
   const auto opaque_ref = llvm_ir::AsStringRef(opaque);
 
   std::vector<llvm::Value*> arguments = {
-      GetExecutableRunOptionsArgument(),     // run_options_ptr
-      b_.CreateGlobalStringPtr(target_ref),  // target_name_ptr
-      b_.getInt64(target.size()),            // target_name_len
-      output_address,                        // output
-      operands_alloca,                       // inputs
-      b_.CreateGlobalStringPtr(opaque_ref),  // opaque_str_ptr
-      b_.getInt64(opaque.size()),            // opaque_str_len
-      GetStatusArgument(),                   // status_opaque
-      operand_types_alloca,                  // operand_types
-      b_.getInt64(operands.size()),          // operand_count
-      operand_shapes_alloca,                 // operand_dims
-      result_types_alloca,                   // result_types
-      b_.getInt64(result_shapes.size()),     // result_count
-      result_shapes_alloca,                  // result_dims
+      /*run_options_ptr=*/GetExecutableRunOptionsArgument(),
+      /*target_name_ptr=*/b_.CreateGlobalStringPtr(target_ref),
+      /*target_name_len=*/b_.getInt64(target.size()),
+      /*outputs=*/results_alloca,
+      /*inputs=*/operands_alloca,
+      /*opaque_str_ptr=*/b_.CreateGlobalStringPtr(opaque_ref),
+      /*opaque_str_len=*/b_.getInt64(opaque.size()),
+      /*status_opaque=*/GetStatusArgument(),
+      /*operand_types=*/operand_types_encoded.alloca,
+      /*operand_count=*/b_.getInt64(operand_types_encoded.size),
+      /*operand_dims=*/operand_shapes_encoded.alloca,
+      /*result_types=*/result_types_encoded.alloca,
+      /*result_count=*/b_.getInt64(result_types_encoded.size),
+      /*result_dims=*/result_shapes_encoded.alloca,
   };
 
   return EmitCallToFunc(runtime::kHandleFfiCallSymbolName, arguments,
