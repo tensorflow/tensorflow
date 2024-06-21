@@ -18,13 +18,15 @@ limitations under the License.
 /// information to/from model metadata.
 ///
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/graph_info.h"
+#include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 
 namespace tflite {
 
@@ -57,4 +59,4 @@ inline constexpr char kModelUseStablehloTensorKey[] = "keep_stablehlo_constant";
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_
