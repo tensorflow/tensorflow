@@ -26,7 +26,6 @@ cc_library(
     hdrs = ["hlo_live_range.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
@@ -35,6 +34,7 @@ cc_library(
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",

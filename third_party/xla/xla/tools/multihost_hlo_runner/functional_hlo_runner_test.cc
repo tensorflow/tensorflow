@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/statusor.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/lib/core/status_test_util.h"

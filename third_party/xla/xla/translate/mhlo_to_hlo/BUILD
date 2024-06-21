@@ -20,7 +20,6 @@ cc_library(
     hdrs = ["attribute_exporter.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -28,6 +27,7 @@ cc_library(
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -39,11 +39,11 @@ cc_library(
     hdrs = ["layout_util.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
