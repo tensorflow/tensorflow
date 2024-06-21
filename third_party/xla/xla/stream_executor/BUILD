@@ -4,7 +4,7 @@ load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -137,7 +137,8 @@ cc_library(
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         ":stream_executor_impl",
-        "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
+    ]) + if_google([
+        "@com_google_protobuf//:wrappers_cc_proto",  # indirectly-used by dnn.h
     ]),
 )
 
@@ -225,7 +226,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ] + if_static(["@com_google_protobuf//:protobuf"]),
+    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
 cc_library(
@@ -398,7 +399,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ] + if_static(["@com_google_protobuf//:protobuf"]),
+    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
 cc_library(

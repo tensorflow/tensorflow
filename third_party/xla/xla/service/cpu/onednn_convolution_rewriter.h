@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -35,7 +36,7 @@ class OneDnnConvolutionRewriter : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

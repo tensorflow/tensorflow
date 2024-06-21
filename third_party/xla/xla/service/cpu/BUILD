@@ -633,6 +633,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/cpu:dot_op_emitter",
+        "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",

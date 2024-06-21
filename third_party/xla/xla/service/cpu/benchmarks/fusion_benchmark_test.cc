@@ -87,6 +87,33 @@ static void BM_BcastFusionF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule dynamic_update_slice_fusion_f32_$d0
+
+    ENTRY e {
+      p0 = f32[$d0,256] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      slice = f32[1,1] dynamic-slice(p0, p1, p2), dynamic_slice_sizes={1,1}
+      add = f32[1,1] add(slice, slice)
+      ROOT update = f32[$d0,256] dynamic-update-slice(p0, add, p1, p2)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {d0, 256});
+  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  auto p1 = LiteralUtil::CreateR0<int32_t>(0);
+  auto p2 = LiteralUtil::CreateR0<int32_t>(0);
+
+  std::vector<const Literal*> args = {&p0, &p1, &p2};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
 BENCHMARK(BM_FusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
@@ -97,6 +124,15 @@ BENCHMARK(BM_FusionF32)
     ->Arg(16384);
 
 BENCHMARK(BM_BcastFusionF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(16384);
+
+BENCHMARK(BM_DynamicUpdateSliceFusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)

@@ -48,7 +48,7 @@ pytype_strict_library(
 )
 
 # NOTE: Copybara detects the `tsl_pybind_extension` rule and automatically
-# injects the "@com_google_protobuf//:protobuf_python" python dependency
+# injects the @com_google_protobuf//:protobuf_python python dependency
 # required by "@pybind11_protobuf//pybind11_protobuf:native_proto_caster".
 tsl_pybind_extension(
     name = "_types",

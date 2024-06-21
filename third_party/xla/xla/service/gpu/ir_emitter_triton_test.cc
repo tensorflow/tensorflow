@@ -5668,6 +5668,60 @@ CHECK:        }
 )"));
 }
 
+TEST_F(TritonTest, TestSoftMaxWithTileElementsNotAllContiguous) {
+  const std::string kHloText = R"(
+HloModule m
+
+region {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.1 = f32[] add(param_0, param_1)
+}
+
+triton_softmax_computation {
+  constant.1 = f32[] constant(0)
+  broadcast.2 = f32[4,4,8] broadcast(constant.1), dimensions={}
+  param_0.1 = f32[4,4,8] parameter(0)
+  constant = f32[] constant(0)
+  reduce = f32[4,4] reduce(param_0.1, constant), dimensions={2}, to_apply=region
+  broadcast = f32[4,4,8] broadcast(reduce), dimensions={0,1}
+  multiply = f32[4,4,8] multiply(broadcast.2, broadcast)
+  ROOT add.2 = f32[4,4,8] add(multiply, broadcast)
+}
+
+ENTRY entry_computation {
+  param_0.2 = f32[4,4,8] parameter(0)
+  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["2","2","8"],"num_warps":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6,
+                                                /*arel=*/1e-6}));
+}
+
+TEST_F(TritonTest, TestSliceWithTileElementsNotAllContiguous) {
+  const std::string kHloText = R"(
+HloModule m
+
+region {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.2 = f32[] add(param_0, param_1)
+}
+
+fused_computation {
+  param_0.1 = f32[16,16,32] parameter(0)
+  slice = f32[4,4,8] slice(param_0.1), slice={[2:10:2], [2:6], [3:11]}
+  slice.1 = f32[4,4,8] slice(param_0.1), slice={[4:8], [8:16:2], [13:21]}
+  ROOT add.3 = f32[4,4,8] add(slice, slice.1)
+}
+
+ENTRY entry_computation {
+  param_0.2 = f32[16,16,32] parameter(0)
+  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["2","2","8"],"num_warps":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6,
+                                                /*arel=*/1e-6}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
