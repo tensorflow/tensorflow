@@ -616,7 +616,7 @@ ENTRY main {
                                    GetToolkitVersion(), fp8_rewrite);
   }
 
-  EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
+  TF_EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
   const bool is_at_least_hopper =
       std::holds_alternative<se::CudaComputeCapability>(
           autotune_config.GetGpuComputeCapability()) &&

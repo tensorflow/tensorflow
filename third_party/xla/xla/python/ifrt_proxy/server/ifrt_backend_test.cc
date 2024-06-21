@@ -69,6 +69,7 @@
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -963,7 +964,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
                 addressable_device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));
-  EXPECT_OK(CheckFuture(response.ready_future_handle()));
+  TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
 #endif
 

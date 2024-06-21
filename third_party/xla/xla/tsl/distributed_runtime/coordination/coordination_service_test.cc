@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/coordination/test_device.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status.h"
@@ -398,7 +399,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
   const absl::Status status =
       coord_service->RegisterTask(task_0, /*incarnation=*/0);
 
-  EXPECT_OK(status) << status;
+  TF_EXPECT_OK(status) << status;
 }
 
 TEST(CoordinationServiceTest,
@@ -500,17 +501,17 @@ TEST_F(CoordinateTwoTasksTest, InsertKeyValue_Duplicate_Fail) {
   EXPECT_TRUE(absl::IsAlreadyExists(
       coord_service_->InsertKeyValue("key0", "never_added")));
   auto result = coord_service_->TryGetKeyValue("key0");
-  EXPECT_OK(result.status());
+  TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.value(), "original_value");
 }
 
 TEST_F(CoordinateTwoTasksTest, InsertKeyValue_Duplicate_Overwrite) {
   EnableCoordinationService();
   ASSERT_OK(coord_service_->InsertKeyValue("key0", "original_value"));
-  EXPECT_OK(coord_service_->InsertKeyValue("key0", "overwritten_value",
-                                           /*allow_overwrite=*/true));
+  TF_EXPECT_OK(coord_service_->InsertKeyValue("key0", "overwritten_value",
+                                              /*allow_overwrite=*/true));
   auto result = coord_service_->TryGetKeyValue("key0");
-  EXPECT_OK(result.status());
+  TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.value(), "overwritten_value");
 }
 
@@ -910,9 +911,9 @@ TEST_F(CoordinationBarrierTest, Barrier) {
   EXPECT_TRUE(n_0.HasBeenNotified());
   EXPECT_TRUE(n_1.HasBeenNotified());
   EXPECT_TRUE(n_2.HasBeenNotified());
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
-  EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
 }
 
 TEST_F(CoordinationBarrierTest, BarrierWithSubsetOfTasks) {
@@ -941,8 +942,8 @@ TEST_F(CoordinationBarrierTest, BarrierWithSubsetOfTasks) {
   // All listed tasks passed the barrier.
   EXPECT_TRUE(n_0.HasBeenNotified());
   EXPECT_TRUE(n_1.HasBeenNotified());
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
 }
 
 TEST_F(CoordinationBarrierTest, BarrierWithMismatchedTasks) {
@@ -1017,8 +1018,8 @@ TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTaskThreeTasks) {
   n_1.WaitForNotification();
 
   // Barrier should pass because only participating tasks have called it.
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
 
   // Task 2 unexpectedly calls a barrier that it is not participating in.
   GetCoordinationService()->BarrierAsync(
@@ -1118,7 +1119,7 @@ TEST_F(CoordinationBarrierTest, BarrierCancelled) {
       GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
 
   EXPECT_TRUE(absl::IsCancelled(barrier_status));
-  EXPECT_OK(cancelled_status);
+  TF_EXPECT_OK(cancelled_status);
 }
 
 TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier_FutureBarrierFails) {
@@ -1161,9 +1162,9 @@ TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {
       GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
 
   EXPECT_TRUE(absl::IsFailedPrecondition(cancelled_status));
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
-  EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
 }
 
 TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
@@ -1209,10 +1210,10 @@ TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
   EXPECT_TRUE(n1.HasBeenNotified());
   EXPECT_TRUE(n2.HasBeenNotified());
   EXPECT_TRUE(n_repeat.HasBeenNotified());
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
-  EXPECT_OK(barrier_status_2);
-  EXPECT_OK(barrier_status_repeat);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_repeat);
 }
 
 TEST_F(CoordinationBarrierTest, BarrierFailsIfTaskIsAlreadyInError) {
@@ -1287,28 +1288,28 @@ TEST_F(CoordinationBarrierTest,
         barrier_status_2 = s;
         n_2.Notify();
       });
-  EXPECT_OK(barrier_status_0);
-  EXPECT_OK(barrier_status_1);
-  EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
 }
 
 TEST_F(CoordinateTwoTasksTest, ResetAndRegisterAgain) {
   EnableCoordinationService();
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
-  EXPECT_OK(coord_service_->ResetTask(task_0_));
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
 
   // Task should be allowed to register again after being reset.
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 }
 
 TEST_F(CoordinateTwoTasksTest, Reset_HeartbeatsAreAcceptedForAGracePeriod) {
   EnableCoordinationService();
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
-  EXPECT_OK(coord_service_->ResetTask(task_0_));
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
   // Heartbeat should be allowed for a short grace period after reset.
-  EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
 
   // Heartbeat failure should be triggered for disconnected task after grace
   // period.
@@ -1321,7 +1322,7 @@ TEST_F(CoordinateTwoTasksTest, Reset_HeartbeatsAreAcceptedForAGracePeriod) {
 TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
   coord_service_->BarrierAsync("ongoing_barrier", absl::InfiniteDuration(),
@@ -1332,7 +1333,7 @@ TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
                                  barrier_n.Notify();
                                });
 
-  EXPECT_OK(coord_service_->ResetTask(task_0_));
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
 
   // Ongoing barrier should fail with error after shutdown.
   EXPECT_TRUE(barrier_n.HasBeenNotified());
@@ -1342,17 +1343,17 @@ TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
 TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
   absl::Notification n;
   coord_service_->ShutdownTaskAsync(task_0_, [&n](absl::Status s) {
-    EXPECT_OK(s);
+    TF_EXPECT_OK(s);
     n.Notify();
   });
   n.WaitForNotification();
 
   // Heartbeat should be allowed for a short grace period after shutdown.
-  EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
 
   // Heartbeat failure should be triggered for disconnected task after grace
   // period.
@@ -1365,7 +1366,7 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
 TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
   coord_service_->BarrierAsync("ongoing_barrier", absl::InfiniteDuration(),
@@ -1378,7 +1379,7 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
 
   absl::Notification shutdown_n;
   coord_service_->ShutdownTaskAsync(task_0_, [&shutdown_n](absl::Status s) {
-    EXPECT_OK(s);
+    TF_EXPECT_OK(s);
     shutdown_n.Notify();
   });
   shutdown_n.WaitForNotification();
@@ -1391,8 +1392,8 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
 TEST_F(CoordinateTwoTasksTest, ShutdownWithBarrier_BarrierSucceeds) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/true);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
   absl::Status barrier_status_2;
 
@@ -1401,22 +1402,22 @@ TEST_F(CoordinateTwoTasksTest, ShutdownWithBarrier_BarrierSucceeds) {
   coord_service_->ShutdownTaskAsync(
       task_1_, [&barrier_status_2](absl::Status s) { barrier_status_2 = s; });
 
-  EXPECT_OK(barrier_status);
-  EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status);
+  TF_EXPECT_OK(barrier_status_2);
 
   // Confirm that both tasks have disconnected.
   // Note: this should not happen in prod where RegisterTask() is called after
   // Shutdown(), which is prevented by agent-side logic.
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 }
 
 TEST_F(CoordinateTwoTasksTest,
        ShutdownWithBarrier_BarrierFails_TaskDisconnectsOtherTaskIsAlerted) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/true);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
 
   absl::Notification n;
@@ -1432,7 +1433,7 @@ TEST_F(CoordinateTwoTasksTest,
   // Confirm that task_0_ has disconnected.
   // Note: this should not happen in prod where RegisterTask() is called after
   // Shutdown(), which is prevented by agent-side logic.
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
   // Other task is alerted that shutdown has been initiated without it.
   absl::Status other_task_status = client_1_.GetStatus();
@@ -1443,8 +1444,8 @@ TEST_F(CoordinateTwoTasksTest,
        ShutdownWithBarrier_BarrierFailsWithoutClientConnection_ServiceStops) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false,
                             /*enable_shutdown_barrier=*/true);
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
 
   absl::Notification n;
@@ -1550,8 +1551,8 @@ TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
                             /*enable_shutdown_barrier=*/false,
                             /*set_worker_job_recoverable=*/false);
 
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
                                             absl::InternalError("test_error")));
@@ -1567,8 +1568,8 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
                             /*enable_shutdown_barrier=*/false,
                             /*set_worker_job_recoverable=*/true);
 
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
                                             absl::InternalError("test_error")));
@@ -1577,7 +1578,7 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
-  EXPECT_OK(client_1_.GetStatus());
+  TF_EXPECT_OK(client_1_.GetStatus());
 }
 
 TEST_F(CoordinateTwoTasksTest,
@@ -1586,8 +1587,8 @@ TEST_F(CoordinateTwoTasksTest,
                             /*enable_shutdown_barrier=*/false,
                             /*set_worker_job_recoverable=*/true);
 
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
                                             absl::InternalError("test_error")));
@@ -1596,13 +1597,13 @@ TEST_F(CoordinateTwoTasksTest,
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
-  EXPECT_OK(client_1_.GetStatus());
+  TF_EXPECT_OK(client_1_.GetStatus());
 
   // Reset and register the error task again, both tasks should be healthy.
-  EXPECT_OK(coord_service_->ResetTask(task_0_));
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
-  EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
-  EXPECT_OK(client_1_.GetStatus());
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(client_1_.GetStatus());
 }
 
 TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
@@ -1611,11 +1612,11 @@ TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
                             /*set_worker_job_recoverable=*/false,
                             /*allow_new_incarnation_to_reconnect=*/true);
 
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
   ASSERT_OK(coord_service_->ReportTaskError(
       task_0_, MakeCoordinationError(absl::UnavailableError("test_error"))));
 
-  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
 }
 }  // namespace tsl

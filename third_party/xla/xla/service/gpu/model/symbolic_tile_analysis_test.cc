@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -462,7 +463,8 @@ ENTRY main {
 
   // Passing tile parameters that satisfy the constraints should let us compute
   // a TiledHloComputation.
-  EXPECT_OK(analysis->ParametersSatisfyConstraints(possible_tile_parameters));
+  TF_EXPECT_OK(
+      analysis->ParametersSatisfyConstraints(possible_tile_parameters));
 
   // Passing tile parameters that do not satisfy the constraints should result
   // in an error...
@@ -470,7 +472,7 @@ ENTRY main {
               StatusIs(absl::StatusCode::kInvalidArgument));
 
   // ... unless we pinky-promise (lie) that they satisfy the constraints ;)
-  EXPECT_OK(analysis->ComputeTiledHloInstructions(
+  TF_EXPECT_OK(analysis->ComputeTiledHloInstructions(
       impossible_tile_parameters, /*constraints_are_known_satisfied=*/true));
 }
 

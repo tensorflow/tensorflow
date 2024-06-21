@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "third_party/triton/include/triton/Dialect/Triton/IR/Dialect.h"
 #include "third_party/triton/include/triton/Dialect/Triton/IR/Types.h"
@@ -91,7 +92,7 @@ CreateAndTileParameterHloInstruction(std::vector<int64_t> shape_sizes,
 
   auto tiled_hlo = TiledHloInstruction::Create(
       hlo.get(), tile_sizes, tile_strides, CreateAffineMap(tile_sizes, ctx));
-  EXPECT_OK(tiled_hlo);
+  TF_EXPECT_OK(tiled_hlo);
   return std::make_pair(std::move(hlo), std::move(tiled_hlo.value()));
 }
 
