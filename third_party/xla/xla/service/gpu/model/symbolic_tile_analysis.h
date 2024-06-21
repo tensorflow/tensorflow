@@ -85,11 +85,9 @@ class SymbolicTileAnalysis {
   }
 
   // Returns the constraints for the parameters of the symbolic tiled HLO
-  // computation. This is the union of the constraints of all the symbolic tiles
-  // encountered throughout the computation.
-  const SymbolicTile::ConstraintMap& GetConstraints() const {
-    return constraints_;
-  }
+  // computation. This is the intersection of the constraints of all the
+  // symbolic tiles encountered throughout the computation.
+  const ConstraintExpression& GetConstraints() const { return constraints_; }
 
   // Returns true if a list of tile parameters satisfies the symbolic tile
   // analysis's constraints.
@@ -120,7 +118,7 @@ class SymbolicTileAnalysis {
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
                            symbolic_tiled_hlo_instructions,
-                       SymbolicTile::ConstraintMap constraints,
+                       ConstraintExpression constraints,
                        mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
@@ -132,7 +130,7 @@ class SymbolicTileAnalysis {
       symbolic_tiled_hlo_instructions_;
 
   // See the documentation of GetConstraints().
-  SymbolicTile::ConstraintMap constraints_;
+  ConstraintExpression constraints_;
 
   mlir::MLIRContext* context_;
 };

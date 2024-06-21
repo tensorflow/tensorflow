@@ -20,8 +20,10 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -30,6 +32,70 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// `ConstraintExpression` represents a "flat" constraint expression of the form
+//   ((expr0 in interval0) && (expr1 in interval1)...) ||
+//   ((expr{n} in interval{n}) &&...)...
+//
+// The underlying constraints are stored in a vector of maps, such that each
+// map represents the conjunction of some constraints, and the vector represents
+// the disjunction of all its contained maps (conjunctions). This representation
+// is effective because `&&` (`And`) is distributive over `||` (`Or`), ensuring
+// that we can always flatten any given `ConstraintExpression` in this way, and
+// that we have reasonable combinators for `&&` and `||`.
+//
+// We store a boolean `is_satisfiable_` to indicate whether we expect that the
+// constraints can be satisfied. When set to `false`, we expect the
+// `ConstraintExpression` to be empty (bottom).
+class ConstraintExpression {
+ public:
+  using ConjointConstraints = llvm::DenseMap<mlir::AffineExpr, Interval>;
+  // Takes the conjunction of the constraints of `first` and `second`.
+  static ConstraintExpression And(ConstraintExpression first,
+                                  ConstraintExpression second);
+
+  // Takes the disjunction of the constraints of `first` and `second`.
+  static ConstraintExpression Or(ConstraintExpression first,
+                                 ConstraintExpression second);
+
+  // Produces the unsatisfiable constraint expression.
+  static ConstraintExpression GetUnsatisfiableConstraintExpression() {
+    ConstraintExpression unsatisfiable;
+    unsatisfiable.is_satisfiable_ = false;
+    return unsatisfiable;
+  }
+
+  // Convenience util to take the disjunction of `this` and unwrapped
+  // `ConjointConstraints`.
+  void Or(ConjointConstraints conjunction);
+
+  // Convenience util to take the conjunction of `this` and unwrapped
+  // `ConjointConstraints`.
+  void And(ConjointConstraints conjunction);
+
+  // Whether the constraints can be satisfied. When this is set to `false`,
+  // the domain of the `TileConstraints` must be considered empty.
+  bool is_satisfiable() const { return is_satisfiable_; }
+
+  // Returns `true` if the constraint expression is marked satisfiable and does
+  // not contain any constraint. We expect this to be the case for a default
+  // constructed `ConstraintExpression`.
+  bool IsAlwaysSatisfied() const {
+    return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
+  }
+
+  // Accessor for the underlying disjoint conjunctions of constraints. This is
+  // expected to be empty if `is_satisfiable()` is `false`.
+  absl::Span<ConjointConstraints const> DisjointConjointConstraints() const {
+    return disjoint_conjoint_constraints_;
+  }
+
+  // TODO(bchetioui): add a util to verify constraints here later.
+  // TODO(bchetioui): is canonicalization of disjunctions necessary?
+ private:
+  bool is_satisfiable_ = true;
+  std::vector<ConjointConstraints> disjoint_conjoint_constraints_;
+};
 
 // Tiling in the simpler case, when we don't have dynamic offsets (see the
 // general case later):
@@ -175,15 +241,15 @@ class SymbolicTile {
 
   // Constraints on the `sizes` of the input tile. The variable names in this
   // map correspond to the parameter names of `offset_map()`, `size_map()`, and
-  // `stride_map()`. Contents are irrelevant when `is_satisfiable()` is false.
-  const ConstraintMap& constraints() const {
-    CHECK(is_satisfiable_);
+  // `stride_map()`. Content is irrelevant when `is_satisfiable()` is false.
+  const ConstraintExpression& constraints() const {
+    CHECK(constraints_.is_satisfiable());
     return constraints_;
   }
 
   // Whether the `SymbolicTile` constraints can be satisfied. When this is set
-  // to true, the domain of the `SymbolicTile` must be considered empty.
-  bool is_satisfiable() const { return is_satisfiable_; }
+  // to `false`, the domain of the `SymbolicTile` must be considered empty.
+  bool is_satisfiable() const { return constraints_.is_satisfiable(); }
 
   // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
   // and strides.
@@ -212,36 +278,11 @@ class SymbolicTile {
   IndexingMap tile_map_;
 
   // See the comment of constraints().
-  ConstraintMap constraints_;
+  ConstraintExpression constraints_;
 
-  // See the comment of is_satisfiable().
-  bool is_satisfiable_ = true;
-
-  explicit SymbolicTile(IndexingMap tile_map, ConstraintMap constraints,
-                        bool is_satisfiable = true)
-      : tile_map_(std::move(tile_map)),
-        constraints_(std::move(constraints)),
-        is_satisfiable_(is_satisfiable) {}
+  explicit SymbolicTile(IndexingMap tile_map, ConstraintExpression constraints)
+      : tile_map_(std::move(tile_map)), constraints_(std::move(constraints)) {}
 };
-
-// Merges `maybe_first_map` and `second_map` if
-//  (1) `maybe_first_map` is present, and
-//  (2) `second_map` and `*maybe_first_map` have distinct sets of keys.
-// Otherwise, returns `std::nullopt`.
-//
-//
-// The behaviour of this function is in spirit equivalent to using C++23's
-// `std::optional<T>::and_then` to merge a collection of `ConstraintMap`s.
-//
-// We pass `maybe_first_map` by value here in order to exploit move semantics
-// to avoid copies when possible.
-//
-// TODO(bchetioui): allow merging constraints in more edge cases, e.g. if one
-// of the intervals is contained within the other.
-std::optional<SymbolicTile::ConstraintMap>
-MergeConstraintMapIfPresentAndCompatible(
-    std::optional<SymbolicTile::ConstraintMap> maybe_first_map,
-    const SymbolicTile::ConstraintMap& second_map);
 
 }  // namespace gpu
 }  // namespace xla

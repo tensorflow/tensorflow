@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
@@ -370,8 +371,13 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  EXPECT_THAT(analysis->GetConstraints(), SizeIs(1));
+  const ConstraintExpression& constraints = analysis->GetConstraints();
+  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(1));
+  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
 }
+
+// TODO(b/334043867): add disjunction tests here once disjunctions are actually
+// used in `SymbolicTile`s.
 
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedBitcast) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -387,7 +393,9 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  EXPECT_THAT(analysis->GetConstraints(), SizeIs(1));
+  const ConstraintExpression& constraints = analysis->GetConstraints();
+  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(1));
+  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
@@ -440,7 +448,9 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  EXPECT_THAT(analysis->GetConstraints(), SizeIs(2));
+  const ConstraintExpression& constraints = analysis->GetConstraints();
+  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(1));
+  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(2));
 
   // We expect the constraints here to be
   //    s0 mod 6 in [0, 0]
@@ -496,7 +506,9 @@ ENTRY main {
   ASSERT_TRUE(analysis.has_value());
   // Each bitcast in the above module introduces one constraint. Once they are
   // aggregated, we have two!
-  EXPECT_THAT(analysis->GetConstraints(), SizeIs(2));
+  const ConstraintExpression& constraints = analysis->GetConstraints();
+  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(1));
+  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(2));
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailsOutWhenConstraintsCanNotBeMerged) {

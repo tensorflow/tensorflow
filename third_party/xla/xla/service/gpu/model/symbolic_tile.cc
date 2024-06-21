@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -109,16 +109,14 @@ AffineMap SubstituteAllIndicesAndRangeVarSymbolsWithSameValue(
 struct SizeAndStrideExpression {
   AffineExpr size;
   AffineExpr stride;
-  ConstraintMap constraints;
-  bool is_satisfiable;
+  ConstraintExpression constraints;
 
-  SizeAndStrideExpression(AffineExpr size, AffineExpr stride,
-                          ConstraintMap constraints = ConstraintMap(),
-                          bool is_satisfiable = true)
+  SizeAndStrideExpression(
+      AffineExpr size, AffineExpr stride,
+      ConstraintExpression constraints = ConstraintExpression())
       : size(std::move(size)),
         stride(std::move(stride)),
-        constraints(std::move(constraints)),
-        is_satisfiable(is_satisfiable) {}
+        constraints(std::move(constraints)) {}
 };
 
 // Extracts size and stride expressions from the operands to a modulo
@@ -154,10 +152,12 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
 
     AffineExpr constrained_expr =
         getAffineSymbolExpr(dim_expr.getPosition(), lhs.getContext()) % modulus;
-    ConstraintMap constraints;
+    ConstraintExpression constraints;
     // TODO(b/334043867): we only add a constraint for n being a multiple of c
     // while we do not support disjunctions.
-    constraints.insert({constrained_expr, Interval{/*lower=*/0, /*upper=*/0}});
+    ConstraintExpression::ConjointConstraints conjunction;
+    conjunction.insert({constrained_expr, Interval{/*lower=*/0, /*upper=*/0}});
+    constraints.And(std::move(conjunction));
 
     // In this case, stride is effectively 1 mod modulus = 1.
     return SizeAndStrideExpression(
@@ -472,25 +472,11 @@ std::optional<SizeAndStrideExpression> CombineSizesAndStrides(
     }
   }
 
-  std::optional<ConstraintMap> maybe_constraints = ConstraintMap();
+  ConstraintExpression constraints;
 
-  for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
-    maybe_constraints = MergeConstraintMapIfPresentAndCompatible(
-        std::move(maybe_constraints), size_and_stride.constraints);
-    if (!maybe_constraints.has_value()) {
-      break;
-    }
-  }
-
-  ConstraintMap constraints;
-  bool is_satisfiable = true;
-
-  // Handle cases that we don't know how to process by constructing a
-  // ConstraintMap with an unsatisfiable constraint.
-  if (maybe_constraints.has_value()) {
-    constraints = std::move(*maybe_constraints);
-  } else {
-    is_satisfiable = false;
+  for (SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
+    constraints = ConstraintExpression::And(
+        std::move(constraints), std::move(size_and_stride.constraints));
   }
 
   AffineExpr size = CombineSizes(sizes_and_strides);
@@ -501,8 +487,7 @@ std::optional<SizeAndStrideExpression> CombineSizesAndStrides(
   }
 
   // TODO(b/326998704): handle reshape constraints here.
-  return SizeAndStrideExpression(size, *stride, std::move(constraints),
-                                 is_satisfiable);
+  return SizeAndStrideExpression(size, *stride, std::move(constraints));
 }
 
 std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
@@ -612,8 +597,21 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   return tmp_indexing_map.GetAffineMap().getResults().back();
 }
 
-}  // anonymous namespace
-
+// Merges `maybe_first_map` and `second_map` if
+//  (1) `maybe_first_map` is present, and
+//  (2) `second_map` and `*maybe_first_map` have distinct sets of keys.
+// Otherwise, returns `std::nullopt`.
+//
+//
+// The behaviour of this function is in spirit equivalent to using C++23's
+// `std::optional<T>::and_then` to merge a collection of `ConstraintMap`s.
+//
+// We pass `maybe_first_map` by value here in order to exploit move semantics
+// to avoid copies when possible.
+//
+// TODO(bchetioui): allow merging constraints in more edge cases, e.g. if one
+// of the intervals is contained within the other.
+// TODO(bchetioui): clean up this util.
 std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
     std::optional<ConstraintMap> maybe_first_map,
     const ConstraintMap& second_map) {
@@ -635,6 +633,122 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
   }
 
   return first_map;
+}
+
+}  // anonymous namespace
+
+/*static*/ ConstraintExpression ConstraintExpression::And(
+    ConstraintExpression first, ConstraintExpression second) {
+  // When either one of the expressions is unsatisfiable, their conjunction is
+  // necessarily unsatisfiable.
+  if (!first.is_satisfiable_ || !second.is_satisfiable_) {
+    return ConstraintExpression::GetUnsatisfiableConstraintExpression();
+  }
+
+  // Both first and second are satisfiable. Handle here explicitly the case
+  // where one (or both) of the maps are trivially satisfied.
+  if (first.IsAlwaysSatisfied()) {
+    return second;
+  }
+
+  if (second.IsAlwaysSatisfied()) {
+    return first;
+  }
+
+  // `IsAlwaysSatisfied()` is true if and only if the map holds literally no
+  // useful information and is equivalent to a default-constructed
+  // `ConstraintExpression`---one that is neither unsatisfiable, nor contains
+  // any constraints. Therefore, we can assume below that both of the provided
+  // `ConstraintExpression`s are satisfiable and each contain at least one
+  // constraint.
+  //
+  // By distributivity, we have that:
+  //     (conj0 || conj1 || ...) && (conj2 || conj3 || ...)
+  //   = (conj0 && conj2 || conj0 && conj3 || ... ||
+  //      conj1 && conj2 || conj1 && conj3 ...)
+  // which allows us to construct the result by essentially taking the cartesian
+  // product of the disjoint conjunctions of `first` with those of `second`.
+  ConstraintExpression result;
+  for (ConjointConstraints& conjunction_1 :
+       first.disjoint_conjoint_constraints_) {
+    for (ConjointConstraints& conjunction_2 :
+         second.disjoint_conjoint_constraints_) {
+      std::optional<ConjointConstraints> maybe_conjunction =
+          MergeConstraintMapIfPresentAndCompatible(conjunction_1,
+                                                   conjunction_2);
+      // We only add the resulting conjunction to the result
+      // `ConstraintExpression` if it is satisfiable, since it is otherwise
+      // redundant:
+      //   (conj || false = conj).
+      if (maybe_conjunction.has_value()) {
+        result.disjoint_conjoint_constraints_.push_back(
+            std::move(*maybe_conjunction));
+      }
+    }
+  }
+
+  // If all the resulting conjunctions are unsatisfiable, the result itself is
+  // unsatisfiable:
+  //   (false || false = false).
+  // In our case, this manifests as an empty list of constraints in the result.
+  result.is_satisfiable_ = !result.disjoint_conjoint_constraints_.empty();
+
+  return result;
+}
+
+/*static*/ ConstraintExpression ConstraintExpression::Or(
+    ConstraintExpression first, ConstraintExpression second) {
+  // When either one of the expressions is unsatisfiable, we can simply return
+  // the other one.
+  if (!first.is_satisfiable_) {
+    return second;
+  }
+
+  if (!second.is_satisfiable_) {
+    return first;
+  }
+
+  absl::c_copy(second.disjoint_conjoint_constraints_,
+               std::back_inserter(first.disjoint_conjoint_constraints_));
+  return first;
+}
+
+void ConstraintExpression::Or(
+    ConstraintExpression::ConjointConstraints conjunction) {
+  if (conjunction.empty()) {
+    return;
+  }
+
+  disjoint_conjoint_constraints_.push_back(std::move(conjunction));
+  is_satisfiable_ = true;
+}
+
+void ConstraintExpression::And(
+    ConstraintExpression::ConjointConstraints conjunction) {
+  if (!is_satisfiable_ || conjunction.empty()) {
+    return;
+  }
+
+  if (disjoint_conjoint_constraints_.empty()) {
+    disjoint_conjoint_constraints_.push_back(std::move(conjunction));
+    return;
+  }
+
+  std::vector<ConjointConstraints> new_constraints;
+  new_constraints.reserve(disjoint_conjoint_constraints_.size());
+
+  for (ConjointConstraints& conjunction_2 : disjoint_conjoint_constraints_) {
+    std::optional<ConjointConstraints> maybe_result =
+        MergeConstraintMapIfPresentAndCompatible(std::move(conjunction_2),
+                                                 conjunction);
+    // TODO(bchetioui): rework `MergeConstraintMapIfPresentAndCompatible`.
+    if (maybe_result.has_value()) {
+      new_constraints.push_back(std::move(*maybe_result));
+    }
+  }
+
+  is_satisfiable_ = !new_constraints.empty();
+  disjoint_conjoint_constraints_ = std::move(new_constraints);
 }
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
@@ -689,7 +803,7 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
     expr = SimplifyAffineExpr(expr, indexing_map);
   }
 
-  std::optional<ConstraintMap> maybe_constraints = ConstraintMap();
+  ConstraintExpression constraints;
   std::vector<AffineExpr> size_expressions;
   std::vector<AffineExpr> stride_expressions;
   size_expressions.reserve(offset_expressions.size());
@@ -711,19 +825,8 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
     size_expressions.push_back(maybe_size_and_stride->size);
     stride_expressions.push_back(maybe_size_and_stride->stride);
 
-    maybe_constraints = MergeConstraintMapIfPresentAndCompatible(
-        std::move(maybe_constraints), maybe_size_and_stride->constraints);
-  }
-
-  ConstraintMap constraints;
-  bool is_satisfiable = true;
-
-  // Handle cases that we don't know how to process by constructing a
-  // ConstraintMap with an unsatisfiable constraint.
-  if (maybe_constraints.has_value()) {
-    constraints = std::move(*maybe_constraints);
-  } else {
-    is_satisfiable = false;
+    constraints = ConstraintExpression::And(
+        std::move(constraints), std::move(maybe_size_and_stride->constraints));
   }
 
   // Eliminate negative strides and recalculate offsets.
@@ -773,7 +876,7 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
   CHECK_EQ(tile_map.GetRangeVarsCount(), 0);
 
   VLOG(1) << "tile_map: " << tile_map.ToString();
-  return SymbolicTile(std::move(tile_map), constraints, is_satisfiable);
+  return SymbolicTile(std::move(tile_map), std::move(constraints));
 }
 
 std::string SymbolicTile::RtVarsToString(
@@ -809,24 +912,31 @@ void SymbolicTile::Print(std::ostream& out,
                 /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(),
                 out, printer);
   }
-  if (!constraints_.empty() && is_satisfiable_) {
+  if (is_satisfiable() && !constraints_.IsAlwaysSatisfied()) {
     out << "\n\tconstraints: ";
+    absl::Span<ConstraintExpression::ConjointConstraints const> conjunctions =
+        constraints_.DisjointConjointConstraints();
     // Accumulate constraints in a vector in order to put them in lexicographic
     // order and to get deterministic output.
-    std::vector<std::string> constraint_strings;
-    constraint_strings.reserve(constraints_.size());
-    for (const auto& [expr, interval] : constraints_) {
-      std::stringstream ss;
-      printer.Print(ss, expr);
-      ss << " in ";
-      interval.Print(ss);
-      constraint_strings.push_back(ss.str());
+    std::vector<std::string> conjunction_strings;
+    conjunction_strings.reserve(conjunctions.size());
+    for (const auto& disjunction : conjunctions) {
+      std::vector<std::string> constraint_strings;
+      constraint_strings.reserve(disjunction.size());
+      for (const auto& [expr, interval] : disjunction) {
+        std::stringstream ss;
+        printer.Print(ss, expr);
+        ss << " in ";
+        interval.Print(ss);
+        constraint_strings.push_back(ss.str());
+      }
+      std::sort(constraint_strings.begin(), constraint_strings.end());
+      conjunction_strings.push_back(
+          absl::StrJoin(constraint_strings, " &&\n\t"));
     }
-    std::sort(constraint_strings.begin(), constraint_strings.end());
-    for (absl::string_view constraint_string : constraint_strings) {
-      out << "\n\t" << constraint_string;
-    }
-  } else if (!is_satisfiable_) {
+    std::sort(conjunction_strings.begin(), conjunction_strings.end());
+    out << "\n\t" << absl::StrJoin(conjunction_strings, "\n||\n\t");
+  } else if (!is_satisfiable()) {
     out << "\n\tconstraints: ";
     out << "\n\tunsatisfiable";
   }
