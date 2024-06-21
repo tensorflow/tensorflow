@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
+#include "xla/service/cpu/runtime/custom_call_thunk.h"
 #include "xla/service/cpu/runtime/dot_thunk.h"
 #include "xla/service/cpu/runtime/fft_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
@@ -260,6 +261,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kFft:
       return EmitFftThunk(instruction);
+
+    case HloOpcode::kCustomCall:
+      return EmitCustomCallThunk(instruction);
 
     default:
       return absl::UnimplementedError(
@@ -647,6 +651,85 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
       /*input_shape=*/instruction->operand(0)->shape(),
       /*output_buffer=*/dest_slice,
       /*output_shape=*/instruction->shape());
+}
+
+static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
+    const HloInstruction* instruction,
+    const BufferAssignment& buffer_assignment) {
+  // Collect buffer slices for all operands.
+  std::vector<BufferAllocation::Slice> arguments_buffers;
+  std::vector<Shape> arguments_shapes;
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          arguments_buffers.emplace_back(),
+          buffer_assignment.GetUniqueSlice(operand, indexed.index));
+      arguments_shapes.push_back(indexed.shape);
+    }
+  }
+
+  // Collect buffer slices for all results.
+  std::vector<BufferAllocation::Slice> results_buffers;
+  std::vector<Shape> results_shapes;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        results_buffers.emplace_back(),
+        buffer_assignment.GetUniqueSlice(instruction, indexed.index));
+    results_shapes.push_back(indexed.shape);
+  }
+
+  return CustomCallThunk::OpBuffers{
+      /*arguments_buffers=*/std::move(arguments_buffers),
+      /*arguments_shapes=*/std::move(arguments_shapes),
+      /*results_buffers=*/std::move(results_buffers),
+      /*results_shapes=*/std::move(results_shapes),
+  };
+}
+
+static bool IsValidCustomCallApiVersion(CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return true;
+    default:
+      return false;
+  }
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
+    const HloInstruction* instruction) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+
+  // TODO(penporn): Support these existing targets.
+  auto custom_call_target = custom_call->custom_call_target();
+  if (custom_call_target == "PadToStatic" ||
+      custom_call_target == "SliceToDynamic" || custom_call_target == "TopK" ||
+      custom_call_target == "__onednn$matmul" ||
+      custom_call_target == "__onednn$softmax" ||
+      custom_call_target == "__onednn$layernorm" ||
+      custom_call_target == "__onednn$matmul_reorder") {
+    return Unimplemented("Custom call target %s is not implemented.",
+                         custom_call_target);
+  }
+
+  // Check the API version.
+  auto version = custom_call->api_version();
+  if (!IsValidCustomCallApiVersion(version)) {
+    return InvalidArgument(
+        "Unknown custom-call API version enum value: %d (%s)", version,
+        CustomCallApiVersion_Name(version));
+  }
+
+  // Get backend config and buffer assignments.ß
+  auto backend_config = custom_call->opaque();
+  TF_ASSIGN_OR_RETURN(auto op_buffers,
+                      GetCustomCallOpBuffers(instruction, buffer_assignment_));
+
+  return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
+                                            custom_call_target, op_buffers,
+                                            backend_config, version);
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>

@@ -52,6 +52,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "conditional";
     case Kind::kCopy:
       return "copy";
+    case Kind::kCustomCall:
+      return "custom-call";
     case Kind::kDot:
       return "dot";
     case Kind::kFft:
@@ -108,6 +110,30 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
       global_device_id(global_device_id),
       device_assignment(device_assignment),
       collectives(collectives) {}
+
+absl::StatusOr<Thunk::CustomCallExecuteParams>
+Thunk::CustomCallExecuteParams::Create(
+    const ExecutableRunOptions* run_options) {
+  // Device ordinal must be set by caller and passed in run options, if not,
+  // we use the device ordinal from the parent StreamExecutor.
+  int32_t device_ordinal =
+      run_options->device_ordinal() >= 0
+          ? run_options->device_ordinal()
+          : run_options->stream()->parent()->device_ordinal();
+
+  return CustomCallExecuteParams{device_ordinal, run_options->stream(),
+                                 run_options->allocator(),
+                                 run_options->ffi_execution_context()};
+}
+
+Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
+    int32_t device_ordinal, stream_executor::Stream* stream,
+    stream_executor::DeviceMemoryAllocator* allocator,
+    const ffi::ExecutionContext* ffi_execution_context)
+    : device_ordinal(device_ordinal),
+      stream(stream),
+      allocator(allocator),
+      ffi_execution_context(ffi_execution_context) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEvent() {
   static tsl::AsyncValueOwningRef<ExecuteEvent>* event = [] {

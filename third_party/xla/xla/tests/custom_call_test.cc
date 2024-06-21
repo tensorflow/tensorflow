@@ -1351,5 +1351,29 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
+  GTEST_SKIP() << "Nested tuple inputs/outputs not yet implemented.";
+  const char* const kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      c0 = ((f32[], f32[]), (f32[], f32[])) constant(((7.0, 42.0), (8.0, 43.0)))
+      ROOT custom-call = (f32[], (f32[], f32[]), f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
+  Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
+  Literal arg2 = LiteralUtil::CreateR0<float>(8.f);
+  Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
+
+  Literal inner_tuple = LiteralUtil::MakeTuple({&arg2, &arg3});
+  Literal expected = LiteralUtil::MakeTuple({&arg1, &inner_tuple, &arg0});
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
 }  // namespace
 }  // namespace xla

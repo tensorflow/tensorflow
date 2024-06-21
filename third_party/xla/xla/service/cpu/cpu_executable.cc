@@ -358,10 +358,18 @@ absl::Status CpuExecutable::ExecuteThunks(
   TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
                       Thunk::CollectiveExecuteParams::Create(run_options));
 
+  // Prepare for executing XLA custom calls.
+  // TODO(penporn): Consolidate with other thunk parameter set up calls.
+  TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
+                      Thunk::CustomCallExecuteParams::Create(run_options));
+
   Thunk::ExecuteParams execute_params = {
-      &*host_kernels_, &allocations,
+      &*host_kernels_,
+      &allocations,
       runtime::GetXfeedManager(run_options->device_ordinal()),
-      run_options->intra_op_thread_pool(), &collective_execute_params};
+      run_options->intra_op_thread_pool(),
+      &collective_execute_params,
+      &custom_call_execute_params};
 
   auto executed_event = thunks_->Execute(execute_params);
   tsl::BlockUntilReady(executed_event);

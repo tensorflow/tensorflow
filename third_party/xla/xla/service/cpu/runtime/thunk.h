@@ -28,12 +28,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "tsl/platform/statusor.h"
@@ -68,6 +70,7 @@ class Thunk {
     kCollectivePermute,
     kCopy,
     kConditional,
+    kCustomCall,
     kDot,
     kFft,
     kInfeed,
@@ -143,6 +146,28 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+  // CustomCallExecuteParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters capturing all the details required for custom call execution of
+  // XLA executables.
+  struct CustomCallExecuteParams {
+    static absl::StatusOr<CustomCallExecuteParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    int32_t device_ordinal;
+    stream_executor::Stream* stream = nullptr;
+    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+    const ffi::ExecutionContext* ffi_execution_context = nullptr;
+
+   private:
+    CustomCallExecuteParams(int32_t device_ordinal,
+                            stream_executor::Stream* stream,
+                            stream_executor::DeviceMemoryAllocator* allocator,
+                            const ffi::ExecutionContext* ffi_execution_context);
+  };
+
+  //===--------------------------------------------------------------------===//
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
@@ -154,6 +179,7 @@ class Thunk {
     runtime::XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
+    CustomCallExecuteParams* custom_call_params = nullptr;
   };
 
   // An execute event that becomes ready when all tasks are completed.
