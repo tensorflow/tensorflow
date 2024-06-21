@@ -410,6 +410,55 @@ ENTRY %elementwise {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(AutoShardingTest, AllowShardingsSmallDimsAcrossManyDevicesTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  parameter.1 = bf16[8,1024]{1,0} parameter(0), sharding={devices=[16,16]<=[256]}
+  add.1 = bf16[8,1024]{1,0} add(parameter.1, parameter.1)
+  ROOT copy.45 = bf16[8,1024]{1,0} copy(add.1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      AutoSharding(
+          /* option */ AutoShardingOption{
+              .enable = true,
+              .preserve_shardings =
+                  AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .device_mesh_shape = {128, 1},
+              .device_mesh_alpha = {1.0, 1.0},
+              .device_mesh_beta = {0.01, 1.0},
+              .allow_shardings_small_dims_across_many_devices = true})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  EXPECT_THAT(add1, op::Sharding("{devices=[16,16]<=[256]}"));
+
+  // Test with allow_shardings_small_dims_across_many_devices = False
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed,
+      AutoSharding(
+          /* option */ AutoShardingOption{
+              .enable = true,
+              .preserve_shardings =
+                  AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .device_mesh_shape = {128, 1},
+              .device_mesh_alpha = {1.0, 1.0},
+              .device_mesh_beta = {0.01, 1.0},
+              .allow_shardings_small_dims_across_many_devices = false})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  add1 = FindInstruction(module.get(), "add.1");
+  EXPECT_THAT(add1, Not(op::Sharding("{devices=[16,16]<=[256]}")));
+}
+
 TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
   constexpr absl::string_view kHloString = R"(
 HloModule rng_bit_generator

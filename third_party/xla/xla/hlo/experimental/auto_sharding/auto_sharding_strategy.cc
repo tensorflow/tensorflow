@@ -921,7 +921,7 @@ BuildStrategyAndCost(
         }
       }
     }
-    if (option.allow_shardings_small_dims_across_many_devices) {
+    if (!option.allow_shardings_small_dims_across_many_devices) {
       RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
           ins->shape(), strategy_group.get(),
           /* instruction_has_user_sharding */ ins->has_sharding());
