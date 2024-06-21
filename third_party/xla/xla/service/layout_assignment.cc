@@ -969,7 +969,8 @@ bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
 // Operands of layout-constrained custom calls must match the expected
 // constrained layouts.
 absl::Status CheckCustomCallLayout(HloInstruction* instruction) {
-  if (IsLayoutConstrainedCustomCall(instruction)) {
+  if (IsLayoutConstrainedCustomCall(instruction) &&
+      !instruction->IsCustomCall("LayoutConstraint")) {
     const HloCustomCallInstruction* custom_call =
         DynCast<HloCustomCallInstruction>(instruction);
     for (int64_t i = 0; i < custom_call->operand_count(); ++i) {

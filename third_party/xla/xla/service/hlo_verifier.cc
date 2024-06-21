@@ -1320,7 +1320,8 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
   const HloCustomCallInstruction* custom_call =
       DynCast<const HloCustomCallInstruction>(instruction);
   TF_RET_CHECK(custom_call != nullptr);
-  if (custom_call->layout_constrained()) {
+  if (custom_call->layout_constrained() &&
+      !custom_call->IsCustomCall("LayoutConstraint")) {
     // If the layout is constrained, verify all the respective shapes have
     // layouts and that the constrained operand shapes match the shapes of the
     // operands.
