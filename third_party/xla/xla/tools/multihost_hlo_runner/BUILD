@@ -133,6 +133,7 @@ cc_library(
         "//xla/service:hlo_pass_pipeline",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
+        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",

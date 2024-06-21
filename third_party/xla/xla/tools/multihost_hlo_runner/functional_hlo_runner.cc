@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
+#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
@@ -879,11 +880,14 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
                                                     preproc_options));
   CompileOptions modified_compile_options =
       CompleteCompileOptions(*hlo_module, compile_options);
-  XlaComputation computation(hlo_module->ToProto());
+  mlir::MLIRContext ctx;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ConvertHloToMlirHlo(ctx, hlo_module));
+
   VLOG(1) << "FunctionalHloRunner: compilation started.";
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtExecutable> executable,
-      PjRtCompile(modified_compile_options, computation, topology, &client));
+      PjRtCompile(modified_compile_options, *module, topology, &client));
   VLOG(1) << "FunctionalHloRunner: compile succeeded.";
   return executable;
 }
