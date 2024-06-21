@@ -752,6 +752,42 @@ ENTRY entry_computation {
   LogTilingsIfVlog1(good_tilings);
 }
 
+// This test means to catch integer overflow errors when run with ASan build.
+TEST_F(SymbolicTileAnalysisTest,
+       FusionWithNumberOfTilesLargerThanInt32MaxIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule softmax
+
+fused_computation {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  ROOT log = f16[65538,32768]{1,0} log(param_0)
+}
+
+ENTRY main {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kLoop, calls=fused_computation
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 1}));
+
+  EXPECT_THAT(*tiled_hlo_computation.GetRoot(),
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{1, 1},
+                  /*tile_strides=*/{1, 1},
+                  /*block_id_to_tile_offsets_indexing=*/R"(
+    (d0) -> (d0 floordiv 32768, d0 mod 32768)
+    domain:
+    d0 in [0, 2147549183]
+  )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

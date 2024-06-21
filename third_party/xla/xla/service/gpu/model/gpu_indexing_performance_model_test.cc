@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -333,6 +334,47 @@ ENTRY main {
   EXPECT_NEAR(
       absl::ToDoubleMicroseconds(tiled_runtime_data.runtime_data.exec_time), 5,
       1);
+}
+
+// This test means to catch integer overflow errors when run with ASan build.
+// The checks below are just sanity checks for values.
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_NumberOfTilesLargerThanInt32Max_IsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+
+softmax {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[65538]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f16[65538,32768]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f16[65538,32768]{1,0} subtract(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kCustom, calls=softmax
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{65538LL * 32768LL, 32};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto runtime_data,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 1}));
+
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 183, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 39, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 185, 1);
 }
 
 }  // namespace

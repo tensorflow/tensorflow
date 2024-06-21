@@ -78,11 +78,11 @@ IndexingMap ComputeBlockIdToOutputTileIndexing(
     mlir::MLIRContext* mlir_context) {
   CHECK_EQ(dimensions.size(), tile_sizes.size());  // Crash OK
 
-  int num_tiles = 1;
+  int64_t num_tiles = 1;
   std::vector<int64_t> outer_loop_bounds;
   outer_loop_bounds.reserve(dimensions.size());
   for (auto [dim_size, tile_size] : llvm::zip(dimensions, tile_sizes)) {
-    int num_tiles_per_dim = (dim_size + tile_size - 1) / tile_size;
+    int64_t num_tiles_per_dim = (dim_size + tile_size - 1) / tile_size;
 
     num_tiles *= num_tiles_per_dim;
     outer_loop_bounds.push_back(num_tiles_per_dim);
