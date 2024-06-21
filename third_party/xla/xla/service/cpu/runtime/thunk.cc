@@ -50,6 +50,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "collective-permute";
     case Kind::kConditional:
       return "conditional";
+    case Kind::kConvolution:
+      return "convolution";
     case Kind::kCopy:
       return "copy";
     case Kind::kCustomCall:

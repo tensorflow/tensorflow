@@ -32,9 +32,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/all_gather_thunk.h"
 #include "xla/service/cpu/runtime/all_reduce_thunk.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/collective_permute_thunk.h"
 #include "xla/service/cpu/runtime/collective_thunk.h"
 #include "xla/service/cpu/runtime/conditional_thunk.h"
+#include "xla/service/cpu/runtime/convolution_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/custom_call_thunk.h"
 #include "xla/service/cpu/runtime/dot_thunk.h"
@@ -253,6 +256,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kOutfeed:
       return EmitOutfeedThunk(instruction);
 
+    case HloOpcode::kConvolution:
+      return EmitConvolutionThunk(instruction);
+
     case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
 
@@ -445,6 +451,58 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateThunk(
     const HloInstruction* instruction) {
   // TODO(ezhulenev): Port optimized concat implementation from IrEmitter.
+  return EmitElementalKernelThunk(instruction);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
+    const HloInstruction* instruction) {
+  // NOTE: The following code (along with TODOs and comments) partially
+  // duplicates IrEmitter::HandleConvolution. This duplication is temporary,
+  // as IrEmitter will be removed when we switch to thunks runtime.
+  const HloInstruction* input = instruction->operand(0);
+  const HloInstruction* kernel = instruction->operand(1);
+  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+      /*instruction=*/*instruction, /*operands=*/{input, kernel},
+      /*supported_types=*/
+      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
+
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
+  // different data layouts.
+  if (PotentiallyImplementedAsEigenConvolution(*instruction,
+                                               target_machine_features_)) {
+    const Shape& input_shape = input->shape();
+    const Shape& kernel_shape = kernel->shape();
+    const Shape& output_shape = instruction->shape();
+
+    // The input, kernel and output agree with respect to layout.
+    if (LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
+        LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
+        LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
+      TF_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
+
+      TF_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
+
+      TF_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
+
+      ConvolutionThunk::Options options;
+      options.multi_threaded =
+          hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+      options.use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
+      return ThunkSequence::Of<ConvolutionThunk>(
+          ThunkInfo(instruction), options, input_buffer, input_shape,
+          kernel_buffer, kernel_shape, output_buffer, output_shape,
+          instruction->convolution_dimension_numbers(), instruction->window(),
+          instruction->feature_group_count());
+    }
+  }
+
+  // This is a completely un-optimized version of convolution just to
+  // have an early version that works. E.g. the input index and
+  // padding calculation is not hoisted out of the inner loop.
+  //
+  // See the description of convolution in the XLA documentation for the pseudo
+  // code for convolution.
+  VLOG(2) << "Falling back to unoptimized convolution: " << instruction->name();
   return EmitElementalKernelThunk(instruction);
 }
 

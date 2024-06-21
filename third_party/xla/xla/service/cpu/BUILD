@@ -802,6 +802,7 @@ cc_library(
     hdrs = ["thunk_emitter.h"],
     deps = [
         ":dot_op_emitter",
+        ":ir_emission_utils",
         ":ir_emitter2",
         ":target_machine_features",
         "//xla:cpu_function_runtime",
@@ -819,6 +820,7 @@ cc_library(
         "//xla/service/cpu/runtime:collective_permute_thunk",
         "//xla/service/cpu/runtime:collective_thunk",
         "//xla/service/cpu/runtime:conditional_thunk",
+        "//xla/service/cpu/runtime:convolution_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
         "//xla/service/cpu/runtime:custom_call_thunk",
         "//xla/service/cpu/runtime:dot_thunk",
@@ -1011,15 +1013,24 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime_conv2d",
-    srcs = [
-        "runtime_conv2d.cc",
-        "runtime_conv_impl.h",
+    name = "runtime_conv_impl",
+    hdrs = ["runtime_conv_impl.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "//xla/tsl/framework/convolution:eigen_helpers",
+        "@eigen_archive//:eigen3",
     ],
+)
+
+cc_library(
+    name = "runtime_conv2d",
+    srcs = ["runtime_conv2d.cc"],
     hdrs = ["runtime_conv2d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_conv_impl",
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
@@ -1032,14 +1043,12 @@ cc_library(
 
 cc_library(
     name = "runtime_conv3d",
-    srcs = [
-        "runtime_conv3d.cc",
-        "runtime_conv_impl.h",
-    ],
+    srcs = ["runtime_conv3d.cc"],
     hdrs = ["runtime_conv3d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_conv_impl",
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
@@ -1164,14 +1173,12 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_conv2d",
-    srcs = [
-        "runtime_conv_impl.h",
-        "runtime_single_threaded_conv2d.cc",
-    ],
+    srcs = ["runtime_single_threaded_conv2d.cc"],
     hdrs = ["runtime_single_threaded_conv2d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_conv_impl",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -1182,14 +1189,12 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_conv3d",
-    srcs = [
-        "runtime_conv_impl.h",
-        "runtime_single_threaded_conv3d.cc",
-    ],
+    srcs = ["runtime_single_threaded_conv3d.cc"],
     hdrs = ["runtime_single_threaded_conv3d.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_conv_impl",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:dynamic_annotations",

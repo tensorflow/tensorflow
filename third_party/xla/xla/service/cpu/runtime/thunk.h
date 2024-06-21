@@ -70,6 +70,7 @@ class Thunk {
     kCollectivePermute,
     kCopy,
     kConditional,
+    kConvolution,
     kCustomCall,
     kDot,
     kFft,

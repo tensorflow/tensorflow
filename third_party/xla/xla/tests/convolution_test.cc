@@ -375,6 +375,78 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
 TYPED_TEST_CASE(Convolve2D_1x3x3x5_3x3x5x3_Valid, TestTypes);
 TYPED_TEST(Convolve2D_1x3x3x5_3x3x5x3_Valid, Types) { this->RunTest(); }
 
+// Test same padding for 2D convolution with kernel of such size, that every
+// single pad value is different (low and high, in x and y dimension).
+// Intention of this test is to verify that padding is implemented correctly.
+template <typename T>
+class Convolve2D_1x6x6x1_6x2x1x1_Same : public ConvolutionTest {
+ public:
+  void RunTest() {
+    XlaBuilder builder(TestName());
+    std::vector<int64_t> input_dims = {1, 6, 6, 1};
+    std::vector<int64_t> filter_dims = {6, 2, 1, 1};
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
+    {
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
+
+      // Tensorflow dimension numbers for 2D convolution.
+      ConvolutionDimensionNumbers dnums;
+      dnums.set_input_batch_dimension(0);
+      dnums.add_input_spatial_dimensions(1);
+      dnums.add_input_spatial_dimensions(2);
+      dnums.set_input_feature_dimension(3);
+      dnums.add_kernel_spatial_dimensions(0);
+      dnums.add_kernel_spatial_dimensions(1);
+      dnums.set_kernel_input_feature_dimension(2);
+      dnums.set_kernel_output_feature_dimension(3);
+      dnums.set_output_batch_dimension(0);
+      dnums.add_output_spatial_dimensions(1);
+      dnums.add_output_spatial_dimensions(2);
+      dnums.set_output_feature_dimension(3);
+
+      ConvWithGeneralDimensions(input, filter, {1, 1}, Padding::kSame, dnums);
+    }
+
+    std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
+    iota_int_init_value(input_elems, 1);
+    auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
+    auto input_r4 = input_r1.Reshape(input_dims).value();
+
+    std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+    iota_int_init_value(filter_elems, 1);
+    auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
+
+    auto expected_r1 = LiteralUtil::CreateR1<T>(
+        {static_cast<T>(836),  static_cast<T>(904),  static_cast<T>(972),
+         static_cast<T>(1040), static_cast<T>(1108), static_cast<T>(540),
+         static_cast<T>(1255), static_cast<T>(1330), static_cast<T>(1405),
+         static_cast<T>(1480), static_cast<T>(1555), static_cast<T>(750),
+         static_cast<T>(1710), static_cast<T>(1788), static_cast<T>(1866),
+         static_cast<T>(1944), static_cast<T>(2022), static_cast<T>(966),
+         static_cast<T>(1315), static_cast<T>(1370), static_cast<T>(1425),
+         static_cast<T>(1480), static_cast<T>(1535), static_cast<T>(720),
+         static_cast<T>(932),  static_cast<T>(968),  static_cast<T>(1004),
+         static_cast<T>(1040), static_cast<T>(1076), static_cast<T>(492),
+         static_cast<T>(585),  static_cast<T>(606),  static_cast<T>(627),
+         static_cast<T>(648),  static_cast<T>(669),  static_cast<T>(294)});
+
+    auto expected_r4 = expected_r1.Reshape({1, 6, 6, 1}).value();
+
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
+
+    ComputeAndCompareLiteral(&builder, expected_r4,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+  }
+};
+
+TYPED_TEST_CASE(Convolve2D_1x6x6x1_6x2x1x1_Same, TestTypes);
+TYPED_TEST(Convolve2D_1x6x6x1_6x2x1x1_Same, Types) { this->RunTest(); }
+
 template <typename T>
 class Convolve1D_1x3x5_3x5x3_Valid : public ConvolutionTest {
  public:
