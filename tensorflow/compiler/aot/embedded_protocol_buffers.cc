@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfcompile {
