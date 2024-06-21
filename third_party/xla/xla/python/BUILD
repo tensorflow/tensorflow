@@ -546,6 +546,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
+        ":nb_absl_inlined_vector",
+        ":nb_absl_span",
         ":nb_helpers",
         ":py_client",
         ":python_ref_manager",
@@ -555,6 +557,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1494,6 +1497,18 @@ cc_library(
 )
 
 cc_library(
+    name = "nb_absl_inlined_vector",
+    hdrs = ["nb_absl_inlined_vector.h"],
+    compatible_with = [],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    deps = [
+        "//third_party/nanobind",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+cc_library(
     name = "nb_absl_span",
     hdrs = ["nb_absl_span.h"],
     compatible_with = [],
@@ -1552,4 +1567,25 @@ xla_cc_test(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
     ],
+)
+
+py_strict_test(
+    name = "jax_jit_test",
+    srcs = ["jax_jit_test.py"],
+    main = "jax_jit_test.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "not_run:arm",
+    ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ] + xla_py_test_deps(),
 )
