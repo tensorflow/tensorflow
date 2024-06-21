@@ -321,7 +321,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
-                            HloOpcode::kAllReduce, HloOpcode::kTranspose>(i) ||
+                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
+                            HloOpcode::kBroadcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep);
   };
@@ -2121,9 +2122,11 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         continue;
       }
       if (formatting_op->opcode() == HloOpcode::kBroadcast) {
-        CHECK(formatting_op->dimensions().empty());
         auto operands = collect_operands(formatting_op);
         std::vector<int64_t> dimensions(1, 0);
+        for (const int64_t dim : formatting_op->dimensions()) {
+          dimensions.push_back(dim + 1);
+        }
         // Constant scalars don't get expanded ahead of time and are kept
         // scalar.
         if (operands[0]->shape().dimensions_size() == 0) {
