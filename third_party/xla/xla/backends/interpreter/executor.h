@@ -59,6 +59,22 @@ class InterpreterStream : public host::HostStream {
   absl::Status RecordEvent(Event *event) override {
     return absl::UnimplementedError("Not implemented.");
   }
+
+  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                      uint64_t size) override {
+    void *src_mem = const_cast<void *>(gpu_src.opaque());
+    EnqueueTask(
+        [this, host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+    return BlockUntilDone();
+  }
+
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                      uint64_t size) override {
+    void *dst_mem = gpu_dst->opaque();
+    EnqueueTask(
+        [this, dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+    return BlockUntilDone();
+  }
 };
 
 class XlaInterpreterExecutor : public StreamExecutorCommon {
