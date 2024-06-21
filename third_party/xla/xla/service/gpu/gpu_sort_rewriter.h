@@ -54,7 +54,7 @@ class GpuSortRewriter : public HloModulePass {
   absl::StatusOr<bool> RunOnInstruction(HloSortInstruction* sort_op);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
-  static inline int sort_size_threshold_ = 100000;
+  static inline int sort_size_threshold_ = 33000;
 };
 
 }  // namespace gpu
