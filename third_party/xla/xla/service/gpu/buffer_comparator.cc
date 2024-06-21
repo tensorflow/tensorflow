@@ -187,6 +187,16 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
           stream, current, expected, "fp8_e5m2_comparison",
           buffer_comparator::fp8_e5m2_comparison());
 #endif  // GOOGLE_CUDA
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
+    case xla::F8E4M3FNUZ:
+      return CompareEqualParameterized<tsl::float8_e4m3fnuz, float>(
+          stream, current, expected, "fp8_e4m3fnuz_comparison",
+          buffer_comparator::fp8_e4m3fnuz_comparison());
+    case xla::F8E5M2FNUZ:
+      return CompareEqualParameterized<tsl::float8_e5m2fnuz, float>(
+          stream, current, expected, "fp8_e5m2fnuz_comparison",
+          buffer_comparator::fp8_e5m2fnuz_comparison());
+#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
     case xla::F16:
       return CompareEqualParameterized<Eigen::half, float>(
           stream, current, expected, "fp16_comparison",

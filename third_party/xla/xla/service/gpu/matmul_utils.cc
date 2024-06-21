@@ -366,8 +366,12 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     // for matmuls with FP8 inputs and outputs, C must instead have the same
     // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
     // we set the dtype of C here.
+#if GOOGLE_CUDA
+    // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
+    // with fp8 output. Thus only do this for CUDA side.
     c_matrix_shape.set_element_type(
         bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
+#endif
   }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,

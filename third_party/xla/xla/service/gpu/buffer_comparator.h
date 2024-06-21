@@ -22,6 +22,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla::gpu {
 
 // A device-side comparator that compares buffers.
@@ -76,6 +80,10 @@ namespace buffer_comparator {
 // Returns a pointer to CUDA C++ device function implementing comparison.
 void* fp8_e4m3fn_comparison();
 void* fp8_e5m2_comparison();
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
+void* fp8_e4m3fnuz_comparison();
+void* fp8_e5m2fnuz_comparison();
+#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
 void* fp16_comparison();
 void* bf16_comparison();
 void* fp32_comparison();

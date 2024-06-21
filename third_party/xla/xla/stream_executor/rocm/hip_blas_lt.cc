@@ -558,6 +558,8 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         profile_result);                                                   \
   }
 
+// FP8 compatible types combinations (Full table in
+// https://github.com/ROCm/hipBLASLt/blob/develop/docs/api-reference.rst?plain=1)
 #if TF_ROCM_VERSION >= 60000
   TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
                HIP_R_16F)
@@ -573,6 +575,21 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
                HIP_R_16F)
   TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
                HIP_R_32F)
+#endif
+
+#if TF_ROCM_VERSION >= 60200
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
+               HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16BF,
+               HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
+               HIP_R_16BF)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ,
+               HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ,
+               HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ,
+               HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
 #endif
 
   // Other data types:
