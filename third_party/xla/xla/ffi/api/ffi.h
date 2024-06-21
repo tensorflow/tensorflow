@@ -60,6 +60,11 @@ enum class DataType : uint8_t {
   C64 = XLA_FFI_DataType_C64,
   C128 = XLA_FFI_DataType_C128,
   TOKEN = XLA_FFI_DataType_TOKEN,
+  F8E5M2 = XLA_FFI_DataType_F8E5M2,
+  F8E4M3FN = XLA_FFI_DataType_F8E4M3FN,
+  F8E4M3B11FNUZ = XLA_FFI_DataType_F8E4M3B11FNUZ,
+  F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
+  F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
