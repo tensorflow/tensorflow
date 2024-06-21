@@ -154,32 +154,6 @@ std::optional<HloSharding> PropagateDimwiseSharding(
   return input_spec;
 }
 
-HloSharding PropagateDimwiseShardingSlice(const HloSharding& input_spec,
-                                          const Shape& old_shape,
-                                          const Shape& new_shape,
-                                          const Array<int64_t>& device_mesh) {
-  if (input_spec.IsReplicated()) {
-    return input_spec;
-  }
-
-  CHECK(old_shape.IsArray());
-
-  std::vector<int64_t> tensor_to_mesh_dim =
-      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
-                            /* consider_reverse_device_meshes */ true);
-
-  std::vector<int64_t> tensor_dims;
-  std::vector<int64_t> mesh_dims;
-  for (size_t i = 0; i < new_shape.rank(); ++i) {
-    if (new_shape.dimensions(i) == old_shape.dimensions(i) &&
-        tensor_to_mesh_dim[i] > -1) {
-      tensor_dims.push_back(i);
-      mesh_dims.push_back(tensor_to_mesh_dim[i]);
-    }
-  }
-  return Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
-}
-
 // Propagate sharding for ReduceWindow-like operations.
 // The sharding can successfully propagate if the window operation only happens
 // on tensor dimensions that are not tiled.
