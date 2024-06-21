@@ -600,8 +600,9 @@ ENTRY main {
                               }
                             })pb"));
   autotune_results_override.mutable_results(0)->set_device(
-      cache_key.GetModelStr());
-  autotune_results_override.mutable_results(0)->set_hlo(cache_key.GetHlo());
+      std::string(cache_key.GetModelStr()));
+  autotune_results_override.mutable_results(0)->set_hlo(
+      std::string(cache_key.GetHlo()));
   CHECK_OK(AutotunerUtil::LoadAutotuneResults(autotune_results_override));
 
   HloPassPipeline pipeline("gemm_autotune");
