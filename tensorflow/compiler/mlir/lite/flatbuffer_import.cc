@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -1630,6 +1631,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   if (!disable_vhlo_to_stablehlo) {
     mlir::PassManager pass_manager(module.getContext());
     pass_manager.addPass(mlir::odml::createLegalizeVhloToStablehloPass());
+    pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
     auto result = pass_manager.run(module);
     if (failed(result)) {
       return nullptr;

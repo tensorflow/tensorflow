@@ -33,6 +33,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -358,6 +359,7 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   }
   pass_manager.clear();
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+  pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (failed(pass_manager.run(module))) {
     return status_handler.Combine(
         absl::InvalidArgumentError("VHLO lowering failed"));
@@ -505,6 +507,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
   pass_manager.clear();
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+  pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (failed(pass_manager.run(module))) {
     return status_handler.Combine(
         absl::InvalidArgumentError("VHLO lowering failed"));
