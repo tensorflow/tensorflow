@@ -257,18 +257,6 @@ LogicalResult ApplyVhloToStablehloPatterns(ModuleOp module) {
   return success();
 }
 
-LogicalResult ApplyUnrealizedCastCanonicalization(ModuleOp module) {
-  MLIRContext *context = module->getContext();
-  RewritePatternSet patterns(context);
-  ConversionTarget target(*context);
-  target.addIllegalOp<UnrealizedConversionCastOp>();
-  populateReconcileUnrealizedCastsPatterns(patterns);
-  if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
-    return module->emitError("Failed to fold unrealized cast");
-  }
-  return success();
-}
-
 }  // namespace
 
 struct LegalizeStablehloToVhloPass
@@ -286,8 +274,7 @@ struct LegalizeStablehloToVhloPass
     if (failed(ApplyStablehloToVhloPatterns(module,
                                             /*is_func_legal=*/true)) ||
         failed(ApplyVhloToVersionPatterns(module, target_version)) ||
-        failed(ApplyTypeConverter(module, to_builtin_converter)) ||
-        failed(ApplyUnrealizedCastCanonicalization(module)))
+        failed(ApplyTypeConverter(module, to_builtin_converter)))
       return signalPassFailure();
   }
 };
@@ -308,8 +295,7 @@ struct LegalizeVhloToStablehloPass
     if (failed(ApplyTypeConverter(module, to_vhlo_converter)) ||
         failed(ApplyVhloToVersionPatterns(module,
                                           stablehlo::getCurrentVersion())) ||
-        failed(ApplyVhloToStablehloPatterns(module)) ||
-        failed(ApplyUnrealizedCastCanonicalization(module)))
+        failed(ApplyVhloToStablehloPatterns(module)))
       return signalPassFailure();
   }
 };
