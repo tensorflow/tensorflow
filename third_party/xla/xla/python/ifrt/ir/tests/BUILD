@@ -20,6 +20,7 @@ lit_test_suite(
             "verify_attrs.mlir",
             "verify_call.mlir",
             "verify_call_loaded_executable.mlir",
+            "verify_copy_arrays.mlir",
             "verify_disassemble.mlir",
             "verify_loaded_executable.mlir",
             "verify_remap_arrays.mlir",

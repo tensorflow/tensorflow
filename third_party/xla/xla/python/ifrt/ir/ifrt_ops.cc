@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -275,6 +276,62 @@ mlir::LogicalResult DisassembleOp::verify() {
                   output_devices.begin())) {
     return emitOpError() << "requires the same input/output device list. Input "
                          << input_devices << " vs Output " << output_devices;
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult CopyArraysOp::verify() {
+  int num_in_arrays = getInputs().size();
+  int num_out_arrays = getOutputs().size();
+  if (num_in_arrays == 0) {
+    return emitOpError() << "requires at least one input array";
+  }
+  if (num_in_arrays != num_out_arrays) {
+    return emitOpError()
+           << "requires the same number of input and output arrays";
+  }
+  IfrtArrayType first_input =
+      llvm::cast<IfrtArrayType>(getInputs().front().getType());
+  auto src_devices = first_input.getDevicesAttr();
+  auto src_memory_kind = first_input.MemoryKind();
+  IfrtArrayType first_output =
+      llvm::cast<IfrtArrayType>(getOutputs().front().getType());
+  auto dst_devices = first_output.getDevicesAttr();
+  auto dst_memory_kind = first_output.MemoryKind();
+  for (const auto [idx, pair] :
+       llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
+    const auto input_array =
+        llvm::cast<IfrtArrayType>(std::get<0>(pair).getType());
+    if (src_devices != input_array.getDevicesAttr()) {
+      return emitOpError() << "requires all input arrays to have the same "
+                              "devices, but input #"
+                           << idx << " has different devices";
+    }
+    if (src_memory_kind != input_array.MemoryKind()) {
+      return emitOpError() << "requires all input arrays to have the same "
+                              "memory kind, but input #"
+                           << idx << " has a different memory kind";
+    }
+    const auto output_array =
+        llvm::cast<IfrtArrayType>(std::get<1>(pair).getType());
+    if (dst_devices != output_array.getDevicesAttr()) {
+      return emitOpError() << "requires all output arrays to have the same "
+                              "devices, but output #"
+                           << idx << " has different devices";
+    }
+    if (dst_memory_kind != output_array.MemoryKind()) {
+      return emitOpError() << "requires all output arrays to have the same "
+                              "memory kind, but output #"
+                           << idx << " has a different memory kind";
+    }
+    if (input_array.getShape() != output_array.getShape()) {
+      return emitOpError() << "requires input #" << idx << " and output #"
+                           << idx << " to have the same shape and dtype";
+    }
+    if (input_array.getShardingAttr() != output_array.getShardingAttr()) {
+      return emitOpError() << "requires input #" << idx << " and output #"
+                           << idx << " to have the same sharding";
+    }
   }
   return mlir::success();
 }

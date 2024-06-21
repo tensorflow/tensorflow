@@ -53,6 +53,35 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let hasVerifier = 1;
 }
 
+def Ifrt_CopyArraysOp
+    : Ifrt_Op<"CopyArrays", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
+  let summary = "Copies arrays to a new set of devices";
+  let description = [{
+    Copies the input arrays to the output arrays.
+
+    This op requires that all input arrays have use the same devices and memory
+    king, and all the output arrays use the same devices and memory king. Note
+    that the devices and memory kind used by the input and output arrays might
+    not be the same. Moreover, the corresponding output array of an input array
+    must have the same sharding as the op can not reshard.
+  }];
+
+  let arguments = (ins
+    Variadic<Ifrt_ArrayType>:$inputs,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
+    Variadic<Ifrt_ControlType>:$control_inputs);
+  let results = (outs
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def Ifrt_AssembleOp
     : Ifrt_Op<"Assemble", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
   let summary = "Assembles single device arrays to a sharded array";

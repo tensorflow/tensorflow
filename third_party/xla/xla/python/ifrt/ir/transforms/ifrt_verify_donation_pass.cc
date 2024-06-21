@@ -103,21 +103,23 @@ void IfrtVerifyDonationPass::runOnOperation() {
               }
               return mlir::success();
             })
-            .Case<xla::ifrt::RemapArraysOp>([&](auto& op) {
-              if (op.getDonated()) {
-                for (const auto [idx, input] :
-                     llvm::enumerate(op.getInputs())) {
-                  if (!donated_values.insert(input).second) {
-                    op.emitOpError() << "input #" << idx << " already donated.";
-                    return mlir::failure();
+            .Case<xla::ifrt::CopyArraysOp, xla::ifrt::RemapArraysOp>(
+                [&](auto& op) {
+                  if (op.getDonated()) {
+                    for (const auto [idx, input] :
+                         llvm::enumerate(op.getInputs())) {
+                      if (!donated_values.insert(input).second) {
+                        op.emitOpError()
+                            << "input #" << idx << " already donated.";
+                        return mlir::failure();
+                      }
+                      if (mlir::failed(VerifyIfInputAndDonated(op, input))) {
+                        return mlir::failure();
+                      }
+                    }
                   }
-                  if (mlir::failed(VerifyIfInputAndDonated(op, input))) {
-                    return mlir::failure();
-                  }
-                }
-              }
-              return mlir::success();
-            })
+                  return mlir::success();
+                })
             .Default(mlir::success());
 
     if (mlir::failed(result)) {
