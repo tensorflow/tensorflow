@@ -436,6 +436,9 @@ xla_cc_test(
     deps = [
         ":bfloat16_propagation",
         ":float_support",
+        ":hlo_verifier",
+        "//xla:comparison_util",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
@@ -444,6 +447,9 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
