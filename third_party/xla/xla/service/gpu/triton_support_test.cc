@@ -18,18 +18,19 @@ limitations under the License.
 #include "xla/service/gpu/triton_support.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -37,9 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -71,11 +70,31 @@ auto AllXlaDataTypes() {
   return ::testing::ValuesIn(xla_data_types);
 }
 
+auto AllDevicesToTest() {
+  using cc = se::GpuComputeCapability;
+#ifdef TENSORFLOW_USE_ROCM
+  se::RocmComputeCapability example_rocm_compute_capability =
+      TestGpuDeviceInfo::AMDMI210DeviceInfo().rocm_compute_capability();
+  return ::testing::Values(cc(example_rocm_compute_capability));
+#else  // GOOGLE_CUDA
+  return ::testing::Values(cc(se::CudaComputeCapability::Ampere()),
+                           cc(se::CudaComputeCapability::Hopper()));
+#endif
+}
+
+// Generates all the possible test combinations for a given opcodes. A test
+// combination is a tuple of the form (data_type, opcode, compute_capability).
+auto AllTestCombinationsForOpcodes(std::vector<HloOpcode>&& opcodes) {
+  return ::testing::Combine(AllXlaDataTypes(), ::testing::ValuesIn(opcodes),
+                            AllDevicesToTest());
+}
+
 class TritonSupportTest : public TritonSupportTestBase {
  public:
-  // Runs a support test for the given `TestedInstruction`. The support test
-  // verifies that `IsTritonSupportedInstruction` is in sync with the
-  // implemented Triton emitter, i.e., given an instruction `instr`, either
+  // Runs a support test for the given `TestedInstruction` and the given
+  // compute capability. The support test verifies that
+  // `IsTritonSupportedInstruction` is in sync with the implemented Triton
+  // emitter, i.e., given an instruction `instr`, either
   //  -  `IsTritonSupportedInstruction(instr)` =>  Triton lowering is OK
   //  -  `!IsTritonSupportedInstruction(instr)` => Triton lowering is not OK.
   //
@@ -89,36 +108,39 @@ class TritonSupportTest : public TritonSupportTestBase {
   // lowering test when `IsTritonSupportedInstruction` returns `false`.
   void RunSupportTest(TestedInstruction ti,
                       std::vector<int64_t> output_tile_sizes,
+                      se::GpuComputeCapability cc,
                       bool skip_failure_branch_to_avoid_crash = false) {
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
-    if (IsTritonSupportedInstruction(ti.Instruction(),
-                                     GetComputeCapability())) {
-      TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
-                                              block_level_parameters,
-                                              "CHECK: tt.func @triton_fn"));
+    const se::DeviceDescription dev_info =
+        std::holds_alternative<se::CudaComputeCapability>(cc)
+            ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
+            : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+    if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+      EXPECT_THAT(
+          TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
+                        block_level_parameters, &llvm_module_, mlir_context_),
+          IsOk());
     } else {
       if (!skip_failure_branch_to_avoid_crash) {
-        const se::DeviceDescription dev_info =
-            TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
         EXPECT_THAT(
-            TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                          dev_info, block_level_parameters, &llvm_module_,
-                          mlir_context_),
+            TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
+                          block_level_parameters, &llvm_module_, mlir_context_),
             Not(IsOk()));
       }
     }
   }
 };
 
-class TritonSupportTestWithParam : public TritonSupportTest,
-                                   public ::testing::WithParamInterface<
-                                       std::tuple<PrimitiveType, HloOpcode>> {};
+class TritonSupportTestWithParam
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {};
 
 using BitcastOrReshapeTest = TritonSupportTestWithParam;
 
 TEST_P(BitcastOrReshapeTest, IsTritonSupportedBitcastOrReshape) {
-  auto [data_type, opcode] = GetParam();
+  auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
@@ -127,26 +149,20 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16});
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
-    ::testing::Combine(AllXlaDataTypes(),
-                       ::testing::Values(HloOpcode::kBitcast,
-                                         HloOpcode::kReshape)),
-    TritonSupportTestParamsToString);
+INSTANTIATE_TEST_SUITE_P(BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kBitcast,
+                                                        HloOpcode::kReshape}),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using UnaryElementwiseTest = TritonSupportTestWithParam;
 
 // TODO(b/331636835): updates elementwise op tests to directly emit single op
 // instead of relying on triton gemm kernel.
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-
+  auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[33,68]{1,0} parameter(0)
@@ -156,20 +172,24 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32});
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
+// TODO(b/345763510): make sure to test all the data types for the unary,
+// binary, and ternary elementwise ops.
 INSTANTIATE_TEST_SUITE_P(
     UnaryElementwiseTestSuite, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(S8, S16, S32, F16, F32, BF16),
                        ::testing::Values(HloOpcode::kConvert, HloOpcode::kAbs,
-                                         HloOpcode::kNegate)),
-    TritonSupportTestParamsToString);
+                                         HloOpcode::kNegate),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 INSTANTIATE_TEST_SUITE_P(
     UnaryPREDTestSuite, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(PRED),
-                       ::testing::Values(HloOpcode::kConvert, HloOpcode::kNot)),
-    TritonSupportTestParamsToString);
+                       ::testing::Values(HloOpcode::kConvert, HloOpcode::kNot),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 INSTANTIATE_TEST_SUITE_P(
     UnaryMathTestSuite, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(F16, F32, BF16),
@@ -179,17 +199,14 @@ INSTANTIATE_TEST_SUITE_P(
                                          HloOpcode::kLog1p, HloOpcode::kRsqrt,
                                          HloOpcode::kSin, HloOpcode::kSqrt,
                                          HloOpcode::kCbrt, HloOpcode::kTan,
-                                         HloOpcode::kTanh, HloOpcode::kErf)),
-    TritonSupportTestParamsToString);
+                                         HloOpcode::kTanh, HloOpcode::kErf),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using BinaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-
+  auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
@@ -201,10 +218,11 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
 
   bool skip_failure_branch_to_avoid_crash = false;
-  if (data_type == F16 && opcode == HloOpcode::kDivide) {
+  if (primitive_util::BitWidth(data_type) == 16 &&
+      opcode == HloOpcode::kDivide) {
     skip_failure_branch_to_avoid_crash = true;
   }
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32},
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
                  /*skip_failure_branch_to_avoid_crash=*/
                  skip_failure_branch_to_avoid_crash);
 }
@@ -215,30 +233,29 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(HloOpcode::kAdd, HloOpcode::kMultiply,
                                          HloOpcode::kMaximum,
                                          HloOpcode::kMinimum,
-                                         HloOpcode::kSubtract)),
-    TritonSupportTestParamsToString);
+                                         HloOpcode::kSubtract),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 INSTANTIATE_TEST_SUITE_P(BinaryPREDTestSuite, BinaryElementwiseTest,
                          ::testing::Combine(::testing::Values(PRED),
                                             ::testing::Values(HloOpcode::kAnd,
                                                               HloOpcode::kOr,
-                                                              HloOpcode::kXor)),
-                         TritonSupportTestParamsToString);
+                                                              HloOpcode::kXor),
+                                            AllDevicesToTest()),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
 INSTANTIATE_TEST_SUITE_P(
     BinaryMathTestSuite, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(F16, F32, BF16),
                        ::testing::Values(HloOpcode::kAtan2, HloOpcode::kDivide,
-                                         HloOpcode::kPower)),
-    TritonSupportTestParamsToString);
+                                         HloOpcode::kPower),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using CompareTest = TritonSupportTestWithParam;
 
 TEST_P(CompareTest, IsTritonSupportedCompare) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-
+  auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
@@ -249,23 +266,20 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32});
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     CompareTestSuite, CompareTest,
     ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kCompare)),
-    TritonSupportTestParamsToString);
+                       ::testing::Values(HloOpcode::kCompare),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using TernaryElementwiseTest = TritonSupportTestWithParam;
 
 TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-
+  auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[13,63]{1,0} parameter(0)
@@ -277,25 +291,24 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32});
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     TernaryElementwiseTestSuite, TernaryElementwiseTest,
     ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kSelect)),
-    TritonSupportTestParamsToString);
+                       ::testing::Values(HloOpcode::kSelect),
+                       AllDevicesToTest()),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
-using ReduceConstTest = TritonSupportTestWithParam;
+using ReduceTest = TritonSupportTestWithParam;
 
-TEST_P(ReduceConstTest, IsTritonSupportedReduceWithConstInit) {
-  auto [data_type, opcode] = GetParam();
-  if (data_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-
-  const std::string kHloTestTemplate = R"(
-HloModule t
+TEST_P(ReduceTest, IsTritonSupportedReduction) {
+  GTEST_SKIP() << "TODO(b/348565795): this test is currently broken.";
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
 add {
   Arg_0 = $0[] parameter(0)
   Arg_1 = $0[] parameter(1)
@@ -304,213 +317,152 @@ add {
 
 ENTRY triton_computation {
   parameter_0 = $0[125,127]{1,0} parameter(0)
-  constant_0 = $0[] constant(0)
-  ROOT reduce = $0[125]{0} $1(parameter_0, constant_0), dimensions={1}, to_apply=add
+  constant_0 = $0[] constant($1)
+  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+    dimensions={1}, to_apply=add
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+TEST_P(
+    ReduceTest,
+    UnsupportedReduceWithMoreThanOneReduceDimensionsFailsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+add {
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  ROOT add = $0[] add(Arg_0, Arg_1)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $0[2,125,127]{2,1,0} parameter(0)
+  constant_0 = $0[] constant($1)
+  ROOT reduce = $0[2]{0} reduce(parameter_0, constant_0),
+    dimensions={1,2}, to_apply=add
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+TEST_P(ReduceTest,
+       UnsupportedReduceWithNonLastReduceDimensionFailsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+add {
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  ROOT add = $0[] add(Arg_0, Arg_1)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $0[125,127]{1,0} parameter(0)
+  constant_0 = $0[] constant($1)
+  ROOT reduce = $0[127]{0} reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+TEST_P(ReduceTest,
+       UnsupportedReduceWithMoreThanOneOperandsFailsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+add {
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  Arg_2 = $0[] parameter(2)
+  Arg_3 = $0[] parameter(3)
+  add_0 = $0[] add(Arg_0, Arg_2)
+  add_1 = $0[] add(Arg_1, Arg_3)
+  ROOT pair = ($0[], $0[]) tuple(add_0, add_1)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $0[125,127] parameter(0)
+  constant_0 = $0[] constant($1)
+  tuple = ($0[125]{0}, $0[125]{0}) reduce(
+    parameter_0, parameter_0, constant_0, constant_0),
+      dimensions={1}, to_apply=add
+  ROOT reduce = $0[125]{0} get-tuple-element(tuple), index=0
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+TEST_P(ReduceTest,
+       UnsupportedReduceWithNonConstReduceValueFailsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+add {
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  ROOT add = $0[] add(Arg_0, Arg_1)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $0[125,127]{1,0} parameter(0)
+  init = $0[] parameter(1)
+  ROOT reduce = $0[125]{0} reduce(parameter_0, init), dimensions={1}, to_apply=add
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1});
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ReduceConstTestSuite, ReduceConstTest,
-    ::testing::Combine(::testing::Values(F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kReduce)),
-    TritonSupportTestParamsToString);
-
-TEST_F(TritonSupportTest,
-       SupportedReduceWithConvertConstantIsCodegenedSuccessfullyWithTriton) {
-  if (!SupportsBF16(GetComputeCapability())) {
-    GTEST_SKIP();
-  }
-  const std::string kHloTest = R"(
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-ENTRY triton_computation {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  constant_0 = bf16[] constant(0)
-  convert_0 = f32[] convert(constant_0)
-  ROOT reduce = f32[125]{0} reduce(parameter_0, convert_0), dimensions={1}, to_apply=add
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  EXPECT_TRUE(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .CanFuse());
-  TF_EXPECT_OK(
-      ApplyFloatNormalization(ti.Module().get(), GetComputeCapability()));
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(ti.TritonComputation(),
-                                          FromOutputTileSizes({1}),
-                                          "CHECK: tt.func @triton_fn"));
-}
-
-TEST_F(
-    TritonSupportTestBase,
-    UnsupportedReduceWithMoreThanOneReduceDimensionsFailsGracefullyWithTriton) {
-  const std::string kHloTest = R"(
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-ENTRY triton_computation {
-  parameter_0 = f32[2,125,127]{2,1,0} parameter(0)
-  constant_0 = f32[] constant(0)
-  ROOT reduce = f32[2]{0} reduce(parameter_0, constant_0), dimensions={1,2}, to_apply=add
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr(
-          "Reduction is not a row-reduction of a single operand."));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
-                    mlir_context_),
-      Not(IsOk()));
-}
-
-TEST_F(TritonSupportTest,
-       UnsupportedReduceWithNonLastReduceDimensionFailsGracefullyWithTriton) {
-  const std::string kHloTest = R"(
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-ENTRY triton_computation {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  constant_0 = f32[] constant(0)
-  ROOT reduce = f32[127]{0} reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr(
-          "Reduction is not a row-reduction of a single operand."));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
-                    mlir_context_),
-      Not(IsOk()));
-}
-
-TEST_F(TritonSupportTest,
-       UnsupportedReduceWithMoreThanOneOperandsFailsGracefullyWithTriton) {
-  const std::string kHloTest = R"(
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_2 = f32[] parameter(1)
-  Arg_1 = f32[] parameter(2)
-  Arg_3 = f32[] parameter(3)
-  add_0 = f32[] add(Arg_0, Arg_2)
-  add_1 = f32[] add(Arg_1, Arg_3)
-  ROOT pair = (f32[], f32[]) tuple(add_0, add_1)
-}
-
-ENTRY triton_computation {
-  parameter_0 = f32[125,127] parameter(0)
-  constant_0 = f32[] constant(0)
-  tuple_0 = (f32[125]{0}, f32[125]{0}) reduce(parameter_0, parameter_0, constant_0, constant_0), dimensions={1}, to_apply=add
-  ROOT reduce = f32[125]{0} get-tuple-element(tuple_0), index=0
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Unsupported output data type"));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
-                    mlir_context_),
-      Not(IsOk()));
-}
-
-TEST_F(TritonSupportTest,
-       UnsupportedReduceWithNonConstReduceValueFailsGracefullyWithTriton) {
-  const std::string kHloTest = R"(
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-ENTRY triton_computation {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  init = f32[] parameter(1)
-  ROOT reduce = f32[125]{0} reduce(parameter_0, init), dimensions={1}, to_apply=add
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Reduction init value should be a constant "
-                           "or a convert of a constant."));
-  EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
-                    mlir_context_),
-      tsl::testing::StatusIs(
-          absl::StatusCode::kInternal,
-          ::testing::HasSubstr("operand->opcode() == HloOpcode::kConstant")));
-}
-
-TEST_F(TritonSupportTest,
-       UnsupportedReductionComputationFailsGracefullyWithTriton) {
-  const std::string kHloTest = R"(
+TEST_P(ReduceTest, UnsupportedReductionComputationFailsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
 custom_call {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT custom_call = f32[] custom-call(Arg_0, Arg_1), custom_call_target="foo"
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  ROOT custom_call = $0[] custom-call(Arg_0, Arg_1), custom_call_target="foo"
 }
 
 ENTRY triton_computation {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  constant_0 = f32[] constant(0)
-  ROOT reduce = f32[125]{0} reduce(parameter_0, constant_0), dimensions={1}, to_apply=custom_call
-})";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kReduce));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(
-      IsTritonSupportedInstruction(ti.Instruction(), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Unsupported reduction computation by Triton."));
-  EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, FromOutputTileSizes({1}), &llvm_module_,
-                    mlir_context_),
-      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                             ::testing::HasSubstr("Unsupported operation")));
+  parameter_0 = $0[125,127]{1,0} parameter(0)
+  constant_0 = $0[] constant($1)
+  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+    dimensions={1}, to_apply=custom_call
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
+
+INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kReduce}),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

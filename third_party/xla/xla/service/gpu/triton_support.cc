@@ -473,8 +473,6 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     absl::flat_hash_set<HloOpcode> additional_opcodes{
         HloOpcode::kAtan2, HloOpcode::kDivide, HloOpcode::kPower};
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
-  } else if (element_type == PrimitiveType::BF16) {
-    ret.insert(HloOpcode::kDivide);
   }
   return ret;
 }

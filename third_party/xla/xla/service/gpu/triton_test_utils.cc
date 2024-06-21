@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/triton_test_utils.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -126,15 +125,36 @@ absl::StatusOr<bool> ApplyFloatNormalization(
   return pipeline.Run(module);
 }
 
-std::string TritonSupportTestParamsToString(
-    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
-        data) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = data.param;
+namespace {
+
+std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
+                                              HloOpcode opcode) {
   return absl::StrCat(
       primitive_util::LowercasePrimitiveTypeName(data_type), "_",
       absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
+}
+
+}  // namespace
+
+std::string TritonSupportTestParamsToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
+        data) {
+  auto [data_type, opcode] = data.param;
+  return PrimitiveTypeAndHloOpcodeToString(data_type, opcode);
+}
+
+std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data) {
+  auto [data_type, opcode, cc] = data.param;
+  std::string cc_str;
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
+  } else {
+    cc_str = "rocm";
+  }
+  return absl::StrCat(PrimitiveTypeAndHloOpcodeToString(data_type, opcode), "_",
+                      absl::StrReplaceAll(cc_str, {{".", ""}}));
 }
 
 namespace {

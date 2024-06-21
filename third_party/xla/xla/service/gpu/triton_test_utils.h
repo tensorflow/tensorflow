@@ -134,6 +134,9 @@ class TritonSupportTestBaseWithParam
 std::string TritonSupportTestParamsToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>& data);
 
+std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data);
 }  //  namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_TRITON_TEST_UTILS_H_
