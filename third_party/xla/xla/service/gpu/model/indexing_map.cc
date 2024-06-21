@@ -121,11 +121,10 @@ class AffineExprSimplifier {
   // nullptr on mismatch.
   AffineExpr SimplifyDivDiv(AffineExpr divisor, int64_t dividend);
 
-  // Removes summands from arbitrarily nested sums (e.g, ((a+b)+c)) if `pred`
-  // returns true. In this example, `pred` is evaluated on `a`, `b` and `c`, not
-  // on `a+b`.
-  mlir::AffineExpr RemoveSummands(
-      mlir::AffineExpr expr, const std::function<bool(mlir::AffineExpr)>& pred);
+  // Rewrites summands in arbitrarily nested sums (e.g, ((a+b)+c)) by applying
+  // `fn` to each one. In the example, the result is fn(a)+fn(b)+fn(c).
+  AffineExpr MapSummands(AffineExpr expr,
+                         const std::function<AffineExpr(AffineExpr)>& fn);
   void VisitSummands(mlir::AffineExpr expr,
                      const std::function<void(mlir::AffineExpr)>& visit);
 
@@ -181,19 +180,20 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     return (GetLhs(lhs_simplified) % (m / *mul)) * *mul;
   }
 
+  auto zero = getAffineConstantExpr(0, mod.getContext());
   int64_t extracted_constant = 0;
-  auto new_lhs = RemoveSummands(lhs_simplified, [&](AffineExpr expr) {
+  auto new_lhs = MapSummands(lhs_simplified, [&](AffineExpr expr) {
     if (auto cst = mlir::dyn_cast<AffineConstantExpr>(expr);
         cst && cst.getValue() >= m) {
       extracted_constant += cst.getValue();
-      return true;
+      return zero;
     }
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       if (*multiplier % m == 0) {
-        return true;
+        return zero;
       }
     }
-    return false;
+    return expr;
   });
   new_lhs = new_lhs + (extracted_constant % m);
 
@@ -218,12 +218,12 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     if (m % *multiplier_gcd == 0 && no_multiplier_range.lower >= 0 &&
         no_multiplier_range.upper < *multiplier_gcd) {
       // Remove everything that doesn't have a multiplier.
-      new_lhs = RemoveSummands(new_lhs, [&](AffineExpr expr) {
+      new_lhs = MapSummands(new_lhs, [&](AffineExpr expr) {
         if (GetConstantRhs(expr, AffineExprKind::Mul)) {
-          return false;
+          return expr;
         }
         extracted = extracted + expr;
-        return true;
+        return zero;
       });
     }
   }
@@ -242,14 +242,9 @@ AffineExpr AffineExprSimplifier::SimplifyModDiv(AffineExpr divisor,
 
 AffineExpr AffineExprSimplifier::SimplifyDivDiv(AffineExpr divisor,
                                                 int64_t dividend) {
-  // The outer dividend must be positive, since:
-  //   (8 // -9) // -1 = -1 // -1 = 1
-  // Whereas 8 // 9 = 0. The inner dividend can be negative.
-  if (dividend <= 0) {
-    return nullptr;
-  }
-  if (auto inner_dividend = GetConstantRhs(divisor, AffineExprKind::FloorDiv)) {
-    return GetLhs(divisor).floorDiv(dividend * *inner_dividend);
+  // The inner dividend here can be negative.
+  if (auto dividend_2 = GetConstantRhs(divisor, AffineExprKind::FloorDiv)) {
+    return GetLhs(divisor).floorDiv(dividend * *dividend_2);
   }
   return nullptr;
 }
@@ -261,8 +256,8 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   // TODO(jreiffers): Split this function into multiple (one for each rewrite
   // rule).
 
-  // The logic below assumes we have a constant RHS.
-  if (!rhs_range.IsPoint()) {
+  // The logic below assumes we have a constant positive RHS.
+  if (!rhs_range.IsPoint() || rhs_range.lower <= 0) {
     return div;
   }
   int64_t d = rhs_range.lower;
@@ -281,7 +276,7 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
 
   AffineExpr zero = getAffineConstantExpr(0, mlir_context);
   AffineExpr extracted = zero;
-  auto new_dividend = RemoveSummands(lhs_simplified, [&](AffineExpr expr) {
+  auto new_dividend = MapSummands(lhs_simplified, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
       // one x, but we currently have no reason to do that.
@@ -289,17 +284,12 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
         int64_t factor = *multiplier / d;
         extracted = extracted + GetLhs(expr) * factor;
         // Remove from dividend.
-        return true;
+        return zero;
       }
     }
     // Not a constant multiplier, keep in dividend.
-    return false;
+    return expr;
   });
-
-  // If we removed everything, skip the div.
-  if (new_dividend == zero) {
-    return extracted;
-  }
 
   // The gcd of all multipliers and the dividend.
   int64_t multiplier_divisor_gcd = d;
@@ -318,23 +308,18 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   // the result.
   if (no_multiplier_range.lower >= 0 &&
       no_multiplier_range.upper < multiplier_divisor_gcd) {
-    auto new_new_dividend = zero;
-    VisitSummands(new_dividend, [&](AffineExpr summand) {
+    new_dividend = MapSummands(new_dividend, [&](AffineExpr summand) {
       if (auto mult = GetConstantRhs(summand, AffineExprKind::Mul)) {
-        new_new_dividend = new_new_dividend +
-                           (GetLhs(summand) * (*mult / multiplier_divisor_gcd));
+        return GetLhs(summand) * (*mult / multiplier_divisor_gcd);
       }
+      // This has no multiplier and we previously determined it can't affect
+      // the result of the division.
+      return zero;
     });
-    return new_new_dividend.floorDiv(d / multiplier_divisor_gcd) + extracted;
+    d /= multiplier_divisor_gcd;
   }
 
-  // If we removed nothing, return the original division.
-  if (extracted == getAffineConstantExpr(0, mlir_context) &&
-      new_dividend == div.getLHS()) {
-    return div;
-  }
-
-  return extracted + new_dividend.floorDiv(div.getRHS());
+  return new_dividend.floorDiv(d) + extracted;
 }
 
 std::optional<int64_t> AffineExprSimplifier::GetConstantRhs(
@@ -350,18 +335,18 @@ std::optional<int64_t> AffineExprSimplifier::GetConstantRhs(
   return bound.lower;
 }
 
-AffineExpr AffineExprSimplifier::RemoveSummands(
-    AffineExpr expr, const std::function<bool(AffineExpr)>& pred) {
+AffineExpr AffineExprSimplifier::MapSummands(
+    AffineExpr expr, const std::function<AffineExpr(AffineExpr)>& fn) {
   if (expr.getKind() == AffineExprKind::Add) {
     auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-    auto lhs = RemoveSummands(add.getLHS(), pred);
-    auto rhs = RemoveSummands(add.getRHS(), pred);
+    auto lhs = MapSummands(add.getLHS(), fn);
+    auto rhs = MapSummands(add.getRHS(), fn);
     if (lhs == add.getLHS() && rhs == add.getRHS()) {
       return add;
     }
     return lhs + rhs;
   }
-  return pred(expr) ? mlir::getAffineConstantExpr(0, expr.getContext()) : expr;
+  return fn(expr);
 }
 
 void AffineExprSimplifier::VisitSummands(
