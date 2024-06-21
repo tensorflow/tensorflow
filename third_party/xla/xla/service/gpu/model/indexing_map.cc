@@ -232,6 +232,8 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
   auto rhs = range_evaluator_->ComputeExpressionRange(div.getRHS());
 
+  // TODO(jreiffers): Split this function into multiple (one for each rewrite
+  // rule).
   if (0 <= lhs.lower && lhs.upper < rhs.lower) {
     return getAffineConstantExpr(0, mlir_context);
   }
@@ -273,7 +275,6 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     }
   }
 
-  Interval no_multiplier_range{0, 0};
   AffineExpr zero = getAffineConstantExpr(0, mlir_context);
   AffineExpr extracted = zero;
   auto new_dividend = RemoveSummands(lhs_simplified, [&](AffineExpr expr) {
@@ -296,61 +297,31 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     return extracted;
   }
 
-  std::optional<int64_t> multiplier_gcd = std::nullopt;
-  // The maximum GCD of (divisor, any multiplier inside the div).
-  int64_t max_remaining_multiplier_gcd = 1;
+  // The gcd of all multipliers and the dividend.
+  int64_t multiplier_divisor_gcd = d;
+  Interval no_multiplier_range{0, 0};
   VisitSummands(new_dividend, [&](AffineExpr summand) {
     if (auto multiplier = GetConstantRhs(summand, AffineExprKind::Mul)) {
-      if (multiplier_gcd.has_value()) {
-        multiplier_gcd = std::gcd(*multiplier_gcd, *multiplier);
-      } else {
-        multiplier_gcd = multiplier;
-      }
-
-      max_remaining_multiplier_gcd =
-          std::max(max_remaining_multiplier_gcd, std::gcd(*multiplier, d));
+      multiplier_divisor_gcd = std::gcd(multiplier_divisor_gcd, *multiplier);
     } else {
-      auto range = range_evaluator_->ComputeExpressionRange(summand);
-      no_multiplier_range.lower += range.lower;
-      no_multiplier_range.upper += range.upper;
+      no_multiplier_range = no_multiplier_range +
+                            range_evaluator_->ComputeExpressionRange(summand);
     }
   });
 
-  if (multiplier_gcd.has_value()) {
-    if ((d % *multiplier_gcd) == 0) {
-      if (no_multiplier_range.lower >= 0 &&
-          no_multiplier_range.upper < *multiplier_gcd) {
-        // Remove everything that doesn't have a multiplier.
-        new_dividend = RemoveSummands(new_dividend, [&](AffineExpr expr) {
-          auto mult = GetConstantRhs(expr, AffineExprKind::Mul);
-          return !mult.has_value();
-        });
+  // Consider an expression like: `(x * 6 + y) / 9`. if the range of `y` is at
+  // most `[0; 3)`, we can rewrite it to `(x * 2) / 3`, since `y` can't affect
+  // the result.
+  if (no_multiplier_range.lower >= 0 &&
+      no_multiplier_range.upper < multiplier_divisor_gcd) {
+    auto new_new_dividend = zero;
+    VisitSummands(new_dividend, [&](AffineExpr summand) {
+      if (auto mult = GetConstantRhs(summand, AffineExprKind::Mul)) {
+        new_new_dividend = new_new_dividend +
+                           (GetLhs(summand) * (*mult / multiplier_divisor_gcd));
       }
-    }
-  }
-
-  // If we have a gcd > 1, we can split the div into two:
-  // (x * 128 + y) // 192 -> (x * 2 + y // 64) // 3
-  // TODO(jreiffers): This is currently required for some simplifications, but
-  // it increases the number of divisions, which is not really a simplification.
-  // See if we can avoid this rewrite.
-  if (max_remaining_multiplier_gcd > 1) {
-    AffineExpr partially_extracted = getAffineConstantExpr(0, mlir_context);
-    new_dividend = RemoveSummands(new_dividend, [&](AffineExpr expr) {
-      if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul);
-          multiplier && (*multiplier > 0) &&
-          ((*multiplier % max_remaining_multiplier_gcd) == 0)) {
-        partially_extracted =
-            partially_extracted +
-            GetLhs(expr) * (*multiplier / max_remaining_multiplier_gcd);
-        // Remove from dividend.
-        return true;
-      }
-      return false;
     });
-    return extracted + (partially_extracted +
-                        new_dividend.floorDiv(max_remaining_multiplier_gcd))
-                           .floorDiv(d / max_remaining_multiplier_gcd);
+    return new_new_dividend.floorDiv(d / multiplier_divisor_gcd) + extracted;
   }
 
   // If we removed nothing, return the original division.

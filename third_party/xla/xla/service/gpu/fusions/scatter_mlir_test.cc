@@ -81,9 +81,10 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
 
   constexpr auto kUpdatesIndexing = R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    ((bl_x * 16 + th_x floordiv 8) floordiv 25) mod 42,
-    ((bl_x * 32 + th_x floordiv 4) floordiv 5) mod 10,
-    (bl_x * 128 + th_x) mod 20)
+      ((bl_x * 128 + th_x) floordiv 200) mod 42,
+      ((bl_x * 128 + th_x) floordiv 20) mod 10,
+      (bl_x * 128 + th_x) mod 20
+    )
     domain:
     th_x in [0, 127]
     th_y in [0, 0]
@@ -121,8 +122,8 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
       MatchIndexingString(kUpdatesIndexing));
 
   constexpr auto kIndicesIndexing = R"(
-    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] -> (
-    ((bl_x * 16 + th_x floordiv 8) floordiv 25) mod 42, 0)
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] ->
+      (((bl_x * 128 + th_x) floordiv 200) mod 42, 0)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]
