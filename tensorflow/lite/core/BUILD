@@ -174,6 +174,7 @@ cc_library(
         ":model_builder",
         ":signature_runner",
         ":subgraph",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",

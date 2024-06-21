@@ -111,10 +111,15 @@ class AffineExprSimplifier {
   // - Rewrites a % b to a if a is known to be less than b.
   mlir::AffineExpr RewriteMod(mlir::AffineBinaryOpExpr mod);
 
-  // Simplifier for floordiv.
-  // - Rewrites (a * 100 + ...) / 100 to a + (...) / 100
-  // - Rewrites a / 100 to 0 when a is known to be less than 100.
+  // Simplifier for floordiv. Uses all the rules defined below.
   mlir::AffineExpr RewriteFloorDiv(mlir::AffineBinaryOpExpr div);
+
+  // Rewrites `(c % ab) // a` to `(c // a) % b`. Returns nullptr on mismatch.
+  AffineExpr SimplifyModDiv(AffineExpr divisor, int64_t dividend);
+
+  // Rewrites `a // b // c` to `a // (b * c)` if `c` is positive. Returns
+  // nullptr on mismatch.
+  AffineExpr SimplifyDivDiv(AffineExpr divisor, int64_t dividend);
 
   // Removes summands from arbitrarily nested sums (e.g, ((a+b)+c)) if `pred`
   // returns true. In this example, `pred` is evaluated on `a`, `b` and `c`, not
@@ -226,6 +231,29 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   return new_lhs % mod.getRHS() + extracted;
 }
 
+AffineExpr AffineExprSimplifier::SimplifyModDiv(AffineExpr divisor,
+                                                int64_t dividend) {
+  if (auto mod = GetConstantRhs(divisor, AffineExprKind::Mod);
+      mod && (*mod % dividend == 0)) {
+    return GetLhs(divisor).floorDiv(dividend) % (*mod / dividend);
+  }
+  return nullptr;
+}
+
+AffineExpr AffineExprSimplifier::SimplifyDivDiv(AffineExpr divisor,
+                                                int64_t dividend) {
+  // The outer dividend must be positive, since:
+  //   (8 // -9) // -1 = -1 // -1 = 1
+  // Whereas 8 // 9 = 0. The inner dividend can be negative.
+  if (dividend <= 0) {
+    return nullptr;
+  }
+  if (auto inner_dividend = GetConstantRhs(divisor, AffineExprKind::FloorDiv)) {
+    return GetLhs(divisor).floorDiv(dividend * *inner_dividend);
+  }
+  return nullptr;
+}
+
 AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto mlir_context = range_evaluator_->GetMLIRContext();
   auto rhs_range = range_evaluator_->ComputeExpressionRange(div.getRHS());
@@ -242,27 +270,13 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto lhs_simplified = SimplifyOnce(div.getLHS());
 
   // Rewrite `(c % ab) // a` to `(c // a) % b`.
-  //   (c % ab) // a
-  // = (c - c // ab * ab) // a               expand mod
-  // = c // a - (c // ab * b)                rhs of - divides a
-  // = c // a - (c // a) // b * b)           split ab
-  // = (c // a) % b                          contract mod
-  if (auto mod = GetConstantRhs(lhs_simplified, AffineExprKind::Mod);
-      mod && (*mod % d == 0)) {
-    return GetLhs(lhs_simplified).floorDiv(d) % (*mod / d);
+  if (auto result = SimplifyModDiv(lhs_simplified, d)) {
+    return result;
   }
 
-  // Rewrite `(a / b) / c` to `a / (b * c)` if `a >= 0` and `b` and `c` are
-  // constants.
-  if (lhs_simplified.getKind() == AffineExprKind::FloorDiv) {
-    auto lhs_div = mlir::cast<AffineBinaryOpExpr>(lhs_simplified);
-    auto lhs_lhs = range_evaluator_->ComputeExpressionRange(lhs_div.getLHS());
-    if (lhs_lhs.lower >= 0) {
-      auto lhs_rhs = range_evaluator_->ComputeExpressionRange(lhs_div.getRHS());
-      if (lhs_rhs.IsPoint()) {
-        return lhs_div.getLHS().floorDiv(lhs_rhs.lower * d);
-      }
-    }
+  // Rewrite `((a // b) // c)` to `a // (b * c)`.
+  if (auto result = SimplifyDivDiv(lhs_simplified, d)) {
+    return result;
   }
 
   AffineExpr zero = getAffineConstantExpr(0, mlir_context);
