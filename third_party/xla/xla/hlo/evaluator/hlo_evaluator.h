@@ -16,6 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "tsl/platform/errors.h"
 #define _USE_MATH_DEFINES
 
 #include <functional>

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
