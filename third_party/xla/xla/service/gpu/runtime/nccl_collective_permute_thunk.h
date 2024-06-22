@@ -18,9 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"

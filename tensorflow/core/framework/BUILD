@@ -719,6 +719,7 @@ cc_library(
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
+        "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
     ],
