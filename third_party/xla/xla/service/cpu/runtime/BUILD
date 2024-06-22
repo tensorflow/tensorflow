@@ -64,6 +64,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "thunk_testlib",
+    testonly = 1,
+    hdrs = ["thunk_testlib.h"],
+    deps = [
+        ":thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 xla_cc_test(
     name = "thunk_test",
     srcs = ["thunk_test.cc"],
@@ -176,6 +188,7 @@ xla_cc_test(
         ":buffer_allocations",
         ":conditional_thunk",
         ":thunk",
+        ":thunk_testlib",
         "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
