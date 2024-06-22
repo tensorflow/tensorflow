@@ -161,7 +161,7 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let summary = "An Ifrt array sharded on a set of devices.";
 
   let parameters = (ins
-    Builtin_RankedTensor:$shape,
+    "::mlir::RankedTensorType":$shape,
     "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
     Ifrt_DevicesAttr:$devices_attr,
     OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr);
