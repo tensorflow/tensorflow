@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
@@ -142,18 +143,19 @@ class RewriteClusterToIfrtCallPass
                << "error in parsing tpu device coordinates: "
                << device_coordinates.status().message();
 
-      auto device_assignment = tensorflow::GetTPUCompilationAndExecutionDevices(
-          devices.device_names(), num_replicas, num_cores_per_replica,
-          topology_attr.getValue(), *device_coordinates);
-      if (!device_assignment.ok())
+      absl::StatusOr<xla::DeviceAssignmentProto>
+          xla_device_assignment_from_device_assignment_attr =
+              tensorflow::GetXlaDeviceAssignmentProto(
+                  topology_attr.getValue(), num_replicas, num_cores_per_replica,
+                  *device_coordinates);
+      if (!xla_device_assignment_from_device_assignment_attr.ok()) {
         return cluster_func.emitError()
-               << "error in parsing TPU compilation/execution devices: "
-               << device_assignment.status().message();
-      if (!device_assignment->xla_device_assignment) {
-        return cluster_func.emitError()
-               << "Unexpected empty xla_device_assignment";
+               << "error in getting xla device assignment: "
+               << xla_device_assignment_from_device_assignment_attr.status()
+                      .message();
       }
-      xla_device_assignment = device_assignment->xla_device_assignment;
+      xla_device_assignment =
+          *xla_device_assignment_from_device_assignment_attr;
     }
 
     return mlir::TFTPU::SetMetadataProtoFromClusterFuncOp(
