@@ -209,6 +209,9 @@ struct AutoShardingOption {
   // Split constant expressions as well when invoking HloConstantSplitter.
   bool enable_expression_constant_splitter = false;
 
+  // Whether to post-process the solution by reshaping / resharding tensors.
+  bool post_process = true;
+
   // Prints a debug string.
   std::string ToString() const;
 
