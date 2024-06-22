@@ -72,6 +72,7 @@ filegroup(
     srcs = [
         # Single-threaded support.
         "runtime_custom_call_status.cc",
+        "runtime_conv_impl.cc",
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
@@ -1012,12 +1013,15 @@ cc_library(
 
 cc_library(
     name = "runtime_conv_impl",
+    srcs = ["runtime_conv_impl.cc"],
     hdrs = ["runtime_conv_impl.h"],
+    copts = runtime_copts(),
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
