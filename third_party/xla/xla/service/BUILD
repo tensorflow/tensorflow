@@ -2598,6 +2598,7 @@ cc_library(
     name = "algebraic_simplifier",
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
+    copts = tsl_copts(),
     deps = [
         ":hlo_cost_analysis",
         ":hlo_creation_utils",

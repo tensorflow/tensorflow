@@ -264,13 +264,13 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
 
     if (Match(errf, errf_apprx_pattern)) {
       // Matched Gelu-approximate pattern
-      return OneDnnMatMulConfig::GELU_TANH;
+      return OneDnnFusionConfig::GELU_TANH;
     } else if (Match(errf, errf_exact_pattern)) {
       // Matched Gelu-exact pattern
-      return OneDnnMatMulConfig::GELU_ERF;
+      return OneDnnFusionConfig::GELU_ERF;
     }
   }
-  return OneDnnMatMulConfig::UNDEFINED;
+  return OneDnnFusionConfig::UNDEFINED;
 }
 
 // OneDNN matmul can fuse add operation with automatic broadcasting along the
@@ -502,11 +502,13 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       // Add(bias) + Add(e.g., residual) is enabled.
       if (!dot->backend_config<BackendConfig>()
                ->mutable_onednn_matmul_config()
-               ->fused_ops()
+               ->mutable_fusions()
+               ->ops()
                .empty() &&
           dot->backend_config<BackendConfig>()
                   ->mutable_onednn_matmul_config()
-                  ->fused_ops(0) == OneDnnMatMulConfig::BIAS) {
+                  ->mutable_fusions()
+                  ->ops(0) == OneDnnFusionConfig::BIAS) {
         return absl::OkStatus();
       }
       std::vector<HloInstruction*> new_operands;
@@ -559,19 +561,25 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
           dot->CloneWithNewOperands(dot->shape(), new_operands)));
 
-      OneDnnMatMulConfig_FusionKind kind;
+      OneDnnFusionConfig_FusionKind kind;
       auto backend_config = matmul_call->backend_config<BackendConfig>();
-      if (backend_config->mutable_onednn_matmul_config()->fused_ops().empty() &&
+      if (backend_config->mutable_onednn_matmul_config()
+              ->fusions()
+              .ops()
+              .empty() &&
           addend->shape().rank() == 1) {
-        kind = OneDnnMatMulConfig::BIAS;
+        kind = OneDnnFusionConfig::BIAS;
       } else {
-        kind = OneDnnMatMulConfig::BINARY_ADD;
+        kind = OneDnnFusionConfig::BINARY_ADD;
       }
-      backend_config->mutable_onednn_matmul_config()->add_fused_ops(kind);
+      backend_config->mutable_onednn_matmul_config()
+          ->mutable_fusions()
+          ->add_ops(kind);
 
       if (optional_addend_broadcast) {
-        backend_config->mutable_onednn_matmul_config()->set_bias_broadcast(
-            true);
+        backend_config->mutable_onednn_matmul_config()
+            ->mutable_optimization_config()
+            ->set_bias_broadcast(true);
       }
       TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
 
@@ -629,7 +637,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                                      OneDnnMatmulInstr(&matmul_call))
                                      .WithOneUser(),
                                  BcastConstScalar(0)))) {
-      return FuseActivation(OneDnnMatMulConfig::RELU, instr, matmul_call,
+      return FuseActivation(OneDnnFusionConfig::RELU, instr, matmul_call,
                             intermediate_instr, optional_bitcast);
     }
     return absl::OkStatus();
@@ -659,7 +667,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       if (Match(src, ElementwiseSafeIntermediates(
                          &intermediate_instr, &optional_bitcast,
                          OneDnnMatmulInstr(&matmul_call)))) {
-        return FuseActivation(OneDnnMatMulConfig::ELU, instr, matmul_call,
+        return FuseActivation(OneDnnFusionConfig::ELU, instr, matmul_call,
                               intermediate_instr);
       }
     }
@@ -676,7 +684,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                                  &intermediate_instr, &optional_bitcast,
                                  OneDnnMatmulInstr(&matmul_call))
                                  .WithOneUser()))) {
-      return FuseActivation(OneDnnMatMulConfig::TANH, instr, matmul_call,
+      return FuseActivation(OneDnnFusionConfig::TANH, instr, matmul_call,
                             intermediate_instr);
     }
     return absl::OkStatus();
@@ -694,7 +702,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                                   OneDnnMatmulInstr(&matmul_call))
                                   .WithOneUser(),
                               BcastConstScalar(6)))) {
-      return FuseActivation(OneDnnMatMulConfig::RELU6, instr, matmul_call,
+      return FuseActivation(OneDnnFusionConfig::RELU6, instr, matmul_call,
                             intermediate_instr);
     }
     return absl::OkStatus();
@@ -705,7 +713,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* src;
     auto activation = GELUActivation(instr, &src);
-    if (activation != OneDnnMatMulConfig::UNDEFINED) {
+    if (activation != OneDnnFusionConfig::UNDEFINED) {
       HloInstruction* optional_bitcast = nullptr;
       if (Match(src, ElementwiseSafeIntermediates(
                          &intermediate_instr, &optional_bitcast,
@@ -741,12 +749,15 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
           dot->CloneWithNewOperands(instr->shape(), new_operands)));
       auto backend_config = matmul_call->backend_config<BackendConfig>();
-      backend_config->mutable_onednn_matmul_config()->add_fused_ops(
-          OneDnnMatMulConfig::LINEAR);
+      backend_config->mutable_onednn_matmul_config()
+          ->mutable_fusions()
+          ->add_ops(OneDnnFusionConfig::LINEAR);
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
-      backend_config->mutable_onednn_matmul_config()->set_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value.value())));
+      backend_config->mutable_onednn_matmul_config()
+          ->mutable_fusions()
+          ->set_alpha_typecast(
+              *(reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
@@ -781,14 +792,14 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                          &intermediate_instr, &optional_bitcast,
                          OneDnnMatmulInstr(&matmul_call))
                          .WithOneUser())) {
-        return FuseActivation(OneDnnMatMulConfig::SIGMOID, instr, matmul_call,
+        return FuseActivation(OneDnnFusionConfig::SIGMOID, instr, matmul_call,
                               intermediate_instr, optional_bitcast);
       }
     }
     return absl::OkStatus();
   }
 
-  absl::Status FuseActivation(OneDnnMatMulConfig_FusionKind kind,
+  absl::Status FuseActivation(OneDnnFusionConfig_FusionKind kind,
                               HloInstruction* activation,
                               HloInstruction* matmul,
                               HloInstruction* intermediate_instr = nullptr,
@@ -796,7 +807,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(auto backend_config,
                         matmul->backend_config<BackendConfig>());
     auto* matmul_config = backend_config.mutable_onednn_matmul_config();
-    matmul_config->add_fused_ops(kind);
+    matmul_config->mutable_fusions()->add_ops(kind);
     TF_RETURN_IF_ERROR(matmul->set_backend_config(backend_config));
     std::unique_ptr<HloInstruction> output = matmul->Clone();
     if (optional_bitcast != nullptr &&
@@ -1052,42 +1063,45 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 };
 
-#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, PRIM_DESC, CONFIG,  \
-                                               FIELD)                      \
-  template <>                                                              \
-  inline bool OneDnnPostRewriteVisitor::GETTER<PRIM_DESC>(HloInstruction * \
-                                                          custom_call) {   \
-    auto backend_config = custom_call->backend_config<BackendConfig>();    \
-    return backend_config.ok() ? backend_config->CONFIG().FIELD() : false; \
+#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, PRIM_DESC, CONFIG,      \
+                                               SUB_CONFIG, FIELD)              \
+  template <>                                                                  \
+  inline bool OneDnnPostRewriteVisitor::GETTER<PRIM_DESC>(HloInstruction *     \
+                                                          custom_call) {       \
+    auto backend_config = custom_call->backend_config<BackendConfig>();        \
+    return backend_config.ok() ? backend_config->CONFIG().SUB_CONFIG().FIELD() \
+                               : false;                                        \
   }
 
 EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetUserScratch,
                                        dnnl::matmul::primitive_desc,
-                                       onednn_matmul_config, user_scratchpad);
+                                       onednn_matmul_config,
+                                       optimization_config, user_scratchpad);
 EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack,
                                        dnnl::matmul::primitive_desc,
-                                       onednn_matmul_config, weights_prepacked);
+                                       onednn_matmul_config,
+                                       optimization_config, weights_prepacked);
 
 #define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, PRIM_DESC, CONFIG_TYPE, \
-                                               CONFIG, FIELD)                  \
+                                               CONFIG, SUB_CONFIG, FIELD)      \
   template <>                                                                  \
   inline absl::Status OneDnnPostRewriteVisitor::SETTER<PRIM_DESC>(             \
       HloInstruction * custom_call, bool value) {                              \
     TF_ASSIGN_OR_RETURN(auto backend_config,                                   \
                         custom_call->backend_config<BackendConfig>());         \
     CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
-    config->set_##FIELD(value);                                                \
+    config->mutable_##SUB_CONFIG()->set_##FIELD(value);                        \
     return custom_call->set_backend_config(backend_config);                    \
   }
 
 EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack,
                                        dnnl::matmul::primitive_desc,
                                        OneDnnMatMulConfig, onednn_matmul_config,
-                                       weights_prepacked);
+                                       optimization_config, weights_prepacked);
 EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
                                        dnnl::matmul::primitive_desc,
                                        OneDnnMatMulConfig, onednn_matmul_config,
-                                       user_scratchpad);
+                                       optimization_config, user_scratchpad);
 
 absl::StatusOr<bool> OneDnnMatMulRewriter::Run(
     HloModule* module,

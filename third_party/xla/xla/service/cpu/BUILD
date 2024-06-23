@@ -221,6 +221,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter2",
+        ":onednn_convolution_rewriter",
         ":onednn_matmul_rewriter",
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
@@ -460,6 +461,7 @@ cc_library(
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
+        ":onednn_convolution",
         ":onednn_layer_norm",
         ":onednn_matmul",
         ":onednn_softmax",
@@ -1642,9 +1644,18 @@ xla_cc_test(
 )
 
 tf_proto_library(
+    name = "onednn_config_proto",
+    srcs = ["onednn_config.proto"],
+    cc_api_version = 2,
+)
+
+tf_proto_library(
     name = "backend_config_proto",
     srcs = ["backend_config.proto"],
     cc_api_version = 2,
+    protodeps = [
+        ":onednn_config_proto",
+    ],
 )
 
 cc_library(
@@ -1710,6 +1721,29 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_convolution",
+    srcs = ["onednn_convolution.cc"],
+    hdrs = ["onednn_convolution.h"],
+    copts = runtime_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        ":onednn_util",
+        ":runtime_lightweight_check",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
@@ -1833,11 +1867,40 @@ cc_library(
 )
 
 cc_library(
+    name = "onednn_convolution_rewriter",
+    srcs = ["onednn_convolution_rewriter.cc"],
+    hdrs = ["onednn_convolution_rewriter.h"],
+    copts = tsl_copts(),
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_convolution",
+        ":onednn_memory_util",
+        ":onednn_util",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_pass",
+        "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
+)
+
+cc_library(
     name = "cpu_float_support",
     srcs = ["cpu_float_support.cc"],
     hdrs = ["cpu_float_support.h"],
     copts = tsl_copts(),
     deps = [
+        ":onednn_convolution_rewriter",
         ":onednn_matmul_rewriter",
         "//xla/service:float_support",
     ],

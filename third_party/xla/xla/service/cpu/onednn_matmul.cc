@@ -70,10 +70,10 @@ dnnl::memory::desc OneDnnMatMulOptWeightsDesc(
   auto weights_md = ShapeToMemDesc(weights_shape);
   TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config->transpose_a(), input_md);
   TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config->transpose_b(), weights_md);
-  auto bias_md =
-      absl::c_count(matmul_config->fused_ops(), OneDnnMatMulConfig::BIAS) > 0
-          ? ShapeToMemDesc(bias_shape)
-          : dnnl::memory::desc{};
+  auto bias_md = absl::c_count(matmul_config->fusions().ops(),
+                               OneDnnFusionConfig::BIAS) > 0
+                     ? ShapeToMemDesc(bias_shape)
+                     : dnnl::memory::desc{};
   auto output_md = ShapeToMemDesc(output_shape);
 
   // extend bias rank to match result rank
@@ -115,7 +115,7 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
     const OneDnnMatMulConfig& matmul_config,
     FusedOperandsRef* fused_operands_ref = nullptr) {
   auto bias_md = memory::desc();
-  bool weights_packed = matmul_config.weights_prepacked();
+  bool weights_packed = matmul_config.optimization_config().weights_prepacked();
   auto weights_md = plain_weights_md;
   if (weights_packed) {
     weights_md = memory::desc(weights_md.get_dims(), weights_md.get_data_type(),
@@ -124,27 +124,27 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
 
   dnnl::post_ops post_ops;
   int fused_operand_idx = 0;
-  for (auto& fused_op : matmul_config.fused_ops()) {
+  for (auto& fused_op : matmul_config.fusions().ops()) {
     switch (fused_op) {
-      case OneDnnMatMulConfig::RELU:
+      case OneDnnFusionConfig::RELU:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_relu, 0.f, 0.f);
         break;
-      case OneDnnMatMulConfig::TANH:
+      case OneDnnFusionConfig::TANH:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_tanh, 0.f, 0.f);
         break;
-      case OneDnnMatMulConfig::GELU_TANH:
+      case OneDnnFusionConfig::GELU_TANH:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_gelu_tanh, 0.f, 0.f);
         break;
-      case OneDnnMatMulConfig::GELU_ERF:
+      case OneDnnFusionConfig::GELU_ERF:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_gelu_erf, 0.f, 0.f);
         break;
-      case OneDnnMatMulConfig::RELU6:
+      case OneDnnFusionConfig::RELU6:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_clip_v2, 0.f, 6.0f);
         break;
-      case OneDnnMatMulConfig::SIGMOID:
+      case OneDnnFusionConfig::SIGMOID:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_logistic, 0.f, 0.f);
         break;
-      case OneDnnMatMulConfig::BIAS: {
+      case OneDnnFusionConfig::BIAS: {
         bias_md = fused_mds.at(fused_operand_idx);
         // Extend bias rank to match result rank.
         auto missed_rank = output_md.get_ndims() - bias_md.get_ndims();
@@ -162,10 +162,10 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
         }
         fused_operand_idx++;
       } break;
-      case OneDnnMatMulConfig::ELU:
+      case OneDnnFusionConfig::ELU:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_elu, 1.0f, 0.0f);
         break;
-      case OneDnnMatMulConfig::BINARY_ADD: {
+      case OneDnnFusionConfig::BINARY_ADD: {
         auto binary_md = fused_mds.at(fused_operand_idx);
         // Extend addend rank to match result rank.
         auto missed_rank = output_md.get_ndims() - binary_md.get_ndims();
@@ -186,10 +186,10 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
         post_ops.append_binary(dnnl::algorithm::binary_add, binary_md);
         fused_operand_idx++;
       } break;
-      case OneDnnMatMulConfig::LINEAR: {
+      case OneDnnFusionConfig::LINEAR: {
         float const_float;
         *(reinterpret_cast<int32_t*>(&const_float)) =
-            matmul_config.alpha_typecast();
+            matmul_config.fusions().alpha_typecast();
         post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
                                 0.f);
       } break;
@@ -202,7 +202,7 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
   }
 
   dnnl::primitive_attr attrs;
-  if (matmul_config.user_scratchpad()) {
+  if (matmul_config.optimization_config().user_scratchpad()) {
     attrs.set_scratchpad_mode(dnnl::scratchpad_mode::user);
   }
   if (post_ops.len() > 0) {
@@ -294,7 +294,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   TRANSPOSE_LAST_TWO_DIMS_IF(
       matmul_config.transpose_b() && weights_md.get_ndims() > 1, weights_md);
   auto output_md = output_minfo.GetOneDnnMemDesc();
-  if (matmul_config.weights_prepacked()) {
+  if (matmul_config.optimization_config().weights_prepacked()) {
     // Weight pre-packing is supported for 2D weights only.
     // Since prepacked weights array is flattened, try to infer the dims from
     // input and output.
@@ -336,7 +336,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
                                               {DNNL_ARG_WEIGHTS, rhs_mem},
                                               {DNNL_ARG_DST, result_mem}};
 
-  if (matmul_config.user_scratchpad()) {
+  if (matmul_config.optimization_config().user_scratchpad()) {
     XLA_LIGHTWEIGHT_CHECK(scratch != nullptr);
     MemrefInfo scratch_minfo(scratch);
     auto scratchpad_md = matmul_pd->scratchpad_desc();
@@ -380,7 +380,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMulReorder(
   auto output_md = output_minfo.GetOneDnnMemDesc();
 
   auto bias_md = dnnl::memory::desc{};
-  if (absl::c_count(matmul_config.fused_ops(), OneDnnMatMulConfig::BIAS) > 0) {
+  if (absl::c_count(matmul_config.fusions().ops(), OneDnnFusionConfig::BIAS) >
+      0) {
     MemrefInfo bias_minfo(args[arg_indx++]);
     bias_md = bias_minfo.GetOneDnnMemDesc();
   }

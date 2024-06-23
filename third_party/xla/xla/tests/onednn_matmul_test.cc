@@ -41,7 +41,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -50,7 +52,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -59,7 +63,6 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":[]
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -68,7 +71,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","GELU_TANH"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","GELU_TANH"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -77,7 +82,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","GELU_ERF"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","GELU_ERF"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -86,7 +93,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","ELU"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","ELU"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -95,7 +104,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","TANH"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","TANH"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -104,7 +115,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","RELU6"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","RELU6"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -113,8 +126,9 @@ class MatmulTest : public HloTestBase {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["BIAS","SIGMOID"]
-    ; CHECK-DAG:   }
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","SIGMOID"]
+    ; CHECK-DAG:     }
     ; CHECK:     }
     )";
 };
@@ -406,7 +420,9 @@ TEST_F(MatmulTest, ApproxGELUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["GELU_TANH"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["GELU_TANH"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -597,7 +613,9 @@ TEST_F(MatmulTest, ExactGELUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["GELU_ERF"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["GELU_ERF"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -810,7 +828,9 @@ TEST_F(MatmulTest, ReLUTestF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["RELU"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["RELU"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -888,7 +908,9 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   ; CHECK:       backend_config={
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["LINEAR"]
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["LINEAR"]
+  ; CHECK-DAG:     }
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
@@ -1264,7 +1286,9 @@ TEST_F(MatmulTest, SimpleTestF32WithMulAndAddFusion) {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )");
@@ -1437,7 +1461,9 @@ TEST_F(MatmulTest, SimpleTestBF16WithMulAndAddFusion) {
     ; CHECK:       backend_config={
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
-    ; CHECK-DAG:       "fused_ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
     )");

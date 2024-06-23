@@ -48,7 +48,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
     void* result, void** args) {
   // args[0]: ptr to nargs. We don't use nargs here.
   // args[1]: ptr to ExecutableRunOptions
-  // args[2]: ptr to OneDnnLayerNormConfig
+  // args[2]: ptr to OneDnnNormConfig
   // args[3...]: ptrs to operands
   int arg_indx = 1;
   const xla::ExecutableRunOptions* run_options =
@@ -65,7 +65,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
   auto onednn_stream = stream(cpu_engine);
 #endif  // ENABLE_ONEDNN_OPENMP
   std::string config_str(static_cast<const char*>(args[arg_indx++]));
-  OneDnnLayerNormConfig ln_config;
+  OneDnnNormConfig ln_config;
   ln_config.ParseFromString(config_str);
 
   MemrefInfo layer_minfo(args[arg_indx++]);
@@ -82,7 +82,6 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
   auto scale_mem = memory(scaleshift_md, cpu_engine, gamma_minfo.Data());
   auto shift_mem = memory(scaleshift_md, cpu_engine, beta_minfo.Data());
 
-  // TODO(intel-tf): Move epsilon to OneDnnLayerNormConfig.
   float epsilon;
   *(reinterpret_cast<int32_t*>(&epsilon)) = ln_config.epsilon_typecast();
 
