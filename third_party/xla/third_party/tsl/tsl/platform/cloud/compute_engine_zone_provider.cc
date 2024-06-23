@@ -28,10 +28,10 @@ ComputeEngineZoneProvider::ComputeEngineZoneProvider(
     std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client)
     : google_metadata_client_(std::move(google_metadata_client)) {}
 
-Status ComputeEngineZoneProvider::GetZone(string* zone) {
+absl::Status ComputeEngineZoneProvider::GetZone(string* zone) {
   if (!cached_zone.empty()) {
     *zone = cached_zone;
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
@@ -47,7 +47,7 @@ Status ComputeEngineZoneProvider::GetZone(string* zone) {
                << string(location);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 ComputeEngineZoneProvider::~ComputeEngineZoneProvider() {}
 

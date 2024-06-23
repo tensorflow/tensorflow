@@ -51,8 +51,8 @@ class ComputeEngineMetadataClient {
   /// To get the zone of an instance:
   ///   compute_engine_metadata_client.GetMetadata(
   ///       "instance/zone", response_buffer);
-  virtual Status GetMetadata(const string& path,
-                             std::vector<char>* response_buffer);
+  virtual absl::Status GetMetadata(const string& path,
+                                   std::vector<char>* response_buffer);
 
  private:
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;

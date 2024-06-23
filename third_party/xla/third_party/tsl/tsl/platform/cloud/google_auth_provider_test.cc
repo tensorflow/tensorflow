@@ -40,23 +40,23 @@ class FakeEnv : public EnvWrapper {
 
 class FakeOAuthClient : public OAuthClient {
  public:
-  Status GetTokenFromServiceAccountJson(
+  absl::Status GetTokenFromServiceAccountJson(
       Json::Value json, StringPiece oauth_server_uri, StringPiece scope,
       string* token, uint64* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// Retrieves a bearer token using a refresh token.
-  Status GetTokenFromRefreshTokenJson(
+  absl::Status GetTokenFromRefreshTokenJson(
       Json::Value json, StringPiece oauth_server_uri, string* token,
       uint64* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string return_token;

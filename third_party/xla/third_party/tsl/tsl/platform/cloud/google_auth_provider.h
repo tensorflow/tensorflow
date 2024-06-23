@@ -40,20 +40,20 @@ class GoogleAuthProvider : public AuthProvider {
   /// \brief Returns the short-term authentication bearer token.
   ///
   /// Safe for concurrent use by multiple threads.
-  Status GetToken(string* token) override;
+  absl::Status GetToken(string* token) override;
 
  private:
   /// \brief Gets the bearer token from files.
   ///
   /// Tries the file from $GOOGLE_APPLICATION_CREDENTIALS and the
   /// standard gcloud tool's location.
-  Status GetTokenFromFiles() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GetTokenFromFiles() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Gets the bearer token from Google Compute Engine environment.
-  Status GetTokenFromGce() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GetTokenFromGce() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Gets the bearer token from the system env variable, for testing purposes.
-  Status GetTokenForTesting() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GetTokenForTesting() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::unique_ptr<OAuthClient> oauth_client_;
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;

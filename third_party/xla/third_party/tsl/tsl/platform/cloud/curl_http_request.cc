@@ -230,8 +230,8 @@ void CurlHttpRequest::SetDeleteRequest() {
       libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"));
 }
 
-Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
-                                       size_t offset) {
+absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
+                                             size_t offset) {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
@@ -257,7 +257,7 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
                                            reinterpret_cast<void*>(put_body_)));
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
   // FILE * userdata set with CURLOPT_READDATA.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CurlHttpRequest::SetPutEmptyBody() {
@@ -412,7 +412,7 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
   return size * nmemb;
 }
 
-Status CurlHttpRequest::Send() {
+absl::Status CurlHttpRequest::Send() {
   CheckNotSent();
   CHECK(is_uri_set_) << "URI has not been set.";
 
@@ -466,7 +466,7 @@ Status CurlHttpRequest::Send() {
     return error_message;
   };
 
-  Status result;
+  absl::Status result;
   switch (response_code_) {
     // The group of response codes indicating that the request achieved
     // the expected goal.
@@ -474,7 +474,7 @@ Status CurlHttpRequest::Send() {
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
-      result = OkStatus();
+      result = absl::OkStatus();
       break;
 
     case 416:  // Requested Range Not Satisfiable
@@ -485,7 +485,7 @@ Status CurlHttpRequest::Send() {
       if (IsDirectResponse()) {
         direct_response_.bytes_transferred_ = 0;
       }
-      result = OkStatus();
+      result = absl::OkStatus();
       break;
 
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
@@ -627,10 +627,10 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
   return 0;
 }
 
-Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
-                                         const char* error_buffer) {
+absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
+                                               const char* error_buffer) {
   if (code == CURLE_OK) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   string error_message = strings::StrCat(
       "Error executing an HTTP request: libcurl code ", code, " meaning '",
@@ -648,7 +648,7 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     // a response body (e.g. GCS sends one with an error message) but we
     // pretend as though they don't, so actually ignore this error.
     if (get_response_result == CURLE_OK && response_code == 416) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));

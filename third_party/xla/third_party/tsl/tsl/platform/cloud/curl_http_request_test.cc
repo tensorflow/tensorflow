@@ -366,7 +366,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_ResponseTooLarge) {
 
   http_request.SetUri("http://www.testuri.com");
   http_request.SetResultBufferDirect(scratch.data(), scratch.size());
-  const Status& status = http_request.Send();
+  const absl::Status& status = http_request.Send();
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request: libcurl code 23 meaning "
@@ -770,7 +770,7 @@ class TestStats : public HttpRequest::RequestStats {
 
   void RecordResponse(const HttpRequest* request, const string& uri,
                       HttpRequest::RequestMethod method,
-                      const Status& result) override {
+                      const absl::Status& result) override {
     has_recorded_response_ = true;
     record_response_request_ = request;
     record_response_uri_ = uri;
@@ -787,7 +787,7 @@ class TestStats : public HttpRequest::RequestStats {
   string record_response_uri_ = "http://www.testuri.com";
   HttpRequest::RequestMethod record_response_method_ =
       HttpRequest::RequestMethod::kGet;
-  Status record_response_result_;
+  absl::Status record_response_result_;
 
   bool has_recorded_request_ = false;
   bool has_recorded_response_ = false;
@@ -864,7 +864,7 @@ TEST(CurlHttpRequestTest, StatsGetNotFound) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  Status s = http_request.Send();
+  absl::Status s = http_request.Send();
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);

@@ -45,17 +45,17 @@ static std::unordered_set<string>* kAllowedLocationsAuto =
 
 class FakeAuthProvider : public AuthProvider {
  public:
-  Status GetToken(string* token) override {
+  absl::Status GetToken(string* token) override {
     *token = "fake_token";
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 class FakeZoneProvider : public ZoneProvider {
  public:
-  Status GetZone(string* zone) override {
+  absl::Status GetZone(string* zone) override {
     *zone = "us-east1-b";
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -1107,7 +1107,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
                            "Timeouts: 5 1 10\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", OkStatus(), nullptr, {}, 201),
+                           "", absl::OkStatus(), nullptr, {}, 201),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
            "path%2Fwriteable?fields=size%2Cgeneration%2Cupdated\n"
