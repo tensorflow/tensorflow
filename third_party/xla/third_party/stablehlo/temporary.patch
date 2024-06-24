@@ -134,7 +134,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -endif()
 -
 -include(TableGen)
--include(AddLLVM)
 -include(AddMLIR)
 -include(HandleLLVMOptions)
 -include_directories(${LLVM_INCLUDE_DIRS})
@@ -295,8 +294,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +    ],
 +)
 diff --ruN a/stablehlo/stablehlo/experimental/CMakeLists.txt b/stablehlo/stablehlo/experimental/CMakeLists.txt
---- stablehlo/stablehlo/experimental/CMakeLists.txt
-+++ stablehlo/stablehlo/experimental/CMakeLists.txt
+--- stablehlo/stablehlo/kdfjeiexperimental/CMakeLists.txt
++++ stablehlo/stablehlo/kdfjeiexperimental/CMakeLists.txt
 @@ -0,0 +1,18 @@
 +# Copyright 2023 The StableHLO Authors.
 +#
