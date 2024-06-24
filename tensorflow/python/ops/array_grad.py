@@ -1034,6 +1034,14 @@ def _MirrorPadGradGrad(op: ops.Operation, grad):
   mode = op.get_attr("mode")
   return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
 
+@ops.RegisterGradient("WrapPad")
+def _WrapPadGrad(op: ops.Operation, grad):
+  return [gen_array_ops.wrap_pad_grad(grad, op.inputs[1]), None]
+
+@ops.RegisterGradient("WrapPadGrad")
+def _WrapPadGradGrad(op: ops.Operation, grad):
+  return [gen_array_ops.wrap_pad(grad, op.inputs[1]), None]
+
 
 ops.NotDifferentiable("FakeQuantWithMinMaxArgsGradient")
 ops.NotDifferentiable("FakeQuantWithMinMaxVarsGradient")

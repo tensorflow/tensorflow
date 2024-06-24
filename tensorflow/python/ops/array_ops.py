@@ -3171,10 +3171,10 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
   `tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
   many values to add before the contents of `tensor` in that dimension, and
   `paddings[D, 1]` indicates how many values to add after the contents of
-  `tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
-  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
-  `mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
-  no greater than `tensor.dim_size(D)`.
+  `tensor` in that dimension. If `mode` is "REFLECT" or "WRAP", then both
+  `paddings[D, 0]` and `paddings[D, 1]` must be no greater than
+  `tensor.dim_size(D) - 1`. If `mode` is "SYMMETRIC" then both `paddings[D, 0]`
+  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D)`.
 
   The padded size of each dimension D of the output is:
 
@@ -3201,12 +3201,18 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
+
+  tf.pad(t, paddings, "WRAP")  # [[5, 6, 4, 5, 6, 4, 5],
+                               #  [2, 3, 1, 2, 3, 1, 2],
+                               #  [5, 6, 4, 5, 6, 4, 5],
+                               #  [2, 3, 1, 2, 3, 1, 2]]
   ```
 
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", "SYMMETRIC", or "WRAP" 
+      (case-insensitive)
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
     name: A name for the operation (optional).
@@ -3215,7 +3221,8 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "SYMMETRIC", or 
+      "WRAP".
   """
   return pad(tensor, paddings, mode, name, constant_values)
 
@@ -3230,10 +3237,10 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   `tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
   many values to add before the contents of `tensor` in that dimension, and
   `paddings[D, 1]` indicates how many values to add after the contents of
-  `tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
-  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
-  `mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
-  no greater than `tensor.dim_size(D)`.
+  `tensor` in that dimension. If `mode` is "REFLECT" or "WRAP", then both
+  `paddings[D, 0]` and `paddings[D, 1]` must be no greater than
+  `tensor.dim_size(D) - 1`. If `mode` is "SYMMETRIC" then both `paddings[D, 0]`
+  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D)`.
 
   The padded size of each dimension D of the output is:
 
@@ -3260,12 +3267,18 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
+
+  tf.pad(t, paddings, "WRAP")  # [[5, 6, 4, 5, 6, 4, 5],
+                               #  [2, 3, 1, 2, 3, 1, 2],
+                               #  [5, 6, 4, 5, 6, 4, 5],
+                               #  [2, 3, 1, 2, 3, 1, 2]]
   ```
 
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", "SYMMETRIC", or "WRAP" 
+      (case-insensitive)
     name: A name for the operation (optional).
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
@@ -3274,7 +3287,8 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "SYMMETRIC", or 
+      "WRAP".
   """
 
   # Convert lower/mixed case to upper for NumPy compatibility
@@ -3296,9 +3310,12 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   elif mode == "SYMMETRIC":
     result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="SYMMETRIC", name=name)
+  elif mode == "WRAP":
+    result = gen_array_ops.wrap_pad(
+        tensor, paddings, name=name)
   else:
     raise ValueError("Value of argument `mode` expected to be "
-                     """one of "CONSTANT", "REFLECT", or "SYMMETRIC". """
+                     """one of "CONSTANT", "REFLECT", "SYMMETRIC", or "WRAP". """
                      f"Received `mode` = {mode}")
 
   # Restore shape information where possible.
@@ -5539,8 +5556,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     the index vectors each point to scalars in `tensor` and each update is a
     scalar.
   * If the length of the index vectors is less than the rank of `tensor`, then
-    the index vectors each point to the slices of `tensor` and shape of the updates
-    must match that slice.
+    the index vectors each point to the slices of `tensor` and shape of the
+    updates must match that slice.
 
   Overall this leads to the following shape constraints:
 
@@ -6119,8 +6136,8 @@ def searchsorted(sorted_sequence,
 
   Note: This operation assumes that `sorted_sequence` **is sorted** along the
   innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
-  sorted, no error is raised** and the content of the returned tensor is not well
-  defined.
+  sorted, no error is raised** and the content of the returned tensor is not
+  well defined.
 
   Args:
     sorted_sequence: N-D `Tensor` containing a sorted sequence.
@@ -6628,8 +6645,9 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     repeats: An 1-D `int` Tensor. The number of repetitions for each element.
       repeats is broadcasted to fit the shape of the given axis. `len(repeats)`
       must equal `input.shape[axis]` if axis is not None.
-    axis: An int. The axis along which to repeat values. By default, (axis=None),
-      use the flattened input array, and return a flat output array.
+    axis: An int. The axis along which to repeat values. By default,
+      (axis=None), use the flattened input array, and return a flat output
+      array.
     name: A name for the operation.
 
   Returns:
