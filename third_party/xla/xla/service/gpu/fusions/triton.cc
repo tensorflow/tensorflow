@@ -171,13 +171,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       auto launch_config = *this->launch_config();
       launch_dimensions = launch_config.launch_dimensions;
 
-      // TODO(bchetioui): parse block-level parameters from backend config
-      // where available.
       BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes = std::vector<int64_t>(
-          hlo_computation->root_instruction()->shape().rank() - 1, 1);
-      block_level_parameters.output_tile_sizes.push_back(
-          hlo_computation->root_instruction()->shape().dimensions().back());
+      block_level_parameters.output_tile_sizes =
+          launch_config.output_tile_sizes;
       block_level_parameters.num_warps =
           launch_dimensions.num_threads_per_block() / WarpSize();
       block_level_parameters.num_ctas = 1;
@@ -283,6 +279,29 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 }
 
 std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
+  if (analysis_.fusion_backend_config().has_block_level_fusion_config()) {
+    BlockLevelParameters block_level_parameters =
+        BlockLevelParameters::FromBlockLevelFusionConfig(
+            analysis_.fusion_backend_config().block_level_fusion_config());
+
+    int64_t num_blocks = 1;
+    for (auto [dim_size, dim_tile_size] :
+         llvm::zip(analysis_.fusion_root(0).shape().dimensions(),
+                   block_level_parameters.output_tile_sizes)) {
+      num_blocks *= (dim_size + dim_tile_size - 1) / dim_tile_size;
+    }
+
+    LaunchConfig launch_config;
+    launch_config.launch_dimensions = LaunchDimensions(
+        static_cast<uint64_t>(num_blocks),
+        static_cast<uint64_t>(block_level_parameters.num_warps * WarpSize()));
+    launch_config.output_tile_sizes = block_level_parameters.output_tile_sizes;
+    return launch_config;
+  }
+
+  // TODO(shyshkov): Remove the SoftMax heuristic once the block-level fusion
+  // config is fully rolled out. All tiles size should be set before reaching
+  // this point.
   if (analysis_.fusion_backend_config().kind() == kTritonFusionKind) {
     // TODO(b/332649307): Change the line below to something more generic that
     // can handle different instructions (not just Reduce) and different
