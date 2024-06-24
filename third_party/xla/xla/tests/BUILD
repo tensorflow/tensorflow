@@ -583,6 +583,7 @@ xla_test(
 xla_test(
     name = "axpy_simple_test",
     srcs = ["axpy_simple_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -695,6 +696,7 @@ xla_test(
 xla_test(
     name = "unary_op_test",
     srcs = ["unary_op_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -803,6 +805,7 @@ xla_test(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     shard_count = 25,
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -910,7 +913,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm",
+        "no_rocm", #TODO(rocm) TEMP, sync 24-06-03
     ],
     deps = [
         ":client_library_test_base",
@@ -949,7 +952,7 @@ xla_test(
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
-        "no_rocm",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
     ],
     deps = [
         ":client_library_test_base",
@@ -1070,7 +1073,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-        "no_rocm",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
     ],
     deps = [
         ":client_library_test_base",
@@ -1599,6 +1602,7 @@ xla_test(
     shard_count = 31,
     tags = [
         "optonly",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
@@ -1723,7 +1727,10 @@ xla_test(
 xla_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
-    tags = ["test_hlo_pjrt_runner"],
+    tags = [
+        "test_hlo_pjrt_runner",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1982,6 +1989,7 @@ xla_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
     shard_count = 30,
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2007,6 +2015,7 @@ xla_test(
 xla_test(
     name = "reverse_test",
     srcs = ["reverse_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2071,6 +2080,7 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2262,6 +2272,7 @@ xla_test(
 xla_test(
     name = "floor_ceil_test",
     srcs = ["floor_ceil_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2292,10 +2303,10 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:test",
         "//xla:test_helpers",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
@@ -2417,13 +2428,15 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM",
     ]),
-    use_gpu = True,
+    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
+    tags = ["gpu"],
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
         "//xla:literal_util",
@@ -2432,7 +2445,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "//xla/service:backend",
         "//xla/service:cpu_plugin",
-        "//xla/service:gpu_plugin",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
         "//xla/service/cpu:cpu_compiler",
@@ -2740,17 +2752,16 @@ xla_test(
 )
 
 # A demo of test that loads an hlo module from a file and compares results on gpu and cpu.
-xla_cc_test(
+xla_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
+    backends = ["gpu"],
     data = ["isolated_convolution.hlo"],
-    use_gpu = True,
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:test",
         "//xla/service:cpu_plugin",  # reference backend
-        "//xla/service:gpu_plugin",  # test backend
         "//xla/service:platform_util",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",
@@ -2982,6 +2993,7 @@ xla_test(
 xla_test(
     name = "numerics_test",
     srcs = ["numerics_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",

@@ -28,43 +28,63 @@ def LegalizeHardSwishComposite: Pat<
                     ConstantStrAttr<StrAttr, "aten.hardswish.default">, $_, $_, $_),
                     (TFL_HardSwishOp $input)>;
 
-// Checks if the given op is an InterpolateBilinear op with NCHW layout.
-// Supplied arguments are the input, output op values and the output shape.
-def IsSupportedNchwUpsampleBlinear: Constraint<CPred<
-  "IsSupportedNchwUpsampleBlinear($0, $1[0], $2.get(\"output\").dyn_cast<DenseIntElementsAttr>())">>;
+def IsNchwLayoutOp: Constraint<CPred<
+  "$0.get(\"is_nchw_op\") && $0.get(\"is_nchw_op\").dyn_cast<BoolAttr>() "
+      "== mlir::BoolAttr::get($_builder.getContext(), true)">>;
 
+def IsNhwcLayoutOp: Constraint<Neg<IsNchwLayoutOp.predicate>>;
+
+// TODO(b/343278954): Move the creation of transposes to a separate prepare pass
+// to avoid creating multiple pattern-rewrite rules for the same composite op.
 def LegalizeTorchUpsampleBlinear2dComposite: Pat<
-                    (MHLO_CompositeOp:$old_val
-                    (variadic $input),
-                    ConstantStrAttr<StrAttr, "odml.upsample_bilinear2d">, $attrs, $_, $_),
-                    (TFL_TransposeOp
-                        (TFL_ResizeBilinearOp
-                            (TFL_TransposeOp $input,
-                                (Arith_ConstantOp
-                                    ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
-                            (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output"> $attrs))),
-                            (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
-                            ConstBoolAttrTrue,
-                            (returnType (GetNhwcReturnTypeFromNchw $old_val))),
-                        (Arith_ConstantOp
-                            ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
-                    [(IsSupportedNchwUpsampleBlinear $input, $old_val, $attrs)]>;
-
-// TODO(b/333961789): Add support for NCHW layout for PyTorch resize, plus jax
-// supports NCHW inputs as well, so we need to add reliable way of checking the
-// layout.
-// pattern to lower a stablehlo.composite with `jax.image.resize` in `nearest`
-// mode to a tflite.resize_nearest_neighbor op.
-def LegalizeJaxResizeNearestNeighbor2dComposite: Pat<
     (MHLO_CompositeOp:$old_val
     (variadic $input),
-    ConstantStrAttr<StrAttr, "odml.jax_resize_nearest_neighbor2d">, $attrs, $_, $_),
+    ConstantStrAttr<StrAttr, "odml.upsample_bilinear2d">, $attrs, $_, $_),
+    (TFL_TransposeOp
+      (TFL_ResizeBilinearOp
+        (TFL_TransposeOp $input,
+          (Arith_ConstantOp
+            ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
+        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output"> $attrs))),
+        (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+        ConstBoolAttrTrue,
+        (returnType (GetNhwcReturnTypeFromNchw $old_val))),
+      (Arith_ConstantOp
+        ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">))>;
+
+// pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
+// in `nearest` mode and with NHWC inputs to a tflite.resize_nearest_neighbor op.
+def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+    (variadic $input),
+    ConstantStrAttr<StrAttr, "tfl.resize_nearest_neighbor">, $attrs, $_, $_),
     (TFL_ResizeNearestNeighborOp
       $input,
-      (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output_size"> $attrs))),
-      ConstBoolAttrFalse,
-      ConstBoolAttrTrue)>;
+      (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
+      (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+      ConstBoolAttrTrue),
+    [(IsNhwcLayoutOp $attrs)]>;
 
+// pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
+// in `nearest`mode and with NCHW inputs to a tflite.resize_nearest_neighbor op.
+// TODO(b/343278954): Move the creation of transposes to a separate prepare pass
+// to avoid creating multiple pattern-rewrite rules for the same composite op.
+def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
+    (MHLO_CompositeOp:$old_val
+    (variadic $input),
+    ConstantStrAttr<StrAttr, "tfl.resize_nearest_neighbor">, $attrs, $_, $_),
+    (TFL_TransposeOp
+      (TFL_ResizeNearestNeighborOp
+        (TFL_TransposeOp $input,
+          (Arith_ConstantOp
+            ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
+        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
+        (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+        ConstBoolAttrTrue,
+        (returnType (GetNhwcReturnTypeFromNchw $old_val))),
+      (Arith_ConstantOp
+        ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
+    [(IsNchwLayoutOp $attrs)]>;
 
 def LegalizeCompositeGELU : Pat<(MHLO_CompositeOp:$composite 
                                   (variadic $inputs), 

@@ -59,7 +59,9 @@ class TestCluster {
   };
 
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
-  explicit TestCluster(int num_workers);
+  explicit TestCluster(
+      int num_workers,
+      std::optional<std::string> data_transfer_protocol = std::nullopt);
   explicit TestCluster(const Config& config);
   virtual ~TestCluster();
 
@@ -67,7 +69,9 @@ class TestCluster {
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker(std::optional<int> port = std::nullopt);
+  Status AddWorker(
+      std::optional<int> port = std::nullopt,
+      std::optional<std::string> data_transfer_protocol = std::nullopt);
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
   // Returns the port number of a worker.
@@ -97,6 +101,7 @@ class TestCluster {
  private:
   bool initialized_ = false;
   int num_workers_;
+  std::optional<std::string> data_transfer_protocol_;
   Config config_;
   std::unique_ptr<DispatchGrpcDataServer> dispatcher_;
   std::string dispatcher_address_;

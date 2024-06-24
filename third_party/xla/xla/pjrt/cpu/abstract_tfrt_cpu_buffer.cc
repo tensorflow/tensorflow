@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -424,7 +423,7 @@ PjRtFuture<> AbstractTfrtCpuBuffer::ToLiteralHelper(
   if (should_sync_copy) {
     CopyCpuBufferToLiteral(*device_shape, device_buffer, literal);
     // Unblock ToLiteral caller.
-    return PjRtFuture<>(OkStatus());
+    return PjRtFuture<>(absl::OkStatus());
   } else {
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     // Wait for buffer definition events to finish before d2h dispatch. D2H
@@ -575,7 +574,7 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
           FailedPrecondition("Buffer Definition Event: %s",
                              definition_event.GetError().message()));
     }
-    return PjRtFuture<>(OkStatus());
+    return PjRtFuture<>(absl::OkStatus());
   } else {
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     definition_event.AndThen([definition_event = definition_event.AsPtr(),

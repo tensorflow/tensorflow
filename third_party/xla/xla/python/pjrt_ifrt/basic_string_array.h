@@ -138,7 +138,7 @@ class BasicStringArray final
 
   BasicStringArray(Client* client, Shape shape,
                    std::shared_ptr<const Sharding> sharding,
-                   Future<Buffers> buffers,
+                   Future<Buffers> buffers, Future<> ready_future,
                    OnDoneWithBuffer on_done_with_buffer);
 
   // Internal implementation of delete.
@@ -148,15 +148,11 @@ class BasicStringArray final
   Shape shape_;
   std::shared_ptr<const Sharding> sharding_;
   Future<Buffers> buffers_;
-
-  // TODO(b/337922817): Consider checking the buffers when they become available
-  // (i.e., the future above becomes ready) to ensure that they are consistent
-  // with the Shape and Sharding provided at the construction time.
+  Future<> ready_future_;
 
   mutable absl::Mutex mu_;
   OnDoneWithBuffer on_done_with_buffer_ ABSL_GUARDED_BY(mu_);
   bool is_deleted_ ABSL_GUARDED_BY(mu_) = false;
-  mutable Future<> ready_future_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ifrt

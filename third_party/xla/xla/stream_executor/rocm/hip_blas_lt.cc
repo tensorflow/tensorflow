@@ -418,10 +418,10 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     std::optional<DeviceMemoryBase> workspace,
     std::optional<ScratchAllocator*> scratch_allocator,
     blas::ProfileResult* profile_result) const {
-  absl::Status status = blas_lt_ref_.parent_->RecordApiTrace(
-      StreamExecutorInterface::GemmCallTrace{
-          StreamExecutorInterface::GemmCallTrace::GemmType::kBlasLt, 0,
-          a.size(), b.size()});
+  absl::Status status =
+      blas_lt_ref_.parent_->RecordApiTrace(StreamExecutor::GemmCallTrace{
+          StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
+          b.size()});
 
   TF_ASSIGN_OR_RETURN(
       std::optional<gpu::GpuTimer> timer,

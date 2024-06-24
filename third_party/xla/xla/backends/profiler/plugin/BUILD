@@ -26,7 +26,6 @@ cc_library(
     visibility = ["//xla:internal"],
     deps = [
         ":profiler_c_api_hdrs",
-        "//xla:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",

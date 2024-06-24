@@ -25,12 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
 #include "tsl/platform/env.h"
 
 namespace tsl {
@@ -133,6 +134,8 @@ class DistributedRuntimeClient {
 
   virtual absl::Status KeyValueSet(std::string_view key,
                                    std::string_view value) = 0;
+  virtual absl::Status KeyValueSet(std::string_view key, std::string_view value,
+                                   bool allow_overwrite) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.

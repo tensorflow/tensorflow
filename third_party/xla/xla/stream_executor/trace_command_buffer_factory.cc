@@ -30,7 +30,7 @@ namespace stream_executor {
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>>
 TraceCommandBufferFactory::Create(
-    StreamExecutorInterface* executor,
+    StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
   TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
@@ -40,7 +40,7 @@ TraceCommandBufferFactory::Create(
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>>
 TraceCommandBufferFactory::Create(
-    StreamExecutorInterface* executor, Stream* stream,
+    StreamExecutor* executor, Stream* stream,
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
   if (stream == nullptr)

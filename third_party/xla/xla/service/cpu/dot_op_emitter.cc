@@ -15,42 +15,56 @@ limitations under the License.
 
 #include "xla/service/cpu/dot_op_emitter.h"
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "llvm/Support/Alignment.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/ir_emission_utils.h"
-#include "xla/service/cpu/mlir_emitter.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/tiled_dot_emitter.h"
-#include "xla/service/cpu/vector_support_library.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -102,9 +116,6 @@ enum class DotImplementationStrategy {
   // Matrix*Matrix operation.  No fusions are supported.  The two inputs
   // and the output have to be row major.
   kTiledLlvmIrGemm,
-
-  // The dot operation is lowered into linalg.matmul op and lowered to LLVM IR.
-  kLinalgMatmul,
 
   // The dot operation is lowered into a call into an Eigen routine.  No fusions
   // are supported today.  The two inputs and the output have to be row major.
@@ -191,9 +202,6 @@ class DotOpEmitter {
   // Lowers the dot operation as a tiled Matrix*Matrix loop.
   void EmitTiledLlvmIrGemm();
 
-  // Lowers the dot operation through MLIR's linalg.matmul.
-  absl::Status EmitLinalgMatmul();
-
   // Lowers the dot operation as a naive nested loop that computes the result
   // one element at a time.
   void EmitNaiveLlvmIrGemm();
@@ -263,118 +271,6 @@ DotOpEmitter::DotOpEmitter(
       mlir_context_(mlir_context),
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
-
-absl::Status DotOpEmitter::EmitLinalgMatmul() {
-  Shape operand_shapes[] = {dot_info_.lhs_shape, dot_info_.rhs_shape};
-  llvm::Value* operand_ptrs[] = {lhs_array_.GetBasePointer(),
-                                 rhs_array_.GetBasePointer()};
-  llvm::Value* target_ptr = target_array_.GetBasePointer();
-
-  // Zero out the output buffer.
-  int64_t size_bytes = ShapeUtil::ByteSizeOf(dot_info_.result_shape);
-  b_->CreateMemSet(target_ptr, b_->getInt8(0), /*Size=*/size_bytes,
-                   /*Align=*/llvm::MaybeAlign(1));
-
-  std::string name =
-      absl::StrCat("linalgMatMul_", dot_info_.result_shape.ToString(true), "_",
-                   dot_info_.lhs_shape.ToString(true), "_",
-                   dot_info_.rhs_shape.ToString(true));
-
-  return EmitMlirFuncAndCall(
-      mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
-      operand_ptrs, name,
-      [&](mlir::OpBuilder* builder, mlir::func::FuncOp function) {
-        CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
-        CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
-        mlir::MLIRContext* context = builder->getContext();
-        mlir::Value a = function.getArgument(0), b = function.getArgument(1),
-                    c = function.getArgument(2);
-
-        llvm::SmallVector<mlir::AffineExpr, 2> b_exprs(
-            dot_info_.lhs_shape.rank());
-        llvm::SmallVector<mlir::AffineExpr, 2> c_exprs(
-            dot_info_.rhs_shape.rank());
-
-        llvm::SmallVector<mlir::AffineExpr, 2> parallel_exprs;
-        mlir::AffineExpr reduce_expr;
-        for (int i = 0; i != dot_info_.result_shape.rank(); ++i) {
-          parallel_exprs.push_back(mlir::getAffineDimExpr(i, context));
-        }
-        reduce_expr =
-            mlir::getAffineDimExpr(dot_info_.result_shape.rank(), context);
-
-        // The reduction expr is shared for both inputs.
-        b_exprs[dot_info_.dim_nums.lhs_contracting_dimensions(0)] = reduce_expr;
-        c_exprs[dot_info_.dim_nums.rhs_contracting_dimensions(0)] = reduce_expr;
-
-        // Fill in the remaining parallel exprs.
-        int par_expr_num = 0;
-        for (auto* v : {&b_exprs, &c_exprs}) {
-          for (auto& e : *v) {
-            if (!e) {
-              e = parallel_exprs[par_expr_num++];
-            }
-          }
-        }
-
-        llvm::SmallVector<mlir::utils::IteratorType, 4> iteratorTypes(
-            parallel_exprs.size(), mlir::utils::IteratorType::parallel);
-        iteratorTypes.push_back(mlir::utils::IteratorType::reduction);
-        builder->create<mlir::linalg::GenericOp>(
-            function.getLoc(),
-            /*inputs=*/mlir::ValueRange{b, c},
-            /*outputs=*/mlir::ValueRange{a},
-            /*indexingMaps=*/
-            mlir::AffineMap::inferFromExprList(
-                {b_exprs, c_exprs, parallel_exprs}, context),
-            /*iteratorTypes=*/iteratorTypes,
-            [](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange args) {
-              mlir::ArithBuilder ab(b, loc);
-              mlir::Value mul = ab.mul(args[0], args[1]);
-              mlir::Value add = ab.add(mul, args[2]);
-              b.create<mlir::linalg::YieldOp>(loc, add);
-            });
-        builder->create<mlir::func::ReturnOp>(function.getLoc());
-
-        // TODO(kramerb): this has been retired upstream, reevaluate whether
-        // this path really needs it or if it is even relevant anymore.
-        // mlir::linalg::LinalgTilingOptions tilingOptions;
-        // tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
-        // int64_t alignment =
-        //     target_machine_features_.minimum_alignment_for_allocation(
-        //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
-        // mlir::linalg::CodegenStrategy strategy;
-        // strategy.tile(mlir::linalg::GenericOp::getOperationName(),
-        //               tilingOptions);
-        // .promote(mlir::linalg::GenericOp::getOperationName(),
-        //          mlir::linalg::LinalgPromotionOptions()
-        //              .setAlignment(alignment)
-        //              .setUseFullTileBuffersByDefault(true)
-        //              .setUseAlloca(true))
-        // .vectorize(mlir::linalg::GenericOp::getOperationName())
-        // .vectorLowering(
-        //    mlir::linalg::LinalgVectorLoweringOptions()
-        //        .setVectorTransformsOptions(
-        //            mlir::vector::VectorTransformsOptions()
-        //                .setVectorTransformsOptions(
-        //                    mlir::vector::VectorContractLowering::
-        //                        OuterProduct))
-        //        .setVectorTransferToSCFOptions(
-        //            mlir::VectorTransferToSCFOptions().enableFullUnroll()));
-        // TODO(kramerb): this should be within a pass and we should be able to
-        // create a nested OpPassManager.
-        // Created a nested OpPassManager, populate the strategy and run.
-        // mlir::OpPassManager dynamicPM("func.func");
-        // strategy.configurePassPipeline(dynamicPM, function.getContext());
-        // Propagate pass failure?
-        // (void)mlir::runPipeline(dynamicPM, function);
-        // mlir::PassManager pm(function.getContext(),
-        //                      function.getOperationName());
-        // strategy.configurePassPipeline(pm, function.getContext());
-        // Propagate pass failure?
-        // (void)pm.run(function);
-      });
-}
 
 void DotOpEmitter::EmitTiledLlvmIrGemm() {
   PrimitiveType primitive_type = dot_info_.result_shape.element_type();
@@ -575,9 +471,6 @@ absl::Status DotOpEmitter::Emit() {
     case DotImplementationStrategy::kTiledLlvmIrGemm:
       EmitTiledLlvmIrGemm();
       return absl::OkStatus();
-
-    case DotImplementationStrategy::kLinalgMatmul:
-      return EmitLinalgMatmul();
 
     case DotImplementationStrategy::kEigen:
       return EmitCallToRuntime();

@@ -178,6 +178,9 @@ struct SelectAndScatterExpanderPattern
         sas->getContext(),
         /*updateWindowDims=*/{},
         /*insertedWindowDims=*/scatterDims,
+        // TODO: b/342172264 - Implement handling of batching dims.
+        /*inputBatchingDims=*/{},
+        /*scatterIndicesBatchingDims=*/{},
         /*scatterDimsToOperandDims=*/scatterDims,
         /*indexVectorDim=*/source.getType().getRank());
     auto scatterOp = builder.create<mhlo::ScatterOp>(

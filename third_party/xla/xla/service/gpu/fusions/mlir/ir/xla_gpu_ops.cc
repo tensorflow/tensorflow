@@ -99,8 +99,14 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     if (!region) {
       return false;
     }
-    const int kMaxOperationsToInline = 8;
-    return region->front().getOperations().size() <= kMaxOperationsToInline;
+
+    constexpr int kMaxOperationsToInline = 8;
+    int num_ops = 0;
+    region->front().walk([&](mlir::Operation* op) { ++num_ops; });
+
+    // Don't inline functions that are called more than once and contain more
+    // than one call themselves.
+    return num_ops <= kMaxOperationsToInline;
   }
   // Returns true if the given operation 'op', that is registered to this
   // dialect, can be inlined into the given region, false otherwise.
@@ -353,11 +359,11 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
-    bool is_simplified = indexing_map.Simplify(GetIndexingMapForInstruction);
+    bool is_simplified = indexing_map.Simplify();
 
     // Remove unused symbols.
     auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
-    bool symbols_removed = !unused_symbols_bit_vector.empty();
+    bool symbols_removed = unused_symbols_bit_vector.count() != 0;
 
     if (!is_simplified && !symbols_removed) {
       return rewriter.notifyMatchFailure(indexing_op,
@@ -463,7 +469,7 @@ struct FoldApplyIndexingSequence
         num_syms + added_sym_args.size());
     IndexingMap new_indexing_map(new_affine_map, new_dim_vars, new_sym_vars,
                                  /*rt_vars=*/{});
-    if (!new_indexing_map.Simplify(GetIndexingMapForInstruction)) {
+    if (!new_indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(
           indexing_op, "Folded indexing map was not simplified");
     }

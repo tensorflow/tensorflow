@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
@@ -119,8 +120,8 @@ Status DirectPluginOpKernelContext::LookupOrCreateResource(
   return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::GetInput(int index,
-                                             const Tensor** tensor) const {
+absl::Status DirectPluginOpKernelContext::GetInput(
+    int index, const Tensor** tensor) const {
   *tensor = &ctx_->input(index);
   return absl::OkStatus();
 }

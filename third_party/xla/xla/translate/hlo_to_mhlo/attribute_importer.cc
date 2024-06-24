@@ -57,8 +57,9 @@ mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
   std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
                                        dnums.start_index_map().end());
   return mlir::mhlo::GatherDimensionNumbersAttr::get(
-      builder->getContext(), offset_dims, collapsed_slice_dims, start_index_map,
-      dnums.index_vector_dim());
+      builder->getContext(), offset_dims, collapsed_slice_dims,
+      /*operandBatchingDims=*/{}, /*startIndicesBatchingDims=*/{},
+      start_index_map, dnums.index_vector_dim());
 }
 
 mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
@@ -72,6 +73,7 @@ mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
       dnums.scatter_dims_to_operand_dims().end());
   return mlir::mhlo::ScatterDimensionNumbersAttr::get(
       builder->getContext(), update_window_dims, inserted_window_dims,
+      /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
 }
 

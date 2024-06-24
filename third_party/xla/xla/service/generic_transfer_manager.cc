@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -75,7 +74,7 @@ absl::Status GenericTransferManager::WriteSingleTupleIndexTable(
 
 void GenericTransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
-    MutableBorrowingLiteral literal, std::function<void(Status)> done,
+    MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
     const TransferMetadata* transfer_metadata) {
   VLOG(2) << "transferring literal from device ordinal "
           << stream->parent()->device_ordinal()

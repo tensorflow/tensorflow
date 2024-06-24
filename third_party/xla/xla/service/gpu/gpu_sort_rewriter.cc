@@ -103,11 +103,13 @@ bool IsCubCompatibleSort(HloSortInstruction* sort_op) {
     VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
     return false;
   }
-  if (sort_op->operand(0)->shape().rank() != 1) {
-    VLOG(2) << "Only 1D shapes are supported";
+
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  if (sort_op->sort_dimension() != operand_shape.rank() - 1) {
+    VLOG(2) << "Sort dimension should be the minor one";
     return false;
   }
-  if (sort_op->operand(0)->shape().dimensions(0) <
+  if (Product(operand_shape.dimensions()) <
       GpuSortRewriter::kSortSizeThreshold) {
     VLOG(2) << "Tensor shape size is too small to see an improvement";
     return false;
@@ -151,10 +153,20 @@ absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
       AnalyzeSortComputation(sort_op->called_computations().front()).value();
 
   // Get scratch size requirements from CUB.
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  int64_t batch_size = Product(operand_shape.dimensions()) /
+                       operand_shape.dimensions(sort_op->sort_dimension());
+
   TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_op, sort_config));
   TF_ASSIGN_OR_RETURN(
       int64_t scratch_size,
-      runner->GetScratchSize(sort_op->operand(0)->shape().dimensions(0)));
+      runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
+
+  // Align and increase scratch size to fit the offsets.
+  if (batch_size > 1) {
+    scratch_size += sizeof(int) - scratch_size % sizeof(int);
+    scratch_size += (batch_size + 1) * sizeof(int);
+  }
 
   // Values are only present if sorting a pair of tensors.
   HloInstruction* keys = sort_op->mutable_operand(0);

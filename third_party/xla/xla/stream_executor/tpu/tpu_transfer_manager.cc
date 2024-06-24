@@ -90,9 +90,7 @@ absl::Status TpuTransferManager::TransferLiteralToDeviceAsync(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_TransferLiteralToDeviceAsyncFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           &c_literal, &c_device_buffer, status.c_status);
   ApiConverter::Destroy(&c_device_buffer);
   ApiConverter::Destroy(&c_literal);
@@ -221,9 +219,7 @@ void TpuTransferManager::TransferLiteralFromDevice(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_TransferLiteralFromDeviceFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           &c_device_buffer, &c_literal, TransferLiteralFromDeviceTrampoline,
           state);
   ApiConverter::Destroy(&c_device_buffer);
@@ -309,9 +305,7 @@ absl::Status TpuTransferManager::WriteSingleTupleIndexTable(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_WriteSingleTupleIndexTableFn(
-          manager_,
-          TpuPlatform::GetRegisteredPlatform()->LookupStream(
-              stream->implementation()),
+          manager_, TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
           elements_bases, elements.size(), &c_shape, &region_base,
           status.c_status);
 
@@ -363,8 +357,7 @@ absl::Status TpuTransferManager::ReadDynamicShapes(
   XLA_Shape c_updated_shape;
   StatusHelper status;
   stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_ReadDynamicShapesFn(
-      TpuPlatform::GetRegisteredPlatform()->LookupStream(
-          stream->implementation()),
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(stream),
       &c_device_buffer, c_device_shape, &c_updated_shape, status.c_status);
   ApiConverter::Destroy(&c_device_buffer);
   ApiConverter::Destroy(&c_device_shape);

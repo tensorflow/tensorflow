@@ -228,7 +228,6 @@ void EnableIrPrinting(mlir::PassManager& pm,
       /*print_after_only_on_change=*/true, flag));
 }
 
-// TODO(b/259374854): Create tests for MaybeEnableIrPrinting.
 absl::Status MaybeEnableIrPrinting(mlir::PassManager& pm,
                                    absl::string_view file_name_prefix) {
   if (!VLOG_IS_ON(1)) {

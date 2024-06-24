@@ -78,6 +78,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
+  opts.set_xla_cpu_use_thunk_runtime(false);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -126,6 +127,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
   opts.set_xla_gpu_all_reduce_contiguous(true);
+  opts.set_xla_gpu_enable_all_reduce_splitter(false);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -147,7 +149,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_redzone_padding_bytes(8 * 1024 * 1024);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
@@ -766,6 +767,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_use_thunk_runtime",
+                bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
+                debug_options->xla_cpu_use_thunk_runtime(),
+                "Use Thunk-based runtime for the CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
@@ -1066,6 +1072,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_all_reduce_contiguous(),
       "Combine all-reduces into a single operation over a contiguous buffer."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_all_reduce_splitter",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_all_reduce_splitter),
+      debug_options->xla_gpu_enable_all_reduce_splitter(),
+      "Splits cross-device all reduce into logical reduce scatter followed by "
+      "dynamic slice and all reduce."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_blueconnect_num_devices_per_host",
       int32_setter_for(
           &DebugOptions::
@@ -1251,12 +1263,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_normalize_layouts",
-                bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),
-                debug_options->xla_gpu_normalize_layouts(),
-                "An experimental option to force all layouts present in the "
-                "after-optimizations HLO to be descending"));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_strict_dot_conv_math",
       bool_setter_for(&DebugOptions::set_xla_cpu_strict_dot_conv_math),

@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

@@ -42,6 +42,9 @@ message IfrtRequest {
     // ===== Future =====
     CheckFutureRequest check_future_request = 3;
 
+    // ===== Value =====
+    CheckValueReadyRequest check_value_ready_request = 8;
+
     // ===== Array =====
     MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
     AssembleArrayFromSingleDeviceArraysRequest
@@ -50,7 +53,6 @@ message IfrtRequest {
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
         disassemble_into_single_device_arrays_request = 7;
-    CheckArrayReadyRequest check_array_ready_request = 8;
     DeleteArrayRequest delete_array_request = 9;
     ReshardRequest reshard_request = 10;
     FullyReplicatedShardRequest fully_replicated_shard_request = 20;
@@ -86,6 +88,9 @@ message IfrtResponse {
     // ===== Future =====
     CheckFutureResponse check_future_response = 3;
 
+    // ===== Value =====
+    CheckValueReadyResponse check_value_ready_response = 8;
+
     // ===== Array =====
     MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
     AssembleArrayFromSingleDeviceArraysResponse
@@ -94,7 +99,6 @@ message IfrtResponse {
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
         disassemble_into_single_device_arrays_response = 7;
-    CheckArrayReadyResponse check_array_ready_response = 8;
     DeleteArrayResponse delete_array_response = 9;
     ReshardResponse reshard_response = 10;
     FullyReplicatedShardResponse fully_replicated_shard_response = 20;
@@ -240,6 +244,14 @@ message CheckFutureRequest {
 }
 message CheckFutureResponse {}
 
+// ================ Value-related operations ================
+
+// Checks if the given Values are ready on the server.
+message CheckValueReadyRequest {
+  repeated fixed64 value_handles = 1 [packed = false];
+}
+message CheckValueReadyResponse {}
+
 // ================ Array-related operations ================
 
 // In the current context of the IFRT proxy service, the term `Host` in the
@@ -317,12 +329,6 @@ message FullyReplicatedShardRequest {
 message FullyReplicatedShardResponse {
   fixed64 array_handle = 1;
 }
-
-// Checks if the given Arrays are ready on the server.
-message CheckArrayReadyRequest {
-  fixed64 array_handle = 1;
-}
-message CheckArrayReadyResponse {}
 
 // Deletes the given Array. Response contains the handle for a Future that
 // becomes ready when the deletion completes.

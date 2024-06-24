@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -58,7 +58,7 @@ class GenericTransferManager : public TransferManager {
 
   void TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      MutableBorrowingLiteral literal, std::function<void(absl::Status)> done,
       const TransferMetadata* transfer_metadata) override;
 
   absl::Status TransferLiteralToDeviceAsync(

@@ -34,10 +34,10 @@ class TpuCore;
 namespace tensorflow {
 namespace tpu {
 
-class TpuExecutorInterface : public stream_executor::StreamExecutor {
+class TpuExecutorInterface : public stream_executor::StreamExecutorCommon {
  public:
   explicit TpuExecutorInterface(stream_executor::Platform* platform)
-      : StreamExecutor(platform) {}
+      : StreamExecutorCommon(platform) {}
 
   class TemporaryDeviceMemory {
    public:

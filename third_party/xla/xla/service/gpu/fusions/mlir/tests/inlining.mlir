@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -inline | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -xla-erase-dead-functions -inline | FileCheck %s
 
 module {
   func.func private @mul(%a: f32, %b: f32) -> f32 {
@@ -193,3 +193,42 @@ module {
 
 // CHECK: @caller
 // CHECK-NEXT: complex.create
+
+// -----
+
+module {
+  func.func private @callee2(%a: f32) -> f32 {
+    %ret = arith.addf %a, %a : f32
+    return %ret : f32
+  }
+
+  func.func private @callee1(%a: f32) -> f32 {
+    %c1 = xla_gpu.pure_call @callee2(%a) : (f32) -> (f32)
+    %b0 = arith.addf %a, %a : f32
+    %b1 = arith.addf %b0, %a : f32
+    %b2 = arith.addf %b1, %a : f32
+    %b3 = arith.addf %b2, %a : f32
+    %b4 = arith.addf %b3, %a : f32
+    %b5 = arith.addf %b4, %a : f32
+    %b6 = arith.addf %b5, %a : f32
+    %b7 = arith.addf %b6, %a : f32
+    %c2 = xla_gpu.pure_call @callee2(%b7) : (f32) -> (f32)
+    %ret = arith.addf %c1, %c2 : f32
+    return %ret : f32
+  }
+
+  func.func private @dead(%a: f32) -> f32 {
+    %ret = xla_gpu.pure_call @callee1(%a) : (f32) -> (f32)
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %ret = xla_gpu.pure_call @callee1(%a) : (f32) -> (f32)
+    return %ret : f32
+  }
+}
+
+// CHECK-NOT: func.func
+// CHECK: func.func @caller
+// CHECK-NOT: xla_gpu.pure_call
+// CHECK-NOT: func.func

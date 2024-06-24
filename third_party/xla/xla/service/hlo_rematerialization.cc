@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -2887,7 +2887,8 @@ absl::StatusOr<bool> HloRematerialization::Run(
       async_threads.insert(computation->execution_thread());
     }
     TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
-        [this, module, &async_threads](const CallGraphNode& node) -> Status {
+        [this, module,
+         &async_threads](const CallGraphNode& node) -> absl::Status {
           auto callee_thread = node.computation()->execution_thread();
           if (node.context() == CallContext::kControlFlow &&
               HloInstruction::IsThreadIncluded(callee_thread, async_threads)) {

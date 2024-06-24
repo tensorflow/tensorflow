@@ -305,22 +305,12 @@ TEST_F(IndexingAnalysisTest, CopyNothing) {
   auto input_indexing = GetOutputToInputIndexing(root, /*output_id=*/0);
   input_indexing.Simplify();
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d0, d1)
-                            domain:
-                            d0 in [0, -1]
-                            d1 in [0, -1]
-                          )"))));
+              ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
 
   auto output_indexing = GetInputToOutputIndexing(root, /*input_id=*/0);
   output_indexing.Simplify();
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d0, d1)
-                            domain:
-                            d0 in [0, -1]
-                            d1 in [0, -1]
-                          )"))));
+              ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
 }
 
 TEST_F(IndexingAnalysisTest, ReshapeNothing) {
@@ -334,22 +324,12 @@ TEST_F(IndexingAnalysisTest, ReshapeNothing) {
   auto input_indexing = GetOutputToInputIndexing(root, /*output_id=*/0);
   input_indexing.Simplify();
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0) -> (0, 0, 0)
-                            domain:
-                            d0 in [0, -1]
-                          )"))));
+              ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
 
   auto output_indexing = GetInputToOutputIndexing(root, /*input_id=*/0);
   output_indexing.Simplify();
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1, d2) -> (0)
-                            domain:
-                            d0 in [0, 0]
-                            d1 in [0, -1]
-                            d2 in [0, -1]
-                          )"))));
+              ElementsAre(ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
@@ -1493,20 +1473,8 @@ TEST_F(IndexingAnalysisTest, FusionOpSliceOfOneOfConcatenateOpInputs) {
                             d1 in [0, 2]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1, d2) -> (d0, d1 * 2 - 5, d2)
-                            domain:
-                            d0 in [0, 1]
-                            d1 in [3, 2]
-                            d2 in [0, 6]
-                          )")),
-                          ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1, d2) -> (d0, d1 * 2 - 16, d2)
-                            domain:
-                            d0 in [0, 1]
-                            d1 in [8, 2]
-                            d2 in [0, 6]
-                          )"))));
+                          ElementsAre(MatchIndexingMap("KNOWN EMPTY")),
+                          ElementsAre(MatchIndexingMap("KNOWN EMPTY"))));
 }
 
 TEST_F(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
@@ -2611,7 +2579,7 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
                 /*tile_sizes=*/{8, 1, 4},
                 /*num_threads=*/{1, 4, 4}};
   auto indexing_map = GetIndexingMapForTiling(tiling, &mlir_context_);
-  indexing_map.Simplify(GetIndexingMapForInstruction);
+  indexing_map.Simplify();
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           (d3 floordiv 64) * 8 + s0,

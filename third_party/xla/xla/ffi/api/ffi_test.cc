@@ -93,7 +93,7 @@ TEST(FfiTest, DataTypeEnumValue) {
   EXPECT_EQ(encoded(PrimitiveType::TOKEN), encoded(DataType::TOKEN));
 }
 
-TEST(FfiTest, BufferBaseArgument) {
+TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
@@ -101,7 +101,7 @@ TEST(FfiTest, BufferBaseArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().To([&](auto buffer) {
+  auto handler = Ffi::Bind().Arg<AnyBuffer>().To([&](auto buffer) {
     EXPECT_EQ(buffer.data, storage.data());
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return Error::Success();
@@ -130,7 +130,7 @@ TEST(FfiTest, BufferArgument) {
   TF_ASSERT_OK(status);
 }
 
-TEST(FfiTest, BufferBaseResult) {
+TEST(FfiTest, AnyBufferResult) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
@@ -138,12 +138,11 @@ TEST(FfiTest, BufferBaseResult) {
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Ret<BufferBase>().To([&](Result<BufferBase> buffer) {
-        EXPECT_EQ(buffer->data, storage.data());
-        EXPECT_EQ(buffer->dimensions.size(), 2);
-        return Error::Success();
-      });
+  auto handler = Ffi::Bind().Ret<AnyBuffer>().To([&](Result<AnyBuffer> buffer) {
+    EXPECT_EQ(buffer->data, storage.data());
+    EXPECT_EQ(buffer->dimensions.size(), 2);
+    return Error::Success();
+  });
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -216,7 +215,7 @@ TEST(FfiTest, TokenArgument) {
 TEST(FfiTest, AutoBinding) {
   static constexpr char kI32[] = "i32";
 
-  auto handler = Ffi::BindTo(+[](BufferBase buffer, Attr<int32_t, kI32> foo) {
+  auto handler = Ffi::BindTo(+[](AnyBuffer buffer, Attr<int32_t, kI32> foo) {
     EXPECT_EQ(*foo, 42);
     return Error::Success();
   });
@@ -238,7 +237,7 @@ TEST(FfiTest, AutoBinding) {
 
 TEST(FfiTest, AutoBindingResult) {
   auto handler =
-      Ffi::BindTo(+[](Result<BufferBase> buffer) { return Error::Success(); });
+      Ffi::BindTo(+[](Result<AnyBuffer> buffer) { return Error::Success(); });
 
   CallFrameBuilder builder;
   builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
@@ -483,13 +482,13 @@ static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
 }
 
 //===----------------------------------------------------------------------===//
-// BM_BufferBaseArgX1
+// BM_AnyBufferArgX1
 //===----------------------------------------------------------------------===//
 
-void BM_BufferBaseArgX1(benchmark::State& state) {
+void BM_AnyBufferArgX1(benchmark::State& state) {
   auto call_frame = WithBufferArgs(1).Build();
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().To([](auto buffer) {
+  auto handler = Ffi::Bind().Arg<AnyBuffer>().To([](auto buffer) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
   });
@@ -498,20 +497,20 @@ void BM_BufferBaseArgX1(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_BufferBaseArgX1);
+BENCHMARK(BM_AnyBufferArgX1);
 
 //===----------------------------------------------------------------------===//
-// BM_BufferBaseArgX4
+// BM_AnyBufferArgX4
 //===----------------------------------------------------------------------===//
 
-void BM_BufferBaseArgX4(benchmark::State& state) {
+void BM_AnyBufferArgX4(benchmark::State& state) {
   auto call_frame = WithBufferArgs(4).Build();
 
   auto handler = Ffi::Bind()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
-                     .Arg<BufferBase>()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
                      .To([](auto b0, auto b1, auto b2, auto b3) {
                        benchmark::DoNotOptimize(b0);
                        benchmark::DoNotOptimize(b1);
@@ -525,7 +524,7 @@ void BM_BufferBaseArgX4(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_BufferBaseArgX4);
+BENCHMARK(BM_AnyBufferArgX4);
 
 //===----------------------------------------------------------------------===//
 // BM_BufferArgX1

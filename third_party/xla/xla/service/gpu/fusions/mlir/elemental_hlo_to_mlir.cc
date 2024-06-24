@@ -651,6 +651,16 @@ Value UnrealizedConversionCast(mlir::Type type, Value value,
   return converted.front();
 }
 
+SmallVector<Value> UnrealizedConversionCast(mlir::TypeRange types,
+                                            ValueRange values,
+                                            ImplicitLocOpBuilder& b) {
+  SmallVector<Value> converted;
+  for (auto [type, value] : llvm::zip(types, values)) {
+    converted.push_back(UnrealizedConversionCast(type, value, b));
+  }
+  return converted;
+}
+
 SmallVector<Value> ConvertToSignless(mlir::ValueRange values,
                                      ImplicitLocOpBuilder& b) {
   mlir::mhlo::RemoveSignTypeConverter sign_converter;
@@ -1291,7 +1301,23 @@ absl::Status SubgraphToMlirFunction(
   return absl::OkStatus();
 }
 
-SmallVector<Value> EmitLoopNest(
+namespace {
+
+bool IsSymbolConstrained(const IndexingMap& map, int symbol_id) {
+  for (const auto& [expr, _] : map.GetConstraints()) {
+    bool result = false;
+    expr.walk([&](mlir::AffineExpr leaf) {
+      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
+      if (sym && sym.getPosition() == symbol_id) {
+        result = true;
+      }
+    });
+    if (result) return true;
+  }
+  return false;
+}
+
+SmallVector<Value> EmitLoopNestImpl(
     ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
     const IndexingMap& indexing_map,
     mlir::function_ref<SmallVector<Value>(ValueRange /*iter_args*/,
@@ -1316,51 +1342,98 @@ SmallVector<Value> EmitLoopNest(
     iter_args_inits = vector_inits;
   }
 
-  scf::LoopNest loop_nest = scf::buildLoopNest(
-      b, b.getLoc(), lbs, ubs, steps, iter_args_inits,
-      [&](OpBuilder& nested_builder, Location loc, ValueRange symbol_values,
-          ValueRange iter_args) -> scf::ValueVector {
-        ImplicitLocOpBuilder nested_b(loc, nested_builder);
-        auto is_in_bounds = mlir_converter::CheckConstraints(
-            indexing_map, dim_values, symbol_values, nested_b);
-        auto if_op = nested_b.create<scf::IfOp>(
-            is_in_bounds,
-            [&](OpBuilder& then_builder, Location then_loc) -> void {
-              OpBuilder::InsertionGuard g(b);
-              b.setInsertionPointToStart(then_builder.getInsertionBlock());
-              SmallVector<Value, 4> results;
-              if (vectorize) {
-                SmallVector<Value, 4> vector_args;
-                vector_args = iter_args;
-                // Extract the vector elements.
-                for (auto& init : vector_args) {
-                  if (mlir::isa<mlir::VectorType>(init.getType())) {
-                    init = b.create<mlir::vector::ExtractOp>(
-                        init, symbol_values.back());
-                  }
-                }
-                results = create_body(vector_args, dim_values, symbol_values);
-                // Insert the results.
-                for (auto [index, init] : llvm::enumerate(iter_args)) {
-                  if (mlir::isa<mlir::VectorType>(init.getType())) {
-                    results[index] = b.create<mlir::vector::InsertOp>(
-                        results[index], iter_args[index], symbol_values.back());
-                  }
-                }
-              } else {
-                results = create_body(iter_args, dim_values, symbol_values);
+  auto bb = [&](OpBuilder& nested_builder, Location loc,
+                ValueRange symbol_values,
+                ValueRange iter_args) -> scf::ValueVector {
+    ImplicitLocOpBuilder nested_b(loc, nested_builder);
+    auto is_in_bounds = mlir_converter::CheckConstraints(
+        indexing_map, dim_values, symbol_values, nested_b);
+    auto if_op = nested_b.create<scf::IfOp>(
+        is_in_bounds,
+        [&](OpBuilder& then_builder, Location then_loc) -> void {
+          OpBuilder::InsertionGuard g(b);
+          b.setInsertionPointToStart(then_builder.getInsertionBlock());
+          SmallVector<Value, 4> results;
+          if (vectorize) {
+            SmallVector<Value, 4> vector_args;
+            vector_args = iter_args;
+            // Extract the vector elements.
+            for (auto& init : vector_args) {
+              if (mlir::isa<mlir::VectorType>(init.getType())) {
+                init = b.create<mlir::vector::ExtractOp>(init,
+                                                         symbol_values.back());
               }
-              b.create<scf::YieldOp>(results);
-            },
-            [&](OpBuilder& else_b, Location else_loc) {
-              OpBuilder::InsertionGuard g(b);
-              b.setInsertionPointToStart(else_b.getInsertionBlock());
-              b.create<scf::YieldOp>(iter_args);
-            });
+            }
+            results = create_body(vector_args, dim_values, symbol_values);
+            // Insert the results.
+            for (auto [index, init] : llvm::enumerate(iter_args)) {
+              if (mlir::isa<mlir::VectorType>(init.getType())) {
+                results[index] = b.create<mlir::vector::InsertOp>(
+                    results[index], iter_args[index], symbol_values.back());
+              }
+            }
+          } else {
+            results = create_body(iter_args, dim_values, symbol_values);
+          }
+          b.create<scf::YieldOp>(results);
+        },
+        [&](OpBuilder& else_b, Location else_loc) {
+          OpBuilder::InsertionGuard g(b);
+          b.setInsertionPointToStart(else_b.getInsertionBlock());
+          b.create<scf::YieldOp>(iter_args);
+        });
 
-        return if_op.getResults();
-      });
+    return if_op.getResults();
+  };
+  scf::LoopNest loop_nest =
+      scf::buildLoopNest(b, b.getLoc(), lbs, ubs, steps, iter_args_inits, bb);
   return loop_nest.results;
+}
+
+}  // namespace
+
+SmallVector<Value> EmitLoopNest(
+    ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
+    const IndexingMap& indexing_map,
+    mlir::function_ref<SmallVector<Value>(ValueRange /*iter_args*/,
+                                          ValueRange /*dim_values*/,
+                                          ValueRange /*symbol_values*/)>
+        create_body,
+    bool vectorize) {
+  // TODO(b/343420432): Add an op that represents a constrained loop nest and
+  // peel in a pass, instead of doing it ad hoc here.
+  int64_t cumulative_loop_size = 1;
+  for (int sym_index = indexing_map.GetSymbolCount() - 1;
+       sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
+    auto& bound = indexing_map.GetSymbolBound(sym_index);
+    cumulative_loop_size *= bound.NumElements();
+    if (!IsSymbolConstrained(indexing_map, sym_index)) continue;
+
+    IndexingMap peeled_map = indexing_map;
+    if (bound.upper == bound.lower) continue;
+
+    --peeled_map.GetMutableSymbolBound(sym_index).upper;
+    peeled_map.Simplify();
+
+    // If the symbol is still constrained, peeling does not help.
+    if (IsSymbolConstrained(peeled_map, sym_index)) continue;
+
+    auto first_results = EmitLoopNestImpl(b, dim_values, iter_args_inits,
+                                          peeled_map, create_body, vectorize);
+
+    IndexingMap remainder = indexing_map;
+    remainder.GetMutableSymbolBound(sym_index).lower = bound.upper;
+    remainder.Simplify();
+
+    VLOG(5) << "Peeled indexing map " << indexing_map.ToString() << "\n into "
+            << peeled_map.ToString() << "\nand remainder\n"
+            << remainder.ToString();
+    return EmitLoopNestImpl(b, dim_values, first_results, remainder,
+                            create_body, vectorize);
+  }
+
+  return EmitLoopNestImpl(b, dim_values, iter_args_inits, indexing_map,
+                          create_body, vectorize);
 }
 
 absl::StatusOr<SmallVector<Value>> EmitLoopNestWithStatus(

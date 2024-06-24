@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -183,6 +183,11 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
         }
         if (add_reshaped_dim) {
           dims->Add(reshaped_dim);
+          // Sort the dimensions (assumes they were sorted before the addition)
+          for (int64_t i = dims->size() - 1;
+               i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
+            dims->SwapElements(i - 1, i);
+          }
         }
       };
 

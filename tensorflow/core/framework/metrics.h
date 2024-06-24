@@ -340,7 +340,7 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the
-// tf_metadata.tf_mlir_bridge_first_phase_count metric.
+// tf_metadata.tf_mlir_bridge_first_phase_v2_count metric.
 // bridge_type: replicated, nonreplicated, etc.
 // bridge_version: v1 compat, v2, etc.
 // device_type: tpu, cpu, gpu, etc.

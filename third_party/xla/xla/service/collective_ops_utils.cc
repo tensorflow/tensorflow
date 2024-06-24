@@ -610,19 +610,22 @@ bool IsCollective(const HloInstruction* instruction) {
   }
 }
 
-bool IsCollectiveWithChannelId(const HloInstruction* instruction) {
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
-    for (const auto* inner_inst : instruction->fused_instructions()) {
-      if (IsCollectiveWithChannelId(inner_inst)) {
-        return true;
+    for (auto* inner_inst : instruction->fused_instructions()) {
+      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
+        return inner_inst;
       }
     }
-    return false;
+    return nullptr;
   }
   if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
-    return false;
+    return nullptr;
   }
-  return IsCollective(instruction) && instruction->channel_id().has_value();
+  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
+    return instruction;
+  }
+  return nullptr;
 }
 
 bool IsSyncCollective(const HloInstruction* instr) {

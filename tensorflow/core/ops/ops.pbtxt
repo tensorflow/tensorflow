@@ -21847,6 +21847,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "GatherV2"

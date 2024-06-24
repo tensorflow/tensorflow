@@ -346,6 +346,15 @@ class Env {
   ///  TF
   absl::Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
 
+  /// Returns whether the give path is on a file system
+  /// that has ability to create a new temp file. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// If this returns false, TensorFlow will write directly to output files
+  /// instead of creating a temporary file and swapping it in. This may mean
+  /// that incomplete writes are visible to consumers.
+  Status CanCreateTempFile(const std::string& fname,
+                           bool* can_create_temp_file);
+
   /// Stores the size of `fname` in `*file_size`.
   absl::Status GetFileSize(const std::string& fname, uint64* file_size);
 

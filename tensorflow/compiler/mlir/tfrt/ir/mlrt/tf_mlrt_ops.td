@@ -493,7 +493,8 @@ def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
     TFTensorType:$tensor_names,
     TFTensorType:$shape_and_slices,
     Variadic<TFTensorType>:$var_handles,
-    TypeArrayAttr: $restored_dtypes
+    TypeArrayAttr: $restored_dtypes,
+    DenseBoolArrayAttr: $truncate_in_cast
   );
 }
 

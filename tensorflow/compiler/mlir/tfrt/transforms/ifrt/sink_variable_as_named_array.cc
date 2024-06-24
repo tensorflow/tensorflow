@@ -72,7 +72,6 @@ class SinkVariableAsNamedArrayPass
 
     mlir::WalkResult walk_result =
         module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
-          builder.setInsertionPointAfter(read_variable_op);
           // TODO(b/319045348): consider use resource alias analysis for
           // this.
           auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(
@@ -84,11 +83,20 @@ class SinkVariableAsNamedArrayPass
             return mlir::WalkResult::interrupt();
           }
 
+          // Avoid lowering ReadVariableOp to IfrtLoadVariableOp if the
+          // assignment AssignVariableOp happens at the same module because
+          // IfrtLoadVariableOp assumes asynchronous assignment of the variable.
+          for (auto var_handle_user : var_handle->getUsers()) {
+            if (llvm::isa<mlir::TF::AssignVariableOp>(var_handle_user)) {
+              return mlir::WalkResult::advance();
+            }
+          }
           std::vector<mlir::Type> result_types;
           result_types.push_back(mlir::RankedTensorType::get(
               {}, builder.getType<mlir::TF::StringType>()));
           result_types.push_back(read_variable_op.getResult().getType());
 
+          builder.setInsertionPointAfter(read_variable_op);
           auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
               read_variable_op->getLoc(), result_types, var_handle.getResult());
           read_to_load[read_variable_op] = load_variable_op;
@@ -164,17 +172,16 @@ class SinkVariableAsNamedArrayPass
 
     // Remove all ReadVariableOp after replacing the CPU usage of
     // ReadVariableOp.
-    module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
+    for (auto& [read_variable_op, load_variable_op] : read_to_load) {
       if (!read_variable_op->use_empty()) {
         // This variable tensor is used by CPU host.
-        read_to_load[read_variable_op].setUsedByHost(true);
+        load_variable_op.setUsedByHost(true);
 
         // Replace CPU use of ReadVariableOp
-        read_variable_op.replaceAllUsesWith(
-            read_to_load[read_variable_op].getTensorFuture());
+        read_variable_op.replaceAllUsesWith(load_variable_op.getTensorFuture());
       }
       read_variable_op.erase();
-    });
+    }
   }
 
  private:

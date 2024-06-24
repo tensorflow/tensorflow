@@ -20,24 +20,28 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -53,34 +57,50 @@ struct TritonWrapperResult {
   std::optional<se::ClusterDim> cluster_dim;
 };
 
+// Generate Triton IR inside 'fn'. This uses the given output_tile_sizes
+// and the SymbolicTileAnalysis from the computation. The provided
+// TritonFusionAnalysis and TritonGemmConfig are ignored.
+absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
+                         const se::DeviceDescription& device_info,
+                         const TritonFusionAnalysis& analysis,
+                         const HloComputation* computation,
+                         mlir::triton::FuncOp fn,
+                         const TritonGemmConfig& config,
+                         const std::vector<int64_t>& output_tile_sizes);
+
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
     const TritonGemmConfig& config);
-// Use tiling and execution parameters from 'config'.
+
+// Use tiling and execution parameters from 'config'. output_tile_sizes is
+// ignored.
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const TritonFusionAnalysis& analysis,
                         const HloComputation* computation,
-                        mlir::triton::FuncOp fn,
-                        const TritonGemmConfig& config);
+                        mlir::triton::FuncOp fn, const TritonGemmConfig& config,
+                        const std::vector<int64_t>& output_tile_sizes);
 
 // Compute the launch dimensions for the given Triton SoftMax.
 LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
                                             const TritonGemmConfig& config);
+
 // Generate Softmax in Triton IR inside 'fn'.
-// Use execution parameters from 'config'.
+// Use execution parameters from 'config'. output_tile_sizes is ignored.
 absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const TritonFusionAnalysis& analysis,
                          const HloComputation* computation,
                          mlir::triton::FuncOp fn,
-                         const TritonGemmConfig& config);
+                         const TritonGemmConfig& config,
+                         const std::vector<int64_t>& output_tile_sizes);
 
 using TritonIrEmitter = std::function<absl::Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
     const TritonFusionAnalysis& analysis, const HloComputation*,
-    mlir::triton::FuncOp, const TritonGemmConfig&)>;
+    mlir::triton::FuncOp, const TritonGemmConfig&,
+    const std::vector<int64_t>&)>;
 
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
@@ -89,8 +109,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context);
+    const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
+    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
@@ -98,7 +118,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+    const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
@@ -124,6 +145,23 @@ absl::Status CreateTritonPipeline(
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
+
+// Exposed for testing purposes only. Do not use.
+namespace ir_emitter_triton_internal {
+
+// Used for creating Triton Load and Store ops.
+struct MakeTensorPtrOpAndBoundaryChecks {
+  mt::MakeTensorPtrOp op;
+
+  // Indices of dimensions where the original tile size is not a power of 2 and
+  // requires a boundary check.
+  llvm::SmallVector<int32_t> boundary_checks;
+};
+
+MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+    mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+    const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
+}  // namespace ir_emitter_triton_internal
 
 }  // namespace gpu
 }  // namespace xla

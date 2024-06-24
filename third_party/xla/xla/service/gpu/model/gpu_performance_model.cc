@@ -63,10 +63,11 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
                                     : local_analysis.value();
   LaunchDimensions launch_dimensions =
       EstimateFusionLaunchDimensions(fusion_analysis);
-  int64_t num_threads = launch_dimensions.launch_bound();
   int64_t num_blocks = launch_dimensions.num_blocks();
 
-  absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
+  absl::Duration compute_time =
+      ComputeTime(*device_info, flops, num_blocks,
+                  launch_dimensions.num_threads_per_block());
 
   CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
                                          fusion_analysis);
@@ -205,8 +206,9 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;
 
-  int64_t num_threads = launch_dimensions.launch_bound();
-  absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
+  absl::Duration compute_time =
+      ComputeTime(*device_info, flops, launch_dimensions.num_blocks(),
+                  launch_dimensions.num_threads_per_block());
 
   auto fusion_operands = fusion_analysis.fusion().GetParameters();
   CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
@@ -241,9 +243,9 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
           << EstimateRunTimeData{flops,
                                  bytes_read,
                                  consumer_runtime.bytes_written,
-                                 compute_time,
                                  read_time,
                                  consumer_runtime.write_time,
+                                 compute_time,
                                  exec_time}
                  .ToString();
 
@@ -307,7 +309,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
 
     absl::Duration compute_time_by_this_consumer = ComputeTime(
         *device_info, producer_runtime.flops * utilization_by_this_consumer,
-        launch_dimensions_fused.launch_bound());
+        launch_dimensions_fused.num_blocks(),
+        launch_dimensions_fused.num_threads_per_block());
 
     // Here, we assume that the read is distributed over all the threads in the
     // launch grid. Usually this is the case, but not always: for example, a

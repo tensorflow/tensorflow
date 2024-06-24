@@ -444,6 +444,9 @@ class Thunk {
   static absl::string_view KindToString(Thunk::Kind kind);
 
   ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
+  void set_execution_stream_id(ExecutionStreamId execution_stream_id) {
+    execution_stream_id_ = execution_stream_id;
+  }
 
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
       ExecutionStreamId stream_id, const ExecuteParams& params);

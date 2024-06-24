@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -206,6 +205,10 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
   std::vector<int> device_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
+
+    if (local_topology.devices_size() == 0) {
+      return absl::InternalError("Local topology has no devices.");
+    }
 
     slice_id_to_node_ids[local_topology.devices(0).slice_index()].push_back(
         local_topology.node_id());

@@ -24,19 +24,23 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
 #include "xla/python/ifrt_proxy/client/memory.h"
@@ -201,6 +205,43 @@ Client::RemapArrays(const RemapPlan& plan,
                     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
                     ArrayCopySemantics semantics) {
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
+}
+
+xla::ifrt::Future<> Client::GetReadyFuture(
+    absl::Span<const tsl::RCReference<xla::ifrt::Value>> values) {
+  if (rpc_helper_->version().protocol_version() <= 1) {
+    // Legacy implementation for servers that do not support
+    // `Client::GetReadyFuture`.
+    std::vector<xla::ifrt::Future<>> futures;
+    futures.reserve(values.size());
+    for (const auto& value : values) {
+      futures.push_back(value->GetReadyFuture());
+    }
+    return xla::ifrt::JoinFutures(futures);
+  }
+
+  absl::InlinedVector<Future<>, 1> futures;
+
+  auto req = std::make_unique<CheckValueReadyRequest>();
+  for (const auto& value : values) {
+    // TODO(b/261991179): IFRT Proxy currently supports Arrays as the only value
+    // type, but this may be extended later to other types such as Tuples.
+    if (auto proxy_array =
+            llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
+      req->add_value_handles(proxy_array->handle().handle);
+    } else {
+      futures.push_back(value->GetReadyFuture());
+    }
+  }
+
+  auto promise = Future<>::CreatePromise();
+  rpc_helper_->CheckValueReady(std::move(req))
+      .OnReady(
+          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
+                        resp) mutable { promise.Set(resp.status()); });
+  futures.push_back(Future<>(std::move(promise)));
+
+  return JoinFutures(futures);
 }
 
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(

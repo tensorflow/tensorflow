@@ -33,16 +33,23 @@ _SAVED_MODEL_PATH = flags.DEFINE_string(
 
 
 class ToyModule(module.Module):
+  """A toy module for testing checkpoing loading."""
 
   def __init__(self):
     super().__init__()
     self.w = variables.Variable(constant_op.constant([1, 2, 3]), name='w')
+    self.w1 = variables.Variable(constant_op.constant([4, 5, 6]), name='w1')
+    self.w2 = variables.Variable(constant_op.constant([7, 8, 9]), name='w2')
+    self.w3 = variables.Variable(constant_op.constant([10, 11, 12]), name='w3')
 
   @polymorphic_function.function(
       input_signature=[tensor.TensorSpec([None, 3], dtypes.int32, name='input')]
   )
   def serving_default(self, x):
     dummy = x + self.w
+    dummy = dummy + self.w1
+    dummy = dummy + self.w2
+    dummy = dummy + self.w3
     return dummy
 
 

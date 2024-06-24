@@ -54,22 +54,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
-/// Converter to be used along with the fallback Tf2Xla patterns below.
-class Tf2XlaTypeConverter : public TypeConverter {
- public:
-  Tf2XlaTypeConverter();
-};
-
-/// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
-/// `prefer_tf2xla` means an op will be included iff it is not in
-/// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
-/// included if there is no native MLIR legalization for the op.
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx,
-                                          Tf2XlaTypeConverter& converter,
-                                          bool prefer_tf2xla = false);
-
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
 void PopulateLegalizeTfPatterns(MLIRContext* context,
@@ -129,7 +113,6 @@ CreateInfeedsOpsXlaAdjustLayoutPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
-#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
 #include "tensorflow/compiler/mlir/tf2xla/transforms/tf_xla_passes.h.inc"
 }  // namespace mhlo
 }  // namespace mlir

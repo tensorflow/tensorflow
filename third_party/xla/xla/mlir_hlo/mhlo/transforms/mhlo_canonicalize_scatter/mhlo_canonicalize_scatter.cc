@@ -186,6 +186,11 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
     ScatterDimensionNumbersAttr dimsAttrs =
         scatterOp.getScatterDimensionNumbers();
 
+    // TODO: b/342172264 - Implement handling of batching dims.
+    if (!dimsAttrs.getInputBatchingDims().empty() ||
+        !dimsAttrs.getScatterIndicesBatchingDims().empty())
+      return failure();
+
     auto operandType =
         mlir::cast<RankedTensorType>(scatterOp.getInputs().front().getType());
     int64_t operandRank = operandType.getRank();
@@ -212,6 +217,9 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         /*updateWindowDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(1, operandRank + 1)),
         /*insertedWindowDims=*/std::nullopt,
+        /*inputBatchingDims=*/{},
+        /*scatterIndicesBatchingDims=*/
+        {},
         /*scatterDimsToOperandDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(0, scatterIndicesVectorSize)),
         /*indexVectorDim=*/1);

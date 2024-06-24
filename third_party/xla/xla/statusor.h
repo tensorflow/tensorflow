@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef XLA_STATUSOR_H_
 #define XLA_STATUSOR_H_
 
-#include "xla/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

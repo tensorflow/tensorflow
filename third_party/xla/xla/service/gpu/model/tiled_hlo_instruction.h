@@ -94,6 +94,12 @@ class TiledHloInstruction {
 
   std::string ToString() const;
 
+  // This allows GUnit to print TiledHloInstruction.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const TiledHloInstruction& tiled_hlo) {
+    sink.Append(tiled_hlo.ToString());
+  }
+
  private:
   TiledHloInstruction(const HloInstruction* hlo,
                       std::vector<int64_t> tile_sizes,

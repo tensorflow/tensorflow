@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

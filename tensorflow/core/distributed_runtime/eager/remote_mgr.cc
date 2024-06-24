@@ -171,7 +171,12 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
     const bool serialize_resource_dtype_and_shape) {
   int64_t op_id;
   int32_t output_num;
-  if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
+  auto status =
+      in->RemoteAddress(device, wait_until_ready, &op_id, &output_num);
+  if (!status.ok()) {
+    LOG(ERROR)
+        << "Failed to get remote address for tensor handle with given device "
+        << device->name() << " error " << status.message();
     tf_shared_lock l(remote_tensor_handle_mu_);
     TF_RETURN_IF_ERROR(
         GetRemoteTensorHandle(in, wait_until_ready, &op_id, &output_num));

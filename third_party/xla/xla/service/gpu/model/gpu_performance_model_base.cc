@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
+#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -155,6 +156,15 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
+  }
+
+  // TritonFusion does not implement KernelFusionInterface, because it provides
+  // launch dimensions only for SoftMax fusions.
+  if (const auto* triton_emitter =
+          dynamic_cast<const TritonFusion*>(emitter.get())) {
+    if (auto launch_dimensions = triton_emitter->launch_dimensions()) {
+      return *launch_dimensions;
+    }
   }
 
   // This estimate should never be reached in fusion code. Fusions that don't
@@ -393,13 +403,16 @@ absl::Duration GpuPerformanceModelBase::WriteTime(
 
 /*static*/
 absl::Duration GpuPerformanceModelBase::ComputeTime(
-    const se::DeviceDescription& gpu_device_info, int64_t flops,
-    int64_t num_threads) {
-  int64_t fpu_count =
-      gpu_device_info.core_count() * gpu_device_info.fpus_per_core();
-  int64_t n_threads_active = std::min(num_threads, fpu_count);
+    const se::DeviceDescription& gpu_device_info, int64_t flops, int num_blocks,
+    int num_threads_per_block) {
+  int64_t n_active_fpus_per_core =
+      std::min(num_threads_per_block, gpu_device_info.fpus_per_core());
+
+  int64_t n_active_core = std::min(num_blocks, gpu_device_info.core_count());
+  int64_t fpu_count = n_active_core * n_active_fpus_per_core;
+
   int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
-  int64_t flop_per_ns_effective = flop_per_ns_per_fpu * n_threads_active;
+  int64_t flop_per_ns_effective = flop_per_ns_per_fpu * fpu_count;
   return absl::Nanoseconds(1.0f * flops / flop_per_ns_effective);
 }
 

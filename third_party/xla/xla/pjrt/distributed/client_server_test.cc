@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -20,15 +21,23 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "grpcpp/grpcpp.h"
+#include "absl/types/span.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
@@ -39,7 +48,9 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -407,8 +418,8 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     // 1. Internal: node turns into ERROR state during the shutdown call.
     // 2. Failed Precondition: node is already in ERROR state before the
     // shutdown call (note: agent will still stop sending heartbeats).
-    EXPECT_TRUE(tsl::errors::IsInternal(statuses[i]) ||
-                tsl::errors::IsFailedPrecondition(statuses[i]));
+    EXPECT_TRUE(absl::IsInternal(statuses[i]) ||
+                absl::IsFailedPrecondition(statuses[i]));
   }
 }
 
@@ -810,6 +821,32 @@ TEST_F(ClientServerTest, KeyValueDirGet) {
   EXPECT_THAT(kvs, UnorderedElementsAre(Pair("test_dir/sub_dir/1", "1"),
                                         Pair("test_dir/sub_dir/2", "2"),
                                         Pair("test_dir/3", "3")));
+}
+
+TEST_F(ClientServerTest, KeyValueSet_Duplicate_Fails) {
+  StartService(/*num_nodes=*/1);
+  auto client = GetClient(/*node_id=*/0);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
+  EXPECT_TRUE(
+      absl::IsAlreadyExists(client->KeyValueSet("test_key", "never_added")));
+  auto result =
+      client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.value(), "original_value");
+}
+
+TEST_F(ClientServerTest, KeyValueSet_Duplicate_Overwrites) {
+  StartService(/*num_nodes=*/1);
+  auto client = GetClient(/*node_id=*/0);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
+  TF_EXPECT_OK(client->KeyValueSet("test_key", "overwritten_value",
+                                   /*allow_overwrite=*/true));
+  auto result =
+      client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.value(), "overwritten_value");
 }
 
 TEST_F(ClientServerTest, KeyValueDelete) {

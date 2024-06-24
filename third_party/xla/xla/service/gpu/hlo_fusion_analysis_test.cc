@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
-
 #include <gtest/gtest.h>
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -256,8 +255,7 @@ TEST_F(HloFusionAnalysisTest, ReduceMultiOutputFusionWithTransposeBitcast) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  auto analysis = AnalyzeFusion(*root, device_info);
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
@@ -289,8 +287,7 @@ TEST_F(HloFusionAnalysisTest, InvalidReduceMultiOutputFusion) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  auto analysis = AnalyzeFusion(*root, device_info);
   // We expect to fallback to the loop emitter, because the two reductions are
   // not compatible as they reduce over different dimensions.
   EXPECT_EQ(analysis.GetEmitterFusionKind(),

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -318,7 +318,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
         GetBitcastMap(
             tiling_.GetXlaShape(),
             analysis_.fusion_roots()[root_index].instruction().shape(), ctx));
-    map.Simplify(GetIndexingMapForInstruction);
+    map.Simplify();
     return map;
   }
 
@@ -336,7 +336,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
           tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
           permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
-  map.Simplify(GetIndexingMapForInstruction);
+  map.Simplify();
   return map;
 }
 
@@ -351,14 +351,14 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
              &analysis_.fusion_root(root_index).instruction(), 0, ctx)
              .indexing_maps[hero_operand_index]
              .begin());
-    map.Simplify(GetIndexingMapForInstruction);
+    map.Simplify();
     return map;
   }
 
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
-  map.Simplify(GetIndexingMapForInstruction);
+  map.Simplify();
   return map;
 }
 

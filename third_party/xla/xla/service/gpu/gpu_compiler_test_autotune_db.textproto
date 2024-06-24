@@ -1,13 +1,37 @@
 version: 3
 results {
-  device: "sm_9.0 with 84942979072B RAM, 132 cores, 1980000KHz clock, 2619000KHz mem clock, 52428800B L2$"
-  hlo: "(bf16[128,1024,1024]{2,1,0}, s8[33554432]{0}) custom-call(bf16[128,1024,1024]{2,1,0}, bf16[128,1024,1024]{2,1,0}), custom_call_target=\"__cublas$gemm\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1048576\",\"rhs_stride\":\"1048576\",\"grad_x\":false,\"grad_y\":false},\"force_earliest_schedule\":false}"
+  device: "sm_8.0 with 42296475648B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  hlo: "{\n  tmp_0 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(0)\n  tmp_1 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_0)\n  tmp_2 = bf16[] constant({...})\n  tmp_3 = bf16[1,4,32,1024,1024]{4,3,2,1,0} broadcast(bf16[] tmp_2), dimensions={}\n  tmp_4 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_3)\n  tmp_5 = f32[1,4,32,1024,1024]{4,3,2,1,0} multiply(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_1, f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_4)\n  tmp_6 = bf16[1,4,32,1024,1024]{4,3,2,1,0} convert(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_5)\n  tmp_7 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_6)\n  tmp_8 = bf16[4,32,1024,1024]{3,2,1,0} transpose(bf16[4,32,1024,1024]{3,2,1,0} tmp_7), dimensions={0,1,3,2}\n  tmp_9 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[4,32,1024,1024]{3,2,1,0} tmp_8)\n  tmp_10 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(1)\n  tmp_11 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_10)\n  tmp_12 = bf16[128,1024,1024]{2,1,0} dot(bf16[128,1024,1024]{2,1,0} tmp_9, bf16[128,1024,1024]{2,1,0} tmp_11), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}\n  ROOT tmp_13 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[128,1024,1024]{2,1,0} tmp_12)\n}"
   result {
     gemm {
       algorithm: -1
     }
     run_time {
-      nanos: 657376
+      nanos: 1
+    }
+  }
+}
+results {
+  device: "sm_8.0 with 42298834944B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  hlo: "{\n  tmp_0 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(0)\n  tmp_1 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_0)\n  tmp_2 = bf16[] constant({...})\n  tmp_3 = bf16[1,4,32,1024,1024]{4,3,2,1,0} broadcast(bf16[] tmp_2), dimensions={}\n  tmp_4 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_3)\n  tmp_5 = f32[1,4,32,1024,1024]{4,3,2,1,0} multiply(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_1, f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_4)\n  tmp_6 = bf16[1,4,32,1024,1024]{4,3,2,1,0} convert(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_5)\n  tmp_7 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_6)\n  tmp_8 = bf16[4,32,1024,1024]{3,2,1,0} transpose(bf16[4,32,1024,1024]{3,2,1,0} tmp_7), dimensions={0,1,3,2}\n  tmp_9 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[4,32,1024,1024]{3,2,1,0} tmp_8)\n  tmp_10 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(1)\n  tmp_11 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_10)\n  tmp_12 = bf16[128,1024,1024]{2,1,0} dot(bf16[128,1024,1024]{2,1,0} tmp_9, bf16[128,1024,1024]{2,1,0} tmp_11), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}\n  ROOT tmp_13 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[128,1024,1024]{2,1,0} tmp_12)\n}"
+  result {
+    run_time {
+      nanos: 1
+    }
+    gemm {
+      algorithm: -1
+    }
+  }
+}
+results {
+  device: "sm_8.0 with 42298834944B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  hlo: "(bf16[128,1024,1024]{2,1,0}, s8[4194304]{0}) custom-call(bf16[128,1024,1024]{2,1,0}, bf16[128,1024,1024]{2,1,0}), custom_call_target=\"__cublas$gemm\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1048576\",\"rhs_stride\":\"1048576\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false}"
+  result {
+    run_time {
+      nanos: 1
+    }
+    gemm {
+      algorithm: -1
     }
   }
 }
@@ -19,19 +43,19 @@ results {
       algorithm: -1
     }
     run_time {
-      nanos: 854688
+      nanos: 1
     }
   }
 }
 results {
-  device: "sm_8.0 with 42296475648B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
-  hlo: "{\n  tmp_0 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(0)\n  tmp_1 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_0)\n  tmp_2 = bf16[] constant({...})\n  tmp_3 = bf16[1,4,32,1024,1024]{4,3,2,1,0} broadcast(bf16[] tmp_2), dimensions={}\n  tmp_4 = f32[1,4,32,1024,1024]{4,3,2,1,0} convert(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_3)\n  tmp_5 = f32[1,4,32,1024,1024]{4,3,2,1,0} multiply(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_1, f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_4)\n  tmp_6 = bf16[1,4,32,1024,1024]{4,3,2,1,0} convert(f32[1,4,32,1024,1024]{4,3,2,1,0} tmp_5)\n  tmp_7 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_6)\n  tmp_8 = bf16[4,32,1024,1024]{3,2,1,0} transpose(bf16[4,32,1024,1024]{3,2,1,0} tmp_7), dimensions={0,1,3,2}\n  tmp_9 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[4,32,1024,1024]{3,2,1,0} tmp_8)\n  tmp_10 = bf16[1,4,32,1024,1024]{4,3,2,1,0} parameter(1)\n  tmp_11 = bf16[128,1024,1024]{2,1,0} bitcast(bf16[1,4,32,1024,1024]{4,3,2,1,0} tmp_10)\n  tmp_12 = bf16[128,1024,1024]{2,1,0} dot(bf16[128,1024,1024]{2,1,0} tmp_9, bf16[128,1024,1024]{2,1,0} tmp_11), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}\n  ROOT tmp_13 = bf16[4,32,1024,1024]{3,2,1,0} bitcast(bf16[128,1024,1024]{2,1,0} tmp_12)\n}"
+  device: "sm_9.0 with 84942979072B RAM, 132 cores, 1980000KHz clock, 2619000KHz mem clock, 52428800B L2$"
+  hlo: "(bf16[128,1024,1024]{2,1,0}, s8[33554432]{0}) custom-call(bf16[128,1024,1024]{2,1,0}, bf16[128,1024,1024]{2,1,0}), custom_call_target=\"__cublas$gemm\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"1048576\",\"rhs_stride\":\"1048576\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false}"
   result {
     gemm {
       algorithm: -1
     }
     run_time {
-      nanos: 1576960
+      nanos: 1
     }
   }
 }

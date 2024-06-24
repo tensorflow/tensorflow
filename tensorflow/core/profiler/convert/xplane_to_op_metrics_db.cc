@@ -140,23 +140,23 @@ void CollectTfActivities(
     std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
   tf_activities->reserve(line.NumEvents() * 2);
-  line.ForEachEvent([&tf_ops, &tf_op_id,
-                     &tf_activities](const XEventVisitor& event) {
-    const tsl::profiler::TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
-    if (tf_op != nullptr) {
-      ++tf_op_id;
-      bool is_eager = false;
-      if (std::optional<XStatVisitor> stat =
-              event.GetStat(StatType::kIsEager)) {
-        is_eager = stat->IntValue();
-      }
-      tsl::profiler::Timespan span = event.GetTimespan();
-      tf_activities->push_back(
-          {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
-      tf_activities->push_back(
-          {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
-    }
-  });
+  line.ForEachEvent(
+      [&tf_ops, &tf_op_id, &tf_activities](const XEventVisitor& event) {
+        const tsl::profiler::TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
+        if (tf_op != nullptr) {
+          ++tf_op_id;
+          bool is_eager = false;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kIsEager)) {
+            is_eager = stat->IntValue();
+          }
+          tsl::profiler::Timespan span = event.GetTimespan();
+          tf_activities->push_back(
+              {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
+          tf_activities->push_back(
+              {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
+        }
+      });
 }
 
 }  // namespace
@@ -248,6 +248,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
       absl::string_view tf_op_full_name;
       bool is_eager = false;
       int64_t program_id = 0;
+      absl::string_view deduplicated_name = "";
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kTfOp) {
           tf_op_full_name = stat.StrOrRefValue();
@@ -255,6 +256,8 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
           is_eager = stat.IntValue();
         } else if (stat.Type() == StatType::kProgramId) {
           program_id = stat.IntOrUintValue();
+        } else if (stat.Type() == StatType::kDeduplicatedName) {
+          deduplicated_name = stat.StrOrRefValue();
         }
       });
       if (tf_op_full_name.empty()) return;
@@ -266,8 +269,9 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
       }
       device_op_metrics_db_builder.EnterOp(
           /*program_id=*/program_id,
-          absl::StrCat(tf_op.name, "/", event.Name()), tf_op.type,
-          tf_op_full_name, is_eager,
+          /**name=*/absl::StrCat(tf_op.name, "/", event.Name()),
+          /**category=*/tf_op.type,
+          /*provenance=*/tf_op_full_name, deduplicated_name, is_eager,
           /*occurrences=*/1, event.DurationPs(),
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });

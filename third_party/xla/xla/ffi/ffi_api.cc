@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/logging.h"
@@ -270,7 +269,8 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
       "XLA_FFI_Error_Create", XLA_FFI_Error_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
-  return new XLA_FFI_Error{Status(ToStatusCode(args->errc), args->message)};
+  return new XLA_FFI_Error{
+      absl::Status(ToStatusCode(args->errc), args->message)};
 }
 
 static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
@@ -364,7 +364,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
-  return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
+  return new XLA_FFI_Error{std::move(*reinterpret_cast<absl::Status*>(status))};
 }
 
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {

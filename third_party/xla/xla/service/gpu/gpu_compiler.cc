@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/service/all_reduce_folder.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
+#include "xla/service/all_reduce_splitter.h"
 #include "xla/service/async_collective_creator.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/bitcast_dtypes_expander.h"
@@ -121,6 +122,7 @@ limitations under the License.
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
 #include "xla/service/gpu/double_buffer_loop_unrolling.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -162,6 +164,7 @@ limitations under the License.
 #include "xla/service/gpu/softmax_rewriter_triton.h"
 #include "xla/service/gpu/stream_attribute_annotator.h"
 #include "xla/service/gpu/stream_attribute_async_wrapper.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
@@ -222,7 +225,6 @@ limitations under the License.
 #include "xla/service/zero_sized_hlo_elimination.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -377,6 +379,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
                                   compiler->BufferSizeBytesFunction(),
                                   /*can_share_buffer=*/nullptr));
 
+  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
+
   std::vector<uint8_t> binary(proto_.binary().begin(), proto_.binary().end());
 
   // Build the executable, which should be a thunk sequence.
@@ -396,10 +400,10 @@ GpuThunkAotCompilationResult::LoadExecutable(
   }
   llvm_module->setTargetTriple(gpu_compiler->target_triple());
   llvm_module->setDataLayout(gpu_compiler->data_layout());
-  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
-                                      platform_name, gpu_device_info,
-                                      mlir_context.get(), llvm_module.get(),
-                                      /*emit_kernels=*/false);
+  IrEmitterContext ir_emitter_context(
+      hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
+      platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
+      /*emit_kernels=*/false);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
@@ -829,6 +833,9 @@ absl::Status RunCollectiveOptimizationPasses(
 
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
+  if (debug_options.xla_gpu_enable_all_reduce_splitter()) {
+    collectives_pipeline.AddPass<AllReduceSplitter>();
+  }
   collectives_pipeline.AddPass<ReduceScatterCreator>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
@@ -1185,13 +1192,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
-    se::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    if (dnn == nullptr) {
-      return tsl::errors::FailedPrecondition(
-          "DNN library initialization failed."
-          " Look at the errors above for more details.");
-    }
-    TF_ASSIGN_OR_RETURN(dnn_version, dnn->GetVersion());
+    TF_ASSIGN_OR_RETURN(dnn_version, GetDnnVersionInfo(stream_exec));
   }
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
@@ -1215,24 +1216,19 @@ absl::Status GpuCompiler::OptimizeHloModule(
     opts.set_enable_unconditional_reduce_of_concat_replacement(false);
     return opts;
   }();
-  if (debug_options.xla_gpu_normalize_layouts()) {
-    layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
-    layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
-    layout_normalization_pipeline.AddPass<LayoutNormalization>(
-        &NormalizeLayoutForGpuCustomCalls);
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
-    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    layout_normalization_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        simplifier_options);
-    // Layout normalization will create broadcasts that are not canonical.
-    layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
-    // Layout normalization will create scatters that are not simplified and
-    // also have unsorted update_window_dims.
-    layout_normalization_pipeline.AddPass<ScatterSimplifier>();
-    // Layout normalization will create gathers that are not simplified and also
-    // have unsorted offset_dims.
-    layout_normalization_pipeline.AddPass<GatherSimplifier>();
-  }
+  layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
+  layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
+  layout_normalization_pipeline.AddPass<LayoutNormalization>(
+      &NormalizeLayoutForGpuCustomCalls);
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  layout_normalization_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+      simplifier_options);
+  // Layout normalization will create broadcasts that are not canonical.
+  layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+  // Layout normalization will create scatters that are not simplified and
+  // also have unsorted update_window_dims.
+  layout_normalization_pipeline.AddPass<ScatterSimplifier>();
   TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
@@ -1379,18 +1375,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
-    if (debug_options.xla_gpu_normalize_layouts()) {
-      pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
-      // Remove any redundant operations (such as bitcasts) introduced by layout
-      // normalization.
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
-      // Layout normalization will create scatters that are not simplified and
-      // also have unsorted update_window_dims.
-      pipeline.AddPass<ScatterSimplifier>();
-      // Layout normalization will create gathers that are not simplified and
-      // also have unsorted offset_dims.
-      pipeline.AddPass<GatherSimplifier>();
-    }
+    pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+    // Remove any redundant operations (such as bitcasts) introduced by layout
+    // normalization.
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
+    // Layout normalization will create scatters that are not simplified and
+    // also have unsorted update_window_dims.
+    pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
 
     pipeline.AddPass<ReductionDegenerateDimRemover>();

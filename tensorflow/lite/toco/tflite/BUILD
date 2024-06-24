@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,6 +20,7 @@ cc_library(
         "operator.h",
         "simple_operator.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite/toco:__subpackages__",
     ],
@@ -70,6 +72,7 @@ cc_library(
     hdrs = [
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -104,6 +107,7 @@ cc_library(
     hdrs = [
         "export.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":operator",
@@ -156,6 +160,7 @@ cc_library(
     hdrs = [
         "import.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":operator",

@@ -22,9 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"

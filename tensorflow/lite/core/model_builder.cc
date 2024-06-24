@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "flatbuffers/base.h"  // from @flatbuffers
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
@@ -61,6 +62,20 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
   return allocation;
 }
 
+// Loads a model from `fd`. If `mmap_file` is true then use mmap,
+// otherwise make a copy of the model in a buffer.
+std::unique_ptr<Allocation> GetAllocationFromFile(
+    int fd, ErrorReporter* error_reporter) {
+  std::unique_ptr<Allocation> allocation;
+  if (MMAPAllocation::IsSupported()) {
+    allocation = std::make_unique<MMAPAllocation>(fd, error_reporter);
+  } else {
+    allocation = std::make_unique<FileCopyAllocation>(
+        absl::StrCat("/proc/self/fd/", fd).c_str(), error_reporter);
+  }
+  return allocation;
+}
+
 namespace impl {
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
@@ -82,6 +97,32 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
   std::unique_ptr<FlatBufferModel> model = VerifyAndBuildFromAllocation(
       GetAllocationFromFile(filename, error_reporter), extra_verifier,
       error_reporter);
+#if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+#else
+  return ByteConvertModel(std::move(model), error_reporter);
+#endif
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFileDescriptor(
+    int fd, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+  std::unique_ptr<FlatBufferModel> model = BuildFromAllocation(
+      GetAllocationFromFile(fd, error_reporter), error_reporter);
+#if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+#else
+  return ByteConvertModel(std::move(model), error_reporter);
+#endif
+}
+
+std::unique_ptr<FlatBufferModel>
+FlatBufferModel::VerifyAndBuildFromFileDescriptor(
+    int fd, TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+  std::unique_ptr<FlatBufferModel> model =
+      VerifyAndBuildFromAllocation(GetAllocationFromFile(fd, error_reporter),
+                                   extra_verifier, error_reporter);
 #if FLATBUFFERS_LITTLEENDIAN == 1
   return model;
 #else

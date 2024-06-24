@@ -24,10 +24,10 @@ namespace gpu {
 
 // Returns nullptr if no error, otherwise the error message as a null-terminated
 // string (cudaGetErrorString or similar).
-#define XLA_CUB_DECLARE_SORT_KEYS(suffix)                                    \
-  const char* CubSortKeys_##suffix(void* d_temp_storage, size_t& temp_bytes, \
-                                   const void* d_keys_in, void* d_keys_out,  \
-                                   size_t num_items, bool descending);
+#define XLA_CUB_DECLARE_SORT_KEYS(suffix)                              \
+  const char* CubSortKeys_##suffix(                                    \
+      void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in, \
+      void* d_keys_out, size_t num_items, bool descending, size_t batch_size);
 
 // Returns nullptr if no error, otherwise the error message as a null-terminated
 // string (cudaGetErrorString or similar).
@@ -35,7 +35,7 @@ namespace gpu {
   const char* CubSortPairs_##suffix(                                   \
       void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in, \
       void* d_keys_out, const void* d_values_in, void* d_values_out,   \
-      size_t num_items, bool descending);
+      size_t num_items, bool descending, size_t batch_size);
 
 XLA_CUB_DECLARE_SORT_KEYS(bf16)
 XLA_CUB_DECLARE_SORT_KEYS(f16)

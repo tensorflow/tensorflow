@@ -1,0 +1,1286 @@
+diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
+index 05f3378dc..0a463c44d 100644
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
+@@ -1298,4 +1298,16 @@ elements along the K dim, or they use all elements of the tensor along the K dim
+   }];
+ }
+ 
++def SparseDotMetaEncodingAttr : DistributedEncoding<"SparseDotMetaEncoding", "sparse_dot_meta_encoding"> {
++  let mnemonic = "sparse_dot_meta";
++
++  let parameters = (ins "Attribute":$parent);
++  let assemblyFormat = "`<``{` struct(params) `}``>`";
++  let extraClassDeclaration = extraDistributedDeclaration # [{
++    SmallVector<unsigned> getContigPerThread() {
++      return getSizePerThread();
++    };
++  }];
++}
++
+ #endif
+diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
+index 2530009cb..b9f5bd933 100644
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
+@@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
+ include "mlir/Dialect/Arith/IR/ArithBase.td"
+ include "triton/Dialect/Triton/IR/TritonTypes.td"
+ include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
++include "triton/Dialect/Triton/IR/TritonTypeInterfaces.td"
+ include "mlir/IR/OpBase.td"
+ include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
+ include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
+@@ -232,4 +233,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
+   }];
+ }
+ 
++def TTNG_SparseDotOp : TTG_Op<"sparse_dot", [
++        Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>,
++        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
++    let summary = "sparse dot";
++
++    let arguments = (ins
++      TT_TensorOrMemDesc:$a,
++      TT_TensorOrMemDesc:$b,
++      TT_FpIntTensor:$c,
++      TT_IntTensor: $aMeta);
++    let results = (outs TT_FpIntTensor:$d);
++    let assemblyFormat = "$a`,` $b`,` $c`,` $aMeta attr-dict `:` type($a) `meta` type($aMeta) `*` type($b) `->` type($d)";
++    let hasVerifier = 1;
++}
++
+ #endif
+diff --git a/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp b/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
+index 4aa2712ec..16a6253d7 100644
+--- a/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
++++ b/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
+@@ -279,6 +279,89 @@ struct TritonDotPattern : public OpConversionPattern<triton::DotOp> {
+   }
+ };
+ 
++struct TritonSparseDotPattern
++    : public OpConversionPattern<triton::gpu::SparseDotOp> {
++  using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
++
++  LogicalResult matchAndRewrite(
++      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
++      ConversionPatternRewriter &rewriter) const override {
++    RankedTensorType origType = cast<RankedTensorType>(op.getType());
++    auto origShape = origType.getShape();
++    auto typeConverter = getTypeConverter<TritonGPUTypeConverter>();
++    int numWarps = typeConverter->getNumWarps();
++    int threadsPerWarp = typeConverter->getThreadsPerWarp();
++    int numCTAs = typeConverter->getNumCTAs();
++
++    auto rank = origShape.size();
++    auto numElements = product<int64_t>(origShape);
++    SmallVector<unsigned> retSizePerThread(rank, 1);
++    if (numElements / (numWarps * threadsPerWarp) >= 4) {
++      retSizePerThread[rank - 1] = 2;
++      retSizePerThread[rank - 2] = 2;
++    }
++    if (numElements / (numWarps * threadsPerWarp) >= 16) {
++      retSizePerThread[rank - 1] = 4;
++      retSizePerThread[rank - 2] = 4;
++    }
++    SmallVector<unsigned> retOrder(rank);
++    for (unsigned i = 0; i < rank; ++i)
++      retOrder[i] = rank - 1 - i;
++    Attribute dEncoding = triton::gpu::BlockedEncodingAttr::get(
++        getContext(), origShape, retSizePerThread, retOrder, numWarps,
++        threadsPerWarp, numCTAs);
++    RankedTensorType retType =
++        RankedTensorType::get(origShape, origType.getElementType(), dEncoding);
++
++    // a & b must be of smem layout
++    auto aType = cast<RankedTensorType>(adaptor.getA().getType());
++    auto bType = cast<RankedTensorType>(adaptor.getB().getType());
++    Type aEltType = aType.getElementType();
++    Type bEltType = bType.getElementType();
++    Attribute aEncoding = aType.getEncoding();
++    Attribute bEncoding = bType.getEncoding();
++    if (!aEncoding || !bEncoding)
++      return failure();
++    Value a = adaptor.getA();
++    Value b = adaptor.getB();
++    Value c = adaptor.getC();
++    if (!isa<triton::gpu::DotOperandEncodingAttr>(aEncoding)) {
++      Attribute encoding = triton::gpu::DotOperandEncodingAttr::get(
++          getContext(), 0, dEncoding, aEltType);
++      auto dstType =
++          RankedTensorType::get(aType.getShape(), aEltType, encoding);
++      a = rewriter.create<triton::gpu::ConvertLayoutOp>(a.getLoc(), dstType, a);
++    }
++    if (!isa<triton::gpu::DotOperandEncodingAttr>(bEncoding)) {
++      Attribute encoding = triton::gpu::DotOperandEncodingAttr::get(
++          getContext(), 1, dEncoding, bEltType);
++      auto dstType =
++          RankedTensorType::get(bType.getShape(), bEltType, encoding);
++      b = rewriter.create<triton::gpu::ConvertLayoutOp>(b.getLoc(), dstType, b);
++    }
++    c = rewriter.create<triton::gpu::ConvertLayoutOp>(c.getLoc(), retType, c);
++
++    // aMeta must be of smem layout
++    auto aMetaType = cast<RankedTensorType>(adaptor.getAMeta().getType());
++    Attribute aMetaEncoding = aMetaType.getEncoding();
++    if (!aMetaEncoding) return failure();
++    Value aMeta = adaptor.getAMeta();
++    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(aMetaEncoding)) {
++      Attribute encoding =
++          triton::gpu::SparseDotMetaEncodingAttr::get(getContext(), dEncoding);
++      auto dstType = RankedTensorType::get(
++          aMetaType.getShape(), aMetaType.getElementType(), encoding);
++      aMeta = rewriter.create<triton::gpu::ConvertLayoutOp>(aMeta.getLoc(),
++                                                            dstType, aMeta);
++    }
++
++    addNamedAttrs(rewriter.replaceOpWithNewOp<triton::gpu::SparseDotOp>(
++                      op, retType, a, b, c, aMeta),
++                  adaptor.getAttributes());
++    return success();
++  }
++};
++
+ struct TritonCatPattern : public OpConversionPattern<triton::CatOp> {
+   using OpConversionPattern::OpConversionPattern;
+ 
+@@ -553,6 +636,7 @@ void populateTritonPatterns(TritonGPUTypeConverter &typeConverter,
+       GenericOpPattern<triton::ExperimentalDescriptorStoreOp>,
+       GenericOpPattern<triton::CallOp>, TritonFuncOpPattern>(typeConverter,
+                                                              context);
++  patterns.insert<TritonSparseDotPattern>(typeConverter, context);
+ }
+ 
+ //
+@@ -794,6 +878,12 @@ public:
+     mod->setAttr(AttrTargetName,
+                  StringAttr::get(context, this->target.getValue()));
+ 
++    // Only transform sparse dot op with undefined layout.
++    target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
++        [](triton::gpu::SparseDotOp op) {
++          return op.getAMeta().getType().getEncoding() != nullptr;
++        });
++
+     if (failed(applyPartialConversion(mod, target, std::move(patterns))))
+       return signalPassFailure();
+ 
+diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+index 74ae61c06..1bdbd84be 100644
+--- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+@@ -497,6 +497,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+   return encoding;
+ }
+ 
++///--- SparseDotOp ---
++namespace {
++// Implied properties of 2:4 sparse dots.
++constexpr int kContractingFactor = 2;
++constexpr int kMetadataElementsPerPackedValue = 8;
++constexpr int kMetadataElementsPerWarp = 16;
++}  // namespace
++
++mlir::LogicalResult SparseDotOp::inferReturnTypes(
++    MLIRContext *context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
++    SmallVectorImpl<Type> &inferredReturnTypes) {
++  return DotOp::inferReturnTypes(context, location, operands, attributes,
++                                 properties, regions, inferredReturnTypes);
++}
++
++LogicalResult SparseDotOp::verify() {
++  // Verify operand A.
++  auto aTensorTy = cast<TensorOrMemDesc>(getOperand(0).getType());
++  auto aElemTy = aTensorTy.getElementType();
++  if (!aElemTy.isF16() && !aElemTy.isBF16())
++    return emitError("element type of operand A is not supported");
++  auto aShape = aTensorTy.getShape();
++  if (aShape.size() != 2) return emitError("shape of operand A is incorrect");
++
++  // Verify operand B.
++  auto bTensorTy = cast<TensorOrMemDesc>(getOperand(1).getType());
++  auto bElemTy = bTensorTy.getElementType();
++  if (!bElemTy.isF16() && !bElemTy.isBF16())
++    return emitError("element type of operand B is not supported");
++  auto bShape = bTensorTy.getShape();
++  if (bShape.size() != 2) return emitError("shape of operand B is incorrect");
++
++  // Verify operand C.
++  auto cTensorTy = cast<RankedTensorType>(getOperand(2).getType());
++  auto cElemTy = cTensorTy.getElementType();
++  if (!cElemTy.isF32())
++    return emitError("element type of operand C is not supported");
++  auto cShape = cTensorTy.getShape();
++  if (cShape.size() != 2) return emitError("shape of operand C is incorrect");
++
++  // Check operand dependencies.
++  if (aShape[0] != cShape[0] || bShape[1] != cShape[1] ||
++      bShape[0] != aShape[1] * kContractingFactor)
++    return emitError("operand shape dimensions are incorrect");
++  if (aElemTy != bElemTy)
++    return emitError("operand element types do not match");
++
++  // Verify sparse metadata.
++  auto metaTy = cast<RankedTensorType>(getOperand(3).getType());
++  auto metaShape = metaTy.getShape();
++  if (!metaTy.getElementType().isInteger(16) || metaShape.size() != 2)
++    return emitError("sparse metadata tensor is invalid");
++  if (metaShape[0] != aShape[0] ||
++      metaShape[1] * kMetadataElementsPerPackedValue != aShape[1])
++    return emitError("sparse metadata shape dimensions are incorrect");
++
++  // Verify tensor encoding.
++  auto aEncoding = aTensorTy.getEncoding();
++  auto bEncoding = bTensorTy.getEncoding();
++  if (!aEncoding && !bEncoding) return mlir::success();
++  if (!aEncoding || !bEncoding)
++    return emitError("mismatching encoding between A and B operands");
++
++  Dialect &dialect = aEncoding.getDialect();
++  auto interface = cast<DialectInferLayoutInterface>(&dialect);
++  return interface->verifyDotOpEncodingCompatibility(getOperation(), aEncoding,
++                                                     bEncoding);
++}
++
++//--- SparseDotMetaEncodingAttr ---
++unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
++    ArrayRef<int64_t> shape, Type eltTy) const {
++  auto mmaLayout = mlir::cast<NvidiaMmaEncodingAttr>(getParent());
++  return product<int64_t>(shape) /
++         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
++}
++
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getElemsPerThread(
++    ArrayRef<int64_t> shape, Type eltTy) const {
++  llvm_unreachable("getElemsPerThread is not supported for sparse dot meta");
++  return SmallVector<unsigned>();
++}
++
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAsPerCGA() const {
++  return ::getCTAsPerCGA(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAOrder() const {
++  return ::getCTAOrder(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTASplitNum() const {
++  return ::getCTASplitNum(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpsPerCTA() const {
++  return ::getWarpsPerCTA(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpOrder() const {
++  return {1, 0};
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadsPerWarp() const {
++  return ::getThreadsPerWarp(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadOrder() const {
++  return {1, 0};
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getSizePerThread() const {
++  return ::getSizePerThread(getParent());
++}
++SmallVector<unsigned> SparseDotMetaEncodingAttr::getShapePerCTATile(
++    ArrayRef<int64_t> tensorShape) const {
++  return ::getShapePerCTATile(getParent(), tensorShape);
++}
++
+ } // namespace gpu
+ } // namespace triton
+ } // namespace mlir
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+index ee09a34de..d995f6c04 100644
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -39,7 +39,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
+   return 0;
+ }
+ 
+-SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
++template <typename DotType>
++SmallVector<unsigned> warpsPerTileV2(DotType dotOp, const ArrayRef<int64_t> shape,
+                                      int numWarps) {
+   auto rank = shape.size();
+   // Early exit for batched matmul
+@@ -53,8 +54,8 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
+   auto slices = multiRootGetSlice(dotOp, {filter}, {filter});
+   bool hasChainedDot = false;
+   for (Operation *op : slices) {
+-    if (isa<DotOp>(op) && (op != dotOp)) {
+-      auto chainedDot = cast<DotOp>(op);
++    if (isa<DotType>(op) && (op != dotOp)) {
++      auto chainedDot = cast<DotType>(op);
+       auto resTy = chainedDot.getResult().getType();
+       if (resTy.getRank() != rank) {
+         continue;
+@@ -98,12 +99,13 @@ SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
+   return ret;
+ }
+ 
+-SmallVector<unsigned, 2>
+-warpsPerTileV3(DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps,
+-               const SmallVector<unsigned, 3> &instrShape) {
++template <typename DotType>
++SmallVector<unsigned, 2> warpsPerTileV3(
++    DotType dotOp, const ArrayRef<int64_t> shape, int numWarps,
++    const SmallVector<unsigned, 3> &instrShape) {
+   SetVector<Operation *> slices;
+   mlir::getForwardSlice(dotOp.getResult(), &slices);
+-  if (llvm::find_if(slices, [](Operation *op) { return isa<DotOp>(op); }) !=
++  if (llvm::find_if(slices, [](Operation *op) { return isa<DotType>(op); }) !=
+       slices.end())
+     return {(unsigned)numWarps, 1};
+ 
+@@ -144,6 +146,7 @@ class BlockedToMMA : public mlir::RewritePattern {
+                 mlir::TypeID::get<arith::ArithDialect>());
+   }
+ 
++public:
+   // Finds the first different bitwidth in the chain of shape-preserving
+   // unary ops that x depends on.
+   // There are two primary scenarios:
+@@ -177,14 +180,14 @@ class BlockedToMMA : public mlir::RewritePattern {
+     return origBitWidth;
+   }
+ 
+-public:
+   BlockedToMMA(mlir::MLIRContext *context, int computeCapability)
+       : mlir::RewritePattern(DotOp::getOperationName(), 2, context),
+         computeCapability(computeCapability) {}
+ 
+-  static SmallVector<unsigned, 3>
+-  getWarpsPerTile(DotOp dotOp, const ArrayRef<int64_t> shape, int version,
+-                  int numWarps, const SmallVector<unsigned, 3> &instrShape) {
++  template <typename DotType>
++  static SmallVector<unsigned, 3> getWarpsPerTile(
++      DotType dotOp, const ArrayRef<int64_t> shape, int version, int numWarps,
++      const SmallVector<unsigned, 3> &instrShape) {
+     switch (version) {
+     case 2:
+       return warpsPerTileV2(dotOp, shape, numWarps);
+@@ -339,6 +342,103 @@ public:
+     return success();
+   }
+ };
++
++class SparseBlockedToMMA : public mlir::RewritePattern {
++ public:
++  using SparseDotOp = mlir::triton::gpu::SparseDotOp;
++  using SparseDotMetaEncodingAttr =
++      mlir::triton::gpu::SparseDotMetaEncodingAttr;
++
++  SparseBlockedToMMA(mlir::MLIRContext *context, int computeCapability)
++      : mlir::RewritePattern(SparseDotOp::getOperationName(), 2, context),
++        computeCapability(computeCapability) {}
++
++  mlir::LogicalResult matchAndRewrite(
++      mlir::Operation *op, mlir::PatternRewriter &rewriter) const override {
++    auto dotOp = cast<SparseDotOp>(op);
++    auto ctx = op->getContext();
++    Value a = dotOp.getA();
++    Value b = dotOp.getB();
++
++    // Check data-types and SM compatibility
++    RankedTensorType oldRetType = dotOp.getType();
++    if (!oldRetType.getEncoding() ||
++        isa<NvidiaMmaEncodingAttr>(oldRetType.getEncoding()))
++      return failure();
++
++    assert(computeCapability >= 80 &&
++           "SparseDot is supported on Ampere and higher");
++    bool allowV3 = !triton::tools::getBoolEnv("DISABLE_MMA_V3");
++    int versionMajor = computeCapability >= 90 && allowV3 ? 3 : 2;
++
++    // get MMA encoding for the given number of warps
++    auto retShapePerCTA = getShapePerCTA(oldRetType);
++    auto mod = op->getParentOfType<mlir::ModuleOp>();
++    int numWarps = TritonGPUDialect::getNumWarps(mod);
++    auto CTALayout = getCTALayout(oldRetType.getEncoding());
++
++    auto instrShape =
++        mmaVersionToInstrShape(versionMajor, retShapePerCTA,
++                               cast<TensorOrMemDesc>(a.getType()), numWarps);
++    auto warpsPerTile = BlockedToMMA::getWarpsPerTile(
++        dotOp, retShapePerCTA, versionMajor, numWarps, instrShape);
++    NvidiaMmaEncodingAttr mmaEnc =
++        NvidiaMmaEncodingAttr::get(ctx, versionMajor, /*versionMinor=*/0,
++                                        warpsPerTile, CTALayout, instrShape);
++    auto newRetType = RankedTensorType::get(
++        oldRetType.getShape(), oldRetType.getElementType(), mmaEnc);
++
++    // convert accumulator
++    auto oldAcc = dotOp.getOperand(2);
++    auto newAcc = rewriter.create<ConvertLayoutOp>(oldAcc.getLoc(),
++                                                        newRetType, oldAcc);
++
++    if (versionMajor == 2) {
++      int minBitwidth = std::min(BlockedToMMA::computeOrigBitWidth(a),
++                                 BlockedToMMA::computeOrigBitWidth(b));
++      int kWidth = 32 / minBitwidth;
++
++      // convert A operand
++      auto oldAType = cast<RankedTensorType>(a.getType());
++      auto newAEncoding =
++          DotOperandEncodingAttr::get(ctx, 0, mmaEnc, kWidth);
++      auto newAType = RankedTensorType::get(
++          oldAType.getShape(), oldAType.getElementType(), newAEncoding);
++      a = rewriter.create<ConvertLayoutOp>(a.getLoc(), newAType, a);
++
++      // convert B operand
++      auto oldBType = cast<RankedTensorType>(b.getType());
++      auto newBEncoding =
++          DotOperandEncodingAttr::get(ctx, 1, mmaEnc, kWidth);
++      auto newBType = RankedTensorType::get(
++          oldBType.getShape(), oldBType.getElementType(), newBEncoding);
++      b = rewriter.create<ConvertLayoutOp>(b.getLoc(), newBType, b);
++    } else {
++      a = BlockedToMMA::getMMAv3Operand(a, rewriter, 0);
++      b = BlockedToMMA::getMMAv3Operand(b, rewriter, 1);
++    }
++
++    // convert metadata
++    Value meta = dotOp.getAMeta();
++    auto oldMetaType = cast<RankedTensorType>(meta.getType());
++    auto newMetaType = RankedTensorType::get(
++        oldMetaType.getShape(), oldMetaType.getElementType(),
++        SparseDotMetaEncodingAttr::get(ctx, mmaEnc));
++    meta =
++        rewriter.create<ConvertLayoutOp>(meta.getLoc(), newMetaType, meta);
++
++    // convert dot instruction
++    auto newDot = rewriter.create<SparseDotOp>(dotOp.getLoc(), newRetType, a, b,
++                                               newAcc, meta);
++
++    rewriter.replaceOpWithNewOp<ConvertLayoutOp>(op, oldRetType,
++                                                      newDot.getResult());
++    return success();
++  }
++
++ private:
++  int computeCapability;
++};
+ } // namespace
+ 
+ static Value promoteOperand(OpBuilder &builder, Location loc, Value operand,
+@@ -398,6 +498,7 @@ public:
+ 
+     mlir::RewritePatternSet patterns(context);
+     patterns.add<BlockedToMMA>(context, computeCapability);
++    patterns.add<SparseBlockedToMMA>(context, computeCapability);
+     if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
+       signalPassFailure();
+     }
+diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+index 457d42f4e..5ab249066 100644
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+@@ -188,6 +188,10 @@ public:
+   }
+ };
+ 
++static bool isDotOp(Operation* op) {
++  return isa<tt::DotOp, ttg::SparseDotOp>(op);
++}
++
+ static bool isMMAv3Dot(Operation *op) {
+   auto dot = dyn_cast<tt::DotOp>(op);
+   if (!dot)
+@@ -387,19 +391,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
+     } else {
+       if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
+         return std::nullopt;
+-      auto dotOpEnc = dyn_cast<ttg::DotOperandEncodingAttr>(
+-          cast<TensorOrMemDesc>(user->getResult(0).getType()).getEncoding());
+-      if (!dotOpEnc)
++      auto enc =
++          cast<TensorOrMemDesc>(user->getResult(0).getType()).getEncoding();
++      if (isa<ttg::DotOperandEncodingAttr>(enc)) {
++        auto srcTy = cast<TensorOrMemDesc>(val.getType());
++        auto CTALayout = ttg::getCTALayout(srcTy.getEncoding());
++        auto order = ttg::getOrder(srcTy.getEncoding());
++        unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
++        tempAttr = ttg::SharedEncodingAttr::get(
++            val.getContext(), cast<ttg::DotOperandEncodingAttr>(enc),
++            srcTy.getShape(), ttg::getOrder(srcTy.getEncoding()),
++            ttg::getCTALayout(srcTy.getEncoding()),
++            srcTy.getElementType().getIntOrFloatBitWidth(),
++            /*needTrans=*/false);
++      } else if (isa<ttg::SparseDotMetaEncodingAttr>(enc)) {
++        auto srcTy = cast<TensorOrMemDesc>(val.getType());
++        tempAttr = ttg::SharedEncodingAttr::get(
++            val.getContext(), /*vec=*/1, /*perPhase=*/1, /*maxPhase=*/1,
++            ttg::getOrder(srcTy.getEncoding()),
++            ttg::getCTALayout(srcTy.getEncoding()));
++      } else {
+         return std::nullopt;
+-      auto srcTy = cast<TensorOrMemDesc>(val.getType());
+-      auto CTALayout = ttg::getCTALayout(srcTy.getEncoding());
+-      auto order = ttg::getOrder(srcTy.getEncoding());
+-      unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
+-      tempAttr = ttg::SharedEncodingAttr::get(
+-          val.getContext(), dotOpEnc, srcTy.getShape(),
+-          ttg::getOrder(srcTy.getEncoding()),
+-          ttg::getCTALayout(srcTy.getEncoding()),
+-          srcTy.getElementType().getIntOrFloatBitWidth(), /*needTrans=*/false);
++      }
+     }
+     // Check that the shared encodings needed by the users are compatible.
+     if (!tempAttr || (attr != nullptr && attr != tempAttr))
+@@ -506,7 +519,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+       };
+ 
+   for (Operation &op : forOp.getBody()->without_terminator()) {
+-    if (!isa<tt::DotOp>(op))
++    if (!isDotOp(&op))
+       continue;
+     seen.clear();
+     dfs(&op, 0, &op);
+@@ -583,7 +596,8 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+         continue;
+     }
+ 
+-    if (auto dot = dyn_cast<tt::DotOp>(use)) {
++    if (isDotOp(use)) {
++      auto dot = dyn_cast<tt::DotOp>(use);
+       loadInfo.usedByDot = true;
+       if (loadIsMMAv3(op)) {
+         loadInfo.loadIsMMAV3 = true;
+@@ -605,7 +619,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+         // The codegen bug is caught by an assertion, so if you think you've
+         // fixed it, feel free to delete this code and see if the assert still
+         // fails.  :)
+-        if (!loadInfo.sharedEncoding) {
++        if (dot && !loadInfo.sharedEncoding) {
+           if (auto dotEnc = dyn_cast<ttg::NvidiaMmaEncodingAttr>(
+                   dot.getResult().getType().getEncoding())) {
+             auto loadTy = cast<RankedTensorType>(op->getResultTypes()[0]);
+diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
+index c0b586d60..d592ac523 100644
+--- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
+@@ -38,6 +38,10 @@ public:
+       auto srcEncoding = srcType.getEncoding();
+       if (isa<triton::gpu::SharedEncodingAttr>(srcEncoding))
+         return;
++      if (isa<triton::gpu::SparseDotMetaEncodingAttr>(dstType.getEncoding())) {
++        replaceSparseMetaEncoding(cvtOp);
++        return;
++      }
+       auto dstDotOp =
+           dyn_cast<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
+       if (!dstDotOp)
+@@ -84,6 +88,27 @@ public:
+       cvtOp.erase();
+     });
+   }
++
++ private:
++  void replaceSparseMetaEncoding(triton::gpu::ConvertLayoutOp cvtOp) {
++    auto srcType = cast<RankedTensorType>(cvtOp.getOperand().getType());
++    auto srcEncoding = srcType.getEncoding();
++    auto sharedLayout = triton::gpu::SharedEncodingAttr::get(
++        cvtOp.getContext(), 8, 1, 1, triton::gpu::getOrder(srcEncoding),
++        triton::gpu::getCTALayout(srcEncoding));
++
++    auto dstType = cast<RankedTensorType>(cvtOp.getType());
++    auto tmpType = triton::MemDescType::get(
++        dstType.getShape(), dstType.getElementType(), sharedLayout);
++
++    OpBuilder builder(cvtOp);
++    auto tmp = builder.create<triton::gpu::LocalAllocOp>(
++        cvtOp.getLoc(), tmpType, cvtOp.getSrc());
++    auto newConvert = builder.create<triton::gpu::LocalLoadOp>(
++        cvtOp.getLoc(), dstType, tmp);
++    cvtOp.replaceAllUsesWith(newConvert.getResult());
++    cvtOp.erase();
++  }
+ };
+ 
+ } // namespace gpu
+diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+index c7dd8d595..df110e0a9 100644
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+@@ -44,7 +44,7 @@ public:
+       return;
+     ModuleOp mod = getOperation();
+     mod.walk([&](Operation *op) {
+-      if (!isa<tt::DotOp, ttng::DotAsyncOp>(op))
++      if (!isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+         return WalkResult::advance();
+       OpBuilder builder(op);
+       auto a = op->getOperand(0);
+@@ -79,7 +79,7 @@ private:
+     static DenseSet<std::pair<Operation *, unsigned>> trace;
+     auto op = operand.getDefiningOp();
+     // avoid redundant insertion
+-    if (op && isa<tt::DotOp, ttng::DotAsyncOp>(op))
++    if (op && isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+       return false;
+     // reach convertlayout
+     if (op && isa<ttg::LocalAllocOp>(op) &&
+diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
+index ca9d18873..d39bc6ec4 100644
+--- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
++++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
+@@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []> {
+   let assemblyFormat = "$opA `,` $opB (`,` $opC^)? attr-dict `:` functional-type(operands, $res)";
+ }
+ 
++def NVGPU_SparseWGMMAOp : NVGPU_Op<"wgmma_sp", []> {
++  let arguments = (ins WGMMA_OperandType:$opA, I32:$metaA, WGMMA_OperandType:$opB, LLVM_AnyStruct:$opC,
++                   I32Attr:$m, I32Attr:$n, I32Attr:$k,
++                   WGMMA_EltTypeAttr:$eltTypeC, WGMMA_EltTypeAttr:$eltTypeA, WGMMA_EltTypeAttr:$eltTypeB,
++                   WGMMA_LayoutAttr:$layoutA, WGMMA_LayoutAttr:$layoutB);
++  let results = (outs LLVM_AnyStruct:$res);
++  let assemblyFormat = "$opA `meta` $metaA `,` $opB `,` $opC attr-dict `:` functional-type(operands, $res)";
++}
++
+ def NVGPU_LoadDSmemOp : NVGPU_Op<"load_dsmem", [MemoryEffects<[MemRead]>]> {
+   let arguments = (ins LLVM_AnyPointer:$addr, I32:$ctaId, I32Attr:$bitwidth, I32Attr:$vec);
+   let builders = [
+diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+index 1aba5f85b..5eb1d0811 100644
+--- a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
++++ b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+@@ -694,6 +694,84 @@ public:
+   }
+ };
+ 
++class SparseWGMMAOpPattern
++    : public NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern> {
++public:
++  using Base = NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern>;
++  using Base::Base;
++
++  std::vector<std::string> getOutputConstraints(ttn::SparseWGMMAOp op) const {
++    auto outputStructType = cast<LLVM::LLVMStructType>(op.getType());
++    uint32_t numOutputRegs = outputStructType.getBody().size();
++    std::string output =
++        outputStructType.getBody().front().isF32() ? "=f" : "=r";
++    return std::vector<std::string>(numOutputRegs, output);
++  }
++
++  OperandsAndConstraints getOperandsAndConstraints(
++      ttn::SparseWGMMAOp op) const {
++    return {{op.getOpC(), "0"}, {op.getOpA(), "l"}, {op.getOpB(), "l"},
++            {op.getMetaA(), "r"}};
++  }
++
++  std::string getPtxAsm(ttn::SparseWGMMAOp op) const {
++    using namespace ttn;
++    auto opA = op.getOpA();
++    auto opB = op.getOpB();
++    auto m = op.getM();
++    auto n = op.getN();
++    auto k = op.getK();
++    auto eltTypeC = op.getEltTypeC();
++    auto eltTypeA = op.getEltTypeA();
++    auto eltTypeB = op.getEltTypeB();
++    auto layoutA = op.getLayoutA();
++    auto layoutB = op.getLayoutB();
++
++    // Only f16/bf16 variant is supported.
++    bool supported =
++        eltTypeC == WGMMAEltType::f32 &&
++        ((eltTypeA == WGMMAEltType::f16 && eltTypeB == WGMMAEltType::f16) ||
++         (eltTypeA == WGMMAEltType::bf16 && eltTypeB == WGMMAEltType::bf16)) &&
++        (m == 64 && 8 <= n && n <= 256 && n % 8 == 0 && k == 32);
++    assert(supported && "Sparse WGMMA type or shape is not supported");
++
++    // Operands
++    uint32_t asmOpIdx = 0;
++    std::string args = "";
++
++    // Output and operand C
++    uint32_t numCRegs =
++        cast<LLVM::LLVMStructType>(op.getType()).getBody().size();
++    args += "{";
++    for (uint32_t i = 0; i < numCRegs; ++i) {
++      args += "$" + std::to_string(asmOpIdx++) + (i == numCRegs - 1 ? "" : ",");
++    }
++    args += "}, ";
++    asmOpIdx += numCRegs;
++
++    // Operands A and B (must be `desc`)
++    args += "$" + std::to_string(asmOpIdx++) + ", ";
++    args += "$" + std::to_string(asmOpIdx++) + ", ";
++
++    // Metadata for A
++    args += "$" + std::to_string(asmOpIdx++) + ", 0, ";
++
++    // `scale-d`, `imm-scale-a`, and `imm-scale-b` are 1 by default
++    args += "1, 1, 1";
++
++    // `trans-a` and `trans-b`
++    args += ", " + std::to_string(layoutA == WGMMALayout::col);
++    args += ", " + std::to_string(layoutB == WGMMALayout::row);
++
++    auto ptxAsm = "wgmma.mma_async.sp.sync.aligned"
++                  ".m" + std::to_string(m) + "n" + std::to_string(n) + "k" +
++                  std::to_string(k) + "." + stringifyEnum(eltTypeC).str() +
++                  "." + stringifyEnum(eltTypeA).str() + "." +
++                  stringifyEnum(eltTypeB).str() + " " + args + ";";
++    return ptxAsm;
++  }
++};
++
+ class ConvertNVGPUToLLVM : public ConvertNVGPUToLLVMBase<ConvertNVGPUToLLVM> {
+ 
+ public:
+@@ -714,10 +792,9 @@ public:
+     patterns.add<NVGPUOpGenericPattern<ttn::ClusterCTAIdOp>>(
+         context, Cluster_Cta_Id_Op, Constraints({"=r"}), Constraints());
+ 
+-    patterns
+-        .add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
+-             ClusterArriveOpPattern, WGMMAOpPattern, WGMMAWaitGroupOpPattern>(
+-            context);
++    patterns.add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
++                 ClusterArriveOpPattern, WGMMAOpPattern,
++                 WGMMAWaitGroupOpPattern, SparseWGMMAOpPattern>(context);
+ 
+     if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
+       signalPassFailure();
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+index f8ece0f1c..435610817 100644
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
+@@ -43,6 +43,14 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
+                     const LLVMTypeConverter *typeConverter, Value thread);
+ }
+ 
++namespace SharedToSparseDotOperand {
++Value convertLayout(
++    ConversionPatternRewriter &rewriter, Location loc, Value tensor,
++    triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
++    const SharedMemoryObject &smemObj, const LLVMTypeConverter *typeConverter,
++    Value thread);
++} // namespace SharedToSparseDotOperand
++
+ namespace {
+ 
+ using namespace mlir;
+@@ -67,6 +75,10 @@ public:
+             cast<DotOperandEncodingAttr>(dstLayout).getParent())) {
+       return lowerSharedToDotOperand(op, adaptor, getTypeConverter(), rewriter);
+     }
++    if (isa<SharedEncodingAttr>(srcLayout) &&
++        isa<triton::gpu::SparseDotMetaEncodingAttr>(dstLayout)) {
++      return lowerSharedToSparseMeta(op, adaptor, getTypeConverter(), rewriter);
++    }
+     return failure();
+   }
+ 
+@@ -138,6 +150,26 @@ private:
+     rewriter.replaceOp(op, res);
+     return success();
+   }
++
++  // shared -> sparse dot meta
++  LogicalResult lowerSharedToSparseMeta(
++      triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
++      const LLVMTypeConverter *typeConverter,
++      ConversionPatternRewriter &rewriter) const {
++    auto loc = op.getLoc();
++    auto sparseEncoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
++        cast<RankedTensorType>(op.getResult().getType()).getEncoding());
++    auto llvmElemTy = typeConverter->convertType(
++        cast<MemDescType>(op.getSrc().getType()).getElementType());
++    auto smemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
++                                                   llvmElemTy, rewriter);
++    Value res = SharedToSparseDotOperand::convertLayout(
++        rewriter, loc, op.getSrc(), sparseEncoding, smemObj, typeConverter,
++        getThreadId(rewriter, loc));
++
++    rewriter.replaceOp(op, res);
++    return success();
++  }
+ };
+ 
+ struct ConvertLayoutOpOptimizedConversion
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+new file mode 100644
+index 000000000..58023633e
+--- /dev/null
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+@@ -0,0 +1,75 @@
++#include "../Utility.h"
++
++namespace SharedToSparseDotOperand {
++namespace {
++constexpr int kThreadsPerWarp = 32;
++
++// Each 16x16 original sparse matrix tile requires 16 metadata values of 16-bit
++// size, where the first thread (T0) in each 4-thread group holds two such
++// values in a register (32-bit).
++// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
++constexpr int kTileSize = 16;
++constexpr int kThreadsInGroup = 4;
++constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
++constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
++}  // namespace
++
++Value convertLayout(
++    ConversionPatternRewriter &rewriter, Location loc, Value tensor,
++    triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
++    const SharedMemoryObject &smemObj, const LLVMTypeConverter *typeConverter,
++    Value thread) {
++  // Calculate tile size as number of mask elements (4xi4).
++  NvidiaMmaEncodingAttr mmaLayout =
++      cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
++  SmallVector<unsigned> warpsPerCTA = mmaLayout.getWarpsPerCTA();
++  SmallVector<unsigned> shapePerCTATile = {
++      kTileSize * warpsPerCTA[0], kTileSize / kMetadataElementsPerPackedValue};
++  Value strideM = smemObj.strides[0];
++  Value strideK = smemObj.strides[1];
++
++  // Calculate offset in the tile for the current thread.
++  Value threadsPerWarp = i32_val(kThreadsPerWarp);
++  Value warpId = udiv(thread, threadsPerWarp);
++  Value warpGroupId;
++  if (mmaLayout.isHopper()) {
++    warpGroupId = urem(warpId, i32_val(warpsPerCTA[0]));
++  } else {
++    assert(mmaLayout.isAmpere());
++    warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
++  }
++  Value laneId = urem(thread, threadsPerWarp);
++  Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
++  Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));
++  Value rowId = add(mul(warpGroupId, i32_val(kTileSize)), laneGroupId);
++
++  // Calculate number of tile repetitions.
++  auto shape = cast<MemDescType>(tensor.getType()).getShape();
++  int repM = shape[0] / shapePerCTATile[0];
++  int repK = shape[1] / shapePerCTATile[1];
++  assert(repM > 0 && repK > 0);
++
++  // Load sparse metadata from shared memory.
++  MLIRContext *ctx = tensor.getContext();
++  Type ptrTy = ptr_ty(ctx, 3);
++  Value base = gep(ptrTy, i16_ty, smemObj.base, i32_val(0));
++  SmallVector<Value> values;
++
++  for (int k = 0; k < repK; ++k) {
++    for (int m = 0; m < repM; ++m) {
++      Value row = add(rowId, i32_val(m * shapePerCTATile[0]));
++      Value column = add(columnId, i32_val(k * shapePerCTATile[1]));
++      Value offset1 = add(mul(row, strideM), mul(column, strideK));
++      Value offset2 = add(offset1, mul(i32_val(kMetadataLineOffset), strideM));
++      Value lower = load(i16_ty, gep(ptrTy, i16_ty, base, offset1));
++      Value upper = load(i16_ty, gep(ptrTy, i16_ty, base, offset2));
++      values.push_back(lower);
++      values.push_back(upper);
++    }
++  }
++
++  // Pack resulting values as LLVM struct.
++  Type structTy = struct_ty(SmallVector<Type>(values.size(), i16_ty));
++  return packLLElements(loc, typeConverter, values, rewriter, structTy);
++}
++}  // namespace SharedToSparseDotOperand
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
+index 374b9ec9e..1601806b4 100644
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
+@@ -32,6 +32,12 @@ LogicalResult convertAsyncWGMMA(triton::nvidia_gpu::DotAsyncOp op,
+                                 const LLVMTypeConverter *typeConverter,
+                                 ConversionPatternRewriter &rewriter,
+                                 Value thread);
++
++LogicalResult rewriteSparseDotOp(triton::gpu::SparseDotOp op,
++                                 triton::gpu::SparseDotOp::Adaptor adaptor,
++                                 const LLVMTypeConverter *typeConverter,
++                                 ConversionPatternRewriter &rewriter);
++
+ namespace {
+ struct DotOpConversion : public ConvertOpToLLVMPattern<triton::DotOp> {
+   using ConvertOpToLLVMPattern<triton::DotOp>::ConvertOpToLLVMPattern;
+@@ -174,6 +180,18 @@ struct DotWaitOpConversion
+     return success();
+   }
+ };
++
++struct SparseDotOpConversion
++    : public ConvertOpToLLVMPattern<triton::gpu::SparseDotOp> {
++  using ConvertOpToLLVMPattern<
++      triton::gpu::SparseDotOp>::ConvertOpToLLVMPattern;
++
++  LogicalResult matchAndRewrite(
++      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
++      ConversionPatternRewriter &rewriter) const override {
++    return rewriteSparseDotOp(op, adaptor, getTypeConverter(), rewriter);
++  }
++};
+ } // namespace
+ 
+ void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
+@@ -182,4 +200,5 @@ void mlir::triton::NVIDIA::populateDotOpToLLVMPatterns(
+   patterns.add<DotOpConversion>(typeConverter, benefit);
+   patterns.add<DotAsyncOpConversion>(typeConverter, benefit);
+   patterns.add<DotWaitOpConversion>(typeConverter, benefit);
++  patterns.add<SparseDotOpConversion>(typeConverter, benefit);
+ }
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
+new file mode 100644
+index 000000000..34d9212d2
+--- /dev/null
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
+@@ -0,0 +1,339 @@
++#include "../Utility.h"
++
++using namespace mlir;
++using namespace mlir::triton;
++using namespace mlir::triton::gpu;
++
++using ::mlir::LLVM::getSharedMemoryObjectFromStruct;
++using ::mlir::triton::gpu::getShapePerCTA;
++using ::mlir::triton::gpu::getShapePerCTATile;
++using ::mlir::triton::gpu::SharedEncodingAttr;
++
++using ValueTableV2 = std::map<std::pair<unsigned, unsigned>, Value>;
++
++namespace {
++constexpr int kContractingFactor = 2;  // implied by N:M (2:4)
++constexpr int kCore = 2;               // number of core matrices per batch
++constexpr int kCoreTile = kCore * kContractingFactor;
++}  // namespace
++
++// ----- Ampere implementation.
++
++ValueTableV2 getValuesFromDotOperandLayoutStruct(SmallVector<Value> elems,
++                                                 int n0, int n1) {
++  int offset = 0;
++  ValueTableV2 vals;
++  for (int i = 0; i < n0; ++i) {
++    for (int j = 0; j < n1; ++j) {
++      vals[{kCore * i, kCore * j}] = elems[offset++];
++      vals[{kCore * i, kCore * j + 1}] = elems[offset++];
++      vals[{kCore * i + 1, kCore * j}] = elems[offset++];
++      vals[{kCore * i + 1, kCore * j + 1}] = elems[offset++];
++    }
++  }
++  return vals;
++}
++
++std::string getMmaSpPtxInstruction(Type type) {
++  if (type.isF16()) {
++    return "mma.sp.sync.aligned.m16n8k32.row.col.f32.f16.f16.f32";
++  } else if (type.isBF16()) {
++    return "mma.sp.sync.aligned.m16n8k32.row.col.f32.bf16.bf16.f32";
++  }
++  llvm::report_fatal_error("Unsupported SparseDotOp operand type");
++}
++
++LogicalResult convertSparseMMA(SparseDotOp op,
++                               SparseDotOp::Adaptor adaptor,
++                               const LLVMTypeConverter *typeConverter,
++                               ConversionPatternRewriter &rewriter) {
++  // Get number of repetitions across the dimensions.
++  auto aTensorTy = cast<RankedTensorType>(op.getA().getType());
++  auto bTensorTy = cast<RankedTensorType>(op.getB().getType());
++
++  auto layoutA = dyn_cast<DotOperandEncodingAttr>(aTensorTy.getEncoding());
++  auto layoutB = dyn_cast<DotOperandEncodingAttr>(bTensorTy.getEncoding());
++  assert(layoutA != nullptr && layoutB != nullptr);
++
++  int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
++  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
++  auto repA = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(aTensorTy),
++                                 bitwidth, layoutA.getOpIdx());
++  auto repB = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(bTensorTy),
++                                 bitwidth, layoutB.getOpIdx());
++
++  assert(repA[0] == 1 && repB[0] == 1);  // batch size
++  assert(repB[1] == repA[2] * kContractingFactor);
++  int repM = repA[1], repN = repB[2], repK = repB[1];
++
++  // Arrange loaded values into positions.
++  Location loc = op.getLoc();
++  auto ha = getValuesFromDotOperandLayoutStruct(
++      unpackLLElements(loc, adaptor.getA(), rewriter), repM,
++      repK / kContractingFactor);
++  auto hb = getValuesFromDotOperandLayoutStruct(
++      unpackLLElements(loc, adaptor.getB(), rewriter),
++      std::max(repN / kCore, 1), repK);
++
++  // Combine loaded metadata values.
++  auto hMeta = unpackLLElements(loc, adaptor.getAMeta(), rewriter);
++  SmallVector<Value> hMetaPacked;
++  for (int i = 0; i < hMeta.size(); i += kCore) {
++    Value lower = zext(i32_ty, hMeta[i]);
++    Value upper = zext(i32_ty, hMeta[i + 1]);
++    Value packed = or_(shl(upper, i32_val(16)), lower);
++    hMetaPacked.push_back(packed);
++  }
++
++  // Flatten accumulator values.
++  auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
++  auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
++
++  // Create `mma.sp` instruction for 4/8 core matrices.
++  auto callMma = [&](unsigned m, unsigned n, unsigned k) {
++    PTXBuilder builder;
++    auto &mma =
++        *builder.create(getMmaSpPtxInstruction(aTensorTy.getElementType()));
++
++    auto retArgs = builder.newListOperand(kCoreTile, "=f");
++    auto cArgs = builder.newListOperand();
++    int baseIdx = m * repN * kCore + n * kCoreTile;
++    for (int i = 0; i < kCoreTile; ++i) {
++      cArgs->listAppend(builder.newOperand(fc[baseIdx + i], std::to_string(i)));
++    }
++    int i = k / kContractingFactor;
++    auto aArgs = builder.newListOperand({
++        {ha[{m, i}], "r"},
++        {ha[{m + 1, i}], "r"},
++        {ha[{m, i + 1}], "r"},
++        {ha[{m + 1, i + 1}], "r"},
++    });
++    auto bArgs = builder.newListOperand({
++        {hb[{n, k}], "r"},
++        {hb[{n, k + 1}], "r"},
++        {hb[{n, k + 2}], "r"},
++        {hb[{n, k + 3}], "r"},
++    });
++    auto metaArg =
++        builder.newOperand(hMetaPacked[k / kCoreTile * repM + m / kCore], "r");
++    auto selector = builder.newConstantOperand(0);
++    mma(retArgs, aArgs, bArgs, cArgs, metaArg, selector);
++
++    Type fp32x4Ty = LLVM::LLVMStructType::getLiteral(
++        op.getContext(), SmallVector<Type>(kCoreTile, f32_ty));
++    Value mmaOut = builder.launch(rewriter, loc, fp32x4Ty);
++    for (int i = 0; i < kCoreTile; ++i) {
++      fc[baseIdx + i] = extract_val(f32_ty, mmaOut, i);
++    }
++  };
++
++  for (int k = 0; k < repK; k += kContractingFactor)
++    for (int m = 0; m < repM; ++m)
++      for (int n = 0; n < repN; ++n) callMma(kCore * m, n, kCore * k);
++
++  // Replace with new packed result.
++  Type structTy = LLVM::LLVMStructType::getLiteral(
++      op.getContext(), SmallVector<Type>(fc.size(), f32_ty));
++  Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
++  rewriter.replaceOp(op, res);
++
++  return success();
++}
++
++// ----- Hopper implementation.
++
++// Forward declarations.
++Value createDescriptor(ConversionPatternRewriter &rewriter, Location loc,
++                       int64_t swizzling, uint32_t stride);
++int64_t getSwizzlingFromLayout(const SharedEncodingAttr &layout,
++                               uint32_t widthInByte);
++triton::nvgpu::WGMMAEltType getMmaRetType(Value);
++triton::nvgpu::WGMMAEltType getMmaOperandType(Value, bool);
++
++namespace {
++constexpr int kThreadsPerWarp = 32;
++constexpr int kWarpsInGroup = 4;
++constexpr int kMmaAccumulatorCount = 2;
++constexpr int kMmaLineSize = 128;
++constexpr int kMmaAlignment = 16;
++}  // namespace
++
++// Shared memory descriptor builder for WGMMA.
++Value smemDescriptor(int a, int b, ConversionPatternRewriter &rewriter,
++                     Location loc, std::vector<unsigned int> instrShape,
++                     bool trans, int dimWpt, Value warpId, MemDescType tensorTy,
++                     Value baseDesc, int minor) {
++  auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
++  int elemBytes = tensorTy.getElementTypeBitWidth() / 8;
++  int elemsPerSwizzlingRow =
++      kMmaLineSize / sharedLayout.getPerPhase() / elemBytes;
++  Value elemsPerSwizzlingRowVal = i32_val(elemsPerSwizzlingRow);
++
++  Value k = i32_val(b * instrShape[1]);
++  Value m = add(i32_val(a * dimWpt * instrShape[0]),
++                mul(warpId, i32_val(instrShape[0])));
++  if (trans) {
++    std::swap(k, m);
++  }
++  Value leading_offset = mul(udiv(k, elemsPerSwizzlingRowVal),
++                             i32_val(minor * elemsPerSwizzlingRow));
++  Value stride_offset = mul(m, elemsPerSwizzlingRowVal);
++  Value offset =
++      add(add(leading_offset, stride_offset), urem(k, elemsPerSwizzlingRowVal));
++  Value off1 = mul(i32_val(elemBytes), offset);
++  Value off_ = zext(i64_ty, udiv(off1, i32_val(kMmaAlignment)));
++
++  return add(baseDesc, off_);
++}
++
++LogicalResult convertSparseWGMMA(SparseDotOp op,
++                                 SparseDotOp::Adaptor adaptor,
++                                 const LLVMTypeConverter *typeConverter,
++                                 ConversionPatternRewriter &rewriter,
++                                 Value thread) {
++  // Get number of repetitions across the dimensions.
++  auto aTensorTy = cast<MemDescType>(op.getA().getType());
++  auto bTensorTy = cast<MemDescType>(op.getB().getType());
++  auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
++  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(dTensorTy.getEncoding());
++
++  auto shapePerCTA = getShapePerCTA(dTensorTy);
++  auto shapePerCTATile = getShapePerCTATile(mmaEnc);
++  auto instrShape = mmaEnc.getInstrShape();
++  int repM = ceil<unsigned>(shapePerCTA[0], shapePerCTATile[0]);
++  int repN = ceil<unsigned>(shapePerCTA[1], shapePerCTATile[1]);
++  int repK = ceil<unsigned>(bTensorTy.getShape()[0],
++                            instrShape[2] * kContractingFactor);
++
++  // Flatten accumulator values.
++  auto loc = op.getLoc();
++  auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
++  int accSize = kMmaAccumulatorCount * (instrShape[1] / kWarpsInGroup);
++  assert(fc.size() == repM * repN * accSize);
++
++  // Get warp ID.
++  auto wpt = mmaEnc.getWarpsPerCTA();
++  Value warp =
++      and_(udiv(thread, i32_val(kThreadsPerWarp)), i32_val(0xFFFFFFFC));
++  Value warpM = urem(warp, i32_val(wpt[0]));
++  Value warpMN = udiv(warp, i32_val(wpt[0]));
++  Value warpN = urem(warpMN, i32_val(wpt[1]));
++
++  // Create descriptor.
++  auto getSharedData = [&](Value arg, MemDescType tensorTy) {
++    auto sharedObj = getSharedMemoryObjectFromStruct(
++        loc, arg, typeConverter->convertType(tensorTy.getElementType()),
++        rewriter);
++    auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
++    auto shape = getShapePerCTA(tensorTy);
++    auto ord = sharedLayout.getOrder();
++    int byteSize = aTensorTy.getElementTypeBitWidth() / 8;
++    int64_t swizzling =
++        getSwizzlingFromLayout(sharedLayout, shape[ord[0]] * byteSize);
++    Value baseDesc = createDescriptor(rewriter, loc, swizzling, shape[ord[1]]);
++    baseDesc =
++        add(baseDesc, lshr(ptrtoint(i64_ty, sharedObj.base), int_val(64, 4)));
++    return std::make_tuple(shape, ord, baseDesc);
++  };
++
++  // Create descriptor for loading A from shared memory.
++  auto tA = getSharedData(adaptor.getA(), aTensorTy);
++  Value warpA = urem(warpM, i32_val(std::get<0>(tA)[0] / instrShape[0]));
++  bool transA = std::get<1>(tA)[0] == 0;
++  auto loadA = [&](int m, int k) {
++    return smemDescriptor(m, k, rewriter, loc, {instrShape[0], instrShape[2]},
++                          transA, wpt[0], warpA, aTensorTy, std::get<2>(tA),
++                          std::get<0>(tA)[std::get<1>(tA)[1]]);
++  };
++
++  // Create descriptor for loading B from shared memory.
++  auto tB = getSharedData(adaptor.getB(), bTensorTy);
++  Value warpB = urem(warpN, i32_val(std::get<0>(tB)[1] / instrShape[1]));
++  bool transB = std::get<1>(tB)[0] == 1;
++  auto loadB = [&](int n, int k) {
++    return smemDescriptor(n, k, rewriter, loc,
++                          {instrShape[1], instrShape[2] * kContractingFactor},
++                          transB, wpt[1], warpB, bTensorTy, std::get<2>(tB),
++                          std::get<0>(tB)[std::get<1>(tB)[1]]);
++  };
++
++  // Load metadata from shared memory.
++  auto hMeta = unpackLLElements(loc, adaptor.getAMeta(), rewriter);
++  SmallVector<Value> hMetaPacked;
++  for (int i = 0; i < hMeta.size(); i += kCore) {
++    Value lower = zext(i32_ty, hMeta[i]);
++    Value upper = zext(i32_ty, hMeta[i + 1]);
++    Value packed = or_(shl(upper, i32_val(16)), lower);
++    hMetaPacked.push_back(packed);
++  }
++  assert(hMetaPacked.size() == repM * repK);
++
++  // Generate prologue.
++  triton::nvgpu::WGMMAEltType eltTypeA = getMmaOperandType(op.getA(), false);
++  triton::nvgpu::WGMMAEltType eltTypeB = getMmaOperandType(op.getB(), false);
++  triton::nvgpu::WGMMAEltType eltTypeC = getMmaRetType(op.getD());
++
++  triton::nvgpu::WGMMALayout layoutA = transA ? triton::nvgpu::WGMMALayout::col
++                                              : triton::nvgpu::WGMMALayout::row;
++  triton::nvgpu::WGMMALayout layoutB = transB ? triton::nvgpu::WGMMALayout::row
++                                              : triton::nvgpu::WGMMALayout::col;
++
++  rewriter.create<triton::nvgpu::FenceAsyncSharedOp>(loc, 0);
++  rewriter.create<triton::nvgpu::WGMMAFenceOp>(loc);
++
++  // Generate main loop.
++  for (int m = 0; m < repM; ++m) {
++    for (int n = 0; n < repN; ++n) {
++      llvm::MutableArrayRef acc(&fc[(m * repN + n) * accSize], accSize);
++      auto accTy = LLVM::LLVMStructType::getLiteral(
++          op.getContext(), SmallVector<Type>(accSize, f32_ty));
++      Value d = packLLElements(loc, typeConverter, acc, rewriter, accTy);
++      for (int k = 0; k < repK; ++k) {
++        Value a = loadA(m, k);
++        Value b = loadB(n, k);
++        Value meta = hMetaPacked[k * repM + m];
++        d = rewriter.create<triton::nvgpu::SparseWGMMAOp>(
++            loc, accTy, a, meta, b, d, kWarpsInGroup * instrShape[0],
++            instrShape[1], kContractingFactor * instrShape[2], eltTypeC,
++            eltTypeA, eltTypeB, layoutA, layoutB);
++      }
++      auto res = unpackLLElements(loc, d, rewriter);
++      for (int i = 0; i < res.size(); ++i) {
++        acc[i] = res[i];
++      }
++    }
++  }
++
++  // Replace with new packed result.
++  Type structTy = LLVM::LLVMStructType::getLiteral(
++      op.getContext(), SmallVector<Type>(fc.size(), f32_ty));
++  Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
++
++  rewriter.create<triton::nvgpu::WGMMACommitGroupOp>(loc);
++  res = rewriter.create<triton::nvgpu::WGMMAWaitGroupOp>(loc, res, 0);
++  rewriter.replaceOp(op, res);
++
++  return success();
++}
++
++// ----- Dispatch based on architecture.
++
++LogicalResult rewriteSparseDotOp(SparseDotOp op,
++                                 SparseDotOp::Adaptor adaptor,
++                                 const LLVMTypeConverter *typeConverter,
++                                 ConversionPatternRewriter &rewriter) {
++  auto resultTy = cast<RankedTensorType>(op.getResult().getType());
++  NvidiaMmaEncodingAttr mmaLayout =
++      cast<NvidiaMmaEncodingAttr>(resultTy.getEncoding());
++
++  if (mmaLayout.isAmpere()) {
++    return convertSparseMMA(op, adaptor, typeConverter, rewriter);
++  }
++  if (mmaLayout.isHopper()) {
++    return convertSparseWGMMA(op, adaptor, typeConverter, rewriter,
++                              getThreadId(rewriter, op.getLoc()));
++  }
++
++  llvm::report_fatal_error(
++      "Unsupported SparseDotOp found when converting TritonGPU to LLVM.");
++}
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+index 738f0fe04..867939f65 100644
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+@@ -88,8 +88,8 @@ int64_t getSwizzlingFromLayout(const SharedEncodingAttr &layout,
+   return swizzlingByteWidth;
+ }
+ 
+-static Value createDescriptor(ConversionPatternRewriter &rewriter, Location loc,
+-                              int64_t swizzling, uint32_t stride) {
++Value createDescriptor(ConversionPatternRewriter &rewriter, Location loc,
++                       int64_t swizzling, uint32_t stride) {
+   // Create descriptor based on the format described in the spec:
+   // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor
+   union WGMMADescriptor {

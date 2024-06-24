@@ -22,7 +22,7 @@ limitations under the License.
 namespace stream_executor {
 
 HostMemoryAllocation::HostMemoryAllocation(void* ptr, uint64_t size,
-                                           StreamExecutorInterface* executor)
+                                           StreamExecutor* executor)
     : ptr_(ptr), size_(size), executor_(executor) {}
 
 HostMemoryAllocation::~HostMemoryAllocation() {

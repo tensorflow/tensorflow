@@ -113,12 +113,11 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   auto output_rank = static_cast<int64_t>(start_indices_dims.size() +
                                           dims.offset_dims().size());
   output_perm.reserve(output_rank);
+  auto offset_dim_index = static_cast<int64_t>(start_indices_dims.size());
   int64_t start_index_dim_index = 0;
   for (int64_t i = 0; i < output_rank; ++i) {
-    auto it = absl::c_find(dims.offset_dims(), i);
-    if (it != dims.offset_dims().end()) {
-      output_perm.push_back(std::distance(dims.offset_dims().begin(), it) +
-                            start_indices_dims.size());
+    if (absl::c_linear_search(dims.offset_dims(), i)) {
+      output_perm.push_back(offset_dim_index++);
     } else {
       output_perm.push_back(start_index_dim_index++);
     }
@@ -133,8 +132,7 @@ bool GatherSimplifier::IsSimplifiedGather(const HloGatherInstruction* gather) {
          IsIdentityPermutation(dims.start_index_map()) &&
          dims.collapsed_slice_dims().empty() &&
          *dims.offset_dims().begin() == 1 &&
-         *dims.offset_dims().rbegin() == dims.offset_dims().size() &&
-         absl::c_is_sorted(dims.offset_dims());
+         *dims.offset_dims().rbegin() == dims.offset_dims().size();
 }
 
 bool GatherSimplifier::InstructionMatchesPattern(HloInstruction* inst) {

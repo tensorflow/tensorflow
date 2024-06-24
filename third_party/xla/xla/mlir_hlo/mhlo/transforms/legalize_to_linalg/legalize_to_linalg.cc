@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -4043,6 +4044,10 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
         gatherOp.getDimensionNumbers().getOffsetDims();
     ArrayRef<int64_t> collapsedSliceDims =
         gatherOp.getDimensionNumbers().getCollapsedSliceDims();
+    ArrayRef<int64_t> operandBatchingDims =
+        gatherOp.getDimensionNumbers().getOperandBatchingDims();
+    ArrayRef<int64_t> startIndicesBatchingDims =
+        gatherOp.getDimensionNumbers().getStartIndicesBatchingDims();
     ArrayRef<int64_t> startIndexMap =
         gatherOp.getDimensionNumbers().getStartIndexMap();
 
@@ -4123,12 +4128,25 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     for (const auto& it : llvm::enumerate(startIndexMap))
       remappedIndexFromIndices[it.value()] = indexFromStartIndices[it.index()];
 
+    // Now we construct the index based on the operand/start_indices batching
+    // dimensions.
+    SmallVector<Value> indexFromBatching(operandRank, constants[0]);
+    for (auto [operandDim, indicesDim] :
+         llvm::zip_equal(operandBatchingDims, startIndicesBatchingDims)) {
+      indexFromBatching[operandDim] =
+          gatherIndex[indicesDim + (indicesDim < indexVectorDim ? 0 : 1)];
+    }
+
+    auto isCollapsedOrBatching = [&](int64_t dim) {
+      return llvm::is_contained(collapsedSliceDims, dim) ||
+             llvm::is_contained(operandBatchingDims, dim);
+    };
+
     // Now we construct the index based on the offset. First we need to remap
     // the offset dimensions by dropping the collapsed indices.
     SmallVector<unsigned> remappedOffsetDims;
     for (int i = 0; i < operandRank; ++i)
-      if (!llvm::is_contained(collapsedSliceDims, i))
-        remappedOffsetDims.push_back(i);
+      if (!isCollapsedOrBatching(i)) remappedOffsetDims.push_back(i);
 
     assert(remappedOffsetDims.size() == offsetDims.size());
 
@@ -4137,7 +4155,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
       // Compute the size of the output shape dimension corresponding to this
       // index dimension. If it's collapsed set it to 1.
       Value outputDimSize = constants[1];
-      if (!llvm::is_contained(collapsedSliceDims, i)) {
+      if (!isCollapsedOrBatching(i)) {
         outputDimSize = rewriter.createOrFold<tensor::DimOp>(
             loc, emptyOp, offsetDims[operandIndexDim++]);
       }
@@ -4166,12 +4184,15 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     for (unsigned k = 0; k < offsetDims.size(); ++k)
       indexFromOffset[remappedOffsetDims[k]] = linalgIndices[offsetDims[k]];
 
-    // Now we add together our two indices to get the final index into the
+    // Now we add together our three indices to get the final index into the
     // operand.
     SmallVector<Value> combinedIndex;
     for (int i = 0; i < operandRank; ++i)
       combinedIndex.push_back(rewriter.createOrFold<arith::AddIOp>(
-          loc, rewriter.getIndexType(), remappedIndexFromIndices[i],
+          loc, rewriter.getIndexType(),
+          rewriter.createOrFold<arith::AddIOp>(loc, rewriter.getIndexType(),
+                                               remappedIndexFromIndices[i],
+                                               indexFromBatching[i]),
           indexFromOffset[i]));
 
     Value extractOperand;

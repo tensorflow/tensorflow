@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
@@ -128,6 +129,9 @@ class PjRtClient final
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
 
+  Future<> GetReadyFuture(
+      absl::Span<const tsl::RCReference<Value>> values) override;
+
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override;
 
@@ -184,8 +188,8 @@ class PjRtClient final
     return &default_compiler_;
   }
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(const DeviceList& devices) const override;
+  absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
+      const DeviceList& devices) const override;
 
   absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
       DType dtype, absl::Span<const int64_t> dims,

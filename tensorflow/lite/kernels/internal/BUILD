@@ -1528,7 +1528,7 @@ filegroup(
 
 transitive_hdrs(
     name = "nnapi_external_headers",
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "@eigen_archive//:eigen3",
         "@gemmlowp",

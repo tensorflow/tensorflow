@@ -245,6 +245,41 @@ TEST_F(GpuFusibleTest, TransposesMinorDimension) {
   EXPECT_FALSE(TransposesMinorDimension(tuple->operand(5)));
 }
 
+TEST_F(GpuFusibleTest, TransposesMinorDimensionSkipTrivialDimensions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      default_layout = f32[10,20,1,1]{3,2,1,0} parameter(0)
+      non_default_layout = f32[10,20,1,1]{1,2,3,0} parameter(1)
+
+      // Only trivial dimensions are swapped.
+      transpose_minor_default = f32[10,20,1,1]{3,2,1,0} transpose(default_layout), dimensions={0,1,3,2}
+      // The first non-trivial dimension is still the same in input and output.
+      transpose_nontrivial_minor_default = f32[10,1,20,1]{3,2,1,0} transpose(default_layout), dimensions={0,2,1,3}
+      no_transpose_minor_default = f32[10,20,1,1]{2,3,1,0} transpose(default_layout), dimensions={0,1,3,2}
+      // We swap the most major dimension with a trivial dimension.
+      transpose_one_major_default = f32[1,20,10,1]{3,2,1,0} transpose(default_layout), dimensions={2,1,0,3}
+      // The first two non-trivial dimensions are swapped.
+      transpose_two_major_default = f32[20,10,1,1]{3,2,1,0} transpose(default_layout), dimensions={1,0,2,3}
+
+      transpose_minor_non_default = f32[10,1,20,1]{1,2,3,0} transpose(non_default_layout), dimensions={0,2,1,3}
+      no_transpose_minor_non_default = f32[10,20,1,1]{1,2,0,3} transpose(non_default_layout), dimensions={0,1,3,2}
+      transpose_major_non_default = f32[10,20,1,1]{1,2,3,0} transpose(non_default_layout), dimensions={0,1,3,2}
+
+      ROOT r = tuple(transpose_minor_default, transpose_nontrivial_minor_default, no_transpose_minor_default, transpose_one_major_default, transpose_two_major_default,
+                     transpose_minor_non_default, no_transpose_minor_non_default, transpose_major_non_default)
+    })"));
+
+  auto* tuple = (*module)->entry_computation()->root_instruction();
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(0)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(1)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(2)));
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(3)));
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(4)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(5)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(6)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(7)));
+}
+
 TEST_F(GpuFusibleTest, CopyTransposesMinorDimension) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
@@ -263,6 +298,29 @@ TEST_F(GpuFusibleTest, CopyTransposesMinorDimension) {
 
   auto* tuple = (*module)->entry_computation()->root_instruction();
   EXPECT_TRUE(TransposesMinorDimension(tuple->operand(0)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(1)));
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(2)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(3)));
+}
+
+TEST_F(GpuFusibleTest, CopyTransposesMinorDimensionSkipTrivialDimensions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      default_layout = f32[10,20,1,1]{3,2,1,0} parameter(0)
+      non_default_layout = f32[10,20,1,1]{1,2,3,0} parameter(1)
+
+      copy_transpose_minor_default = f32[10,20,1,1]{2,3,1,0} copy(default_layout)
+      copy_no_transpose_minor_default = f32[10,20,1,1]{3,2,1,0} copy(default_layout)
+
+      copy_transpose_minor_non_default = f32[10,20,1,1]{2,0,3,1} copy(non_default_layout)
+      copy_no_transpose_minor_non_default = f32[10,20,1,1]{1,2,3,0} copy(non_default_layout)
+
+      ROOT r = tuple(copy_transpose_minor_default, copy_no_transpose_minor_default,
+                     copy_transpose_minor_non_default, copy_no_transpose_minor_non_default)
+    })"));
+
+  auto* tuple = (*module)->entry_computation()->root_instruction();
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(0)));
   EXPECT_FALSE(TransposesMinorDimension(tuple->operand(1)));
   EXPECT_TRUE(TransposesMinorDimension(tuple->operand(2)));
   EXPECT_FALSE(TransposesMinorDimension(tuple->operand(3)));

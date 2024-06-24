@@ -94,9 +94,9 @@ cc_library(
     ]),
     deps = [
         ":metadata_utils",
-        "//xla:status",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_debug_info_manager",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",

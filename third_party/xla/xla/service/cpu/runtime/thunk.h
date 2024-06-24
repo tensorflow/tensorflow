@@ -16,13 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla::cpu {
 
@@ -43,7 +49,16 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
+    kCall,
     kCopy,
+    kKernel,
+    kWhile,
+  };
+
+  struct Info {
+    std::string op_name;
+    std::string module_name;
+    int64_t module_id;
   };
 
   virtual ~Thunk() = default;
@@ -51,34 +66,71 @@ class Thunk {
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
-  explicit Thunk(Kind kind) : kind_(kind) {}
+  explicit Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
 
   Kind kind() const { return kind_; }
+  const Info& info() const { return info_; }
 
   static std::string_view KindToString(Kind kind);
+
+  //===--------------------------------------------------------------------===//
+  // HostKernels
+  //===--------------------------------------------------------------------===//
+
+  // Interface for finding host kernels (function pointers with host kernel API)
+  // by name. At run time this is typically backed by an LLVM jit compiler that
+  // compiles LLVM IR to executables on demand.
+  class HostKernels {
+   public:
+    virtual ~HostKernels() = default;
+
+    virtual absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) = 0;
+  };
 
   //===--------------------------------------------------------------------===//
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
-  // Parameters passed to ExecuteOnStream. ExecuteOnStream is responsible for
-  // launching "work" on device, i.e., it launches host kernels, calls into
-  // libraries (oneDNN, Eigen, etc.).
-
+  // Parameters passed to Execute. Execute is responsible for launching "work"
+  // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
+    HostKernels* host_kernels = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
   };
 
   virtual absl::Status Execute(const ExecuteParams& params) = 0;
 
+ protected:
+  // Encodes thunk info into the TraceMe compatible format.
+  std::string TraceMeEncode() const;
+
  private:
   Kind kind_;
+  Info info_;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 // A sequence of thunks to execute.
-class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {};
+class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
+ public:
+  ThunkSequence() = default;
+  explicit ThunkSequence(std::unique_ptr<Thunk> thunk);
+
+  // Return a ThunkSequence that contains a single thunk of type `T`.
+  template <typename T, typename... Args>
+  static ThunkSequence Of(Args&&... args) {
+    static_assert(std::is_base_of_v<Thunk, T>,
+                  "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
+    return ThunkSequence(std::make_unique<T>(std::forward<Args>(args)...));
+  }
+
+  static ThunkSequence Empty() { return ThunkSequence(); }
+
+  absl::Status Execute(const Thunk::ExecuteParams& params);
+
+  void Append(ThunkSequence other);
+};
 
 }  // namespace xla::cpu
 

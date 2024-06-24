@@ -38,61 +38,32 @@ if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 else
     if [[ -z "${ROCM_PATH}" ]]; then
-        ROCM_INSTALL_DIR=/opt/rocm-6.1.0
+        ROCM_INSTALL_DIR=/opt/rocm-6.0.2
     else
         ROCM_INSTALL_DIR=$ROCM_PATH
     fi
 fi
 
 export PYTHON_BIN_PATH=`which python3`
-PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
-export TF_PYTHON_VERSION=$PYTHON_VERSION
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 TAGS_FILTER="gpu,requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm"
 UNSUPPORTED_GPU_TAGS="$(echo -requires-gpu-sm{60,70,80,86,89,90}{,-only})"
 TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
-if [ -f /usertools/rocm.bazelrc ]; then
-        # Use the bazelrc files in /usertools if available
-	if [ ! -d /tf ];then
-           # The bazelrc files in /usertools expect /tf to exist
-           mkdir /tf
-        fi
- 
-	bazel \
-        --bazelrc=/usertools/rocm.bazelrc \
-        test \
-        --config=sigbuild_local_cache \
-        --config=rocm \
-        --config=xla_cpp \
-        --build_tag_filters=${TAGS_FILTER} \
-        --test_tag_filters=${TAGS_FILTER} \
-        --keep_going \
-        --test_output=errors \
-        --local_test_jobs=${N_TEST_JOBS} \
-        --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-        --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
-        --repo_env=HERMETIC_PYTHON_VERSION=3.11 \
-        --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-        --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
-        --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
-        -- //xla/...
-else
 
-    yes "" | $PYTHON_BIN_PATH configure.py
-    bazel \
-        test \
-        -k \
-        --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going \
-        --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm \
-        --config=rocm \
-        --test_output=errors \
-        --local_test_jobs=${N_TEST_JOBS} \
-        --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-        --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
-        --repo_env=HERMETIC_PYTHON_VERSION=3.11 \
-        --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-        --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
-        --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
-        -- //xla/...
-fi
+bazel \
+    test \
+    --config=rocm \
+    --build_tag_filters=${TAGS_FILTER} \
+    --test_tag_filters=${TAGS_FILTER} \
+    --test_timeout=920,2400,7200,9600 \
+    --test_sharding_strategy=disabled \
+    --test_output=errors \
+    --keep_going \
+    --local_test_jobs=${N_TEST_JOBS} \
+    --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+    --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+    --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
+    --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+    --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
+    -- //xla/...

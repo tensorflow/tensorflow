@@ -773,12 +773,12 @@ fft::FftSupport* GpuExecutor::AsFft() {
   return fft_.get();
 }
 
-bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {
+bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::CanEnablePeerAccess(context_, rocm_other->context_);
 }
 
-absl::Status GpuExecutor::EnablePeerAccessTo(StreamExecutorInterface* other) {
+absl::Status GpuExecutor::EnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::EnablePeerAccess(context_, rocm_other->context_);
 }
@@ -796,19 +796,17 @@ absl::StatusOr<DeviceMemoryBase> GpuExecutor::GetSymbol(
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle.id());
     CHECK(it != gpu_binary_to_module_.end());
-    if (GpuDriver::GetModuleSymbol(
-            context_, it->second.first, symbol_name.c_str(),
-            reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes)) {
-      return DeviceMemoryBase(mem, bytes);
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
+        context_, it->second.first, symbol_name.c_str(),
+        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    return DeviceMemoryBase(mem, bytes);
   }
 
   for (auto& it : gpu_binary_to_module_) {
-    if (GpuDriver::GetModuleSymbol(
-            context_, it.second.first, symbol_name.c_str(),
-            reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes)) {
-      return DeviceMemoryBase(mem, bytes);
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
+        context_, it.second.first, symbol_name.c_str(),
+        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    return DeviceMemoryBase(mem, bytes);
   }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;

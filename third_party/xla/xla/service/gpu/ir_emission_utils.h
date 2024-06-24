@@ -63,6 +63,11 @@ inline constexpr int64_t WarpSize() { return 32; }
 // FusionBackendConfig.kind requel to this string.
 inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 
+// Generic fusions that use Triton have FusionBackendConfig.kind equal to this
+// string. This fusion kind will eventually subsume all usages of
+// kTritonGemmFusionKind and kTritonSoftmaxFusionKind.
+inline constexpr absl::string_view kTritonFusionKind = "__triton";
+
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 

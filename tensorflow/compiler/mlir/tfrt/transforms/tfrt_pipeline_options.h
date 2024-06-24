@@ -142,6 +142,12 @@ struct TfrtPipelineOptions
       *this, "tfrt-min-num-batch-threads",
       llvm::cl::desc("The minimum number of batch threads"), llvm::cl::init(1)};
 
+  Option<int64_t> min_max_enqueued_batches{
+      *this, "tfrt-min-max-enqueued-batches",
+      llvm::cl::desc(
+          "The minimum of the maximum number of outstanding enqueued batches"),
+      llvm::cl::init(1)};
+
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "

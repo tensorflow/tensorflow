@@ -833,8 +833,8 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
                                       /*run_hlo_passes=*/false));
 }
 
-static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
-                           ffi::Result<ffi::BufferBase> dst) {
+static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+                           ffi::Result<ffi::AnyBuffer> dst) {
   return stream->MemcpyD2D(
       &dst->data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
@@ -844,8 +844,8 @@ static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::BufferBase>()  // src
-                           .Ret<ffi::BufferBase>()  // dst
+                           .Arg<ffi::AnyBuffer>()  // src
+                           .Ret<ffi::AnyBuffer>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
@@ -884,13 +884,13 @@ TEST_F(AddressComputationFusionTest, CustomCallSimple) {
 }
 
 static absl::Status SubBuffers(
-    se::Stream* stream, ffi::BufferBase src0, ffi::BufferBase src1,
-    ffi::BufferBase src2, ffi::BufferBase src3, ffi::BufferBase src4,
-    ffi::BufferBase src5, ffi::BufferBase src6, ffi::BufferBase src7,
-    ffi::Result<ffi::BufferBase> dst0, ffi::Result<ffi::BufferBase> dst1,
-    ffi::Result<ffi::BufferBase> dst2, ffi::Result<ffi::BufferBase> dst3,
-    ffi::Result<ffi::BufferBase> dst4, ffi::Result<ffi::BufferBase> dst5,
-    ffi::Result<ffi::BufferBase> dst6) {
+    se::Stream* stream, ffi::AnyBuffer src0, ffi::AnyBuffer src1,
+    ffi::AnyBuffer src2, ffi::AnyBuffer src3, ffi::AnyBuffer src4,
+    ffi::AnyBuffer src5, ffi::AnyBuffer src6, ffi::AnyBuffer src7,
+    ffi::Result<ffi::AnyBuffer> dst0, ffi::Result<ffi::AnyBuffer> dst1,
+    ffi::Result<ffi::AnyBuffer> dst2, ffi::Result<ffi::AnyBuffer> dst3,
+    ffi::Result<ffi::AnyBuffer> dst4, ffi::Result<ffi::AnyBuffer> dst5,
+    ffi::Result<ffi::AnyBuffer> dst6) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
@@ -931,21 +931,21 @@ static absl::Status SubBuffers(
 XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::BufferBase>()  // src0
-                           .Arg<ffi::BufferBase>()  // src1
-                           .Arg<ffi::BufferBase>()  // src2
-                           .Arg<ffi::BufferBase>()  // src3
-                           .Arg<ffi::BufferBase>()  // src4
-                           .Arg<ffi::BufferBase>()  // src5
-                           .Arg<ffi::BufferBase>()  // src6
-                           .Arg<ffi::BufferBase>()  // src7
-                           .Ret<ffi::BufferBase>()  // dst0
-                           .Ret<ffi::BufferBase>()  // dst1
-                           .Ret<ffi::BufferBase>()  // dst2
-                           .Ret<ffi::BufferBase>()  // dst3
-                           .Ret<ffi::BufferBase>()  // dst4
-                           .Ret<ffi::BufferBase>()  // dst5
-                           .Ret<ffi::BufferBase>()  // dst6
+                           .Arg<ffi::AnyBuffer>()  // src0
+                           .Arg<ffi::AnyBuffer>()  // src1
+                           .Arg<ffi::AnyBuffer>()  // src2
+                           .Arg<ffi::AnyBuffer>()  // src3
+                           .Arg<ffi::AnyBuffer>()  // src4
+                           .Arg<ffi::AnyBuffer>()  // src5
+                           .Arg<ffi::AnyBuffer>()  // src6
+                           .Arg<ffi::AnyBuffer>()  // src7
+                           .Ret<ffi::AnyBuffer>()  // dst0
+                           .Ret<ffi::AnyBuffer>()  // dst1
+                           .Ret<ffi::AnyBuffer>()  // dst2
+                           .Ret<ffi::AnyBuffer>()  // dst3
+                           .Ret<ffi::AnyBuffer>()  // dst4
+                           .Ret<ffi::AnyBuffer>()  // dst5
+                           .Ret<ffi::AnyBuffer>()  // dst6
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
                          PLATFORM, kSubBuffers);
@@ -1020,14 +1020,14 @@ TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-static absl::Status NoOp(se::Stream* stream, ffi::BufferBase operand) {
+static absl::Status NoOp(se::Stream* stream, ffi::AnyBuffer operand) {
   return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
                        ffi::Ffi::Bind()
-                           .Ctx<ffi::Stream>()      // stream
-                           .Arg<ffi::BufferBase>()  // operand
+                           .Ctx<ffi::Stream>()     // stream
+                           .Arg<ffi::AnyBuffer>()  // operand
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
                          kNoOp);
@@ -2543,13 +2543,12 @@ TEST_F(AddressComputationFusionTest, DynamicCustomCallWithTuple) {
 }
 
 static absl::Status SubBuffers2(
-    se::Stream* stream, ffi::BufferBase src0, ffi::BufferBase src1,
-    ffi::BufferBase src2, ffi::BufferBase src3, ffi::BufferBase src4,
-    ffi::BufferBase src5, ffi::BufferBase src6,
-    ffi::Result<ffi::BufferBase> dst0, ffi::Result<ffi::BufferBase> dst1,
-    ffi::Result<ffi::BufferBase> dst2, ffi::Result<ffi::BufferBase> dst3,
-    ffi::Result<ffi::BufferBase> dst4, ffi::Result<ffi::BufferBase> dst5,
-    ffi::Result<ffi::BufferBase> dst6) {
+    se::Stream* stream, ffi::AnyBuffer src0, ffi::AnyBuffer src1,
+    ffi::AnyBuffer src2, ffi::AnyBuffer src3, ffi::AnyBuffer src4,
+    ffi::AnyBuffer src5, ffi::AnyBuffer src6, ffi::Result<ffi::AnyBuffer> dst0,
+    ffi::Result<ffi::AnyBuffer> dst1, ffi::Result<ffi::AnyBuffer> dst2,
+    ffi::Result<ffi::AnyBuffer> dst3, ffi::Result<ffi::AnyBuffer> dst4,
+    ffi::Result<ffi::AnyBuffer> dst5, ffi::Result<ffi::AnyBuffer> dst6) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
@@ -2586,20 +2585,20 @@ static absl::Status SubBuffers2(
 XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::BufferBase>()  // src0
-                           .Arg<ffi::BufferBase>()  // src1
-                           .Arg<ffi::BufferBase>()  // src2
-                           .Arg<ffi::BufferBase>()  // src3
-                           .Arg<ffi::BufferBase>()  // src4
-                           .Arg<ffi::BufferBase>()  // src5
-                           .Arg<ffi::BufferBase>()  // src6
-                           .Ret<ffi::BufferBase>()  // dst0
-                           .Ret<ffi::BufferBase>()  // dst1
-                           .Ret<ffi::BufferBase>()  // dst2
-                           .Ret<ffi::BufferBase>()  // dst3
-                           .Ret<ffi::BufferBase>()  // dst4
-                           .Ret<ffi::BufferBase>()  // dst5
-                           .Ret<ffi::BufferBase>()  // dst6
+                           .Arg<ffi::AnyBuffer>()  // src0
+                           .Arg<ffi::AnyBuffer>()  // src1
+                           .Arg<ffi::AnyBuffer>()  // src2
+                           .Arg<ffi::AnyBuffer>()  // src3
+                           .Arg<ffi::AnyBuffer>()  // src4
+                           .Arg<ffi::AnyBuffer>()  // src5
+                           .Arg<ffi::AnyBuffer>()  // src6
+                           .Ret<ffi::AnyBuffer>()  // dst0
+                           .Ret<ffi::AnyBuffer>()  // dst1
+                           .Ret<ffi::AnyBuffer>()  // dst2
+                           .Ret<ffi::AnyBuffer>()  // dst3
+                           .Ret<ffi::AnyBuffer>()  // dst4
+                           .Ret<ffi::AnyBuffer>()  // dst5
+                           .Ret<ffi::AnyBuffer>()  // dst6
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
                          PLATFORM, kSubBuffers2);

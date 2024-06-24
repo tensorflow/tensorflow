@@ -8432,7 +8432,7 @@ void initialize_cudnn() {
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
           cuda::kCudaPlatformId, "cuDNN",
-          [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+          [](StreamExecutor* parent) -> dnn::DnnSupport* {
             gpu::GpuExecutor* cuda_executor =
                 dynamic_cast<gpu::GpuExecutor*>(parent);
             if (cuda_executor == nullptr) {

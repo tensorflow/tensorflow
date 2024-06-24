@@ -14,7 +14,6 @@ cc_library(
     hdrs = ["in_place_dynamic_update_slice.h"],
     deps = [
         ":fusion_emitter",
-        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -22,7 +21,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/model:indexing_map",
+        "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
@@ -36,7 +35,6 @@ cc_library(
 xla_cc_test(
     name = "in_place_dynamic_update_slice_test",
     srcs = ["in_place_dynamic_update_slice_test.cc"],
-    use_gpu = True,
     deps = [
         ":fusions",
         ":in_place_dynamic_update_slice",
@@ -59,7 +57,6 @@ cc_library(
     hdrs = ["in_place_dynamic_update_slice_mlir.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -68,9 +65,7 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:computation_partitioner",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
-        "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
@@ -81,16 +76,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "in_place_dynamic_update_slice_mlir_test",
     srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-    tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":in_place_dynamic_update_slice_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
@@ -129,9 +122,9 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/ffi:attribute_map",
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
@@ -139,6 +132,7 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -149,8 +143,8 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
-        "//xla/service/gpu/runtime:address_computation_thunk",
         "//xla/service/gpu/runtime:custom_call_thunk",
+        "//xla/service/gpu/runtime:dynamic_slice_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/gpu/runtime:thunk",
@@ -214,7 +208,6 @@ cc_library(
     visibility = ["//xla/service/gpu:__subpackages__"],
     deps = [
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
@@ -225,7 +218,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/llvm_ir:ir_array",
@@ -271,7 +263,6 @@ cc_library(
         ":transpose_mlir",
         ":triton",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
@@ -285,9 +276,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -296,6 +284,7 @@ cc_library(
     testonly = True,
     srcs = ["mlir_emitter_test_base.cc"],
     hdrs = ["mlir_emitter_test_base.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -336,7 +325,6 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -347,11 +335,11 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:macros",
@@ -366,7 +354,6 @@ cc_library(
     deps = [
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -377,7 +364,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -389,11 +375,11 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
     tags = ["no_rocm"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":loop_mlir",
         ":mlir_emitter_test_base",
@@ -414,7 +400,6 @@ cc_library(
     deps = [
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:scatter_simplifier",
@@ -425,7 +410,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -441,11 +425,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "scatter_mlir_test",
     srcs = ["scatter_mlir_test.cc"],
-    tags = ["no_rocm"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":scatter_mlir",
@@ -467,7 +450,6 @@ cc_library(
         ":fusion_emitter",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -480,12 +462,11 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -495,11 +476,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
-    tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
@@ -542,7 +522,6 @@ cc_library(
         ":fusion_emitter",
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -552,7 +531,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
@@ -615,6 +593,7 @@ cc_library(
     name = "triton",
     srcs = ["triton.cc"],
     hdrs = ["triton.h"],
+    visibility = ["//xla/service/gpu:__subpackages__"],
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
@@ -750,7 +729,6 @@ cc_library(
         ":thunk_util",
         ":tiling_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -794,6 +772,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "reduction_test",
+    srcs = ["reduction_test.cc"],
+    deps = [
+        ":fusion_emitter",
+        ":reduction",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "reduction_base",
     srcs = ["reduction_base.cc"],
@@ -814,7 +814,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/algorithm:container",
@@ -826,28 +825,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "reduction_base_test",
-    srcs = ["reduction_base_test.cc"],
-    deps = [
-        ":fusion_emitter",
-        ":reduction_base",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -871,7 +848,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:type_util",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -890,16 +866,15 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
-    tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":reduction_mlir",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -920,7 +895,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
-        "//xla/service/gpu/model:indexing_map",
+        "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:loop_emitter",
@@ -966,7 +941,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -977,11 +951,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "concatenate_mlir_test",
     srcs = ["concatenate_mlir_test.cc"],
-    tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
@@ -1004,7 +977,6 @@ cc_library(
         ":tiling_util",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -1015,7 +987,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
@@ -1060,7 +1031,6 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
@@ -1071,7 +1041,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:kernel_support_library",
@@ -1092,7 +1061,6 @@ cc_library(
     srcs = ["input_slices_mlir.cc"],
     hdrs = ["input_slices_mlir.h"],
     deps = [
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -1103,7 +1071,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -1116,16 +1083,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "input_slices_mlir_test",
     srcs = ["input_slices_mlir_test.cc"],
-    tags = ["no_rocm"], #TODO(rocm) TEMP
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":input_slices_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",

@@ -373,7 +373,7 @@ class IfrtRestoreVariableOpConversion
         op.getLoc(), adaptor.getOperands()[0], adaptor.getOperands()[1],
         adaptor.getOperands()[2],
         adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
-        op.getRestoredDtypes());
+        op.getRestoredDtypes(), op.getTruncateInCast());
     rewriter.replaceOp(op, new_op);
 
     return mlir::success();

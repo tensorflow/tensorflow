@@ -51,7 +51,7 @@ static SE_ExecutableRunOptions ToC(
   if (options.run_options().host_to_device_stream() != nullptr) {
     se_options.host_to_device_stream =
         static_cast<tensorflow::tpu::TpuStream*>(
-            options.run_options().host_to_device_stream()->implementation())
+            options.run_options().host_to_device_stream())
             ->se_stream();
   } else {
     se_options.host_to_device_stream = nullptr;
@@ -77,8 +77,7 @@ static SE_ExecutableRunOptions ToC(
   CHECK_EQ(options.run_options().then_execute_function(), nullptr)
       << "ThenExecuteFunction not supported by this platform.";
 
-  auto impl =
-      const_cast<stream_executor::Stream*>(options.stream())->implementation();
+  auto impl = const_cast<stream_executor::Stream*>(options.stream());
   se_options.stream =
       static_cast<tensorflow::tpu::TpuStream*>(impl)->se_stream();
   return se_options;

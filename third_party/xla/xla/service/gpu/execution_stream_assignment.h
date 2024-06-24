@@ -40,14 +40,15 @@ class ExecutionStreamAssignment {
   explicit ExecutionStreamAssignment(const HloModule* module);
 
   // Returns the `ExecutionStreamId` for the given instruction, which *must* be
-  // synchronous. Returns an error if the instruction is not reachable
-  // from the module's entrypoint.
+  // synchronous. Returns an error if the instruction is either not reachable
+  // from the module's entrypoint, or is only reachable through embedded calls.
   absl::StatusOr<ExecutionStreamId> GetSyncExecutionStreamId(
       const HloInstruction* instruction) const;
 
   // Returns the source and destination `ExecutionStreamIds` for the given
   // instruction, which *must* be asynchronous. Returns an error if the
-  // instruction is not reachable from the module's entrypoint.
+  // instruction is either not reachable from the module's entrypoint, or is
+  // only reachable through embedded calls.
   struct AsyncExecutionStreamIds {
     // The `ExecutionStreamId` for the calling instruction (e.g. the computation
     // that invokes `async-start`).
@@ -61,8 +62,8 @@ class ExecutionStreamAssignment {
 
  private:
   // Maps from `HloInstructions` to `ExecutionStreamIds` for synchronous and
-  // asynchronous instructions, respectively. Instructions that are not
-  // reachable from the module's entrypoint will not be present.
+  // asynchronous instructions, respectively. All instructions reachable through
+  // non-embedded calls must be present.
   absl::flat_hash_map<HloInstruction*, ExecutionStreamId> sync_instructions_;
   absl::flat_hash_map<HloInstruction*, AsyncExecutionStreamIds>
       async_instructions_;

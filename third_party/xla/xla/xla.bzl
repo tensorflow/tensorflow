@@ -8,7 +8,6 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_exec_properties",
-    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -70,11 +69,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
     native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
-def xla_cc_test(name, deps = [], use_gpu = False, **kwargs):
-    # Need to do it this way so that `tf_exec_properties` can read tags.
-    _tags = kwargs.get("tags", [])
-    kwargs["tags"] = _tags + tf_gpu_tests_tags() if use_gpu else _tags
-
+def xla_cc_test(name, deps = [], **kwargs):
     native.cc_test(
         name = name,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,

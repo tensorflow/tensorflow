@@ -60,15 +60,12 @@ class HostKernel : public Kernel {
     SE_HOST_Kernel* ptr_;  // not owned
   };
 
-  explicit HostKernel() = default;
+  explicit HostKernel(std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
 
   // TODO(tsilytskyi): make this implementation detail private
   explicit HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
                       std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
 
-  // TODO(b/331430625): Connect this API to Launch API defined at
-  // StreamExecutor level, which requires refactoring how arguments passed to
-  // kernels, as current KernelArgs structure tied to the GPU kernel ABI.
   absl::Status Launch(const ThreadDim& thread_dims,
                       absl::Span<const DeviceMemoryBase> buffers) const;
 

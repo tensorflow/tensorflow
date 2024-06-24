@@ -1186,10 +1186,10 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
-                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                             {1, stride, stride, 1} /* stride */,
-                             padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad give_me_a_name(
+      root, input_data, output_data, output_diff,
+      {1, kernel_rows, kernel_cols, 1} /* ksize */,
+      {1, stride, stride, 1} /* stride */, padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));

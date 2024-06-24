@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
@@ -1809,18 +1808,56 @@ std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
   {
     absl::MutexLock lock(&mu_);
     if (!layout_.has_value()) {
-      PJRT_Buffer_GetMemoryLayout_Args args;
-      args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
-      args.extension_start = nullptr;
-      args.buffer = buffer_.get();
-      pjrt::LogFatalIfPjrtError(
-          pjrt_c_api()->PJRT_Buffer_GetMemoryLayout(&args), pjrt_c_api());
-      CHECK_EQ(args.layout.type, PJRT_Buffer_MemoryLayout_Type_Tiled)
-          << "PjRtCApiBuffer only supports tiled device layouts";
-      absl::StatusOr<Layout> cpp_layout =
-          pjrt::ConvertToLayout(args.layout.tiled);
-      TF_CHECK_OK(cpp_layout.status());
-      layout_.emplace(*cpp_layout);
+      const PJRT_Api* c_api = pjrt_c_api();
+      PJRT_Layouts_Extension* extension =
+          pjrt::FindExtension<PJRT_Layouts_Extension>(
+              c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+      if (extension == nullptr) {
+        // TODO(jieying): Change this branch to return nullptr after the
+        // compatibility window (around Aug 24, 2024).
+        // TODO(b/343274728): implement some generic layouts behavior for
+        // plugins that don't support it.
+        PJRT_Buffer_GetMemoryLayout_Args args;
+        args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.buffer = buffer_.get();
+        pjrt::LogFatalIfPjrtError(
+            pjrt_c_api()->PJRT_Buffer_GetMemoryLayout(&args), pjrt_c_api());
+        CHECK_EQ(args.layout.type, PJRT_Buffer_MemoryLayout_Type_Tiled)
+            << "PjRtCApiBuffer only supports tiled device layouts";
+        absl::StatusOr<Layout> cpp_layout =
+            pjrt::ConvertToLayout(args.layout.tiled);
+        TF_CHECK_OK(cpp_layout.status());
+        layout_.emplace(*cpp_layout);
+      } else {
+        std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                        pjrt::PJRT_Layouts_MemoryLayoutDeleter>
+            layout = pjrt::GetMemoryLayout(c_api, buffer_.get());
+
+        // TODO(b/343274093): returns a PjRtLayout that wraps a C API layout
+        // directly instead of de/serializing into an xla::Layout.
+        PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+        serialize_args.struct_size =
+            PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+        serialize_args.extension_start = nullptr;
+        serialize_args.layout = layout.get();
+        pjrt::LogFatalIfPjrtError(
+            extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args),
+            c_api);
+
+        // Clean up `PJRT_Layouts_SerializedLayout`.
+        absl::Cleanup cleanup = [&serialize_args] {
+          serialize_args.serialized_layout_deleter(
+              serialize_args.serialized_layout);
+        };
+
+        std::string serialized_layout(serialize_args.serialized_bytes,
+                                      serialize_args.serialized_bytes_size);
+        absl::StatusOr<PjRtXlaLayout> pjrt_xla_layout =
+            PjRtXlaLayout::Deserialize(serialized_layout);
+        TF_CHECK_OK(pjrt_xla_layout.status());
+        layout_.emplace(*pjrt_xla_layout);
+      }
     }
   }
   return std::make_unique<PjRtXlaLayout>(*layout_);

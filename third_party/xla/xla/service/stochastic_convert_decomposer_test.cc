@@ -93,7 +93,7 @@ ENTRY entry {
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());
-  EXPECT_NE(OkStatus(), result.status());
+  EXPECT_NE(absl::OkStatus(), result.status());
   EXPECT_THAT(result.status().message(), HasSubstr("have same bits"));
 }
 
@@ -113,7 +113,7 @@ ENTRY entry {
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());
-  EXPECT_NE(OkStatus(), result.status());
+  EXPECT_NE(absl::OkStatus(), result.status());
   EXPECT_THAT(result.status().message(),
               HasSubstr("must be unsigned integers"));
 }

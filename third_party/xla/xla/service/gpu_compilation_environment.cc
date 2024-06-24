@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"

@@ -32,7 +32,7 @@ class KernelFactory {
  public:
   // Creates kernel on a given executor from a given kernel specification.
   static inline absl::StatusOr<std::unique_ptr<Kernel>> Create(
-      StreamExecutorInterface *executor, const MultiKernelLoaderSpec &spec) {
+      StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
     TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
     TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
     return kernel;

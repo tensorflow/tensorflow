@@ -18,17 +18,26 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/test_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -57,6 +66,72 @@ TEST(ShapeInferenceTest, Basics) {
       {"C", {PartialTensorShape()}},       {"D", {PartialTensorShape({2, 3})}},
       {"E", {PartialTensorShape()}},       {"F", {PartialTensorShape()}},
       {"G", {PartialTensorShape()}},
+  };
+  TF_EXPECT_OK(ShapeAnnotationsMatch(*graph, shape_info, expected));
+}
+
+// Test that shape inference uses user-given `arg_shapes` to propagate shapes.
+TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSize) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT,
+                            ops::Placeholder::Shape({-1, 3}));
+  auto b = ops::Placeholder(root.WithOpName("B"), DT_FLOAT,
+                            ops::Placeholder::Shape({-1, 3}));
+  auto c = ops::Add(root.WithOpName("C"), a, b);
+  auto d = ops::Neg(root.WithOpName("D"), c);
+
+  a.node()->AddAttr("_index", 0);
+  b.node()->AddAttr("_index", 1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(root.ToGraph(graph.get()));
+
+  std::map<int, InferredShape> arg_shapes;
+  arg_shapes[0].shape = TensorShape({2, 3});
+  arg_shapes[1].shape = TensorShape({2, 3});
+
+  GraphShapeInfo shape_info;
+  TF_ASSERT_OK(InferShapes(graph.get(), arg_shapes,
+                           /*fnlib_def=*/nullptr, &shape_info));
+
+  std::map<string, std::vector<PartialTensorShape>> expected = {
+      {"A", {PartialTensorShape({2, 3})}},
+      {"B", {PartialTensorShape({2, 3})}},
+      {"C", {PartialTensorShape({2, 3})}},
+      {"D", {PartialTensorShape({2, 3})}},
+  };
+  TF_EXPECT_OK(ShapeAnnotationsMatch(*graph, shape_info, expected));
+}
+
+// Test that when user-given `arg_shapes` is incomplete (to cover all
+// Placeholders), shape inference still succeeds.
+TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSizeIncompleteUserArgs) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT,
+                            ops::Placeholder::Shape({-1, 3}));
+  auto b = ops::Placeholder(root.WithOpName("B"), DT_FLOAT,
+                            ops::Placeholder::Shape({-1, 3}));
+  auto c = ops::Add(root.WithOpName("C"), a, b);
+  auto d = ops::Neg(root.WithOpName("D"), c);
+
+  a.node()->AddAttr("_index", 0);
+  b.node()->AddAttr("_index", 0);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_CHECK_OK(root.ToGraph(graph.get()));
+
+  std::map<int, InferredShape> arg_shapes;
+  arg_shapes[0].shape = TensorShape({2, 3});
+
+  GraphShapeInfo shape_info;
+  TF_ASSERT_OK(InferShapes(graph.get(), arg_shapes,
+                           /*fnlib_def=*/nullptr, &shape_info));
+
+  std::map<string, std::vector<PartialTensorShape>> expected = {
+      {"A", {PartialTensorShape({2, 3})}},
+      {"B", {PartialTensorShape({2, 3})}},
+      {"C", {PartialTensorShape({2, 3})}},
+      {"D", {PartialTensorShape({2, 3})}},
   };
   TF_EXPECT_OK(ShapeAnnotationsMatch(*graph, shape_info, expected));
 }

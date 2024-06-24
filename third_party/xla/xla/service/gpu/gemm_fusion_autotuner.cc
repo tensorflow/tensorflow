@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -574,7 +573,7 @@ absl::StatusOr<std::vector<Config>> GemmFusionAutotunerImpl::GenerateConfigs(
       !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
   bool is_cudnn_enabled =
       debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
-      GetDnnVersionInfo(config_.GetExecutor()).major_version() >= 9;
+      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
   if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
       (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
        algorithm_util::IsSupportedByCudnn(
@@ -645,9 +644,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
 
   // Triton configurations are adjusted and deduplicated.
   absl::flat_hash_set<TritonGemmConfig> added;
-  bool is_hopper = debug_options_.xla_gpu_enable_triton_hopper() &&
-                   !config_.IsDeviceless() &&
-                   GetComputeCapability().IsAtLeastHopper();
+  bool is_hopper =
+      !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
   for (TritonGemmConfig& config : triton_configs) {
     config.block_m = std::min(config.block_m, limits.block_m);
     config.block_n = std::min(config.block_n, limits.block_n);

@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_interface.h"
-#include "xla/stream_executor/stream_interface.h"
 #include "xla/test.h"
 
 namespace stream_executor {
@@ -55,8 +54,8 @@ namespace blas {
 class BlasSupport;
 }
 
-// Implements StreamExecutorInterface for testing.
-class MockStreamExecutor : public StreamExecutorInterface {
+// Implements StreamExecutor for testing.
+class MockStreamExecutor : public StreamExecutor {
  public:
   MockStreamExecutor() = default;
   MOCK_METHOD(absl::Status, Init, (), (override));
@@ -141,9 +140,9 @@ class MockStreamExecutor : public StreamExecutorInterface {
               (override));
   MOCK_METHOD(absl::Status, BlockHostUntilDone, (Stream * stream), (override));
   MOCK_METHOD(absl::Status, GetStatus, (Stream * stream));
-  MOCK_METHOD(absl::Status, EnablePeerAccessTo,
-              (StreamExecutorInterface * other), (override));
-  MOCK_METHOD(bool, CanEnablePeerAccessTo, (StreamExecutorInterface * other),
+  MOCK_METHOD(absl::Status, EnablePeerAccessTo, (StreamExecutor * other),
+              (override));
+  MOCK_METHOD(bool, CanEnablePeerAccessTo, (StreamExecutor * other),
               (override));
   MOCK_METHOD(bool, DeviceMemoryUsage, (int64_t* free, int64_t* total),
               (const, override));

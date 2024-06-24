@@ -38,8 +38,10 @@ class SparseCoreLayoutStacker {
   //     into (usually one per TPU chip).
   //       NOTE: As of Q4 2023, SPMD is not supported by the sparse core python
   //       libraries so we don't support it here.
-  //   sparse_cores_per_partition:
+  //   sparse_cores_per_partition: Number of sparsecore per partition
+  //   disable_table_stacking: Should not stack tables.
   explicit SparseCoreLayoutStacker(int num_partitions,
+                                   bool disable_table_stacking = false,
                                    int sparse_cores_per_partition = 4);
 
   // Change various limits. You must call these before calling Addtable.

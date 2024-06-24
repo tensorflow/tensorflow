@@ -24,13 +24,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor_interface.h"
-#include "xla/stream_executor/stream_interface.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -88,8 +86,7 @@ void TpuExecutor::DeallocateStream(Stream* stream) {
 
 bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
-      executor_, get_stream(dependent->implementation()),
-      get_stream(other->implementation()));
+      executor_, get_stream(dependent), get_stream(other));
 }
 
 absl::Status TpuExecutor::RecordEvent(Stream* stream,

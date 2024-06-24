@@ -187,7 +187,7 @@ TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
     }
   }
 
-  EXPECT_EQ(mlir_only_patterns, 64);
+  EXPECT_EQ(mlir_only_patterns, 63);
 }
 
 // Counts which ops have lowerings without XlaOpKernels. This isn't a

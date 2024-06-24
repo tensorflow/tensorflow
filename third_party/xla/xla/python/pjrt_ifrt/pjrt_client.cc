@@ -24,21 +24,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -49,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
@@ -56,6 +62,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -125,6 +132,116 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
       client, std::move(shape), std::move(sharding),
       Future<BasicStringArray::Buffers>(std::move(buffers)),
       std::move(buffer_releaser));
+}
+
+absl::StatusOr<tsl::RCReference<Array>>
+AssembleStringArrayFromSingleDeviceStringArrays(
+    Shape shape, std::shared_ptr<const Sharding> sharding,
+    absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
+  // BufferBackingState contains the per-shard vectors of the strings and
+  // string_views underlying a BasicString::Buffer.  Not thread safe.
+  struct BufferBackingStore {
+    explicit BufferBackingStore(int num_shards)
+        : per_shard_strings(num_shards), per_shard_string_views(num_shards) {}
+    void clear() {
+      per_shard_strings.clear();
+      per_shard_string_views.clear();
+    }
+    void CopyBuffer(absl::Span<const absl::string_view> strbuf, int shard_index,
+                    BasicStringArray::Buffers* buffers) {
+      auto& strings = per_shard_strings[shard_index];
+      strings.reserve(strbuf.size());
+      auto& views = per_shard_string_views[shard_index];
+      views.reserve(strbuf.size());
+
+      for (int i = 0; i < strbuf.size(); ++i) {
+        strings.push_back(std::string(strbuf[i].data(), strbuf[i].size()));
+      }
+      for (const auto& str : strings) {
+        views.push_back(str);
+      }
+      (*buffers)[shard_index] = absl::MakeConstSpan(views);
+    }
+    std::vector<std::vector<std::string>> per_shard_strings;
+    std::vector<std::vector<absl::string_view>> per_shard_string_views;
+  };
+  auto buffer_backing_store =
+      std::make_shared<BufferBackingStore>(sharding->devices().size());
+  auto on_done_with_buffer = [buffer_holder = buffer_backing_store]() {};
+
+  struct BufferCopyingState {
+    BufferCopyingState(int num_buffers_to_copy,
+                       std::shared_ptr<BufferBackingStore> buffer_backing_store)
+        : num_buffers_to_copy(num_buffers_to_copy),
+          buffer_backing_store(std::move(buffer_backing_store)),
+          buffers(num_buffers_to_copy) {}
+    absl::Mutex mu;
+    int num_buffers_to_copy ABSL_GUARDED_BY(mu);
+    std::shared_ptr<BufferBackingStore> buffer_backing_store
+        ABSL_GUARDED_BY(mu);
+    BasicStringArray::Buffers buffers ABSL_GUARDED_BY(mu);
+  };
+  auto buffer_copying_state = std::make_shared<BufferCopyingState>(
+      arrays.size(), std::move(buffer_backing_store));
+
+  auto buffers_promise = Future<BasicStringArray::Buffers>::CreatePromise();
+  auto buffers_future = Future<BasicStringArray::Buffers>(buffers_promise);
+
+  auto buffer_copier = [state = buffer_copying_state,
+                        promise = buffers_promise](
+                           absl::StatusOr<BasicStringArray::Buffers> strbuf,
+                           int shard_index) mutable {
+    absl::MutexLock lock(&state->mu);
+    if (state->num_buffers_to_copy == 0) {
+      // Nothing to be done. We get here if the buffers of a single
+      // device array became ready with a an error previously.
+      return;
+    }
+    if (!strbuf.ok()) {
+      promise.Set(strbuf.status());
+      state->num_buffers_to_copy = 0;  // Don't copy any more buffers.
+
+      // Release the partially copied buffers and reclaim the memory.
+      // These are no longer needed. The empty buffer_holder itself lives
+      // on until the on_done_with_buffer is called.
+      state->buffer_backing_store->clear();
+      state->buffer_backing_store = nullptr;
+      return;
+    }
+
+    state->buffer_backing_store->CopyBuffer(strbuf->front(), shard_index,
+                                            &state->buffers);
+
+    if (--state->num_buffers_to_copy > 0) {
+      return;  // We have more single device arrays we need to wait for.
+    }
+    // We have all the buffers. Set the promise.
+    promise.Set(std::move(state->buffers));
+  };
+
+  for (int i = 0; i < arrays.size(); ++i) {
+    auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[i].get());
+    if (!basic_string_array) {
+      return absl::InvalidArgumentError(
+          "All single device arrays must be BasicStringArrays");
+    }
+    if (!llvm::isa<SingleDeviceSharding>(basic_string_array->sharding())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "All single device arrays must have single device sharding. got: %s "
+          "for shard index: %d",
+          basic_string_array->sharding().DebugString(), i));
+    }
+
+    basic_string_array->buffers().OnReady(
+        [shard_index = i, buffer_copier = buffer_copier](
+            absl::StatusOr<BasicStringArray::Buffers> strbuf) mutable {
+          buffer_copier(std::move(strbuf), shard_index);
+        });
+  }
+
+  return BasicStringArray::Create(arrays[0]->client(), std::move(shape),
+                                  std::move(sharding), buffers_future,
+                                  std::move(on_done_with_buffer));
 }
 
 }  // namespace
@@ -355,6 +472,10 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         "%d vs. %d",
         sharding->devices().size(), arrays.size());
   }
+  if (arrays[0]->dtype().kind() == DType::kString) {
+    return AssembleStringArrayFromSingleDeviceStringArrays(shape, sharding,
+                                                           arrays, semantics);
+  }
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(arrays.size());
   DType dtype = arrays[0]->dtype();
@@ -402,18 +523,29 @@ PjRtClient::RemapArrays(const RemapPlan& plan,
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
 }
 
+Future<> PjRtClient::GetReadyFuture(
+    absl::Span<const tsl::RCReference<Value>> values) {
+  absl::InlinedVector<Future<>, 1> futures;
+  futures.reserve(values.size());
+  for (const auto& value : values) {
+    futures.push_back(value->GetReadyFuture());
+  }
+  return JoinFutures(futures);
+}
+
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<tsl::RCReference<Value>> values) {
   return PjRtTuple::Create(this, values);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-PjRtClient::GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const {
+absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
+    const xla::ifrt::DeviceList& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
-  return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
-                                                             topology);
+  return std::make_shared<PjRtTopology>(
+      std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
+                                                          topology));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLayout>>

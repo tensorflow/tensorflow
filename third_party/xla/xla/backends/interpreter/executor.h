@@ -45,10 +45,10 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-class XlaInterpreterExecutor : public StreamExecutor {
+class XlaInterpreterExecutor : public StreamExecutorCommon {
  public:
   XlaInterpreterExecutor(int device_ordinal, Platform *platform)
-      : StreamExecutor(platform), device_ordinal_(device_ordinal) {}
+      : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override { return absl::OkStatus(); }
 
@@ -138,13 +138,11 @@ class XlaInterpreterExecutor : public StreamExecutor {
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  absl::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor *other) override {
     return absl::OkStatus();
   }
 
-  bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
-    return true;
-  }
+  bool CanEnablePeerAccessTo(StreamExecutor *other) override { return true; }
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
     return std::make_unique<Event>();
   }

@@ -68,8 +68,6 @@ typedef struct {
   // Deprecated. Use the flags bitfield with the
   // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
-  // Enable adaptive optimization for AVX CPUs.
-  bool experimental_adaptive_avx_optimization;
   // Path to the weight cache to load if `weight_cache` is undefined.
   //
   // WARNING this is an experimental flag.

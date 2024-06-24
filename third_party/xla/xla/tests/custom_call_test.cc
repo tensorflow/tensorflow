@@ -481,7 +481,7 @@ namespace {
 
 // TODO(abanas): The following three usings are a workaround, delete when
 // ResultBuffer is implemented as its own class
-using ResultBufferBase = ffi::Result<ffi::BufferBase>;
+using ResultBufferBase = ffi::Result<ffi::AnyBuffer>;
 template <PrimitiveType dtype, size_t rank = xla::ffi::internal::kDynamicRank>
 using ResultBuffer = ffi::Result<ffi::Buffer<dtype, rank>>;
 template <PrimitiveType dtype>
@@ -491,13 +491,13 @@ using R0F32Buffer = typename ffi::BufferR0<PrimitiveType::F32>;
 using F32Buffer = typename ffi::Buffer<PrimitiveType::F32>;
 using R0F32ResultBuffer = ResultBufferR0<PrimitiveType::F32>;
 using F32ResultBuffer = ResultBuffer<PrimitiveType::F32>;
-using BufferBase = ffi::BufferBase;
+using AnyBuffer = ffi::AnyBuffer;
 
 // Custom kernels definitions and registrations
 static absl::Status AlwaysSucceed(ResultBufferBase) { return absl::OkStatus(); }
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
-                       ffi::Ffi::Bind().Ret<BufferBase>()  // unused out buffer
+                       ffi::Ffi::Bind().Ret<AnyBuffer>()  // unused out buffer
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
@@ -509,7 +509,7 @@ static absl::Status AlwaysFail(ResultBufferBase, int32_t value) {
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
                        ffi::Ffi::Bind()
-                           .Ret<BufferBase>()       // unused out buffer
+                           .Ret<AnyBuffer>()        // unused out buffer
                            .Attr<int32_t>("value")  // value
 );
 
@@ -533,7 +533,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32Add2",
                          "Host", kFfiR0F32Add2);
 
 template <PrimitiveType dtype>
-static absl::Status R0FAdd2(BufferBase in, ResultBufferBase out) {
+static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
   using NativeType =
       typename ::xla::primitive_util::PrimitiveTypeToNative<dtype>::type;
 
@@ -545,7 +545,7 @@ static absl::Status R0FAdd2(BufferBase in, ResultBufferBase out) {
 }
 
 // This represents a kernel that is valid only for F32 and F64 types
-static absl::Status FfiR0FAdd2BufferBase(BufferBase in, ResultBufferBase out) {
+static absl::Status FfiR0FAdd2BufferBase(AnyBuffer in, ResultBufferBase out) {
   if (in.dtype != out->dtype) {
     return absl::InternalError("Input and output dtypes mismatch");
   }
@@ -562,8 +562,8 @@ static absl::Status FfiR0FAdd2BufferBase(BufferBase in, ResultBufferBase out) {
 
 XLA_FFI_DEFINE_HANDLER(kFfiR0FAdd2BufferBase, FfiR0FAdd2BufferBase,
                        ffi::Ffi::Bind()
-                           .Arg<BufferBase>()  // in
-                           .Ret<BufferBase>()  // out
+                           .Arg<AnyBuffer>()  // in
+                           .Ret<AnyBuffer>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
@@ -756,7 +756,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiTupleRotate, FfiTupleRotate,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
                          "Host", kFfiTupleRotate);
 
-static absl::Status VerifyR2Dimensions(ffi::BufferBase in, int32_t rows,
+static absl::Status VerifyR2Dimensions(ffi::AnyBuffer in, int32_t rows,
                                        int32_t cols) {
   std::string message;
   if (in.dimensions.size() != 2) {
@@ -780,7 +780,7 @@ static absl::Status VerifyR2Dimensions(ffi::BufferBase in, int32_t rows,
 
 XLA_FFI_DEFINE_HANDLER(kVerifyR2Dimensions, VerifyR2Dimensions,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // in
+                           .Arg<ffi::AnyBuffer>()  // in
                            .Attr<int32_t>("rows")
                            .Attr<int32_t>("cols"));
 

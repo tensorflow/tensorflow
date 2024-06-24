@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"

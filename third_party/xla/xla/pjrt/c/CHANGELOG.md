@@ -1,5 +1,7 @@
 # PJRT C API changelog
 
+## 0.54
+* Deprecated PJRT_Buffer_GetMemoryLayout.
 
 ## 0.53
 * Added ``PJRT_FFI_Extension` extension to support passing user data to FFI

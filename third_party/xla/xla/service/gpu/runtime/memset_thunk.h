@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 
 // This file contains thunks that set a buffer's elements to a particular value.
 // This can be faster than emitting a kernel to set the elements.

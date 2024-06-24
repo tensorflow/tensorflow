@@ -750,6 +750,11 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
+// Returns the output-to-input indexing map of the first output of `instr`
+IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
+                                         int64_t operand_idx,
+                                         mlir::MLIRContext* mlir_context);
+
 int64_t FloorDiv(int64_t dividend, int64_t divisor) {
   return dividend / divisor -
          (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
@@ -910,6 +915,38 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
   return ranges;
 }
 
+IndexingMap::IndexingMap(
+    AffineMap affine_map, std::vector<DimVar> dimensions,
+    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    absl::Span<std::pair<AffineExpr, Interval>> constraints)
+    : affine_map_(affine_map),
+      dim_vars_(std::move(dimensions)),
+      range_vars_(std::move(range_vars)),
+      rt_vars_(std::move(rt_vars)) {
+  if (!VerifyVariableIntervals()) {
+    ResetToKnownEmpty();
+    return;
+  }
+  for (const auto& [expr, range] : constraints) {
+    AddConstraint(expr, range);
+  }
+}
+
+IndexingMap::IndexingMap(
+    AffineMap affine_map, std::vector<DimVar> dimensions,
+    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    const llvm::DenseMap<AffineExpr, Interval>& constraints)
+    : affine_map_(affine_map),
+      dim_vars_(std::move(dimensions)),
+      range_vars_(std::move(range_vars)),
+      rt_vars_(std::move(rt_vars)),
+      constraints_(constraints) {
+  if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
+    ResetToKnownEmpty();
+    return;
+  }
+}
+
 IndexingMap IndexingMap::FromTensorSizes(
     AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
@@ -971,21 +1008,32 @@ std::vector<Interval> IndexingMap::GetSymbolBounds() const {
 }
 
 void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
+  // Do not add the constraint if the domain is already empty.
+  if (IsKnownEmpty()) {
+    return;
+  }
+  // If the range is empty, reset the indexing map to the canonical empty form.
+  if (!range.IsFeasible()) {
+    ResetToKnownEmpty();
+    return;
+  }
   if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
     Interval& current_range = GetMutableDimensionBound(dim_expr.getPosition());
-    current_range = Intersect(current_range, range);
+    current_range = current_range.Intersect(range);
+    if (!current_range.IsFeasible()) ResetToKnownEmpty();
     return;
   }
   if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
     Interval& current_range = GetMutableSymbolBound(symbol_expr.getPosition());
-    current_range = Intersect(current_range, range);
+    current_range = current_range.Intersect(range);
+    if (!current_range.IsFeasible()) ResetToKnownEmpty();
     return;
   }
   if (auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-    if (constant_expr.getValue() >= range.lower &&
-        constant_expr.getValue() <= range.upper) {
-      return;
+    if (!range.Contains(constant_expr.getValue())) {
+      ResetToKnownEmpty();
     }
+    return;
   }
   if (SimplifyConstraintRange(&expr, &range)) {
     AddConstraint(expr, range);
@@ -993,7 +1041,10 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
   }
   auto [it, inserted] = constraints_.insert({expr, range});
   if (!inserted) {
-    it->second = Intersect(it->second, range);
+    it->second = it->second.Intersect(range);
+    if (!it->second.IsFeasible()) {
+      ResetToKnownEmpty();
+    }
   }
 }
 
@@ -1026,21 +1077,6 @@ SmallVector<int64_t, 4> IndexingMap::Evaluate(
       dim_const_exprs, symbol_const_exprs, dim_const_exprs.size(),
       symbol_const_exprs.size());
   return eval.getConstantResults();
-}
-
-bool IndexingMap::IsKnownEmpty() const {
-  return llvm::any_of(dim_vars_,
-                      [](const DimVar& dim_var) {
-                        return dim_var.bounds.lower > dim_var.bounds.upper;
-                      }) ||
-         llvm::any_of(range_vars_,
-                      [](const RangeVar& range_var) {
-                        return range_var.range.lower > range_var.range.upper;
-                      }) ||
-         llvm::any_of(constraints_,
-                      [&](const std::pair<AffineExpr, Interval>& item) {
-                        return item.second.lower > item.second.upper;
-                      });
 }
 
 RangeEvaluator::RangeEvaluator(absl::Span<const Interval> dim_ranges,
@@ -1136,6 +1172,10 @@ void PrintRTVars(const std::vector<RTVar>& rt_vars,
 
 void IndexingMap::Print(std::ostream& out,
                         const AffineMapPrinter& printer) const {
+  if (IsKnownEmpty()) {
+    out << "KNOWN EMPTY\n";
+    return;
+  }
   printer.Print(out, affine_map_);
   out << "\ndomain:\n";
   for (const auto& [index, dim_var] : llvm::enumerate(dim_vars_)) {
@@ -1200,10 +1240,10 @@ IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
 // RangeEvaluator for every constraint. Note that we start with "expr"
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
-bool IndexingMap::Simplify(IndexingMapProvider indexing_map_provider) {
-  if (IsUndefined()) return false;
+bool IndexingMap::Simplify() {
+  if (IsUndefined() || IsKnownEmpty()) return false;
 
-  bool rtvars_were_eliminated = ReplaceConstantRTVars(indexing_map_provider);
+  bool rtvars_were_eliminated = ReplaceConstantRTVars();
 
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
@@ -1483,6 +1523,35 @@ SmallBitVector IndexingMap::RemoveUnusedDimensions() {
   return std::move(unused_vars.unused_dims);
 }
 
+void IndexingMap::ResetToKnownEmpty() {
+  affine_map_ = AffineMap::get(GetMLIRContext());
+  dim_vars_.clear();
+  range_vars_.clear();
+  rt_vars_.clear();
+  constraints_.clear();
+  is_known_empty_ = true;
+}
+
+bool IndexingMap::VerifyVariableIntervals() {
+  return llvm::all_of(dim_vars_,
+                      [](const DimVar& dim_var) {
+                        return dim_var.bounds.IsFeasible();
+                      }) &&
+         llvm::all_of(range_vars_,
+                      [](const RangeVar& range_var) {
+                        return range_var.range.IsFeasible();
+                      }) &&
+         llvm::all_of(rt_vars_, [](const RTVar& rt_var) {
+           return rt_var.feasible_values.IsFeasible();
+         });
+}
+
+bool IndexingMap::VerifyConstraintIntervals() {
+  return llvm::all_of(constraints_, [](const auto& constraint) {
+    return constraint.second.IsFeasible();
+  });
+}
+
 SmallBitVector IndexingMap::RemoveUnusedVars() {
   if (IsUndefined()) return {};
 
@@ -1563,6 +1632,10 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   if (second.IsUndefined() || first.IsUndefined()) {
     return IndexingMap::GetUndefined();
   }
+  MLIRContext* mlir_context = first.GetMLIRContext();
+  if (first.IsKnownEmpty() || second.IsKnownEmpty()) {
+    return IndexingMap::GetKnownEmpty(mlir_context);
+  }
   AffineMap producer_affine_map = second.GetAffineMap();
   AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
 
@@ -1602,9 +1675,9 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     constraints.push_back(expr);
     constraints_ranges.push_back(range);
   }
-  auto constraints_map = AffineMap::get(
-      producer_affine_map.getNumDims(), producer_affine_map.getNumSymbols(),
-      constraints, producer_affine_map.getContext());
+  auto constraints_map = AffineMap::get(producer_affine_map.getNumDims(),
+                                        producer_affine_map.getNumSymbols(),
+                                        constraints, mlir_context);
   auto remapped_constraints =
       constraints_map.compose(first.GetAffineMap())
           .replaceDimsAndSymbols(/*dimReplacements=*/{}, symbol_replacements,
@@ -1709,9 +1782,8 @@ namespace {
 // `{()[sk] -> f(sk), rt_var_new }` - an affine expression that maps from the
 // old RTVar to the new RTVar, and the new RTVar itself. The new RTVar now
 // references some HLO subgraph of the old RTVar's HLO.
-RTVarOptimizationResult OptimizeRTVar(
-    RTVar rt_var, int64_t symbol_index, MLIRContext* mlir_context,
-    IndexingMap::IndexingMapProvider indexing_map_provider) {
+RTVarOptimizationResult OptimizeRTVar(RTVar rt_var, int64_t symbol_index,
+                                      MLIRContext* mlir_context) {
   const auto symbol = getAffineSymbolExpr(symbol_index, mlir_context);
   auto result_expr = symbol;
 
@@ -1746,7 +1818,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
     if (is_indexing_transformation(rt_var.hlo)) {
       auto instr_indexing_map =
-          indexing_map_provider(rt_var.hlo, 0, mlir_context);
+          GetIndexingMapForInstruction(rt_var.hlo, 0, mlir_context);
 
       rt_var.hlo = rt_var.hlo->operand(0);
       rt_var.map = instr_indexing_map.GetAffineMap().compose(rt_var.map);
@@ -1781,7 +1853,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
       auto lhs = OptimizeRTVar(
           RTVar{rt_var.feasible_values, rt_var.hlo->operand(0), rt_var.map},
-          symbol_index, mlir_context, indexing_map_provider);
+          symbol_index, mlir_context);
 
       if (!lhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
         // This means that lhs is constant-like and we can eliminate the
@@ -1796,7 +1868,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
       auto rhs = OptimizeRTVar(
           RTVar{rt_var.feasible_values, rt_var.hlo->operand(1), rt_var.map},
-          symbol_index, mlir_context, indexing_map_provider);
+          symbol_index, mlir_context);
 
       if (!rhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
         // This means that rhs is constant-like and we can eliminate the
@@ -1816,8 +1888,7 @@ RTVarOptimizationResult OptimizeRTVar(
 }
 }  // namespace
 
-bool IndexingMap::ReplaceConstantRTVars(
-    IndexingMap::IndexingMapProvider indexing_map_provider) {
+bool IndexingMap::ReplaceConstantRTVars() {
   if (rt_vars_.empty()) return false;
 
   std::vector<size_t> to_delete;
@@ -1830,8 +1901,8 @@ bool IndexingMap::ReplaceConstantRTVars(
     auto symbol_index = range_vars_.size() + index;
     auto rt_var_symbol = getAffineSymbolExpr(symbol_index, GetMLIRContext());
 
-    RTVarOptimizationResult result = OptimizeRTVar(
-        rt_var, symbol_index, GetMLIRContext(), indexing_map_provider);
+    RTVarOptimizationResult result =
+        OptimizeRTVar(rt_var, symbol_index, GetMLIRContext());
 
     if (result.remapped_symbol != rt_var_symbol) {
       affine_map_ =

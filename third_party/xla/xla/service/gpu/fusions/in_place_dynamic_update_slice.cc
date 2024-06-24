@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {

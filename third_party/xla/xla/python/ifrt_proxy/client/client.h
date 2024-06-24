@@ -37,9 +37,11 @@
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/compiler.h"
@@ -77,6 +79,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const RemapPlan& plan,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
+
+  xla::ifrt::Future<> GetReadyFuture(
+      absl::Span<const tsl::RCReference<Value>> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override {
@@ -118,8 +123,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }
-  absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const override {
+  absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
+      const xla::ifrt::DeviceList& devices) const override {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }

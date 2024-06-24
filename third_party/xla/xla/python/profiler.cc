@@ -20,18 +20,23 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/aggregate_profile.h"
+#include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -109,18 +114,6 @@ tensorflow::ProfileOptions DefaultPythonProfileOptions() {
   return options;
 }
 
-const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
-  const PJRT_Extension_Base* next =
-      reinterpret_cast<const PJRT_Extension_Base*>(pjrt_api->extension_start);
-  while (next != nullptr &&
-         next->type != PJRT_Extension_Type::PJRT_Extension_Type_Profiler) {
-    next = next->next;
-  }
-  if (next == nullptr) {
-    return nullptr;
-  }
-  return reinterpret_cast<const PJRT_Profiler_Extension*>(next)->profiler_api;
-}
 }  // namespace
 
 // nanobind requires in-place construction of types, but tsl::ProfilerSession
@@ -170,16 +163,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       throw xla::XlaRuntimeError(
           "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
     }
-    const PLUGIN_Profiler_Api* profiler_api =
-        FindProfilerApi(static_cast<const PJRT_Api*>(c_api.data()));
-    std::function<std::unique_ptr<tsl::profiler::ProfilerInterface>(
-        const tensorflow::ProfileOptions&)>
-        create_func = [profiler_api = profiler_api](
-                          const tensorflow::ProfileOptions& options) mutable {
-          return std::make_unique<xla::profiler::PluginTracer>(profiler_api,
-                                                               options);
-        };
-    tsl::profiler::RegisterProfilerFactory(std::move(create_func));
+    RegisterProfiler(static_cast<const PJRT_Api*>(c_api.data()));
   });
 
   nb::class_<ProfilerSessionWrapper> profiler_session_class(profiler,
@@ -296,6 +280,25 @@ void BuildProfilerSubmodule(nb::module_& m) {
     std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
     return nb::bytes(out.data(), out.size());
   });
+
+  profiler.def(
+      "aggregate_profiled_instructions",
+      [](const std::vector<nb::bytes>& profiles, int percentile) -> nb::object {
+        std::vector<tensorflow::profiler::ProfiledInstructionsProto>
+            fdo_profiles;
+        for (const nb::bytes& profile : profiles) {
+          tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+          profile_proto.ParseFromString(profile.c_str());
+          fdo_profiles.push_back(std::move(profile_proto));
+        }
+
+        tensorflow::profiler::ProfiledInstructionsProto result_proto;
+        xla::AggregateProfiledInstructionsProto(fdo_profiles, percentile,
+                                                &result_proto);
+        auto result = result_proto.SerializeAsString();
+        return nb::bytes(result.data(), result.size());
+      },
+      nb::arg("profiles") = nb::list(), nb::arg("percentile"));
 }
 
 }  // namespace xla

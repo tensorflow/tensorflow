@@ -29,6 +29,7 @@ message OneDnnMatMulConfig {
     LINEAR = 7;
     ELU = 8;
     RELU6 = 9;
+    SIGMOID = 10;
   }
   repeated FusionKind fused_ops = 3;
   bool bias_broadcast = 4;

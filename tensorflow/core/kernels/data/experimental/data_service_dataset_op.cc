@@ -414,7 +414,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       double GetTargetProcessingTimeNsec() const override {
         if (ctx_.model() == nullptr) {
-          LOG(WARNING) << "tf.data Model is null in DataServiceIteratorContext";
+          VLOG(1) << "tf.data Model is null in DataServiceIteratorContext";
           return 0.0;
         }
 

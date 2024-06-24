@@ -38,6 +38,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
       : TpuStreamInterface(executor), stream_(stream) {}
   ~TpuStream() override {
     BlockHostUntilDone().IgnoreError();
+    parent()->DeallocateStream(this);
     stream_executor::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
   }
 

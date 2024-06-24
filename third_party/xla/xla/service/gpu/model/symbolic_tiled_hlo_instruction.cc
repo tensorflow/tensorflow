@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 
 #include <cstdint>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/symbolic_tile.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {
@@ -74,6 +75,14 @@ std::vector<int64_t> SymbolicTiledHloInstruction::TileSizes(
 std::vector<int64_t> SymbolicTiledHloInstruction::TileStrides(
     absl::Span<int64_t const> tile_parameters) const {
   return EvaluateTileMap(symbolic_tile_.stride_map(), tile_parameters);
+}
+
+std::string SymbolicTiledHloInstruction::ToString() const {
+  std::stringstream ss;
+  ss << "\thlo: " << hlo_->ToString() << "\n";
+  ss << "\t" << symbolic_tile_.ToString() << "\n";
+  ss << "\tindexing map: " << indexing_map_.ToString() << "\n";
+  return ss.str();
 }
 
 }  // namespace gpu

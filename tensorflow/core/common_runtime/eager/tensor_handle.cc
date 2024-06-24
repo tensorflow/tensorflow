@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -727,7 +728,16 @@ Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
   }
 
   if (remote_data != nullptr) {
-    return remote_data->OpIdAndOutputNum(wait_until_ready, op_id, output_num);
+    auto status =
+        remote_data->OpIdAndOutputNum(wait_until_ready, op_id, output_num);
+    if (!status.ok()) {
+      return errors::Internal(
+          absl::StrCat("Remote address looked up from remote mirrors found to "
+                       "be poisoned with status ",
+                       status.ToString()));
+    } else {
+      return absl::OkStatus();
+    }
   }
 
   if (Type() != REMOTE) {
@@ -735,7 +745,13 @@ Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
   }
 
   auto& data = std::get<RemoteTensorHandleData>(data_);
-  return data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
+  auto status = data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
+  if (!status.ok()) {
+    return errors::Internal(
+        "Remote address looked up from remote data found to be poisoned");
+  } else {
+    return absl::OkStatus();
+  }
 }
 
 bool TensorHandle::HasRemoteMirror(const Device* d,

@@ -17,10 +17,6 @@ limitations under the License.
 
 #include <optional>
 
-#include <gtest/gtest.h>
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -178,25 +174,9 @@ TEST_F(GatherSimplifierTest, ZeroSizeSlice) {
 
   // The shape check is sufficient.
   RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
-      CHECK: %[[ZERO:.*]] = f32[] constant(0)
-      CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={}
+      CHECK: %[[ZERO:.*]] = f32[] constant(0) 
+      CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={} 
   )");
-}
-
-TEST_F(GatherSimplifierTest,
-       IsSimplifiedGatherReturnsFalseForUnsortedOffsetDims) {
-  constexpr absl::string_view kModuleStr = R"(
-    HloModule gather_simplifier
-
-    ENTRY kernel_entry {
-      operand = f32[3,3] parameter(0)
-      indices = s32[2,1] parameter(1)
-      ROOT gather = s32[2,1,3]{2,1,0} gather(operand, indices), offset_dims={2,1}, collapsed_slice_dims={}, start_index_map={1}, index_vector_dim=1, slice_sizes={3,1}
-    })";
-  auto module = ParseAndReturnUnverifiedModule(kModuleStr).value();
-  auto gather = module->entry_computation()->root_instruction();
-  EXPECT_FALSE(
-      GatherSimplifier::IsSimplifiedGather(Cast<HloGatherInstruction>(gather)));
 }
 
 }  // namespace

@@ -1123,6 +1123,166 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 }
 
 //===----------------------------------------------------------------------===//
+// CublasLtCmd
+//===----------------------------------------------------------------------===//
+
+CublasLtCmd::CublasLtCmd(
+    ExecutionStreamId execution_stream_id, GemmConfig gemm_config,
+    se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+    BufferAllocation::Slice a_buffer, BufferAllocation::Slice b_buffer,
+    BufferAllocation::Slice c_buffer, BufferAllocation::Slice d_buffer,
+    BufferAllocation::Slice bias_buffer /* may be null */,
+    BufferAllocation::Slice aux_buffer /* may be null */,
+    BufferAllocation::Slice a_scale_buffer /* may be null */,
+    BufferAllocation::Slice b_scale_buffer /* may be null */,
+    BufferAllocation::Slice c_scale_buffer /* may be null */,
+    BufferAllocation::Slice d_scale_buffer /* may be null */,
+    BufferAllocation::Slice d_amax_buffer /* may be null */,
+    BufferAllocation::Slice workspace_buffer)
+    : TracedCommandBufferCmd(execution_stream_id),
+      gemm_config_(std::move(gemm_config)),
+      epilogue_(epilogue),
+      algorithm_idx_(algorithm_idx),
+      a_buffer_(a_buffer),
+      b_buffer_(b_buffer),
+      c_buffer_(c_buffer),
+      d_buffer_(d_buffer),
+      bias_buffer_(bias_buffer),
+      aux_buffer_(aux_buffer),
+      a_scale_buffer_(a_scale_buffer),
+      b_scale_buffer_(b_scale_buffer),
+      c_scale_buffer_(c_scale_buffer),
+      d_scale_buffer_(d_scale_buffer),
+      d_amax_buffer_(d_amax_buffer),
+      workspace_buffer_(workspace_buffer) {}
+
+absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtCmd::GetMatmulPlan(
+    const stream_executor::Stream* stream) {
+  auto it = matmul_plans_cache_.find(stream);
+  if (it != matmul_plans_cache_.end()) return it->second.get();
+  TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
+                                     stream, gemm_config_, epilogue_));
+  auto [it_insert, _] = matmul_plans_cache_.emplace(stream, std::move(plan));
+  return it_insert->second.get();
+}
+
+absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm>
+CublasLtCmd::GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan,
+                                int64_t max_workspace) {
+  auto it = matmul_algorithm_cache_.find(plan);
+  if (it != matmul_algorithm_cache_.end()) return it->second;
+  TF_ASSIGN_OR_RETURN(
+      auto algorithms,
+      plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+                          /*max_workspace_size*/ max_workspace));
+  TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
+  auto [it_insert, _] =
+      matmul_algorithm_cache_.emplace(plan, algorithms[algorithm_idx_]);
+  return it_insert->second;
+}
+
+absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
+                                     StateManager& state) {
+  if (!params.stream->parent()->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
+  }
+  TF_ASSIGN_OR_RETURN(plan_, GetMatmulPlan(params.stream));
+  TF_ASSIGN_OR_RETURN(algorithm_,
+                      GetMatmulAlgorithm(plan_, workspace_buffer_.size()));
+  return absl::OkStatus();
+}
+
+absl::Status CublasLtCmd::Record(const Thunk::ExecuteParams& execute_params,
+                                 const RecordParams& record_params,
+                                 se::CommandBuffer* command_buffer) {
+  const BufferAllocations& allocs = *execute_params.buffer_allocations;
+
+  se::DeviceMemoryBase bias, a_scale, b_scale, c_scale, d_scale, aux, d_amax;
+  if (bias_buffer_.allocation() != nullptr) {
+    bias = allocs.GetDeviceAddress(bias_buffer_);
+  }
+  if (a_scale_buffer_.allocation() != nullptr) {
+    a_scale = allocs.GetDeviceAddress(a_scale_buffer_);
+  }
+  if (b_scale_buffer_.allocation() != nullptr) {
+    b_scale = allocs.GetDeviceAddress(b_scale_buffer_);
+  }
+  if (c_scale_buffer_.allocation() != nullptr) {
+    c_scale = allocs.GetDeviceAddress(c_scale_buffer_);
+  }
+  if (d_scale_buffer_.allocation() != nullptr) {
+    d_scale = allocs.GetDeviceAddress(d_scale_buffer_);
+  }
+  if (d_amax_buffer_.allocation() != nullptr) {
+    d_amax = allocs.GetDeviceAddress(d_amax_buffer_);
+  }
+  if (aux_buffer_.allocation() != nullptr) {
+    aux = allocs.GetDeviceAddress(aux_buffer_);
+  }
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+
+  VLOG(5) << "CublasLtCmd with execution_scope_id: "
+          << execution_scope_id.value();
+  VLOG(5) << "  a_buffer: " << a_buffer_.ToString();
+  VLOG(5) << "  b_buffer: " << b_buffer_.ToString();
+  VLOG(5) << "  c_buffer: " << c_buffer_.ToString();
+  VLOG(5) << "  d_buffer: " << d_buffer_.ToString();
+  VLOG(5) << "  bias_buffer: " << bias_buffer_.ToString();
+  VLOG(5) << "  aux_buffer: " << aux_buffer_.ToString();
+  VLOG(5) << "  a_scale_buffer: " << a_scale_buffer_.ToString();
+  VLOG(5) << "  b_scale_buffer: " << b_scale_buffer_.ToString();
+  VLOG(5) << "  c_scale_buffer: " << c_scale_buffer_.ToString();
+  VLOG(5) << "  d_scale_buffer: " << d_scale_buffer_.ToString();
+  VLOG(5) << "  d_amax_buffer: " << d_amax_buffer_.ToString();
+  VLOG(5) << "  workspace_buffer: " << workspace_buffer_.ToString();
+
+  return AddTracedCommandBuffer(
+      execute_params, record_params, command_buffer, [&](se::Stream* stream) {
+        return plan_->ExecuteOnStream(
+            stream, allocs.GetDeviceAddress(a_buffer_),
+            allocs.GetDeviceAddress(b_buffer_),
+            allocs.GetDeviceAddress(c_buffer_),
+            allocs.GetDeviceAddress(d_buffer_), bias, aux, a_scale, b_scale,
+            c_scale, d_scale, d_amax, algorithm_,
+            allocs.GetDeviceAddress(workspace_buffer_));
+      });
+}
+
+CommandBufferCmd::BufferUsageVector CublasLtCmd::buffers() {
+  BufferUsageVector buffer_usage;
+  buffer_usage.reserve(13);
+  buffer_usage.push_back({a_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({b_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({c_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({d_buffer_, MemoryAccess::kWrite});
+  buffer_usage.push_back({workspace_buffer_, MemoryAccess::kWrite});
+
+  if (bias_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({bias_buffer_, MemoryAccess::kRead});
+  }
+  if (a_scale_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({a_scale_buffer_, MemoryAccess::kRead});
+  }
+  if (b_scale_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({b_scale_buffer_, MemoryAccess::kRead});
+  }
+  if (c_scale_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({c_scale_buffer_, MemoryAccess::kRead});
+  }
+  if (d_scale_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({d_scale_buffer_, MemoryAccess::kRead});
+  }
+  if (aux_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({aux_buffer_, MemoryAccess::kWrite});
+  }
+  if (d_amax_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({d_amax_buffer_, MemoryAccess::kRead});
+  }
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
 // CuDnnCmd
 //===----------------------------------------------------------------------===//
 

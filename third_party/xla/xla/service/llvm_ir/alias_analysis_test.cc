@@ -24,15 +24,15 @@ namespace cpu {
 namespace {
 class AliasAnalysisTest : public CpuCodegenTest {};
 
-static absl::Status FakeCustomCallTarget(ffi::BufferBase,
-                                         ffi::Result<ffi::BufferBase>) {
+static absl::Status FakeCustomCallTarget(ffi::AnyBuffer,
+                                         ffi::Result<ffi::AnyBuffer>) {
   return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kFakeCustomCallTarget, FakeCustomCallTarget,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // in
-                           .Ret<ffi::BufferBase>()  // out
+                           .Arg<ffi::AnyBuffer>()  // in
+                           .Ret<ffi::AnyBuffer>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
