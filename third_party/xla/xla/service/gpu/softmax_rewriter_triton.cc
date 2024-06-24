@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,7 +36,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_support.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -235,7 +242,8 @@ bool IsTriviallyFusible(HloInstruction* instr,
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return static_cast<bool>(IsTritonSupportedInstruction(*instr, gpu_version));
+    return static_cast<bool>(
+        legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
@@ -248,7 +256,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands
@@ -260,7 +268,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
         (IsBroadcastOfScalarConstant(*operand_1) ||
          IsSupportedBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
-          IsTritonSupportedInstruction(*instr, gpu_version));
+          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
     }
   }
 
@@ -326,7 +334,15 @@ HloInstruction* FindFirstNonFusibleDiamondProducer(
   return diamond_producer;
 }
 
-absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
+// Creates a fusion corresponding to the input diamond chain. The resulting
+// fusion instruction is added to the module, but is not yet inserted into the
+// graph as a replacement of the original instructions.
+//
+// TODO(b/347956491): this awkward abstraction is needed to work around
+// limitations of HloFusionAdaptor, which underpins the implementation of
+// SymbolicTileAnalysis. We need to come up with a better solution.
+absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
+    const DiamondChainDescriptor& diamond_chain) {
   auto [root, producer] = diamond_chain;
 
   std::string suggested_name = "triton_softmax";
@@ -365,6 +381,7 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
     }
   };
   create_computation(root);
+
   HloComputation* computation =
       root->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                            /*is_entry=*/false);
@@ -375,14 +392,44 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
           computation));
 
   softmax_fusion->GetModule()->SetAndUniquifyInstrName(softmax_fusion,
-                                                       suggested_name);
-
+                                                       "triton_softmax");
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       softmax_fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kTritonSoftmaxFusionKind));
+  backend_config.set_kind(std::string(kTritonFusionKind));
   TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(gpu_config));
+  return xla::Cast<HloFusionInstruction>(softmax_fusion);
+}
+
+absl::Status FuseDiamondChainImpl(
+    const DiamondChainDescriptor& diamond_chain,
+    GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model) {
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
+                      MakeFusionForDiamondChain(diamond_chain));
+  HloInstruction* root = diamond_chain.root;
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(softmax_fusion);
+
+  TF_ASSIGN_OR_RETURN(
+      TiledRunTimeDataOrError tiled_runtime_data_or,
+      indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  if (const auto* fusion_decision =
+          std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "SymbolicTileAnalysis failed. ", fusion_decision->Explain()));
+  }
+
+  TiledRunTimeData tiled_runtime_data =
+      std::get<TiledRunTimeData>(std::move(tiled_runtime_data_or));
+
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      softmax_fusion->backend_config<GpuBackendConfig>());
+  *backend_config.mutable_fusion_backend_config()
+       ->mutable_block_level_fusion_config() =
+      tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
+  TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(backend_config));
 
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_fusion);
@@ -397,7 +444,27 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   return absl::OkStatus();
 }
 
-using DiamondDescriptor = DiamondChainDescriptor;
+// Returns `true` if the diamond chain passed as a parameter can be tiled
+// correctly using `SymbolicTileAnalysis`.
+absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
+    const DiamondChainDescriptor& diamond_chain) {
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
+                      MakeFusionForDiamondChain(diamond_chain));
+  mlir::MLIRContext context;
+  SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *softmax_fusion->called_computation(), &context);
+
+  bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
+      symbolic_tile_analysis_or_error);
+
+  TF_RETURN_IF_ERROR(diamond_chain.root->GetModule()->RemoveEmbeddedComputation(
+      softmax_fusion->called_computation()));
+  TF_RETURN_IF_ERROR(
+      diamond_chain.root->parent()->RemoveInstruction(softmax_fusion));
+
+  return can_tile;
+}
 
 }  // anonymous namespace
 
@@ -408,7 +475,8 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Root is not elementwise binary.";
   }
 
-  if (!IsTritonSupportedInstruction(*instr, gpu_version_)) {
+  if (!legacy_triton::IsTritonSupportedInstruction(
+          *instr, device_info_.gpu_compute_capability())) {
     return "Root is not supported for Triton instruction.";
   }
 
@@ -417,12 +485,12 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   HloInstruction* reduce;
 
   if (!TrivialEdge(&broadcast, instr->mutable_operand(1), HloOpcode::kBroadcast,
-                   gpu_version_)) {
+                   device_info_.gpu_compute_capability())) {
     return "Could not find a trivial connection from root to a broadcast.";
   }
 
   if (!TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
-                   gpu_version_)) {
+                   device_info_.gpu_compute_capability())) {
     return "Could not find a trivial connection from matched broadcast to a "
            "reduction.";
   }
@@ -433,7 +501,8 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   if (CodegenDecision is_supported =
-          IsTritonSupportedInstruction(*reduce, gpu_version_);
+          legacy_triton::IsTritonSupportedInstruction(
+              *reduce, device_info_.gpu_compute_capability());
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return is_supported;
@@ -450,7 +519,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Broadcast is not along the reduction dimension.";
   }
 
-  while (IsTriviallyFusible(producer, gpu_version_)) {
+  while (IsTriviallyFusible(producer, device_info_.gpu_compute_capability())) {
     producer = ChooseOperandForFusionProcessing(producer);
   }
 
@@ -459,7 +528,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   if (!IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
-                                      gpu_version_)) {
+                                      device_info_.gpu_compute_capability())) {
     return "Producer is not trivially connected.";
   }
 
@@ -476,11 +545,11 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   return producer;
 }
 
-std::vector<DiamondChainDescriptor>
+absl::StatusOr<std::vector<DiamondChainDescriptor>>
 SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-  std::vector<DiamondDescriptor> matched_diamonds;
+  std::vector<DiamondChainDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
        module.MakeNonfusionComputations(execution_threads)) {
@@ -498,10 +567,22 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
 
       auto producer = MatchesTritonCompatibleClosedReductionDiamond(instr);
       if (std::holds_alternative<HloInstruction*>(producer)) {
-        matched_diamonds.push_back(DiamondDescriptor{
-            instr,
-            std::get<HloInstruction*>(producer),
-        });
+        DiamondChainDescriptor diamond_chain{
+            /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
+        // We filter out the diamond chains that cannot be tiled correctly using
+        // `SymbolicTileAnalysis`.
+        TF_ASSIGN_OR_RETURN(
+            bool can_tile_diamond_chain,
+            CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+        if (can_tile_diamond_chain) {
+          matched_diamonds.push_back(diamond_chain);
+        } else {
+          VLOG(5) << "Cannot tile the diamond pattern described by "
+                  << "instructions " << instr->ToString() << " and "
+                  << std::get<HloInstruction*>(producer)->ToString() << ".";
+          continue;
+        }
+
       } else {
         VLOG(5) << "Cannot match the diamond pattern for instruction "
                 << instr->ToString()
@@ -511,7 +592,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   }
 
   if (matched_diamonds.empty()) {
-    return {};
+    return std::vector<DiamondChainDescriptor>();
   }
 
   auto reduction_dimension_size_from_diamond_root =
@@ -529,7 +610,8 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
 
   auto last_trivially_fusible_user = [&](HloInstruction* instr) {
     while (HasOneUse(instr) && !instr->IsRoot() &&
-           IsTriviallyFusible(instr->users().front(), gpu_version_)) {
+           IsTriviallyFusible(instr->users().front(),
+                              device_info_.gpu_compute_capability())) {
       instr = instr->users().front();
     }
 
@@ -538,7 +620,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     // restriction.
     if (HasOneUse(instr) && !instr->IsRoot() &&
         IsTriviallyFusible(
-            instr->users().front(), gpu_version_,
+            instr->users().front(), device_info_.gpu_compute_capability(),
             /*num_allowed_users=*/instr->users().front()->user_count())) {
       instr = instr->users().front();
     }
@@ -565,7 +647,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   diamond_chains.reserve(matched_diamonds.size());
 
   HloInstruction* current_fusion_producer = FindFirstNonFusibleDiamondProducer(
-      matched_diamonds.front().producer, gpu_version_);
+      matched_diamonds.front().producer, device_info_.gpu_compute_capability());
   int current_reduce_dimension_size =
       reduction_dimension_size_from_diamond_root(matched_diamonds.front().root);
 
@@ -576,7 +658,8 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
         matched_diamonds[diamond_idx - 1].root;
 
     HloInstruction* first_non_fusible_diamond_producer =
-        FindFirstNonFusibleDiamondProducer(diamond_producer, gpu_version_);
+        FindFirstNonFusibleDiamondProducer(
+            diamond_producer, device_info_.gpu_compute_capability());
 
     int diamond_reduce_dimension_size =
         reduction_dimension_size_from_diamond_root(diamond_root);
@@ -613,26 +696,46 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       last_trivially_fusible_user(matched_diamonds.back().root),
       current_fusion_producer});
 
-  return diamond_chains;
+  // We filter out the diamond chains that cannot be tiled correctly using
+  // `SymbolicTileAnalysis`.
+  std::vector<DiamondChainDescriptor> filtered_diamond_chains;
+  for (const DiamondChainDescriptor& diamond_chain : diamond_chains) {
+    TF_ASSIGN_OR_RETURN(bool can_tile_diamond_chain,
+                        CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+    if (can_tile_diamond_chain) {
+      filtered_diamond_chains.push_back(diamond_chain);
+    }
+  }
+  return filtered_diamond_chains;
 }
 
 absl::Status SoftmaxRewriterTriton::FuseDiamondChain(
     const DiamondChainDescriptor& diamond_chain) {
-  return FuseDiamondChainImpl(diamond_chain);
+  HloFusionAnalysisCache fusion_analysis_cache(device_info_);
+  GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
+      &device_info_, &fusion_analysis_cache, shape_size_, &mlir_context_);
+
+  return FuseDiamondChainImpl(diamond_chain, indexing_performance_model);
 }
 
 absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version_);
-  if (!cuda_compute_capability || !cuda_compute_capability->IsAtLeastAmpere()) {
+  auto cuda_compute_capability = std::get_if<se::CudaComputeCapability>(
+      &device_info_.gpu_compute_capability());
+  if (!cuda_compute_capability) {
     return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+        "Triton support is only enabled for CUDA GPUs.");
+  } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
   }
 
-  std::vector<DiamondChainDescriptor> diamond_chains =
-      FindAllFusibleDiamondChains(*module, execution_threads);
+  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
+                      FindAllFusibleDiamondChains(*module, execution_threads));
 
   if (diamond_chains.empty()) {
     return false;

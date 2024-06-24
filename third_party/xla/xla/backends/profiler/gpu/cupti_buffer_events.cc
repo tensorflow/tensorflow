@@ -438,6 +438,16 @@ static absl::Status ConvertActivityBuffer(
 
 }  // namespace
 
+absl::string_view StringDeduper::Dedup(absl::string_view str,
+                                       size_t max_unique_count) {
+  if (str.empty()) return absl::string_view();
+  auto it = strings_.find(str);
+  if (it != strings_.end()) return *it;
+  if (max_unique_count == 0 || strings_.size() < max_unique_count)
+    return *strings_.emplace(str).first;
+  return absl::string_view();
+}
+
 void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
                         const absl::string_view annotation,
                         const absl::string_view nvtx_range) {
@@ -447,21 +457,18 @@ void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
           << " annotation: " << annotation;
   if (device_id >= per_device_map_.size()) return;
   auto &per_device_map = per_device_map_[device_id];
-  tsl::mutex_lock lock(per_device_map.mutex);
-  if (per_device_map.annotations.size() < max_size_) {
+  if (per_device_map.annotation_deduper.Size() < max_size_) {
     AnnotationInfo info;
-    info.annotation = *per_device_map.annotations.emplace(annotation).first;
-    if (!nvtx_range.empty())
-      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
+    info.annotation = per_device_map.annotation_deduper.Dedup(annotation);
+    info.nvtx_range = per_device_map.nvtx_range_deduper.Dedup(nvtx_range);
     per_device_map.correlation_map.emplace(correlation_id, info);
   }
 }
 
-AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32_t device_id,
-                                                    uint32_t correlation_id) {
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
+    uint32_t device_id, uint32_t correlation_id) const {
   if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto &per_device_map = per_device_map_[device_id];
-  tsl::mutex_lock lock(per_device_map.mutex);
   auto it = per_device_map.correlation_map.find(correlation_id);
   return it != per_device_map.correlation_map.end() ? it->second
                                                     : AnnotationInfo();
@@ -491,6 +498,28 @@ void CuptiActivityBufferManager::AddCachedActivityEventsTo(
                           dropped_activity_event_count)
         .IgnoreError();
   }
+}
+
+CallbackAnnotationsAndEvents::CallbackAnnotationsAndEvents(
+    CallbackAnnotationsAndEvents &&another) {
+  *this = std::move(another);
+}
+
+CallbackAnnotationsAndEvents &CallbackAnnotationsAndEvents::operator=(
+    CallbackAnnotationsAndEvents &&another) {
+  annotations_ = std::move(another.annotations_);
+  nvtx_ranges_ = std::move(another.nvtx_ranges_);
+  num_dropped_events_ = another.num_dropped_events_;
+  event_queue_ = std::move(another.event_queue_);
+  another.Clear();
+  return *this;
+}
+
+void CallbackAnnotationsAndEvents::Clear() {
+  annotations_.Clear();
+  nvtx_ranges_.Clear();
+  num_dropped_events_ = 0;
+  event_queue_.Clear();
 }
 
 }  // namespace profiler

@@ -104,7 +104,7 @@ class ScopedModuleAnnotations {
 const ModuleAnnotations* GetCurrentModuleAnnotations();
 
 std::optional<tsl::profiler::ScopedAnnotation> GetKernelAnnotation(
-    const ModuleAnnotations* annotations, std::string_view profile_annotation);
+    std::string_view profile_annotation);
 
 }  // namespace xla::gpu
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"

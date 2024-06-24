@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
+#include <cstdint>
+#include <optional>
+
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -24,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
@@ -60,6 +65,11 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
     const tsl::thread::ThreadPool& thread_pool);
+
+// A wrapper around xla::ShapeUtil::ByteStrides to get the byte strides of a
+// TensorFlow tensor.
+std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
+    tensorflow::DataType dtype, const tensorflow::TensorShape& shape);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

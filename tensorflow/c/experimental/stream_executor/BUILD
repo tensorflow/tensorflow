@@ -49,7 +49,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:executor_cache",
+        "@local_xla//xla/stream_executor:host_memory_allocation",
+        "@local_xla//xla/stream_executor:memory_allocation",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_common",
     ],
 )
 
@@ -67,9 +71,13 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:stream_executor_interface",
+        "@local_xla//xla/stream_executor:event",
+        "@local_xla//xla/stream_executor:executor_cache",
+        "@local_xla//xla/stream_executor:stream_common",
+        "@local_xla//xla/stream_executor:stream_executor_h",
     ],
 )
 
@@ -85,6 +93,7 @@ tf_cc_test(
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:event",
     ],
 )
 

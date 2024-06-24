@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -73,7 +74,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -1992,47 +1992,7 @@ MsaAlgorithm::AllocationRequest MsaAlgorithm::CreateAllocationRequest(
       latest_prefetch_time =
           std::min(computation_span.start - 1, latest_prefetch_time);
     }
-    if (hlo_use.instruction->opcode() == HloOpcode::kWhile) {
-      // Given an example while loop and flattened schedule (logical times
-      // shown on the left):
-      //
-      // 0:  a = ...
-      // 1:  ...
-      //     cond {
-      // 2:   p = param(0)
-      // 3:   ...
-      //     }
-      //     body {
-      // 4:   p = param(0)
-      // 5:   ...
-      // 6:   ROOT ...
-      //     }
-      // 7:  w = while(a), body=body, cond=cond
-      //
-      // When processing "a" (time 0) and its while use (time 7), we update
-      // the interval to time 0-4. This is so that the remaining interval
-      // (5-6) can be allocated separately and this buffer doesn't waste
-      // alternate memory space within the while loop body.
-      HloComputation* while_body = hlo_use.instruction->while_body();
-      // We require while body ROOTs to be the last in the schedule.
-      CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
-               instruction_schedule.at(hlo_use.instruction))
-          << "While body ROOTs need to be the last in the schedule! "
-             "Please run RootInstructionSinker.";
-      // Replace the use time with the parameter time so that we can decide
-      // on alternate memory allocations within the while loop body when we
-      // look at uses within the while loop body.
-      use_time = instruction_schedule.at(while_body->parameter_instruction(0));
-    } else if (hlo_use.instruction->opcode() == HloOpcode::kConditional) {
-      // Replace the use time with the earliest parameter of called
-      // computations.
-      for (const HloComputation* called_computation :
-           hlo_use.instruction->called_computations()) {
-        use_time = std::min(use_time,
-                            instruction_schedule.at(
-                                called_computation->parameter_instruction(0)));
-      }
-    }
+    use_time = GetCorrectedUseTime(hlo_use);
   }
 
   // Add a required assignment in default memory if the use not allowed in
@@ -3721,25 +3681,32 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(
                      return allocation->memory_space() == MemorySpace::kDefault;
                    });
 
-  if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
-      prev_allocation_it != allocation_sequence->rend() &&
-      (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
-      (*prev_allocation_it)->defining_position() == defining_position &&
-      !request.allocation_value->requires_contiguous_allocation()) {
-    // If there was an allocation for this HloValue that was in the alternate
-    // memory space, we also need to perform an eviction.
-    Result eviction_result = Evict(request);
-    if (eviction_result != Result::kSuccess) {
-      // A non-success eviction requires us to uncommit previous allocations.
-      return result_mark(Result::kFailRequiresUncommit, eviction_result);
+  if (!request.allocation_value->requires_contiguous_allocation()) {
+    if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
+        prev_allocation_it != allocation_sequence->rend() &&
+        (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
+        (*prev_allocation_it)->defining_position() == defining_position) {
+      // If there was an allocation for this HloValue that was in the alternate
+      // memory space, we also need to perform an eviction.
+      Result eviction_result = Evict(request);
+      if (eviction_result != Result::kSuccess) {
+        // A non-success eviction requires us to uncommit previous allocations.
+        return result_mark(Result::kFailRequiresUncommit, eviction_result);
+      }
+      prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
+    } else if (prev_allocation_in_default_mem_it ==
+               allocation_sequence->rend()) {
+      allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
+          defining_position, MemorySpace::kDefault,
+          /*chunk=*/std::nullopt, request.inclusive_start_time,
+          request.end_time,
+          /*is_scoped_allocation=*/false));
+      prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
     }
-    prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
-    allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
-        defining_position, MemorySpace::kDefault,
-        /*chunk=*/std::nullopt, request.inclusive_start_time, request.end_time,
-        /*is_scoped_allocation=*/false));
-    prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
+    VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
+               "possible to find one.";
+    return result_mark(Result::kFailRequiresUncommit, allocation_result);
   }
 
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());

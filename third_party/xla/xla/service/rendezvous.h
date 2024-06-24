@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -283,6 +284,12 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
   CHECK_LT(id, num_threads)  // NOLINT
       << "Id can't be larger than the number of participating threads"
       << "; id=" << id << "; num_threads=" << num_threads;
+
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "RendezvousSingle",
+        {{"num_threads", num_threads}, {"name", name}, {"id", id}});
+  });
 
   // std::vector::operator[] creates data races, so we rely on data pointer
   // here and when we create an absl::Span below.

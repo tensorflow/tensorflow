@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -136,16 +138,14 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
-  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  const auto& hero = analysis_.fusion_hero(root_index);
   if (hero.opcode() != HloOpcode::kTranspose) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     auto map = ComposeIndexingMaps(
         GetIndexing(/*input=*/true, hero.shape(), mlir_context),
-        GetBitcastMap(
-            hero.shape(),
-            analysis_.fusion_roots()[root_index].instruction().shape(),
-            mlir_context));
+        GetBitcastMap(hero.shape(), analysis_.fusion_root(root_index).shape(),
+                      mlir_context));
     map.Simplify();
     return map;
   }
@@ -198,7 +198,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   // Allocate shared memory.
   SmallVector<Value> inits;
   for (auto* transpose : shmem_transposes_) {
-    auto elem_type = *ConvertPrimitiveTypeToMlirType(
+    auto elem_type = mlir_converter::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
     inits.push_back(builder.create<AllocateSharedOp>(
         RankedTensorType::get(shmem_tensor_size, elem_type)));
@@ -321,9 +321,18 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
 std::vector<mlir_converter::EpilogueSpecification>
 MlirTransposeFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                   MLIRContext* mlir_context) const {
-  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, shmem_transposes_, shmem_transpose_roots_, *this,
-      mlir_context)};
+  std::vector<mlir_converter::EpilogueSpecification> epilogues{
+      mlir_converter::EpilogueSpecification::FromOutputIndexing(
+          analysis_, shmem_transposes_, shmem_transpose_roots_, *this,
+          mlir_context)};
+  // Add empty epilogues for the side outputs. This ensures their roots don't
+  // get "fused" into the tuple function.
+  for (const auto* root : side_output_roots_) {
+    epilogues.push_back(
+        mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+            root, root, mlir_context));
+  }
+  return epilogues;
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(

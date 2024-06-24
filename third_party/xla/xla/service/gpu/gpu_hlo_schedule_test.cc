@@ -24,10 +24,13 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -44,11 +47,15 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 class GpuHloScheduleTest : public HloTestBase {
  protected:
@@ -338,6 +345,62 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
+TEST_F(GpuHloScheduleTest, LHSCostModelCostlyAR) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = bf16[] parameter(0)
+    y = bf16[] parameter(1)
+    ROOT apply_op = bf16[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = bf16[32505856] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
+    dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
+    dot3 = f32[32,32]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$gemm"
+    dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
+    dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
+    dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
+
+    ar-start = bf16[32505856] all-reduce-start(p0), to_apply=apply_op
+    ar-done = bf16[32505856] all-reduce-done(ar-start)
+
+    ROOT t = (bf16[32505856], f32[32,32]) tuple(ar-done, dot6)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  std::vector<int64_t> count_between_pairs;
+  bool in_between = false;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*entry)->instructions()) {
+    if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      in_between = true;
+      count_between_pairs.push_back(0);
+    } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      in_between = false;
+    } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+      count_between_pairs.back()++;
+    }
+  }
+
+  EXPECT_EQ(count_between_pairs.size(), 1);
+  // We pack in 7 medium cost operations into the costly AR.
+  // By default we pack in at most 5.
+  EXPECT_EQ(count_between_pairs[0], 7);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
 TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
   const char* hlo_text = R"(
   HloModule AsyncAR
@@ -427,6 +490,57 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
       }
     }
   }
+}
+
+TEST_F(GpuHloScheduleTest,
+       ProfileGuidedCostModelApplicabilityListsMissingCostsAndLatencies) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, dot0)
+  })";
+
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 10.0 }
+    costs { name: "ar-start-2" cost_us: 10.0 }
+  )pb";
+
+  tensorflow::profiler::ProfiledInstructionsProto profile;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      ar_long_latency_proto_text, &profile));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                          /*enable_gpu_async_tracker=*/true,
+                          /*fdo_profile=*/ar_long_latency_proto_text)));
+
+  absl::Status result = IsProfileApplicable(module.get(), profile);
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result.message(), HasSubstr("add0"));
+  EXPECT_THAT(result.message(), HasSubstr("dot1"));
+  EXPECT_THAT(result.message(), HasSubstr("ar-start-2"));
 }
 
 TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithRematData) {

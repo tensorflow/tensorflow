@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <optional>
@@ -32,9 +35,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
 #include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 
@@ -106,10 +109,13 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
-    tsl::PlatformDeviceId platform_device_id, size_t pool_size,
-    bool reserve_memory, bool compute_stats)
+    tsl::PlatformDeviceId platform_device_id, bool create_new_pool,
+    size_t new_pool_size, bool reserve_memory, size_t reserve_memory_size,
+    bool sync_mode, bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
-      reserve_memory_(reserve_memory) {
+      reserve_memory_(reserve_memory),
+      create_new_pool_(create_new_pool),
+      sync_mode_(sync_mode) {
   ++number_instantiated_;
 
   // Stop clang from complaining about unused private fields when
@@ -172,17 +178,36 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
            "old, "
         << " OS not supported, CUDA version too old(request CUDA11.2+).";
 
-  if (auto status =
-          cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
-    LOG(FATAL) <<  // Crash OK.
-        "Failed to get default CUDA pool: " << GetCudaErrorMessage(status);
+  size_t pool_size;
+  if (create_new_pool_) {
+    pool_size = new_pool_size;
+    CUmemPoolProps pool_props;
+    memset(reinterpret_cast<void*>(&pool_props), 0, sizeof(pool_props));
+    pool_props.allocType = CU_MEM_ALLOCATION_TYPE_PINNED;
+    pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
+    pool_props.location.id = platform_device_id.value();
+    pool_props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+#if CUDA_VERSION >= 12030
+    pool_props.maxSize = new_pool_size;
+#endif  // CUDA_VERSION >= 12030
+    if (auto status = cuMemPoolCreate(&pool_, &pool_props))
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to create CUDA pool: " << GetCudaErrorMessage(status);
+  } else {
+    pool_size = reserve_memory_size;
+    if (auto status =
+            cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to get default CUDA pool: " << GetCudaErrorMessage(status);
+    VLOG(2) << "using default memory pool " << pool_;
+  }
 
   VLOG(1) << Name() << " CudaMallocAsync initialized on platform: "
           << platform_device_id.value() << " with pool size of: " << pool_size
           << " this ptr: " << this;
-  uint64_t pool_size_64 = pool_size;
+  uint64_t release_threshold_64 = reserve_memory_size;
   if (auto status = cuMemPoolSetAttribute(
-          pool_, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD, &pool_size_64))
+          pool_, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD, &release_threshold_64))
     LOG(FATAL) <<  // Crash OK.
         "Failed to set CUDA pool attribute: " << GetCudaErrorMessage(status);
 
@@ -214,66 +239,85 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // Set read/write access to all GPUs.
   static auto* all_pools_ = new std::vector<CUmemoryPool*>();
   static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
-  DCHECK(all_pools_->size() == all_ids_->size());
-  for (int i = 0; i < all_pools_->size(); ++i) {
-    // Set the current pool access to the previous GPUs.
-    CUmemAccessDesc map;
-    map.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-    map.location.id = (*all_ids_)[i].value();
+  if (!create_new_pool_) {
+    DCHECK(all_pools_->size() == all_ids_->size());
+    for (int i = 0; i < all_pools_->size(); ++i) {
+      // Set the current pool access to the previous GPUs.
+      CUmemAccessDesc map;
+      map.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+      map.location.id = (*all_ids_)[i].value();
 
-    map.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    VLOG(2) << "Setting access of the current pool to "
-            << " location id: " << map.location.id;
-    int canAccessPeer;
-    if (auto status = cuDeviceCanAccessPeer(
-            &canAccessPeer, platform_device_id.value(), map.location.id)) {
-      pool_ = nullptr;
-      LOG(FATAL)  // Crash OK.
-          << "cuDeviceCanAccessPeer failed to know if GPU id "
-          << map.location.id << " can access GPU id "
-          << platform_device_id.value() << ": " << GetCudaErrorMessage(status);
-    }
-    if (canAccessPeer == 1) {
-      if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
+      map.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+      VLOG(2) << "Setting access of the current pool to "
+              << " location id: " << map.location.id;
+      int canAccessPeer;
+      if (auto status = cuDeviceCanAccessPeer(
+              &canAccessPeer, platform_device_id.value(), map.location.id)) {
         pool_ = nullptr;
         LOG(FATAL)  // Crash OK.
-            << "Error when setting access to the pool id: " << i
-            << " location id: " << map.location.id
-            << " error: " << GetCudaErrorMessage(status);
+            << "cuDeviceCanAccessPeer failed to know if GPU id "
+            << map.location.id << " can access GPU id "
+            << platform_device_id.value() << ": "
+            << GetCudaErrorMessage(status);
       }
-    }
+      if (canAccessPeer == 1) {
+        if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
+          pool_ = nullptr;
+          LOG(FATAL)  // Crash OK.
+              << "Error when setting access to the pool id: " << i
+              << " location id: " << map.location.id
+              << " error: " << GetCudaErrorMessage(status);
+        }
+      }
 
-    // Set the previous pools access to the current GPU.
-    map.location.id = platform_device_id.value();
+      // Set the previous pools access to the current GPU.
+      map.location.id = platform_device_id.value();
 
-    VLOG(2) << "Set access to the pool id: " << i
-            << " location id: " << map.location.id;
-    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i,
-                                            platform_device_id.value())) {
-      pool_ = nullptr;
-      LOG(FATAL)  // Crash OK.
-          << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
-    }
-    if (canAccessPeer == 1) {
-      if (auto status = cuMemPoolSetAccess(*(*all_pools_)[i], &map, 1)) {
+      VLOG(2) << "Set access to the pool id: " << i
+              << " location id: " << map.location.id;
+      if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i,
+                                              platform_device_id.value())) {
         pool_ = nullptr;
         LOG(FATAL)  // Crash OK.
-            << "Error when setting access to the pool id: " << i
-            << " location id: " << map.location.id
-            << " error: " << GetCudaErrorMessage(status);
+            << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
+      }
+      if (canAccessPeer == 1) {
+        if (auto status = cuMemPoolSetAccess(*(*all_pools_)[i], &map, 1)) {
+          pool_ = nullptr;
+          LOG(FATAL)  // Crash OK.
+              << "Error when setting access to the pool id: " << i
+              << " location id: " << map.location.id
+              << " error: " << GetCudaErrorMessage(status);
+        }
       }
     }
+    all_pools_->push_back(&pool_);
+    all_ids_->push_back(platform_device_id);
   }
-  all_pools_->push_back(&pool_);
-  all_ids_->push_back(platform_device_id);
 
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
+
 #else   // TF_CUDA_MALLOC_ASYNC_SUPPORTED
   LOG(FATAL) << "GpuCudaMallocAsyncAllocator requires CUDA 11.2+";  // Crash OK.
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 }
 
-GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {}
+GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
+    tsl::PlatformDeviceId platform_device_id, size_t release_threshold,
+    bool reserve_memory, bool compute_stats)
+    : GpuCudaMallocAsyncAllocator(platform_device_id, false, 0, reserve_memory,
+                                  release_threshold, false, compute_stats) {}
+
+GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
+#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  if (create_new_pool_) {
+    VLOG(2) << "Delete memory pool " << reinterpret_cast<void*>(pool_);
+    if (auto status = cuMemPoolDestroy(pool_))
+      LOG(FATAL) << "Failed to destroy memory pool:"
+                 << GetCudaErrorMessage(status);
+  }
+#endif
+}
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
@@ -317,6 +361,10 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     }
 
     return nullptr;
+  }
+
+  if (sync_mode_) {
+    cuStreamSynchronize(cuda_stream_);
   }
 
   // Update stats.
@@ -367,6 +415,10 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
         LOG(ERROR) << "Stats: " << stats_->DebugString();
       }
     }
+  }
+
+  if (sync_mode_) {
+    cuStreamSynchronize(cuda_stream_);
   }
 
   // Updates the stats.

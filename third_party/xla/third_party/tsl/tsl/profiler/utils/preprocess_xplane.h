@@ -36,45 +36,13 @@ limitations under the License.
 #include "tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tsl/profiler/utils/trace_utils.h"
 #include "tsl/profiler/utils/xplane_builder.h"
+#include "tsl/profiler/utils/xplane_mutators.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tsl {
 namespace profiler {
 
 static constexpr uint32_t kRunIdMask = (1U << 27) - 1;
-
-/*
- * Subclass of this interface will perform different mutatation to the event.
- * Checking eligibilities of event mutation is not responsible of this class.
- */
-class XplaneEventMutator {
- public:
-  virtual ~XplaneEventMutator() = default;
-
-  // Mutate event by event specified by the event_metadata.
-  virtual void Mutate(XEventBuilder& builder) = 0;
-  // Mutate line by line if event_metadata() return nullptr.
-  virtual void MutateEventsInLine(XLineBuilder& line) = 0;
-
-  const XEventMetadata* event_metadata() const { return event_metadata_; }
-
- protected:
-  explicit XplaneEventMutator(XEventMetadata* event_metadata)
-      : event_metadata_(event_metadata) {}
-
-  XEventMetadata* event_metadata_;
-};
-
-class XplaneEventMutatorFactory {
- public:
-  virtual ~XplaneEventMutatorFactory() = default;
-
-  virtual std::vector<std::unique_ptr<XplaneEventMutator>> CreateMutators(
-      XPlaneBuilder& xplane) const = 0;
-
- protected:
-  XplaneEventMutatorFactory() = default;
-};
 
 /*
  * mutate specific HostEventType by adding "_r" Xstats, which equal to the

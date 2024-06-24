@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -122,11 +122,17 @@ bool IsRemovableWhile(HloInstruction* instruction,
         }
       } else {
         HloInstruction* gte = fusion_instruction->users()[0];
-        TF_RETURN_IF_ERROR(gte->ReplaceAllUsesWith(fusion_instruction));
-        TF_RETURN_IF_ERROR(
-            gte->parent()->RemoveInstructionAndUnusedOperands(gte));
+        // Replace and change control successors to be dependent on the fusion
+        // instruction itself.
+        TF_ASSIGN_OR_RETURN(bool replaced,
+                            gte->parent()->ReplaceInstruction(
+                                gte, fusion_instruction,
+                                /*preserve_sharding=*/true,
+                                /*relay_control_dependency=*/true));
+        if (replaced) {
+          changed |= replaced;
+        }
       }
-
       // Update the root of the fusion computation.
       if (tuple_shapes.size() > 1) {
         std::vector<HloInstruction*> new_operands;

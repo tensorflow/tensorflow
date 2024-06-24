@@ -28,7 +28,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -68,13 +69,17 @@ TEST(KernelThunkTest, AddF32) {
 
   BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
   BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
-  std::vector<BufferAllocation::Slice> slices = {in_slice, out_slice};
 
-  KernelThunk thunk({"add_f32"}, slices, "add_f32", se::ThreadDim(4));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
+                                      "add_f32", se::ThreadDim(4)));
 
   AddF32HostKernels host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
-  TF_ASSERT_OK(thunk.Execute(params));
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
 
   std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
   EXPECT_EQ(out, expected);

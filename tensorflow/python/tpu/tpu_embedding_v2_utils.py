@@ -935,7 +935,7 @@ class QuantizationConfig:
   if input > upper
     input = upper
   quantum = (upper - lower) / (num_buckets - 1)
-  input = math.floor((input - lower) / quantum + 0.5) * quantium + lower
+  input = math.floor((input - lower) / quantum + 0.5) * quantum + lower
   ```
 
   See tensorflow/core/protobuf/tpu/optimization_parameters.proto for more

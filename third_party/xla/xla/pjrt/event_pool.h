@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <stack>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 

@@ -2031,14 +2031,6 @@ func.func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?x?xf32>) -
 
 // -----
 
-func.func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi32>, %arg1 : tensor<?x?xi8>) -> tensor<?xf32> {
-  // expected-error @+1 {{'tfl.embedding_lookup' op failed to verify that value and output must have same element type}}
-  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?x?xi8>) -> tensor<?xf32>
-  func.return %0 : tensor<?xf32>
-}
-
-// -----
-
 func.func @testWrongQuantizedLocalResponseNormalization(%arg0 : tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>) -> tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>> {
   // expected-error @+1 {{'tfl.local_response_normalization' op operand #0 must be tensor of 32-bit float values, but got 'tensor<1x56x56x192x!quant.uniform<u8:f32, 2.000000e-02>>'}}
   %0 = "tfl.local_response_normalization"(%arg0) {alpha = 9.99999974E-5 : f32, beta = 5.000000e-01 : f32, bias = 2.000000e+00 : f32, radius = 5 : i32} : (tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>) -> tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>

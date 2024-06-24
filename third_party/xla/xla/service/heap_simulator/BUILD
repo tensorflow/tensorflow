@@ -38,7 +38,6 @@ cc_library(
     deps = [
         ":allocation_block",
         "//xla:comparison_util",
-        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
@@ -60,6 +59,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

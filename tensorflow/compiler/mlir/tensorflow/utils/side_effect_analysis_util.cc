@@ -38,23 +38,31 @@ std::string GetDeviceAttrAsResourceInstanceStr(mlir::Operation* op) {
 }
 
 void MarkResourceAsReadAndWrite(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effects) {
-  if (value.getType().cast<TensorType>().getElementType().isa<ResourceType>()) {
-    effects.emplace_back(MemoryEffects::Read::get(), value,
+  if (op_operand.get()
+          .getType()
+          .cast<TensorType>()
+          .getElementType()
+          .isa<ResourceType>()) {
+    effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
-    effects.emplace_back(MemoryEffects::Write::get(), value,
+    effects.emplace_back(MemoryEffects::Write::get(), &op_operand,
                          ResourceEffects::Variable::get());
   }
 }
 
 void MarkResourceAsReadOnly(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effects) {
-  if (value.getType().cast<TensorType>().getElementType().isa<ResourceType>()) {
-    effects.emplace_back(MemoryEffects::Read::get(), value,
+  if (op_operand.get()
+          .getType()
+          .cast<TensorType>()
+          .getElementType()
+          .isa<ResourceType>()) {
+    effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
   }
 }

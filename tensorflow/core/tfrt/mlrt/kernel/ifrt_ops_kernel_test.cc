@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -55,9 +57,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -246,7 +248,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
 }
 
 mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
-    bool redundant_ifrt_load_variable_op = false) {
+    bool redundant_ifrt_load_variable_op = false, bool used_by_host = false) {
   mlrt::bc::Buffer buffer;
   mlrt::bc::Allocator allocator(&buffer);
 
@@ -289,7 +291,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
                      kContainer, kSharedName));
 
   attributes.Add("var_handle_op_key", 0);
-  attributes.Add("used_by_host", false);
+  attributes.Add("used_by_host", used_by_host);
 
   auto functions_ctor = executable_ctor.construct_functions(1);
 
@@ -299,7 +301,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
 
     mlrt::testing::SymbolTable regs;
 
-    function_ctor.construct_output_regs(1).Assign({regs.Def("output_tensor")});
+    function_ctor.construct_output_regs(2).Assign(
+        {regs.Def("output_tensor"), regs.Def("output_future")});
 
     const int kNumKernels = 4 + (redundant_ifrt_load_variable_op ? 1 : 0);
     auto kernels_ctor = function_ctor.construct_kernels(kNumKernels);
@@ -331,7 +334,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
       kernel_ctor.construct_results(2).Assign(
-          {regs.Use("output_tensor"), regs.Def("dummy_future")});
+          {regs.Use("output_tensor"), regs.Use("output_future")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
       kernel_ctor.construct_attributes(1).Assign(
           {attributes.GetHandle("used_by_host")});
@@ -353,7 +356,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     {
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("return"));
-      kernel_ctor.construct_arguments(1).Assign({regs.Use("output_tensor")});
+      kernel_ctor.construct_arguments(2).Assign(
+          {regs.Use("output_tensor"), regs.Use("output_future")});
       kernel_index++;
     }
     DCHECK_EQ(kernel_index, kNumKernels);
@@ -403,7 +407,8 @@ class KernelTest : public ::testing::Test {
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();
     ifrt_core_selector_ =
         std::make_unique<ifrt_serving::IfrtServingCoreSelector>(
-            serving_device_selector_.get());
+            serving_device_selector_.get(),
+            client_->addressable_device_count());
   }
 
   std::unique_ptr<tsl::test_util::MockServingDeviceSelector>
@@ -425,6 +430,54 @@ class KernelTest : public ::testing::Test {
   std::unique_ptr<Context> tf_context_;
   tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context_;
 };
+
+TEST_F(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
+  auto buffer = CreateExecutableForIfrtLoadVariableOp(
+      /*redundant_ifrt_load_variable_op=*/false, /*used_by_host=*/true);
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  tensorflow::Tensor input_tensor;
+  TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
+  input_tensor.scalar<int32_t>()() = 1234;
+
+  tsl::core::RefCountPtr<Var> variable(new Var(DT_INT32));
+  *variable->tensor() = input_tensor;
+  variable->is_initialized = true;
+  ASSERT_OK(
+      fallback_state_->device_manager().HostCPU()->resource_manager()->Create(
+          std::string(kContainer), std::string(kSharedName), &(*variable)));
+
+  std::vector<mlrt::Value> args;
+  std::vector<uint8_t> last_uses;
+  std::vector<mlrt::Value> results;
+  results.resize(2);
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+  notification.WaitForNotification();
+
+  TF_ASSERT_OK(execution_context.status());
+
+  ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
+              AsScalar(tsl::tstring(kVariableRuntimeName)));
+  auto returned_future = results[1].Get<mlrt::Future>();
+  ASSERT_TRUE(returned_future.IsReady());
+  EXPECT_THAT(returned_future.Get<tfrt_stub::FallbackTensor>().tensor(),
+              TensorEq(input_tensor));
+}
 
 TEST_F(KernelTest, IfrtLoadVariableOp) {
   auto buffer = CreateExecutableForIfrtLoadVariableOp();
@@ -456,7 +509,7 @@ TEST_F(KernelTest, IfrtLoadVariableOp) {
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
   std::vector<mlrt::Value> results;
-  results.resize(1);
+  results.resize(2);
 
   absl::Notification notification;
   execution_context.set_exit_handler(
@@ -471,6 +524,11 @@ TEST_F(KernelTest, IfrtLoadVariableOp) {
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));
+  auto returned_future = results[1].Get<mlrt::Future>();
+  ASSERT_TRUE(returned_future.IsReady());
+  // Returned is an empty tensor since it is not used by host.
+  EXPECT_THAT(returned_future.Get<tfrt_stub::FallbackTensor>().tensor(),
+              TensorEq(tensorflow::Tensor()));
 }
 
 TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
@@ -503,7 +561,7 @@ TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
   std::vector<mlrt::Value> results;
-  results.resize(1);
+  results.resize(2);
 
   absl::Notification notification;
   execution_context.set_exit_handler(
@@ -519,6 +577,12 @@ TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));
+
+  auto returned_future = results[1].Get<mlrt::Future>();
+  ASSERT_TRUE(returned_future.IsReady());
+  // Returned is an empty tensor since it is not used by host.
+  EXPECT_THAT(returned_future.Get<tfrt_stub::FallbackTensor>().tensor(),
+              TensorEq(tensorflow::Tensor()));
 }
 
 TEST_F(KernelTest, IfrtRestoreVariableOp) {

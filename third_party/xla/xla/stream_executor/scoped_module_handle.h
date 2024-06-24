@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 

@@ -2655,8 +2655,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
   }
 
   if (xla_device_assignment != nullptr) {
-    TF_RETURN_IF_ERROR(
-        xla_device_assignment->Serialize(proto.mutable_device_assignment()));
+    xla_device_assignment->Serialize(proto.mutable_device_assignment());
   }
 
   const int num_args = arg_types.size();

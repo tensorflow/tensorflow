@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/service/hlo_ordering.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -225,20 +229,48 @@ bool HloOrdering::UsesBeforeValueDefinition(
             << ", value=" << value.ToShortString() << ")";
     switch (
         GetExecutionConstraint(use.instruction, value.defining_instruction())) {
-      case HloOrdering::ExecutionConstraint::kIsSame:
-        // If the use is at the instruction where the value is defined, then the
-        // use is before the def if the instruction allows buffer sharing (in
-        // place computation).
-        if (use_is_always_before_def_in_same_instr ||
-            dataflow.CanShareOperandBufferWithUser(
-                use.instruction->mutable_operand(use.operand_number),
-                use.operand_index, value.defining_instruction(),
-                value.defining_index())) {
+      case HloOrdering::ExecutionConstraint::kIsSame: {
+        if (use_is_always_before_def_in_same_instr) {
+          return true;
+        }
+
+        HloInstruction* operand =
+            use.instruction->mutable_operand(use.operand_number);
+        HloInstruction* user = value.defining_instruction();
+        auto operand_index_ptr =
+            std::make_unique<ShapeIndex>(use.operand_index);
+
+        if (use.instruction->IsAsynchronous()) {
+          if (value.defining_instruction()->parent() ==
+              use.instruction->async_wrapped_computation()) {
+            if (use.instruction->opcode() == HloOpcode::kAsyncStart) {
+              operand = use.instruction->async_wrapped_computation()
+                            ->parameter_instruction(use.operand_number);
+            } else {
+              CHECK_GT(use.operand_index.size(), 1);
+              operand = use.instruction->async_wrapped_computation()
+                            ->parameter_instruction(use.operand_index.at(1));
+              operand_index_ptr = std::make_unique<ShapeIndex>(
+                  absl::MakeSpan(use.operand_index)
+                      .subspan(2, use.operand_index.size() - 2));
+            }
+          }
+        }
+
+        // If the use is at the instruction where the value is
+        // defined, then the use is before the definition if the instruction
+        // allows buffer sharing (in place computation).
+        if (dataflow.CanShareOperandBufferWithUser(
+                /*operand=*/operand,
+                /*operand_index=*/*operand_index_ptr,
+                /*user=*/user,
+                /*user_index=*/value.defining_index())) {
           VLOG(4)
               << "  use is value def, and instruction can share use buffer.";
           return true;
         }
         break;
+      }
       case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
         // If the use is located in a branch that is exclusive to the branch
         // where value is located, in order for them to interfere, there must be

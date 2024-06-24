@@ -520,6 +520,13 @@ func.func @op_ceil(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "quantized_op_ceil"
+func.func @quantized_op_ceil(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "mhlo.ceil"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "stablehlo.ceil"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+}
+
 // CHECK-LABEL: "op_cholesky"
 func.func @op_cholesky(%arg0: tensor<1x16x16xf32>) -> tensor<1x16x16xf32> {
   //      CHECK: "mhlo.cholesky"([[ARG0:%arg[0-9]+]]) <{
@@ -939,6 +946,13 @@ func.func @op_floor(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: "quantized_op_floor"
+func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>> {
+  // CHECK: "mhlo.floor"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  %0 = "stablehlo.floor"(%arg0) : (tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>) -> tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.0039132908278820561:-128>>
 }
 
 // CHECK-LABEL: "op_gather"
@@ -1616,17 +1630,6 @@ func.func @op_tuple(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   func.return %0 : tuple<tensor<f32>>
 }
 
-// CHECK-LABEL: "op_unary_einsum"
-func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
-  //      CHECK: "mhlo.unary_einsum"([[ARG0:%arg[0-9]+]]) <{
-  // CHECK-SAME:   einsum_config = "ab->a"
-  // CHECK-SAME: }> : (tensor<8x16xf32>) -> tensor<8xf32>
-  %0 = "stablehlo.unary_einsum"(%arg0) {
-    einsum_config = "ab->a"
-  } : (tensor<8x16xf32>) -> tensor<8xf32>
-  func.return %0 : tensor<8xf32>
-}
-
 // CHECK-LABEL: "op_uniform_dequantize"
 func.func @op_uniform_dequantize(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>) -> tensor<f32> {
   // CHECK: "mhlo.uniform_dequantize"([[ARG0:%arg[0-9]+]]) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>) -> tensor<f32>
@@ -1954,4 +1957,15 @@ func.func @op_topk_mhlo_v1(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<
     mhlo.version = 1 : i64
   } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
   func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
+}
+
+// -----
+
+func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
+  // expected-error@+2 {{failed to legalize operation 'stablehlo.unary_einsum' that was explicitly marked illegal}}
+  // expected-error@+1 {{UnaryEinsumOp is deprecated and not supported in MHLO}}
+  %0 = "stablehlo.unary_einsum"(%arg0) {
+    einsum_config = "ab->a"
+  } : (tensor<8x16xf32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
 }

@@ -16,12 +16,22 @@ limitations under the License.
 #ifndef XLA_SERVICE_AR_CRS_COMBINER_H_
 #define XLA_SERVICE_AR_CRS_COMBINER_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

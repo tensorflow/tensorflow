@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {

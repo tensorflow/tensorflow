@@ -30,6 +30,12 @@ int GetNextAllowedBatchSize(int batch_size,
                             const std::vector<int32>& allowed_batch_sizes,
                             bool disable_padding);
 
+// Returns the largest allowed batch size that is smaller than or equal to
+// batch_size. Returns batch_size if no such size exists.
+int GetPrevAllowedBatchSize(int batch_size,
+                            const std::vector<int32>& allowed_batch_sizes,
+                            bool disable_padding);
+
 }  // namespace serving
 }  // namespace tensorflow
 

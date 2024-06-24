@@ -85,6 +85,18 @@ TEST_F(ReferenceUtilTest, ReduceToRowArray2D) {
                                        ErrorSpec(0.0001));
 }
 
+TEST_F(ReferenceUtilTest, Array2DF32ToF64Test) {
+  auto result = ReferenceUtil::Array2DF32ToF64(*matrix_);
+  ASSERT_EQ(result->height(), matrix_->height());
+  ASSERT_EQ(result->width(), matrix_->width());
+  for (int64_t rowno = 0; rowno < matrix_->height(); ++rowno) {
+    for (int64_t colno = 0; colno < matrix_->width(); ++colno) {
+      EXPECT_EQ(static_cast<double>((*matrix_)(rowno, colno)),
+                (*result)(rowno, colno));
+    }
+  }
+}
+
 TEST_F(ReferenceUtilTest, Reduce4Dto1DZeroSizedArray) {
   auto result = LiteralUtil::CreateR1<float>(ReferenceUtil::Reduce4DTo1D(
       Array4D<float>(1, 0, 1, 1), /*init=*/0, /*dims=*/{0, 1, 2},

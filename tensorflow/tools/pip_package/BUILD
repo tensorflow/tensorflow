@@ -85,6 +85,7 @@ filegroup(
     srcs = [
         "//:LICENSE",
         "//third_party/icu/data:LICENSE",
+        "@XNNPACK//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@curl//:COPYING",

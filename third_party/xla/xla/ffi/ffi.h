@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_H_
 #define XLA_FFI_FFI_H_
 
-#include <memory>
 #ifdef XLA_FFI_API_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_API_FFI_H_
@@ -48,6 +47,8 @@ namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
 struct Stream {};             // binds `se::Stream*`
+struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
+struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
 struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
 
@@ -300,6 +301,30 @@ struct CtxDecoding<Stream> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+template <>
+struct CtxDecoding<DeviceOrdinal> {
+  using Type = int32_t;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    return api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
+  }
+};
+
+template <>
+struct CtxDecoding<Allocator> {
+  using Type = se::DeviceMemoryAllocator*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    void* device_allocator =
+        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
+    return reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator);
   }
 };
 

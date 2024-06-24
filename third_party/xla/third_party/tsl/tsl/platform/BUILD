@@ -1557,8 +1557,14 @@ tsl_cc_test(
     ],
     deps = [
         ":logging",
+        ":path",
+        ":stacktrace_handler",
+        ":statusor",
         ":test",
-        ":test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

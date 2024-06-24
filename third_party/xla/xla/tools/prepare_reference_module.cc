@@ -18,11 +18,11 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/despecializer.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"

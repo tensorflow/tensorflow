@@ -15,18 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_SPARSITY_SPARSIFY_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_SPARSITY_SPARSIFY_MODEL_H_
 
+#include "absl/status/status.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace mlir {
 namespace lite {
 
 // Sparsify the `input_model` and write the result to a flatbuffer `builder`.
-TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
-                           flatbuffers::FlatBufferBuilder* builder,
-                           tflite::ErrorReporter* error_reporter);
+absl::Status SparsifyModel(const tflite::ModelT& input_model,
+                           flatbuffers::FlatBufferBuilder* builder);
 }  // namespace lite
 }  // namespace mlir
 

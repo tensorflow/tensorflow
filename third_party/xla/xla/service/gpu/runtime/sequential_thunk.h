@@ -35,7 +35,7 @@ class SequentialThunk : public Thunk {
 
   ThunkSequence& thunks() { return thunks_; }
   const ThunkSequence& thunks() const { return thunks_; }
-  std::string ToStringExtra(int indent) const override;
+  std::string ToString(int indent) const override;
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;

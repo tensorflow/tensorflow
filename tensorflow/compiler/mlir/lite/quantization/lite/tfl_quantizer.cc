@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/stderr_reporter.h"
 
 using llvm::cl::opt;
 
@@ -38,11 +37,10 @@ namespace {
 
 TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
                                     std::string& output_buffer) {
-  tflite::StderrReporter error_reporter;
   return mlir::lite::QuantizeModel(
       buffer, tflite::TensorType_INT8, tflite::TensorType_INT8,
       tflite::TensorType_INT8, {}, /*disable_per_channel=*/false,
-      /*fully_quantize=*/true, output_buffer, &error_reporter);
+      /*fully_quantize=*/true, output_buffer);
 }
 
 }  // namespace

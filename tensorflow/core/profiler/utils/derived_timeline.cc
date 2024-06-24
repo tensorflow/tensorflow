@@ -39,11 +39,14 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/convert/xla_op_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/group_events.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/timespan.h"
 #include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/trace_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -507,6 +510,61 @@ void DeriveLinesFromStats(XPlane* device_trace) {
   }
 
   RemoveEmptyLines(device_trace);
+}
+
+void DeriveLinesForXlaCpuOps(XPlane* host_trace) {
+  if (host_trace == nullptr ||
+      !absl::StartsWith(host_trace->name(), kHostThreadsPlaneName))
+    return;
+  XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
+  XPlane destination_plane;
+  XPlaneBuilder plane_builder(&destination_plane);
+  int64_t line_id = tsl::profiler::kThreadIdHostXlaRegionStart;
+  visitor.ForEachLine([&](const XLineVisitor& line) {
+    int64_t start_timestamp_ns = line.TimestampNs();
+    DerivedXLineBuilder tf_ops(
+        &plane_builder, line_id++,
+        absl::StrCat(line.Name(), "-",
+                     tensorflow::profiler::kTensorFlowOpLineName),
+        start_timestamp_ns, {});
+    DerivedXLineBuilder tf_name_scope(
+        &plane_builder, line_id++,
+        absl::StrCat(line.Name(), "-",
+                     tensorflow::profiler::kTensorFlowNameScopeLineName),
+        start_timestamp_ns, {&tf_ops});
+    DerivedXLineBuilder xla_cpu_ops(
+        &plane_builder, line_id++,
+        absl::StrCat(line.Name(), "-", tsl::profiler::kXlaModuleLineName),
+        start_timestamp_ns, {});
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      std::optional<std::string> hlo_module_name;
+      std::optional<std::string> framework_op_name;
+      event.ForEachStat([&](const XStatVisitor& stat) {
+        if (!stat.Type().has_value()) return;
+        // TODO: Add additional stats for framework ops.
+        switch (stat.Type().value()) {
+          case StatType::kHloModule:
+            hlo_module_name = stat.StrOrRefValue();
+            break;
+          case StatType::kTfOp:
+            framework_op_name = stat.StrOrRefValue();
+            break;
+        }
+      });
+      if (hlo_module_name.has_value()) {
+        xla_cpu_ops.ExpandOrAddEvent(
+            *plane_builder.GetOrCreateEventMetadata(*hlo_module_name),
+            event.GetTimespan(), std::nullopt);
+      }
+
+      if (framework_op_name.has_value()) {
+        ProcessTfOpEvent(*framework_op_name, event.GetTimespan(), std::nullopt,
+                         plane_builder, tf_name_scope, tf_ops);
+      }
+    });
+  });
+  RemoveEmptyLines(&destination_plane);
+  MergePlanes(destination_plane, host_trace);
 }
 
 }  // namespace profiler

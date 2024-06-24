@@ -58,10 +58,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // MLIR emitters only support race-free reductions.
     // TODO(jreiffers: Verify performance and implement atomics for reductions
     // if needed.
-    if (!hlo->GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_mlir_emitters() &&
+    if (hlo->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_mlir_emitter_level() < 4 &&
         IsMinMaxReduction(hlo)) {
       // TODO(cheshire): Also enable for integers.
       VLOG(1) << "Not performing tree expansion on min/max-reduction: "
@@ -84,6 +84,40 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
              reduction_kind == ReductionKind::MIN;
     }
     return false;
+  }
+
+  // We observe larger n_div_k can improve tree reduction performance in most of
+  // the cases by reducing memory store and the launch overhead of blocks. Swap
+  // k and n_div_k if possible.
+  bool ShouldSwapInnerAndOuterReducedMinorDimension(uint64_t k,
+                                                    uint64_t n_div_k,
+                                                    uint64_t n,
+                                                    int64_t race_free_bound,
+                                                    bool is_row_reduction) {
+    CHECK(k >= n_div_k);
+    // Keep inner reduction as race free.
+    if (k > race_free_bound) {
+      return false;
+    }
+    // Swapping only affects row reduction vectorization.
+    if (is_row_reduction) {
+      // Rough conditions for row reduction vectorization, not mean that
+      // vectorization will definitely occur.
+      bool maybe_vectorized = n_div_k % 2 == 0 && n % 2 == 0;
+      if (maybe_vectorized) {
+        // Swap if n_div_k is small enough or k dim can be vectorized also.
+        return n_div_k * 2 < k || k % 2 == 0;
+      }
+      // Current reduction emitter only checks reduction input dimensions but
+      // not fusion input dimensions. Due to pad and inner reduction always fuse
+      // into same computation, it may leads to each thread reads multiple non
+      // aligned elements but can not vectorized so that get bad performance.
+      // Don't swap If encountered this situation.
+      return n % 2 == 0 || k % 2 != 0;
+    }
+    // There exists no specific situation where swapping has no performance gain
+    // for column reduction.
+    return true;
   }
 
   absl::Status RewriteReduction(HloInstruction *hlo) {
@@ -162,6 +196,18 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     uint64_t padded_n = n + minimum_padding;
+    // We get the best {k, n_div_k} pair by the size of padding and whether
+    // index computation is fast. But we ignored the overhead of memory
+    // read/write and blocks launch, which are also important for kernel
+    // performance. It is obvious that the swapped {k, n_div_k} pairs has same
+    // padding size and consumption of index computation as the original. So we
+    // only need to compare the memory read/write and blocks launch to choose
+    // the better one of them.
+    uint64_t best_n_div_k = padded_n / best_k;
+    if (ShouldSwapInnerAndOuterReducedMinorDimension(
+            best_k, best_n_div_k, n, race_free_bound, is_row_reduction)) {
+      std::swap(best_k, best_n_div_k);
+    }
 
     // Pad reduced dimension to the required number of elements.
     bool no_padding_necessary = n == padded_n;

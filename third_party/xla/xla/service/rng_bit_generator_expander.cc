@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/rng_bit_generator_expander.h"
 
+#include "absl/status/statusor.h"
 #include "xla/client/lib/prng.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

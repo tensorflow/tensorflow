@@ -120,6 +120,14 @@ class AlgebraicSimplifierOptions {
     return enable_dot_to_multiply_rewrite_;
   }
 
+  void set_enable_move_dot_param_to_rhs(bool enable_move_dot_param_to_rhs) {
+    enable_move_dot_param_to_rhs_ = enable_move_dot_param_to_rhs;
+  }
+
+  bool enable_move_dot_param_to_rhs() const {
+    return enable_move_dot_param_to_rhs_;
+  }
+
   // This platform will not run the DotDecomposer to canonicalize dots.
   void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
     supports_non_canonical_dots_ = supports_non_canonical_dots;
@@ -239,6 +247,12 @@ class AlgebraicSimplifierOptions {
         enable_unconditional_reduce_of_concat_replacement;
   }
 
+  // Indicates whether running on CPU
+  bool executing_on_cpu() const { return executing_on_cpu_; }
+  void set_executing_on_cpu(bool executing_on_cpu) {
+    executing_on_cpu_ = executing_on_cpu;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -258,6 +272,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_strength_reduction_{true};
   bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
+  bool enable_move_dot_param_to_rhs_{false};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
   bool enable_scalar_multiply_reduction_{false};
@@ -271,6 +286,7 @@ class AlgebraicSimplifierOptions {
   bool minmax_propagate_nan_{true};
   bool enable_unconditional_reduce_of_concat_replacement_{true};
   bool use_associative_reordering_{false};
+  bool executing_on_cpu_{false};
   double associative_reordering_threshold_{2.0};
   Metadata metadata_;
 };
@@ -489,6 +505,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //   RHS [batch dims..., contracting dim, non-contracting dim].
   absl::StatusOr<bool> RemoveTransposesFromDotOperands(HloDotInstruction* dot);
 
+  // Swap the operands of dots, if one operand is "parameter-like" (i.e. a
+  // parameter, or a pointwise transformation of a parameter), so the
+  // "parameter-like" operand (e.g. a weight tensor) is placed on the RHS.
+  absl::StatusOr<bool> MoveDotParamToRhs(HloDotInstruction* dot);
+
   // Helper method to perform and add reduction on a list of dimensions.
   HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64_t> dims,
                             PrimitiveType type);
@@ -575,6 +596,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to swap convolution operands if they would result in a more efficient
   // convolution.
   absl::StatusOr<bool> SwapConvOperands(HloInstruction* convolution);
+
+  // Checks if the given convolution is in BF16 and is oneDNN rewritable, if not
+  // then it promotes the data type of the convolution to F32
+  absl::StatusOr<bool> IsOneDnnRewritableBF16Conv(HloInstruction** convolution);
 
   // Tries to use a kDot in place of the given convolution.
   absl::StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);

@@ -70,6 +70,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_softmax.h"
@@ -547,6 +548,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnConvolution);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 

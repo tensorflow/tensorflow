@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace llvm {

@@ -1994,27 +1994,33 @@ class ConvertMatrixDiagPartV3Op
   }
 };
 
-// Converts TensorFlow EinsumOp to either HLO EinsumOp or UnaryEinsumOp
-// depending on arity of the op.
+// Converts TensorFlow EinsumOp to HLO EinsumOp
 class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::EinsumOp op,
                                 PatternRewriter &rewriter) const override {
-    StringAttr equation = op->getAttrOfType<StringAttr>("equation");
+    // Prepend `,` to equation if unary einsum.
+    std::string equation_str = op.getEquation().str();
+    llvm::SmallVector<Value, 2> inputs;
+
+    // Unary einsum prepends `,` to equation and
+    // creates a scalar constant 1.0 for first operand.
     if (op.getN() == 1) {
-      rewriter.replaceOpWithNewOp<UnaryEinsumOp>(
-          op, op.getType(), *op.getInputs().begin(), equation);
-    } else if (op.getN() == 2) {
-      ValueRange inputs = op.getInputs();
-      rewriter.replaceOpWithNewOp<EinsumOp>(op, op.getType(), inputs[0],
-                                            inputs[1], equation);
-    } else {
-      // TensorFlow EinsumOp verifies that the number of operands are at most
-      // two.
-      return failure();
+      equation_str = "," + equation_str;
+      inputs.push_back(rewriter.create<ConstantOp>(
+          op.getLoc(), hlo::getScalarOfType(
+                           mlir::getElementTypeOrSelf(op.getOperand(0)), 1)));
     }
+    // Insert remaining operands into inputs, TF op verifier requires there be
+    // 0 or 1 operands.
+    auto operands = op.getInputs();
+    inputs.insert(inputs.end(), operands.begin(), operands.end());
+    assert(inputs.size() == 2);
+
+    rewriter.replaceOpWithNewOp<EinsumOp>(op, op.getType(), inputs[0],
+                                          inputs[1], equation_str);
     return success();
   }
 };
@@ -6765,7 +6771,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
               UpdateElementTypeTo(original_ty, element_types[block_idx]);
           signature.addInputs(block_idx, {updated_ty});
         }
-        rewriter.applySignatureConversion(&region, signature);
+        rewriter.applySignatureConversion(&region.front(), signature);
       }
     }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/tsl/framework/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/bfc_allocator.h"
 
 namespace tensorflow {
 

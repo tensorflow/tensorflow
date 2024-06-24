@@ -73,9 +73,13 @@ MlirEmitterTestBaseImpl::MlirEmitterTestBaseImpl() {
 
 DebugOptions MlirEmitterTestBaseImpl::GetDebugOptionsForTest() {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
+<<<<<<< HEAD
 #ifdef GOOGLE_CUDA
   debug_options.set_xla_gpu_enable_mlir_emitters(true);
 #endif //GOOGLE_CUDA
+=======
+  debug_options.set_xla_gpu_mlir_emitter_level(4);
+>>>>>>> upstream/master
   return debug_options;
 }
 

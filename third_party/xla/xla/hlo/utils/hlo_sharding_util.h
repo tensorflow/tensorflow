@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 
@@ -352,6 +353,14 @@ GetGatherScatterIndexPassthroughOutputOrUpdateDims(
     const int64_t output_or_update_rank,
     absl::Span<const int64_t> offset_or_window_dims);
 
+// Infer output sharding on index parallel dimensions for gather/scatter from
+// gather operand/indices or scatter operands/indices/updates.
+HloSharding InferGatherScatterParallelShardingFromOperandSharding(
+    const HloSharding& operand_sharding, const Shape& operand_shape,
+    const Shape& shape,
+    absl::Span<const int64_t> output_aligned_operand_parallel_dims,
+    absl::Span<const int64_t> output_parallel_dims);
+
 // Returns the parallel dimensions of the data operand of a gather/scatter with
 // the order of the parallel dimensions matching that of the parallel dimensions
 // of the indices.
@@ -497,6 +506,35 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, bool update_output_layout,
     bool update_parameters_layout);
+
+// Returns true iff the specified hlo or sharding has a spatially partitioned
+// sharding (tiled or replicated) that can be propagated by sharding
+// propagation.
+bool IsSpatiallyPartitioned(const HloSharding& sharding);
+
+// Similar to above but takes a instruction as an input.
+inline bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
+  return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
+}
+
+// Implementation for returning a improved sharding from another sharding.
+std::optional<HloSharding> ReturnImprovedShardingImpl(
+    HloSharding from, const HloSharding* to_improved,
+    const Shape& to_improved_shape, bool may_combine_partial_sharding,
+    bool allow_aggressive_resharding = false);
+
+// Infers the sharding of the operand of a dot operation.
+//
+// If `operand_index` is 0, the sharding of the LHS is inferred. If it is 1,
+// the sharding of the RHS is inferred.
+//
+// If `consider_other_operand` is true, the sharding of the other operand is
+// considered. `may_combine_partial_sharding` is used when considering other
+// operand.
+HloSharding InferDotOperandSharding(
+    const HloInstruction* dot, int64_t operand_index,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool consider_other_operand, bool may_combine_partial_sharding);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

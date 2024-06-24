@@ -46,6 +46,9 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
@@ -68,9 +71,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/framework/device_id_utils.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
@@ -1930,7 +1930,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*allocator=*/std::move(allocator_adapter),
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
-              /*gpu_run_options=*/std::move(gpu_run_options));
+              /*gpu_run_options=*/std::move(gpu_run_options),
+              /*kv_store=*/nullptr);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

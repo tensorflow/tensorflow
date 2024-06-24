@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -63,11 +64,10 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/threadpool.h"
 
@@ -287,8 +287,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override;
-  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
@@ -416,7 +414,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                LookupAddressableDevice(device_ordinal).value())
+                LookupAddressableDevice(xla::PjRtLocalDeviceId(device_ordinal))
+                    .value())
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
@@ -685,7 +684,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     void SetState(State state) { state_ = state; }
 
     // Sets buffer_ and status_. Called by parent_ to initialize the hold.
-    void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
+    void Acquire(
+        absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
     // Releases the contents of *this, so *this can subsequently be
     // deleted without releasing the parent's hold. Should be passed to the
     // appropriate constructor of another ScopedHold, e.g., when a hold must be

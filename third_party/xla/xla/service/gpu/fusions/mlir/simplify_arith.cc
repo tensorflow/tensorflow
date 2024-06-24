@@ -44,21 +44,21 @@ Interval::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred,
                                         Interval lhs, Interval rhs) {
   switch (pred) {
     case mlir::arith::CmpIPredicate::eq:
-      return lhs == rhs;
+      return lhs.Eq(rhs);
     case mlir::arith::CmpIPredicate::ne:
-      return lhs != rhs;
+      return lhs.Ne(rhs);
     case mlir::arith::CmpIPredicate::slt:
     case mlir::arith::CmpIPredicate::ult:
-      return lhs < rhs;
+      return lhs.Lt(rhs);
     case mlir::arith::CmpIPredicate::sle:
     case mlir::arith::CmpIPredicate::ule:
-      return lhs <= rhs;
+      return lhs.Le(rhs);
     case mlir::arith::CmpIPredicate::sgt:
     case mlir::arith::CmpIPredicate::ugt:
-      return lhs > rhs;
+      return lhs.Gt(rhs);
     case mlir::arith::CmpIPredicate::sge:
     case mlir::arith::CmpIPredicate::uge:
-      return lhs >= rhs;
+      return lhs.Ge(rhs);
   }
 }
 
@@ -93,9 +93,9 @@ struct RewriteMaxSi : mlir::OpRewritePattern<mlir::arith::MaxSIOp> {
     if (!lhs || !rhs) {
       return rewriter.notifyMatchFailure(op, "failed to deduce input ranges");
     }
-    if (auto lhs_ge_rhs = *lhs >= *rhs; lhs_ge_rhs == true) {
+    if (auto lhs_ge_rhs = lhs->Ge(*rhs); lhs_ge_rhs == true) {
       rewriter.replaceOp(op, op.getLhs());
-    } else if (auto rhs_ge_lhs = *rhs >= *lhs; rhs_ge_lhs == true) {
+    } else if (auto rhs_ge_lhs = rhs->Ge(*lhs); rhs_ge_lhs == true) {
       rewriter.replaceOp(op, op.getRhs());
     } else {
       return rewriter.notifyMatchFailure(op, "not equal to lhs or rhs");
@@ -114,9 +114,9 @@ struct RewriteMinSi : mlir::OpRewritePattern<mlir::arith::MinSIOp> {
     if (!lhs || !rhs) {
       return rewriter.notifyMatchFailure(op, "failed to deduce input ranges");
     }
-    if (auto lhs_le_rhs = *lhs <= *rhs; lhs_le_rhs == true) {
+    if (auto lhs_le_rhs = lhs->Le(*rhs); lhs_le_rhs == true) {
       rewriter.replaceOp(op, op.getLhs());
-    } else if (auto rhs_le_lhs = *rhs <= *lhs; rhs_le_lhs == true) {
+    } else if (auto rhs_le_lhs = rhs->Le(*lhs); rhs_le_lhs == true) {
       rewriter.replaceOp(op, op.getRhs());
     } else {
       return rewriter.notifyMatchFailure(op, "not equal to lhs or rhs");

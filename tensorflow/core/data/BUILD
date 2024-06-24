@@ -140,7 +140,7 @@ cc_library(
         "//tensorflow/core/kernels:function_ops",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework/fixedpoint",
+        "@local_xla//xla/tsl/framework/fixedpoint",
     ],
 )
 

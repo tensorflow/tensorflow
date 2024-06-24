@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace mlir {
 namespace lite {
@@ -51,8 +50,8 @@ TfLiteStatus QuantizeModel(
     const tflite::TensorType &inference_type,
     const std::unordered_set<std::string> &operator_names,
     bool disable_per_channel, bool fully_quantize, std::string &output_buffer,
-    tflite::ErrorReporter *error_reporter, bool verify_numeric = false,
-    bool whole_model_verify = false, bool legacy_float_scale = true,
+    bool verify_numeric = false, bool whole_model_verify = false,
+    bool legacy_float_scale = true,
     const absl::flat_hash_set<std::string> &denylisted_ops = {},
     const absl::flat_hash_set<std::string> &denylisted_nodes = {},
     bool enable_variable_quantization = false,

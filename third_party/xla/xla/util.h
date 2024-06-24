@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -31,7 +30,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"

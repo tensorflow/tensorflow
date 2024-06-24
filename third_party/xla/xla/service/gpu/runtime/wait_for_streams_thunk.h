@@ -27,25 +27,22 @@ namespace xla::gpu {
 class WaitForStreamsThunk : public Thunk {
  public:
   WaitForStreamsThunk(ThunkInfo thunk_info, ExecutionStreamId stream_id,
-                      std::vector<ExecutionStreamId> wait_for_stream_ids)
+                      ExecutionStreamId wait_for_stream_id)
       : Thunk(Kind::kWaitForStreams, thunk_info),
         stream_id_(stream_id),
-        wait_for_stream_ids_(wait_for_stream_ids){};
+        wait_for_stream_id_(wait_for_stream_id) {};
 
   WaitForStreamsThunk(const WaitForStreamsThunk&) = delete;
   WaitForStreamsThunk& operator=(const WaitForStreamsThunk&) = delete;
 
   const ExecutionStreamId& stream_id() const { return stream_id_; }
-
-  const std::vector<ExecutionStreamId>& wait_for_stream_ids() const {
-    return wait_for_stream_ids_;
-  }
+  ExecutionStreamId wait_for_stream_id() const { return wait_for_stream_id_; }
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   ExecutionStreamId stream_id_;
-  std::vector<ExecutionStreamId> wait_for_stream_ids_;
+  ExecutionStreamId wait_for_stream_id_;
 };
 
 }  // namespace xla::gpu

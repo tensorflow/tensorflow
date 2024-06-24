@@ -171,10 +171,6 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     // CHECK: %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[INDEX_2]]]
 
     // CHECK: return %[[INSERTED_2]]
-
-    // CHECK: func.func private @fused_computation_log
-    // CHECK: func.func private @fused_computation_exp
-    // CHECK: func.func private @fused_computation_neg
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

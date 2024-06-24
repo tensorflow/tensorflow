@@ -45,6 +45,8 @@ package(
 # List of exported source files.
 exports_files(
     srcs = [
+        "bad_indices_policy.cc",
+        "bad_indices_policy.h",
         "event.proto",
         "example_proto_fast_parsing_test.proto",
         "image_resizer_state.h",
@@ -772,6 +774,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([

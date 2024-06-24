@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/memory.h"
 
 namespace mlir {
 namespace OpTrait {

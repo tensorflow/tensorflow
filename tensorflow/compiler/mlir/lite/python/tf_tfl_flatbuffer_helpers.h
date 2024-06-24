@@ -61,7 +61,7 @@ Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
-    SavedModelBundle* saved_model_bundle,
+    std::unique_ptr<SavedModelBundle> saved_model_bundle,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
 // Give a warning for any unused flags that have been specified.

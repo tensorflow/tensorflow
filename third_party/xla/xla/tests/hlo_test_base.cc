@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/layout_util.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"

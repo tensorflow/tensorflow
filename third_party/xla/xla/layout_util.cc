@@ -825,4 +825,26 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
   return max_elements_in;
 }
 
+/*static*/ Shape LayoutUtil::GetPhysicalShapeFromLogicalShape(
+    const Shape& logical_shape) {
+  Shape physical_shape = logical_shape;
+  if (!logical_shape.has_layout()) {
+    return physical_shape;
+  }
+  // Use physical dimensions with descending layout.
+  // [128,64]{0,1} -> [64,128]{1,0}
+  for (int i = 0; i < logical_shape.rank(); ++i) {
+    physical_shape.mutable_dimensions()[i] =
+        logical_shape
+            .dimensions()[LayoutUtil::Major(logical_shape.layout(), i)];
+    VLOG(1) << "physical_shape[" << i << "]: " << logical_shape.dimensions()[i];
+  }
+  // Update to descending layout but keep the tiling information
+  for (int i = 0; i < logical_shape.rank(); ++i) {
+    physical_shape.mutable_layout()->set_minor_to_major(
+        i, logical_shape.rank() - i - 1);
+  }
+  return physical_shape;
+}
+
 }  // namespace xla

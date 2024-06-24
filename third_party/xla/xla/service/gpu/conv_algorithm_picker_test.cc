@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_algorithm_picker.h"
 
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -23,10 +24,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -60,8 +63,12 @@ ENTRY main {
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
 
+  const se::GpuComputeCapability& cc = backend()
+                                           .default_stream_executor()
+                                           ->GetDeviceDescription()
+                                           .gpu_compute_capability();
   bool changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(cc), m.get()));
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
@@ -85,7 +92,7 @@ ENTRY main {
   // should have the new scratch bytes.
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(cc), m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
@@ -102,6 +109,20 @@ ENTRY main {
       conv->shape(),
       GmockMatch(m::Shape().WithSubshape(
           {1}, m::Shape().WithElementType(U8).WithDims({new_scratch_bytes}))));
+
+  // Algorithm 14 is disabled for cuDNN 9 on V100
+  TF_ASSERT_OK_AND_ASSIGN(auto dnn_version, GetDnnVersionInfo(stream_exec));
+  if (dnn_version.major_version() >= 9 && dnn_version.major_version() < 10 &&
+      std::holds_alternative<stream_executor::CudaComputeCapability>(cc) &&
+      std::get<stream_executor::CudaComputeCapability>(cc).major == 7 &&
+      std::get<stream_executor::CudaComputeCapability>(cc).minor == 0) {
+    EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                    ->has_cudnn_conv_backend_config() &&
+                conv->backend_config<GpuBackendConfig>()
+                        ->cudnn_conv_backend_config()
+                        .algorithm()
+                        .algo_id() != 14);
+  }
 }
 
 }  // namespace

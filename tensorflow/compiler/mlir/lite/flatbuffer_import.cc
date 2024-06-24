@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -73,6 +74,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
@@ -95,7 +97,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tsl/platform/status.h"
@@ -1630,6 +1631,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   if (!disable_vhlo_to_stablehlo) {
     mlir::PassManager pass_manager(module.getContext());
     pass_manager.addPass(mlir::odml::createLegalizeVhloToStablehloPass());
+    pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
     auto result = pass_manager.run(module);
     if (failed(result)) {
       return nullptr;

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/execution_options_util.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
@@ -172,8 +172,7 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
   output.set_deduplicate_hlo(deduplicate_hlo());
   if (has_device_assignment()) {
-    TF_RETURN_IF_ERROR(
-        device_assignment().Serialize(output.mutable_device_assignment()));
+    device_assignment().Serialize(output.mutable_device_assignment());
   }
   output.set_alias_passthrough_params(alias_passthrough_params());
   output.set_run_backend_only(run_backend_only());
@@ -293,8 +292,8 @@ ExecutionOptions CreateExecutionOptions(
     }
   }
   if (build_options.has_device_assignment()) {
-    TF_CHECK_OK(build_options.device_assignment().Serialize(
-        execution_options.mutable_device_assignment()));
+    build_options.device_assignment().Serialize(
+        execution_options.mutable_device_assignment());
   }
   execution_options.set_alias_passthrough_params(
       build_options.alias_passthrough_params());

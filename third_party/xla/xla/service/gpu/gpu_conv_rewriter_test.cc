@@ -31,9 +31,11 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -93,8 +95,15 @@ class GpuConvRewriterTest : public HloTestBase {
   }
 
  protected:
+  const se::GpuComputeCapability& GetComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
   bool RunPass(HloModule* module) {
-    return GpuConvRewriter().Run(module).value();
+    return GpuConvRewriter(GetComputeCapability()).Run(module).value();
   }
 
   // A convolution window with stride 1 and zero padding. The size fields are
@@ -738,6 +747,64 @@ TEST_F(GpuConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
                   m::CustomCall({kCudnnConvBackwardInputCallTarget},
                                 m::Reshape(), m::Reshape()),
                   0)));
+}
+
+TEST_F(GpuConvRewriterTest, TestInvalidTypes) {
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = TYPE[1,17,9,9] parameter(0)
+      filter = TYPE[3,3,17,32] parameter(1)
+      ROOT conv = TYPE[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })");
+
+  // Test complex types
+  for (std::string_view type : {"c64", "c128"}) {
+    const std::string module_with_type =
+        absl::StrReplaceAll(module_str, {{"TYPE", type}});
+    TF_ASSERT_OK_AND_ASSIGN(auto m,
+                            ParseAndReturnVerifiedModule(module_with_type));
+
+    absl::Status s =
+        GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
+    EXPECT_THAT(
+        s, tsl::testing::StatusIs(
+               absl::StatusCode::kUnimplemented,
+               ::testing::HasSubstr("Convolutions must have floating-point or "
+                                    "integral operands/outputs")));
+  }
+
+  // Test FP8 type on unsupported GPUs
+  std::string module_with_type =
+      absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fn"}});
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(module_with_type));
+  absl::Status s = GpuConvRewriter(se::CudaComputeCapability::Ampere())
+                       .Run(m.get())
+                       .status();
+  EXPECT_THAT(s, tsl::testing::StatusIs(
+                     absl::StatusCode::kUnimplemented,
+                     ::testing::HasSubstr(
+                         "FP8 convolutions are only supported on CUDA "
+                         "GPUs with compute capability at least 9.0")));
+  s = GpuConvRewriter(se::RocmComputeCapability{"gfx942"})
+          .Run(m.get())
+          .status();
+  EXPECT_THAT(s, tsl::testing::StatusIs(
+                     absl::StatusCode::kUnimplemented,
+                     ::testing::HasSubstr(
+                         "FP8 convolutions are only supported on CUDA GPUs")));
+
+  // Test unsupported FP8 type
+  module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
+  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
+  s = GpuConvRewriter(GetComputeCapability()).Run(m.get()).status();
+  EXPECT_THAT(s,
+              tsl::testing::StatusIs(
+                  absl::StatusCode::kUnimplemented,
+                  ::testing::HasSubstr("The only FP8 types supported in "
+                                       "convolutions are f8e5m2 and f8e4m3")));
 }
 
 }  // anonymous namespace

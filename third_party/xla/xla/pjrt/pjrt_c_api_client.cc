@@ -67,12 +67,11 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -333,11 +332,6 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
-    int local_hardware_id) const {
-  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
-}
-
-absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
     PjRtLocalDeviceId local_device_id) const {
   PJRT_Client_LookupAddressableDevice_Args args;
   args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
@@ -397,12 +391,11 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
-      xla::SerializeUsingNativeBytecode(
-          module, plugin_attributes()->pjrt_c_api_minor_version));
+      xla::Serialize(module, plugin_attributes()->pjrt_c_api_minor_version,
+                     xla::GetDefaultStablehloVersion()));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -1174,17 +1167,12 @@ PjRtCApiExecutable::GetHloModules() const {
       return xla::Internal("failed to convert to MHLO");
     // TODO(jieying): Tuple args should really come from GetCompileOptions (or
     // equivalent) once implemented.
-    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module.get(), &hlo_proto,
-                                                 /*use_tuple_args=*/false,
-                                                 /*return_tuple=*/false));
-    xla::DebugOptions debug_options;
-    TF_ASSIGN_OR_RETURN(xla::HloModuleConfig module_config,
-                        xla::HloModule::CreateModuleConfigFromProto(
-                            hlo_proto.hlo_module(), debug_options));
+    mlir::MlirToHloConversionOptions options;
+    options.return_tuple = false;
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
+                        mlir::ConvertMlirHloToHloModule(module.get(), options));
+
     std::vector<std::shared_ptr<HloModule>> out;
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> hlo_module,
-        HloModule::CreateFromProto(hlo_proto.hlo_module(), module_config));
     out.push_back(std::move(hlo_module));
     return out;
   }
@@ -2339,13 +2327,13 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
   std::optional<int64_t> plugin_version;
   if (client) {
     plugin_version = client->plugin_attributes()->pjrt_c_api_minor_version;
   }
-  TF_ASSIGN_OR_RETURN(std::string serialized, xla::SerializeUsingNativeBytecode(
-                                                  module, plugin_version));
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::Serialize(module, plugin_version,
+                                     xla::GetDefaultStablehloVersion()));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);

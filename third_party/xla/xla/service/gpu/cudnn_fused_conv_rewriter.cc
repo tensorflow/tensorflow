@@ -40,28 +40,23 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/util.h"
-#include "tsl/platform/ml_dtypes.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"
-#endif
-
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -667,10 +662,17 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 // 5. Optionally calculate the maximum of the absolute of the result.
 // 6. Optionally cast the output back to FP8.
 absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
-                                 se::CudaComputeCapability cc) {
+                                 se::CudaComputeCapability cc,
+                                 se::dnn::VersionInfo dnn_version,
+                                 int32_t toolkit_version) {
   bool changed = false;
 
-#if CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
+  if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
+    return false;
+  }
+  if (toolkit_version < 12000) {
+    return false;
+  }
   if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
     return false;
   }
@@ -768,7 +770,6 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
       changed = true;
     }
   }
-#endif  // CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
   return changed;
 }
 
@@ -1493,7 +1494,8 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     // ForwardGraph Custom Call.
     if (!IsROCm(compute_capability_)) {
       auto cc = std::get<se::CudaComputeCapability>(compute_capability_);
-      TF_ASSIGN_OR_RETURN(changed, F8GraphConv(comp, cc));
+      TF_ASSIGN_OR_RETURN(
+          changed, F8GraphConv(comp, cc, dnn_version_, toolkit_version_));
       if (changed) {
         return changed;
       }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -209,8 +209,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 
   if (fusion_backend_config_.kind() == kTritonFusionKind ||
-      fusion_backend_config_.kind() == kTritonGemmFusionKind ||
-      fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
+      fusion_backend_config_.kind() == kTritonGemmFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 

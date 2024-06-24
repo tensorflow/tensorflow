@@ -35,10 +35,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

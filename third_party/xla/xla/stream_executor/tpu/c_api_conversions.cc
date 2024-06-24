@@ -554,7 +554,7 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
 
   if (config.has_static_device_assignment()) {
     xla::DeviceAssignmentProto dev_proto;
-    config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
+    config.static_device_assignment().Serialize(&dev_proto);
     hlo_config.static_device_assignment =
         stream_executor::tpu::SerializeProto(dev_proto);
   }

@@ -288,7 +288,8 @@ void BuildProfilerSubmodule(nb::module_& m) {
             fdo_profiles;
         for (const nb::bytes& profile : profiles) {
           tensorflow::profiler::ProfiledInstructionsProto profile_proto;
-          profile_proto.ParseFromString(profile.c_str());
+          profile_proto.ParseFromString(
+              std::string(profile.c_str(), profile.size()));
           fdo_profiles.push_back(std::move(profile_proto));
         }
 

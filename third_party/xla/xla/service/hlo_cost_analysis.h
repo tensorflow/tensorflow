@@ -23,12 +23,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -549,6 +549,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   float bytes_accessed() const;
   float optimal_seconds() const;
 
+  Properties properties(const HloInstruction& hlo) const;
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   //

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace {
@@ -173,9 +174,9 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(MainForCpu)) {
                                       module_->ToString()));
 
   const std::string output_path =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_output");
   const std::string result_file =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
@@ -183,6 +184,11 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(MainForCpu)) {
   options.platform = "cpu";
   options.result_output_file = result_file;
   TF_EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
@@ -192,9 +198,9 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
                                       module_->ToString()));
 
   const std::string output_path =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
   const std::string result_file =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
@@ -203,6 +209,11 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
   options.result_output_file = result_file;
   options.gpu_options.use_attached_device = true;
   TF_EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }
 
 }  // namespace

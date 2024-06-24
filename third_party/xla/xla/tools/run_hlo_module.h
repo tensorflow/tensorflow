@@ -91,6 +91,13 @@ absl::Status RunAndCompare(
     std::function<absl::Status(const RunHloModuleOptions& options,
                                HloModule& module)>
         compilation_env_modifier_hook = {});
+
+// Read the input literals from 'file_path'. The file can be either a binary
+// proto or a text proto. If it doesn't contain a RunHloModuleLiterals proto, it
+// will fallback to reading a RunHloModuleIterationLiterals proto and use that
+// for the first entry in 'iterations'.
+void ReadInputLiteralsFromFile(const std::string& file_path,
+                               xla::RunHloModuleLiterals* input_literals_proto);
 }  // namespace xla
 
 #endif  // XLA_TOOLS_RUN_HLO_MODULE_H_

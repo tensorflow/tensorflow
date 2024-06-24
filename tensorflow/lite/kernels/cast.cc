@@ -38,23 +38,35 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 void copyCast(const float* in, int32_t* out, int num_elements) {
-  float min_int_float =
-      std::nextafterf((float)std::numeric_limits<int32_t>::min(), 0);
-  float max_int_float =
-      std::nextafterf((float)std::numeric_limits<int32_t>::max(), 0);
+  const float min_int_float =
+      static_cast<float>(std::numeric_limits<int32_t>::min());
+  const float max_int_float = std::nextafterf(
+      static_cast<float>(std::numeric_limits<int32_t>::max()), 0);
+
   std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<int32_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
+    return a <= max_int_float ? static_cast<int32_t>(std::max(a, min_int_float))
+                              : std::numeric_limits<int32_t>::max();
   });
 }
 
 void copyCast(const float* in, int16_t* out, int num_elements) {
-  float min_int_float =
-      std::nextafterf((float)std::numeric_limits<int16_t>::min(), 0);
-  float max_int_float =
-      std::nextafterf((float)std::numeric_limits<int16_t>::max(), 0);
+  const float min_int_float =
+      static_cast<float>(std::numeric_limits<int16_t>::min());
+  const float max_int_float =
+      static_cast<float>(std::numeric_limits<int16_t>::max());
   std::transform(in, in + num_elements, out, [=](float a) {
     return static_cast<int16_t>(
+        std::max(std::min(a, max_int_float), min_int_float));
+  });
+}
+
+void copyCast(const float* in, uint8_t* out, int num_elements) {
+  const float min_int_float =
+      static_cast<float>(std::numeric_limits<uint8_t>::min());
+  const float max_int_float =
+      static_cast<float>(std::numeric_limits<uint8_t>::max());
+  std::transform(in, in + num_elements, out, [=](float a) {
+    return static_cast<uint8_t>(
         std::max(std::min(a, max_int_float), min_int_float));
   });
 }

@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 // Implements legalization and post-legalization optimization helper functions
 

@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {

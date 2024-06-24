@@ -126,6 +126,25 @@ TEST_F(MlirInputSlicesFusionTest, SliceOfPad) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirInputSlicesFusionTest, ZeroSlice) {
+  auto kHloString = R"(
+    fusion {
+      %p0 = s32[0] parameter(0)
+      %p1 = s32[2] parameter(1)
+      %concatenate = s32[2] concatenate(p0, p1), dimensions={0}
+      %slice = s32[0] slice(%concatenate), slice={[0:0]}
+      %slice.1 = s32[2] slice(%concatenate), slice={[0:2]}
+      ROOT %tuple = (s32[0], s32[2]) tuple(%slice, %slice.1)
+    }
+
+    ENTRY entry {
+      %p0 = s32[0] parameter(0)
+      %p1 = s32[2] parameter(1)
+      ROOT fusion = (s32[0], s32[2]) fusion(%p0, %p1), kind=kLoop, calls=fusion
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

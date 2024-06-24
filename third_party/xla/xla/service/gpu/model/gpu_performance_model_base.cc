@@ -162,8 +162,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_dimensions = triton_emitter->launch_dimensions()) {
-      return *launch_dimensions;
+    if (auto launch_config = triton_emitter->launch_config()) {
+      return launch_config->launch_dimensions;
     }
   }
 
@@ -403,12 +403,13 @@ absl::Duration GpuPerformanceModelBase::WriteTime(
 
 /*static*/
 absl::Duration GpuPerformanceModelBase::ComputeTime(
-    const se::DeviceDescription& gpu_device_info, int64_t flops, int num_blocks,
-    int num_threads_per_block) {
+    const se::DeviceDescription& gpu_device_info, int64_t flops,
+    int64_t num_blocks, int64_t num_threads_per_block) {
   int64_t n_active_fpus_per_core =
-      std::min(num_threads_per_block, gpu_device_info.fpus_per_core());
+      std::min<int64_t>(num_threads_per_block, gpu_device_info.fpus_per_core());
 
-  int64_t n_active_core = std::min(num_blocks, gpu_device_info.core_count());
+  int64_t n_active_core =
+      std::min<int64_t>(num_blocks, gpu_device_info.core_count());
   int64_t fpu_count = n_active_core * n_active_fpus_per_core;
 
   int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;

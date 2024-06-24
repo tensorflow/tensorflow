@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <utility>
+
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 

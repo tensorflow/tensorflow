@@ -628,6 +628,21 @@ func.func @all_to_all(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
   func.return %0 : tensor<16x4xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: func @all_to_all_same_split_concat_dim
+func.func @all_to_all_same_split_concat_dim(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 0 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<4x16xf32>) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
+}
+
 // -----
 
 // CHECK-LABEL: func @all_to_all_dynamic_split_dim
@@ -2701,7 +2716,7 @@ func.func @or_invalid_f32_type(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> te
 // -----
 
 func.func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  // expected-error@+1 {{op operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type values, but got 'tensor<4xi32>'}}
+  // expected-error@+1 {{op operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<4xi32>'}}
   %0 = "mhlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
   func.return %0 : tensor<4xi32>
 }

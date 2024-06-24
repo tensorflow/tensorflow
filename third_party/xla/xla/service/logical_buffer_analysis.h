@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_LOGICAL_BUFFER_ANALYSIS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/statusor.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 // A class to create all the logical buffers defined by the HLO ops in a module.

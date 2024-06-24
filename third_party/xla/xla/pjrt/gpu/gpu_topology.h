@@ -44,16 +44,19 @@ class GpuTopology {
   }
 
   int number_of_devices() const {
-    return number_of_hosts() * num_devices_per_host_;
+    return is_topology_symmetric() ? number_of_hosts() * num_devices_per_host_
+                                   : devices_ids_.size();
   }
   const std::vector<int>& device_ids() const { return devices_ids_; }
-  int number_of_hosts() const { return num_slices_ * num_hosts_per_slice_; }
+  int number_of_hosts() const {
+    return is_topology_symmetric() ? num_slices_ * num_hosts_per_slice_ : -1;
+  }
 
   static std::unique_ptr<const GpuTopology> FromProto(
       const GpuTopologyProto& proto);
   GpuTopologyProto ToProto() const;
 
-  std::string_view platform_version() const { return platform_version_; }
+  std::string platform_version() const { return platform_version_; }
   int32_t num_slices() const { return num_slices_; }
   int32_t num_hosts_per_slice() const { return num_hosts_per_slice_; }
   int32_t num_devices_per_host() const { return num_devices_per_host_; }
@@ -64,6 +67,11 @@ class GpuTopology {
   const int32_t num_slices_;
   const int32_t num_hosts_per_slice_;
   const int32_t num_devices_per_host_;
+
+  bool is_topology_symmetric() const {
+    return num_slices_ != -1 && num_hosts_per_slice_ != -1 &&
+           num_devices_per_host_ != -1;
+  }
 };
 
 }  // namespace xla

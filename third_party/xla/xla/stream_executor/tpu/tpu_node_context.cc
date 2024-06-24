@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/service/backend.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"

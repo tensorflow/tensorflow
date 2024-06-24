@@ -131,7 +131,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
 
 mlir::LogicalResult IfrtShardingParamAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    ShardingParam sharding_param, mlir::StringAttr memory_kind) {
+    ShardingParam sharding_param) {
   return sharding_param.verify(emitError);
 }
 
@@ -156,12 +156,6 @@ IfrtShardingParamAttr::LocalShapeFromGlobalShape(
 // Returns the number of devices the sharding applies to.
 int IfrtShardingParamAttr::NumDevices() const {
   return getSharding().NumDevices();
-};
-
-xla::ifrt::MemoryKind IfrtShardingParamAttr::MemoryKind() const {
-  return getMemoryKind() == nullptr
-             ? xla::ifrt::MemoryKind()
-             : xla::ifrt::MemoryKind(getMemoryKind().str());
 };
 
 //===----------------------------------------------------------------------===//
@@ -195,10 +189,6 @@ IfrtUnspecifiedShardingAttr::LocalShapeFromGlobalShape(
 
 int IfrtUnspecifiedShardingAttr::NumDevices() const { return 0; }
 
-xla::ifrt::MemoryKind IfrtUnspecifiedShardingAttr::MemoryKind() const {
-  return xla::ifrt::MemoryKind();
-}
-
 //===----------------------------------------------------------------------===//
 // IfrtArrayType
 //===----------------------------------------------------------------------===//
@@ -211,9 +201,15 @@ llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
 mlir::LogicalResult IfrtArrayType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
-    IfrtDevicesAttr devices) {
+    IfrtDevicesAttr devices, mlir::StringAttr memory_kind) {
   return sharding_attr.CanApplyTo(emitError, shape, devices.getIds());
 }
+
+xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
+  return getMemoryKindAttr() == nullptr
+             ? xla::ifrt::MemoryKind()
+             : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
+};
 
 //===----------------------------------------------------------------------===//
 // IfrtDevicesAttr

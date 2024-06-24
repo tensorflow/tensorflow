@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
 #define TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"

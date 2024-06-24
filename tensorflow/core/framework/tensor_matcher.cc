@@ -142,6 +142,9 @@ class TensorEqMatcherImpl : public ::testing::MatcherInterface<const Tensor&> {
     break;                                                                 \
   }
       TF_CALL_POD_STRING_TYPES(CASE_TYPE);
+      TF_CALL_QUANTIZED_TYPES(CASE_TYPE);
+      TF_CALL_int4(CASE_TYPE);
+      TF_CALL_uint4(CASE_TYPE);
 #undef CASE_TYPE
       default: {
         DLOG(FATAL) << "TensorEq matcher unsupported dtype: "

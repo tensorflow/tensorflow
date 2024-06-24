@@ -50,8 +50,8 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -297,6 +297,7 @@ PyType_Slot PyDevice::slots_[] = {
       .def("live_buffers",
            [](nb::handle device) {
              PythonDeprecationWarning(
+                 /*stacklevel=*/1,
                  "Per device live_buffers() is deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
              return nb::list();

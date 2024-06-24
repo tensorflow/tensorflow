@@ -29,7 +29,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -96,7 +98,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -143,7 +145,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -180,7 +182,7 @@ ENTRY main {
   first.ar = bf16[2,4096,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -233,7 +235,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -271,7 +273,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -306,7 +308,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -343,7 +345,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -379,7 +381,7 @@ ENTRY main {
   zero = bf16[] constant(0)
   reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
   all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
-  table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
   pid = u32[] partition-id()
   id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
   reshape = s32[] reshape(id)
@@ -396,6 +398,107 @@ ENTRY main {
   EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
 
   EXPECT_EQ(AllReduceCount(*module), 2);
+}
+
+TEST_F(
+    AllReduceSplitterFilecheckTest,
+    PipelineMatchesBasicPatternWithDynamicSliceAsRootAndRewritesToReduceScatter) {  // NOLINT
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096,4096] parameter(0)
+  first.ar = bf16[2,4096,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  zero = bf16[] constant(0)
+  reduce = bf16[4096] reduce(first.ar, zero), dimensions={0,1}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=2
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  ROOT _ = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
+
+  HloPassPipeline pipeline("all-reduce-splitter-rewrite");
+  pipeline.AddPass<AllReduceSplitter>();
+  pipeline.AddPass<ReduceScatterCreator>();
+  EXPECT_THAT(pipeline.Run(module.get()), IsOkAndHolds(true));
+  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
+    CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
+    CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[AR0]], bf16[] %[[ZERO]])
+    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-SAME:   replica_groups={[[DESIRED_RGS]]}
+    CHECK-NEXT:   ROOT %[[AR2:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[REDUCE_SCATTER]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
+    )"));
+}
+
+TEST_F(
+    AllReduceSplitterFilecheckTest,
+    PipelineMatchesBasicPatternWithDynamicSliceNotAsRootAndRewritesToReduceScatter) {  // NOLINT
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = bf16[] parameter(0)
+  b = bf16[] parameter(1)
+  ROOT _ = bf16[] add(a,b)
+}
+
+ENTRY main {
+  p = bf16[2,4096,4096] parameter(0)
+  zero = bf16[] constant(0)
+  first.ar = bf16[2,4096,4096] all-reduce(p), replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  reduce = bf16[4096] reduce(p, zero), dimensions={0,1}, to_apply=sum
+  all-reduce = bf16[4096] all-reduce(reduce), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=sum, use_global_device_ids=true, channel_id=1
+  table = s32[8]{0} constant({0,1,2,3,0,1,2,3})
+  pid = u32[] partition-id()
+  id = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(id)
+  slice_size = s32[] constant(1024)
+  offset = s32[] multiply(reshape, slice_size)
+  dynamic_slice = bf16[1024] dynamic-slice(all-reduce, offset), dynamic_slice_sizes={1024}
+  broadcast = bf16[1024,1024] broadcast(dynamic_slice), dimensions={0}
+  ROOT _ = tuple(broadcast, first.ar)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
+
+  HloPassPipeline pipeline("all-reduce-splitter-rewrite");
+  pipeline.AddPass<AllReduceSplitter>();
+  pipeline.AddPass<ReduceScatterCreator>();
+  EXPECT_THAT(pipeline.Run(module.get()), IsOkAndHolds(true));
+  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+    CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
+    CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
+    CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(bf16[2,4096,4096]{2,1,0} %[[P0]], bf16[] %[[ZERO]])
+    CHECK:        %[[REDUCE_SCATTER:.*]] = bf16[1024]{0} reduce-scatter(bf16[4096]{0} %[[LOCAL_REDUCE]])
+    CHECK-NEXT:   %[[AR1:.*]] = bf16[1024]{0} all-reduce(bf16[1024]{0} %[[REDUCE_SCATTER]])
+    CHECK-SAME:   replica_groups={{[{]}}{0,4},{1,5},{2,6},{3,7}{{[}]}}
+    CHECK:        %[[EXISTING_AR:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(bf16[2,4096,4096]{2,1,0} %[[P0]])
+    CHECK:        ROOT
+    CHECK-NOT:    %[[AR1]]
+    CHECK-SAME:   %[[EXISTING_AR]]
+    )"));
 }
 
 }  // namespace

@@ -146,8 +146,10 @@ static void DumpRocmTracerEvent(const RocmTracerEvent& event,
     case RocmTracerEventType::MemoryAlloc:
       oss << ",num_bytes=" << event.memalloc_info.num_bytes;
       break;
+    case RocmTracerEventType::MemcpyOther:
+    case RocmTracerEventType::MemoryFree:
+    case RocmTracerEventType::Memset:
     case RocmTracerEventType::Synchronization:
-      break;
     case RocmTracerEventType::Generic:
       break;
     default:

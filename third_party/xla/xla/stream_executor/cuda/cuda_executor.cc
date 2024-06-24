@@ -78,7 +78,6 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -672,16 +671,6 @@ absl::Status GpuExecutor::SynchronousMemcpy(void* host_dst,
                                          AsCudaDevicePtr(gpu_src), size);
 }
 
-absl::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                  uint64_t size) {
-  if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
-      size % 4 == 0) {
-    return Memset32(stream, location, 0x0, size);
-  } else {
-    return Memset(stream, location, 0x0, size);
-  }
-}
-
 absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
                                  uint8_t pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
@@ -690,54 +679,6 @@ absl::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
   return GpuDriver::AsynchronousMemsetUint8(context_, AsCudaDevicePtr(location),
                                             pattern, size,
                                             AsGpuStreamValue(stream));
-}
-
-absl::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32_t pattern, uint64_t size) {
-  VLOG(2) << "enqueueing memset32 operation onto stream " << stream
-          << " at location " << location << " with size " << size
-          << " and pattern " << std::hex << pattern;
-  CHECK(reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
-        size % 4 == 0);
-  return GpuDriver::AsynchronousMemsetUint32(
-      context_, AsCudaDevicePtr(location), pattern, size / 4,
-      AsGpuStreamValue(stream));
-}
-
-absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
-                                 uint64_t size) {
-  bool ok = GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
-                                             AsCudaDevicePtr(gpu_src), size,
-                                             AsGpuStreamValue(stream));
-  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
-  // absl::Status.
-  if (!ok) {
-    return absl::InternalError("Failed to memcpy from device to host.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                                 const void* host_src, uint64_t size) {
-  bool ok = GpuDriver::AsynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
-                                             host_src, size,
-                                             AsGpuStreamValue(stream));
-  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return
-  // absl::Status.
-  if (!ok) {
-    return absl::InternalError("Failed to memcpy from device to host.");
-  }
-  return absl::OkStatus();
-}
-
-bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
-                                       DeviceMemoryBase* gpu_dst,
-                                       const DeviceMemoryBase& gpu_src,
-                                       uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyD2D(context_, AsCudaDevicePtr(gpu_dst),
-                                          AsCudaDevicePtr(gpu_src), size,
-                                          AsGpuStreamValue(stream));
 }
 
 bool GpuExecutor::HostCallback(Stream* stream,
@@ -759,20 +700,6 @@ bool GpuExecutor::HostCallback(Stream* stream,
   delete callback;
 }
 
-absl::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
-  return AsGpuEvent(event)->Record(AsGpuStream(stream));
-}
-
-absl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
-  if (GpuDriver::WaitStreamOnEvent(context_, AsGpuStream(stream)->gpu_stream(),
-                                   AsGpuEvent(event)->gpu_event())) {
-    return absl::OkStatus();
-  } else {
-    return absl::InternalError(absl::StrFormat(
-        "error recording waiting for CUDA event on stream %p", stream));
-  }
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -787,21 +714,6 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
   cuda_stream->Destroy();
-}
-
-bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
-  CUevent other_completed_event = *AsGpuStream(other)->completed_event();
-  bool ok = GpuDriver::RecordEvent(context_, other_completed_event,
-                                   AsGpuStreamValue(other))
-                .ok();
-  if (!ok) {
-    LOG(ERROR) << "failed to record completion event; "
-                  "therefore, failed to create inter-stream dependency";
-    return false;
-  }
-
-  return GpuDriver::WaitStreamOnEvent(context_, AsGpuStreamValue(dependent),
-                                      other_completed_event);
 }
 
 absl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {

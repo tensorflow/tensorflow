@@ -59,7 +59,7 @@ struct StreamExecutorConfig {
 // Abstract base class for a platform registered with the PlatformManager.
 class Platform {
  public:
-  virtual ~Platform();
+  virtual ~Platform() = default;
 
   // A platform ID is a unique identifier for each registered platform type -
   // each platform is required to expose an ID to ensure unique registration and
@@ -93,14 +93,9 @@ class Platform {
   // Returns true iff the platform has been initialized.
   virtual bool Initialized() const;
 
-  // Initializes the platform with a custom set of options. The platform must be
-  // initialized before obtaining StreamExecutor objects.  The interpretation of
-  // the platform_options argument is implementation specific.  This method may
-  // return an error if unrecognized options are provided.  If using
-  // PlatformManager, this method will be called automatically by
-  // InitializePlatformWithId/InitializePlatformWithName.
-  virtual absl::Status Initialize(
-      const std::map<std::string, std::string>& platform_options);
+  // Initializes the platform. The platform must be initialized before obtaining
+  // StreamExecutor objects.
+  virtual absl::Status Initialize();
 
   // Returns a populated DeviceDescription for the device at the given ordinal.
   // This should not require device initialization. Note that not all platforms
@@ -130,16 +125,6 @@ class Platform {
   // Ownership IS transferred to the caller.
   virtual absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) = 0;
-
- protected:
-  // SE_DISALLOW_COPY_AND_ASSIGN declares a constructor, which suppresses the
-  // presence of the default constructor. This statement re-enables it, which
-  // simplifies subclassing.
-  Platform() = default;
-
- private:
-  Platform(const Platform&) = delete;
-  void operator=(const Platform&) = delete;
 };
 
 }  // namespace stream_executor

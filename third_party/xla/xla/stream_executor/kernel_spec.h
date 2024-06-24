@@ -93,7 +93,7 @@ class KernelLoaderSpec {
   void operator=(const KernelLoaderSpec &) = delete;
 };
 
-// Loads kernel from in process symbol pointer (e.g. pointer to CUDA C++ device
+// Loads kernel from in process symbol pointer (e.g. pointer to C++ device
 // function).
 class InProcessSymbol : public KernelLoaderSpec {
  public:

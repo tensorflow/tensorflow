@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -63,6 +63,63 @@ namespace spmd {
 bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
                               const std::vector<ShardingStrategy>& two) {
   return one.size() == two.size();
+}
+
+std::optional<HloSharding> ConstructImprovedSharding(
+    HloSharding from, const HloSharding& to_improved,
+    const Shape& to_improved_shape, bool may_combine_partial_sharding,
+    bool allow_aggressive_resharding) {
+  return hlo_sharding_util::ReturnImprovedShardingImpl(
+      from, &to_improved, to_improved_shape, may_combine_partial_sharding,
+      allow_aggressive_resharding);
+}
+
+std::pair<HloSharding, double>
+ComputeSliceShardingAndCommunicationCostFromOperand(
+    const HloSharding& input_spec, const Shape& old_shape,
+    const Shape& new_shape, const Array<int64_t>& device_mesh,
+    const ClusterEnvironment& cluster_env) {
+  if (input_spec.IsReplicated()) {
+    return std::make_pair(input_spec, 0);
+  }
+
+  CHECK(old_shape.IsArray());
+
+  std::vector<int64_t> tensor_to_mesh_dim =
+      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
+                            /* consider_reverse_device_meshes */ true);
+
+  std::vector<int64_t> mesh_dims_for_communication;
+  std::vector<int64_t> tensor_dims;
+  std::vector<int64_t> mesh_dims;
+  for (size_t i = 0; i < new_shape.rank(); ++i) {
+    if (tensor_to_mesh_dim[i] == -1) {
+      continue;
+    }
+    tensor_dims.push_back(i);
+    mesh_dims.push_back(tensor_to_mesh_dim[i]);
+    if (new_shape.dimensions(i) != old_shape.dimensions(i)) {
+      mesh_dims_for_communication.push_back(tensor_to_mesh_dim[i]);
+    }
+  }
+
+  // When input_spec shards one or more or the sliced tensor dimensions, we
+  // might be required to perform some collective communication. In the worst
+  // case, the sliced output would be available on one machine, which we would
+  // need to then re-shard across the devices per result. We approximate the
+  // cost for this operation by adding up the ReduceScatter cost across the mesh
+  // dimensions that shard sliced tensor dimensions.
+  const HloSharding& result =
+      Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
+  double num_bytes_to_transfer = GetBytes(new_shape);
+  double communication_cost = 0;
+  for (size_t i = 0; i < mesh_dims_for_communication.size(); ++i) {
+    int64_t mesh_dim = mesh_dims_for_communication[i];
+    num_bytes_to_transfer /= device_mesh.dim(mesh_dim);
+    communication_cost +=
+        cluster_env.ReduceScatterCost(num_bytes_to_transfer, mesh_dim);
+  }
+  return std::make_pair(result, communication_cost);
 }
 
 // NOLINTBEGIN(readability/fn_size)
@@ -78,7 +135,7 @@ BuildStrategyAndCost(
     const ClusterEnvironment& cluster_env, AutoShardingOption& option,
     const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
     bool trying_multiple_mesh_shapes) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  // const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   StrategyMap strategy_map;
   // This map stores all of the trimmed strategies due to user specified
   // sharding. The key is the instruction id, the value is the strategies. This
@@ -230,52 +287,110 @@ BuildStrategyAndCost(
       case HloOpcode::kGather: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
-        // Follows the strategy of start_indices (operand 1)
+        const HloInstruction* data = ins->operand(0);
         const HloInstruction* indices = ins->operand(1);
-        const Shape& shape = ins->shape();
-        const StrategyGroup* src_strategy_group =
-            strategy_map.at(indices).get();
-        CHECK(!src_strategy_group->is_tuple);
-        strategy_group->following = src_strategy_group;
-        for (int32_t index_dim = 0; index_dim < indices->shape().rank();
-             index_dim++) {
-          // Shard on indices dimensions that correspond to output dimensions
-          // TODO(b/220935014) Shard the last dim of output (model dim) with
-          // AllGather cost and no follow.
-          if (index_dim == ins->gather_dimension_numbers().index_vector_dim()) {
-            continue;
-          }
-          for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-            // Split only when the tensor shape is divisible by device
-            // mesh.
-            if (device_mesh.dim(j) == 1 ||
-                (only_allow_divisible &&
-                 !IsDivisible(shape.dimensions(index_dim),
-                              device_mesh.dim(j)))) {
-              continue;
-            }
-            std::string name = absl::StrCat("S", index_dim, " @ ", j);
+        const Shape& gather_shape = ins->shape();
 
-            HloSharding output_spec =
-                Tile(shape, {index_dim}, {j}, device_mesh);
-            double compute_cost = 0, communication_cost = 0;
-            double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-            std::optional<HloSharding> input_spec =
-                hlo_sharding_util::ReshapeSharding(shape, indices->shape(),
-                                                   output_spec);
-            if (!input_spec.has_value()) {  // invalid reshape
+        const StrategyGroup* data_strategy_group = strategy_map.at(data).get();
+        const StrategyGroup* indices_strategy_group =
+            strategy_map.at(indices).get();
+
+        for (const ShardingStrategy& indices_strategy :
+             indices_strategy_group->strategies) {
+          const HloSharding& indices_spec = indices_strategy.output_sharding;
+          const HloSharding& indices_to_combine_spec = hlo_sharding_util::
+              GatherOutputShardingFromIndexIndexPassthroughDimensions(
+                  indices_spec, ins);
+
+          for (const ShardingStrategy& data_strategy :
+               data_strategy_group->strategies) {
+            const HloSharding& data_spec = data_strategy.output_sharding;
+            auto gather_parallel_dims =
+                hlo_sharding_util::GetGatherParallelBatchDims(*ins, call_graph);
+            HloSharding output_spec = indices_to_combine_spec;
+            if (gather_parallel_dims) {
+              auto aligned_operand_parallel_dims =
+                  hlo_sharding_util::IndexAlignedOperandParallelDims(
+                      *gather_parallel_dims);
+              auto output_parallel_dims =
+                  hlo_sharding_util::GetGatherParallelOutputDims(
+                      *ins, *gather_parallel_dims);
+              // Infer output sharding from scatter operand sharding.
+              if (hlo_sharding_util::IsSpatiallyPartitioned(data_spec)) {
+                const HloSharding to_merge = hlo_sharding_util::
+                    InferGatherScatterParallelShardingFromOperandSharding(
+                        data_spec, data->shape(), gather_shape,
+                        absl::MakeConstSpan(aligned_operand_parallel_dims),
+                        absl::MakeConstSpan(output_parallel_dims));
+                if (std::optional<HloSharding> improved_spec =
+                        ConstructImprovedSharding(
+                            to_merge, output_spec, gather_shape,
+                            /* may_combine_partial_sharding */ true,
+                            /* allow_aggressive_resharding */ false)) {
+                  output_spec = *improved_spec;
+                }
+              }
+              // Infer output sharding from scatter indices sharding.
+              if (hlo_sharding_util::IsSpatiallyPartitioned(indices_spec)) {
+                const HloSharding to_merge = hlo_sharding_util::
+                    InferGatherScatterParallelShardingFromOperandSharding(
+                        indices_spec, indices->shape(), gather_shape,
+                        absl::MakeConstSpan(
+                            gather_parallel_dims->indices_parallel_dims),
+                        absl::MakeConstSpan(output_parallel_dims));
+                if (std::optional<HloSharding> improved_spec =
+                        ConstructImprovedSharding(
+                            to_merge, output_spec, gather_shape,
+                            /* may_combine_partial_sharding */ true,
+                            /* allow_aggressive_resharding */ false)) {
+                  output_spec = *improved_spec;
+                }
+              }
+            }
+
+            absl::Span<const int64_t> operand_parallel_dims;
+            if (gather_parallel_dims) {
+              operand_parallel_dims = absl::MakeConstSpan(
+                  gather_parallel_dims->operand_parallel_dims);
+            }
+            HloSharding filtered_operand_sharding =
+                hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                    data_spec, operand_parallel_dims);
+            std::optional<HloSharding> maybe_from_data = hlo_sharding_util::
+                GatherOutputShardingFromOperandOperandPassthroughDimensions(
+                    filtered_operand_sharding, *ins);
+
+            if (!maybe_from_data) {
               continue;
             }
+
+            if (std::optional<HloSharding> improved_spec =
+                    ConstructImprovedSharding(
+                        *maybe_from_data, output_spec, gather_shape,
+                        /* may_combine_partial_sharding */ true,
+                        /* allow_aggressive_resharding */ false)) {
+              output_spec = *improved_spec;
+            }
+
+            // We add replicated strategies below.
+            if (output_spec.IsReplicated()) {
+              continue;
+            }
+
+            double compute_cost = 0, communication_cost = 0;
+            double memory_cost =
+                GetBytes(gather_shape) / output_spec.NumTiles();
             std::vector<std::optional<HloSharding>> input_shardings_optional(
-                {std::nullopt, input_spec});
+                {data_spec, indices_spec});
             std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
                 GenerateReshardingCostsAndMissingShardingsForAllOperands(
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
             strategy_group->strategies.push_back(ShardingStrategy(
-                {name, output_spec, compute_cost, communication_cost,
-                 memory_cost, std::move(resharding_costs.first),
+                {std::string(output_spec.ToString()), output_spec, compute_cost,
+                 communication_cost, memory_cost,
+                 std::move(resharding_costs.first),
                  std::move(resharding_costs.second),
                  input_shardings_optional}));
           }
@@ -395,6 +510,7 @@ BuildStrategyAndCost(
           HloSharding input_spec =
               src_strategy_group->strategies[sid].output_sharding;
 
+          double compute_cost = 0, communication_cost = 0;
           // Find output shardings.
           switch (opcode) {
             case HloOpcode::kSlice: {
@@ -410,19 +526,31 @@ BuildStrategyAndCost(
               if (is_1d_sharding &&
                   input_spec.TotalNumTiles() ==
                       cluster_env.device_mesh_1d_.num_elements()) {
-                output_spec = PropagateDimwiseShardingSlice(
-                    input_spec, operand->shape(), ins->shape(),
-                    cluster_env.device_mesh_1d_);
+                std::pair<HloSharding, double>
+                    output_spec_and_communication_cost =
+                        ComputeSliceShardingAndCommunicationCostFromOperand(
+                            input_spec, operand->shape(), ins->shape(),
+                            cluster_env.device_mesh_1d_, cluster_env);
+                output_spec = output_spec_and_communication_cost.first;
+                communication_cost = output_spec_and_communication_cost.second;
               } else if (is_1d_sharding) {
                 CHECK_EQ(input_spec.TotalNumTiles(),
                          cluster_env.original_device_mesh_1d_.num_elements());
-                output_spec = PropagateDimwiseShardingSlice(
-                    input_spec, operand->shape(), ins->shape(),
-                    cluster_env.original_device_mesh_1d_);
+                std::pair<HloSharding, double>
+                    output_spec_and_communication_cost =
+                        ComputeSliceShardingAndCommunicationCostFromOperand(
+                            input_spec, operand->shape(), ins->shape(),
+                            cluster_env.original_device_mesh_1d_, cluster_env);
+                output_spec = output_spec_and_communication_cost.first;
+                communication_cost = output_spec_and_communication_cost.second;
               } else {
-                output_spec = PropagateDimwiseShardingSlice(
-                    input_spec, operand->shape(), ins->shape(),
-                    cluster_env.device_mesh_);
+                std::pair<HloSharding, double>
+                    output_spec_and_communication_cost =
+                        ComputeSliceShardingAndCommunicationCostFromOperand(
+                            input_spec, operand->shape(), ins->shape(),
+                            cluster_env.device_mesh_, cluster_env);
+                output_spec = output_spec_and_communication_cost.first;
+                communication_cost = output_spec_and_communication_cost.second;
               }
               break;
             }
@@ -458,7 +586,6 @@ BuildStrategyAndCost(
           }
 
           std::string name = ToStringSimple(*output_spec);
-          double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
@@ -725,9 +852,9 @@ BuildStrategyAndCost(
         } else if (IsTopKCustomCall(ins)) {
           generate_non_following_strategies(false, {0});
         } else if (IsPartialReduceCustomCall(ins)) {
-          strategy_group = HandlePartialReduce(
-              ins, instruction_id, /* have_memory_cost */ true, strategy_groups,
-              cluster_env, strategy_map, call_graph);
+          strategy_group =
+              HandlePartialReduce(ins, instruction_id, strategy_groups,
+                                  cluster_env, strategy_map, call_graph);
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -854,9 +981,11 @@ BuildStrategyAndCost(
         }
       }
     }
-    RemoveInvalidShardingsWithShapes(
-        ins->shape(), strategy_group.get(),
-        /* instruction_has_user_sharding */ ins->has_sharding());
+    if (!option.allow_shardings_small_dims_across_many_devices) {
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          ins->shape(), strategy_group.get(),
+          /* instruction_has_user_sharding */ ins->has_sharding());
+    }
 
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(strategy_group.get(),

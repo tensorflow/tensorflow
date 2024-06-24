@@ -1602,7 +1602,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalMapDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'force_synchronous\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ExperimentalMatchingFilesDataset"
@@ -2514,7 +2514,7 @@ tf_module {
   }
   member_method {
     name: "MapDataset"
-    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'preserve_cardinality\', \'force_synchronous\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "MapDefun"
@@ -4134,7 +4134,7 @@ tf_module {
   }
   member_method {
     name: "ScatterNd"
-    argspec: "args=[\'indices\', \'updates\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'indices\', \'updates\', \'shape\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "ScatterNdAdd"

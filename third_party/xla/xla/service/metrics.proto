@@ -20,6 +20,22 @@ message PassMetrics {
   google.protobuf.Any custom_metrics = 4;
 }
 
+// Defines compilation job information.
+message JobInfo {
+  // Name of the job running compilation.
+  optional string name = 1;
+  // Cell in which the job is running.
+  optional string cell = 2;
+  // User running the job.
+  optional string user = 3;
+  // Unique id when combined with user and cell field.
+  optional int64 uid = 4;
+  // Task index, which will not change across job restarts.
+  optional int64 task_id = 5;
+  // Task unique id, which may change across job restarts.
+  optional int64 task_uid = 6;
+}
+
 // Defines XLA compilation metrics.
 message CompilationLogEntry {
   // Time when the event captured by this log entry occurred.
@@ -37,10 +53,13 @@ message CompilationLogEntry {
   // Duration of the given compilation stage.
   google.protobuf.Duration duration = 3;
   // Task index from which this log entry was recorded or
-  // -1 if the task index could not be fetched.
+  // -1 if the task index could not be fetched. In the case task_index is not
+  // equal to -1, it is guaranteed to match the task_id in job_info.
   int32 task_index = 4;
   // Pass specific metrics.
   repeated PassMetrics pass_metrics = 5;
   // IDs of modules on which the compilation stage was run.
   repeated uint64 module_ids = 6;
+  // Job information.
+  JobInfo job_info = 7;
 }

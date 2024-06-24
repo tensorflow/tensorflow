@@ -249,7 +249,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
       param_3_plus_one = s32[] add(param_3_mod_2, one)
       param_2.32 = s32[] parameter(2)
       param_2_plus_one = s32[] add(param_2.32, one)
-      ROOT dynamic-update-slice.5.1 = f32[512,512]{1,0} dynamic-update-slice(param_0.8, param_1.10, param_2_plus_one, param_3_plus_one)
+      ROOT dynamic-update-slice.5.1 = f32[512,512]{1,0} dynamic-update-slice(
+        param_0.8, param_1.10, param_2_plus_one, param_3_plus_one)
     }
     ENTRY entry {
       p0 = f32[512,512]{1,0} parameter(0)
@@ -270,7 +271,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
     // CHECK:       %[[BLOCK_ID:.*]] = gpu.block_id  x
-    // CHECK:       %[[I0:.*]], %[[I1:.*]] = xla_gpu.pure_call @dus_fusion_param_2_plus_one_param_3_plus_one
+    // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @dus_fusion_param_2_plus_one
+    // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @dus_fusion_param_3_plus_one
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
     // CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_384]]
     // CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]

@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/cuda_libdevice_path.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

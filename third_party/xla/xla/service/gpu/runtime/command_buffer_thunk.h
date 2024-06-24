@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
@@ -37,9 +38,9 @@ namespace xla::gpu {
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
-                     std::optional<ThunkSequence> thunks = std::nullopt);
+                     std::unique_ptr<SequentialThunk> thunks = nullptr);
 
-  const std::optional<ThunkSequence>& thunks() const { return thunks_; }
+  const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
@@ -125,7 +126,7 @@ class CommandBufferThunk : public Thunk {
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI
   // bugs that lead to memory corruption when CUPTI traces CUDA graph execution.
-  std::optional<ThunkSequence> thunks_;
+  std::unique_ptr<SequentialThunk> thunks_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

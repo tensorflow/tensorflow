@@ -162,7 +162,7 @@ H AbslHashValue(H h, const ArgumentSignature& s) {
 //   arguments
 // static_argnames: the names of the static arguments
 // pytree_registry: the registry to use to convert the arguments to pytrees
-// arguments: output; describes the static arguments and the identities of the
+// signature: output; describes the static arguments and the identities of the
 //  dynamic arguments.
 // flat_dynamic_args: output; the concatenation of the dynamic positional
 //  arguments and sorted keyword arguments.

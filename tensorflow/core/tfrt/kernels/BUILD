@@ -62,8 +62,6 @@ tf_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/framework:serving_device_selector",
-        "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -71,6 +69,9 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/tsl/framework:serving_device_selector",
+        "@local_xla//xla/tsl/framework/test_util:mock_serving_device_selector",
     ],
 )
 

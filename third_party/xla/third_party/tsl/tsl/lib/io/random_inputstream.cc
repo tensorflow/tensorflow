@@ -30,8 +30,8 @@ RandomAccessInputStream::~RandomAccessInputStream() {
   }
 }
 
-Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
-                                           tstring* result) {
+absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
+                                                 tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
@@ -39,7 +39,7 @@ Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
   result->resize_uninitialized(bytes_to_read);
   char* result_buffer = &(*result)[0];
   StringPiece data;
-  Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);
+  absl::Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);
   if (data.data() != result_buffer) {
     memmove(result_buffer, data.data(), data.size());
   }
@@ -51,13 +51,13 @@ Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
-                                           absl::Cord* result) {
+absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
+                                                 absl::Cord* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
   int64_t current_size = result->size();
-  Status s = file_->Read(pos_, bytes_to_read, result);
+  absl::Status s = file_->Read(pos_, bytes_to_read, result);
   if (s.ok() || errors::IsOutOfRange(s)) {
     pos_ += result->size() - current_size;
   }
@@ -69,7 +69,7 @@ Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
 // 8MB at a time.
 static constexpr int64_t kMaxSkipSize = 8 * 1024 * 1024;
 
-Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
+absl::Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can't skip a negative number of bytes");
   }
@@ -78,17 +78,18 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   // not reached yet and we could return.
   if (bytes_to_skip > 0) {
     StringPiece data;
-    Status s = file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
+    absl::Status s =
+        file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
     if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
       pos_ += bytes_to_skip;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
     int64_t bytes_to_read = std::min<int64_t>(kMaxSkipSize, bytes_to_skip);
     StringPiece data;
-    Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
+    absl::Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
     if (s.ok() || errors::IsOutOfRange(s)) {
       pos_ += data.size();
     } else {
@@ -99,7 +100,7 @@ Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
     }
     bytes_to_skip -= bytes_to_read;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t RandomAccessInputStream::Tell() const { return pos_; }

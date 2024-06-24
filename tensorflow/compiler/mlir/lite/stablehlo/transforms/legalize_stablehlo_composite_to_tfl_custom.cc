@@ -43,9 +43,7 @@ namespace odml {
 namespace {
 bool IsSupportedComposite(::mlir::stablehlo::CompositeOp op) {
   // List of supported composites to represent using CustomOp.
-  return llvm::is_contained(
-      {"odml.update_kv_cache", "odml.scaled_dot_product_attention"},
-      op.getName());
+  return llvm::is_contained({"odml.update_kv_cache"}, op.getName());
 }
 
 bool IsKVCacheCompositeOp(::mlir::stablehlo::CompositeOp op) {

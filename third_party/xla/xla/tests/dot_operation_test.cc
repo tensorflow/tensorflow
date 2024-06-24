@@ -13,14 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
 #include <memory>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/client/lib/arithmetic.h"
@@ -38,6 +34,10 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace xla {
 namespace {

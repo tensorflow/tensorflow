@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
@@ -557,6 +557,9 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionLevel2Test, ClampExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Clamp test requires cuDNN 9.1+.";
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   x = bf16[16,32] parameter(0)
@@ -872,6 +875,7 @@ class CuDnnFusionRewriteTest : public CuDnnFusionTest {
     debug_options.set_xla_gpu_autotune_level(
         GetDebugOptionsFromFlags().xla_gpu_autotune_level());
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 };
@@ -883,8 +887,7 @@ TEST_F(CuDnnFusionRewriteTest,
   MatchOptimizedHlo(R"(
 ENTRY e {
   p0 = f16[20,40,61] parameter(0)
-  p2 = f16[20,40,61] parameter(2)
-  p0n = f16[20,40,61] negate(p2)
+  p0n = f16[20,40,61] negate(p0)
   p1 = f16[20,80,61] parameter(1)
   ROOT r = f16[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
@@ -892,7 +895,6 @@ ENTRY e {
 })",
                     R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: ROOT

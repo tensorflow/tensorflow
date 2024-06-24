@@ -405,6 +405,7 @@ py_strict_library(
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/training:saver",
+        "//third_party/py/numpy",
         "@absl_py//absl/logging",
         "@flatbuffers//:runtime_py",
     ],

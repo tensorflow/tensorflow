@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/client/sharding_builder.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -967,7 +967,7 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().fdo_profile(), kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().fdo_profile(), kFdoProfile);
 }
 
@@ -991,7 +991,7 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().device_memory_size(), kDeviceMemorySize);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().device_memory_size(), kDeviceMemorySize);
 }
 

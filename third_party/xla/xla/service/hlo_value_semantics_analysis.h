@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -246,7 +246,8 @@ class HloValueSemanticsPropagation;
 class HloValueSemanticsAnalysis {
  public:
   static absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>> Run(
-      const HloModule& module);
+      const HloModule& module,
+      const absl::flat_hash_set<std::string_view>& execution_threads = {});
   virtual ~HloValueSemanticsAnalysis() = default;
   bool HasSemanticsFor(const HloInstruction* instruction) const;
   const HloValueSemantics* GetSemantics(const HloInstruction* instruction,
@@ -274,7 +275,9 @@ class HloValueSemanticsAnalysis {
 
  protected:
   friend class HloValueSemanticsPropagation;
-  explicit HloValueSemanticsAnalysis(const HloModule& module);
+  explicit HloValueSemanticsAnalysis(
+      const HloModule& module,
+      const absl::flat_hash_set<std::string_view>& execution_threads);
   virtual absl::Status InitializeEinsumDepth();
   virtual absl::Status InitializeEinsumHeight();
   // We match send and recv HLOs to propagate semantics from send to recv.
@@ -309,6 +312,7 @@ class HloValueSemanticsAnalysis {
       const ShapeTree<const HloValueSemantics*>& to_delete);
   void DeleteHloValueSemantics(const HloValueSemantics* to_delete);
   const HloModule& module_;
+  const absl::flat_hash_set<absl::string_view>& execution_threads_;
   HloValueSemanticsMap value_semantics_;
   absl::flat_hash_map<HloValueSemantics::Id, std::unique_ptr<HloValueSemantics>>
       value_semantics_map_;

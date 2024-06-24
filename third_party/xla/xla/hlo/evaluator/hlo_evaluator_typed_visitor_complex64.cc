@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
+#include "xla/types.h"
 
 namespace xla {
 template class HloEvaluatorTypedVisitor<complex64>;

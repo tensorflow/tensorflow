@@ -33,22 +33,22 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   ~RandomAccessInputStream() override;
 
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
 #if defined(TF_CORD_SUPPORT)
-  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
-  Status SkipNBytes(int64_t bytes_to_skip) override;
+  absl::Status SkipNBytes(int64_t bytes_to_skip) override;
 
   int64_t Tell() const override;
 
-  Status Seek(int64_t position) {
+  absl::Status Seek(int64_t position) {
     pos_ = position;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Reset() override { return Seek(0); }
+  absl::Status Reset() override { return Seek(0); }
 
  private:
   RandomAccessFile* file_;  // Not owned.

@@ -37,6 +37,10 @@ py_test(
         "testdata/nvcc_clang.bazelrc",
         "testdata/nvcc_gcc.bazelrc",
     ],
+    # After https://github.com/openxla/xla/commit/7d3043283, this test is no
+    # longer hermetic. This works in OSS tests because the docker container has
+    # clang-17 and gcc, but it's a little sketchy.
+    tags = ["notap"],
     deps = [
         ":configure",
         "//build_tools:test_utils",

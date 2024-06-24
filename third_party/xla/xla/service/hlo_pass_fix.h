@@ -19,11 +19,11 @@ limitations under the License.
 #include <algorithm>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {

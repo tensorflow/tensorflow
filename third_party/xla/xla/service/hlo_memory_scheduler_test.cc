@@ -15,23 +15,37 @@ limitations under the License.
 
 #include "xla/service/hlo_memory_scheduler.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/hlo_dce.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -341,6 +355,93 @@ ENTRY main {
   std::unique_ptr<HloModule> clone = module->Clone();
   ASSERT_TRUE(clone->has_schedule());
   TF_ASSERT_OK(clone->schedule().Verify());
+}
+
+TEST_F(HloSchedulingTest, BFSScheduler) {
+  // When scheduling for maximum concurrency, we expect HLO operations to be
+  // processed in wave-fronts: (1) all bcasts (2) followed by additions (3)
+  // followed by reduction (4) final result accumulation. This would allow
+  // XLA executor to overlap the execution of independent additions and
+  // reductions at the cost of extra memory to keep temporaries alive.
+  const char* const hlo_string = R"(
+    HloModule m
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[1,2,1,512,256] parameter(0)
+      c0 = f32[] constant(0)
+
+      c1 = f32[] constant(1)
+      bcast1 = f32[1,2,1,512,256] broadcast(c1), dimensions={}
+      add1 = f32[1,2,1,512,256] add(p0, bcast1)
+
+      c2 = f32[] constant(2)
+      bcast2 = f32[1,2,1,512,256] broadcast(c2), dimensions={}
+      add2 = f32[1,2,1,512,256] add(p0, bcast2)
+
+      c3 = f32[] constant(3)
+      bcast3 = f32[1,2,1,512,256] broadcast(c3), dimensions={}
+      add3 = f32[1,2,1,512,256] add(p0, bcast3)
+
+      c4 = f32[] constant(4)
+      bcast4 = f32[1,2,1,512,256] broadcast(c4), dimensions={}
+      add4 = f32[1,2,1,512,256] add(p0, bcast4)
+
+      c5 = f32[] constant(5)
+      bcast5 = f32[1,2,1,512,256] broadcast(c5), dimensions={}
+      add5 = f32[1,2,1,512,256] add(p0, bcast5)
+
+      r1 = f32[1,2] reduce(add1, c0), dimensions={2,3,4}, to_apply=add
+      r2 = f32[1,2] reduce(add2, c0), dimensions={2,3,4}, to_apply=add
+      r3 = f32[1,2] reduce(add3, c0), dimensions={2,3,4}, to_apply=add
+      r4 = f32[1,2] reduce(add4, c0), dimensions={2,3,4}, to_apply=add
+      r5 = f32[1,2] reduce(add5, c0), dimensions={2,3,4}, to_apply=add
+
+      out0 = f32[1,2] add(r1, r2)
+      out1 = f32[1,2] add(r3, r4)
+      out2 = f32[1,2] add(out0, out1)
+      ROOT out3 = f32[1,2] add(out2, r5)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(
+          module.get(),
+          [](const BufferValue& buffer) {
+            return ShapeUtil::ByteSizeOf(buffer.shape());
+          },
+          ComputationSchedulerToModuleScheduler(BFSMemoryScheduler)));
+
+  const std::vector<HloInstruction*>& sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction : sequence) {
+    instructions_by_name[instruction->name()] = instruction;
+  }
+
+  auto index = [&](std::string_view name) -> size_t {
+    const HloInstruction* instruction = instructions_by_name.at(name);
+    return std::distance(sequence.begin(), absl::c_find(sequence, instruction));
+  };
+
+  std::vector<size_t> indices = {
+      index("bcast1"), index("bcast2"), index("bcast3"), index("bcast4"),
+      index("bcast5"), index("add1"),   index("add2"),   index("add3"),
+      index("add4"),   index("add5"),   index("r1"),     index("r2"),
+      index("r3"),     index("r4"),     index("r5"),     index("out0"),
+      index("out1"),   index("out2"),   index("out3")};
+
+  EXPECT_TRUE(absl::c_is_sorted(indices));
 }
 
 }  // namespace

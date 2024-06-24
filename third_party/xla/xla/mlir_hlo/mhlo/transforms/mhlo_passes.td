@@ -374,16 +374,3 @@ def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
            /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
   ];
 }
-
-def MhloQuantLegalizeToInt : Pass<"mhlo-quant-legalize-to-int", "mlir::func::FuncOp"> {
-  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
-
-  let description = [{
-    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-    like int ops.
-  }];
-  let constructor = "createMhloQuantLegalizeToIntPass()";
-  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
-                           "quant::QuantizationDialect",
-                           "func::FuncDialect"];
-}

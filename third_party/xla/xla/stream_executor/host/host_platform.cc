@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {

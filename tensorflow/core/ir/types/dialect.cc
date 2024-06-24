@@ -366,10 +366,17 @@ void ShapeAttr::print(AsmPrinter& os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != ShapedType::kDynamic)
-        os << dim;
-      else
+      if (dim != ShapedType::kDynamic) {
+        if (dim == 0) {
+          // In order to avoid the parseInteger below from confusing a dimension
+          // list with '0x' as hex integer, we use 00 for a 0 sized dimension.
+          os << "00";
+        } else {
+          os << dim;
+        }
+      } else {
         os << "?";
+      }
     };
     llvm::interleave(getShape(), os, print_dim, "x");
   } else {

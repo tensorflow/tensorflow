@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
@@ -873,8 +872,26 @@ ENTRY e {
           .Run(module.get()),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq(
-              "Triton support is only enabled for Ampere GPUs and up.")));
+          ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
+                               "(compute capability 8.0) and up, but got")));
+}
+
+TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutOnNonCudaGpu) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[2,53] parameter(0)
+  p0e = f32[2,53] exponential(p0)
+  p1 = s16[53,2] parameter(1)
+  p1c = f32[53,2] convert(p1)
+  ROOT dot = f32[2,2] dot(p0e, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_THAT(
+      GemmFusion(se::RocmComputeCapability{}).Run(module.get()),
+      tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::StrEq("Triton support is only enabled for CUDA GPUs.")));
 }
 
 TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {

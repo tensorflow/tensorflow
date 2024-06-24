@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"

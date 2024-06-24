@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -29,32 +30,15 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
-// Given an MLIR module, returns a GraphDef.
-absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::ModuleOp module, const GraphExportConfig& configs);
-
-// Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
-// The "main" function of the module is stored in the graph and the rest of
-// functions are stored in the library. Control ret nodes are stored separately
-// in `control_ret_nodes`.
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def,
-                          absl::flat_hash_set<Node*>* control_ret_nodes);
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library.
+ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertMlirToGraph instead.")
 Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def);
-
-// Converts an MLIR function and adds it to a FunctionLibraryDefinition.
-Status ConvertMlirFunctionToFunctionLibraryDef(mlir::func::FuncOp func,
-                                               const GraphExportConfig& configs,
-                                               FunctionDef* function_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_GRAPHDEF_H_

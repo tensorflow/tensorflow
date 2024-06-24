@@ -21,21 +21,27 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -48,6 +54,51 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc) {
+  auto valid_shape = [conv, &cc](const Shape& shape) -> absl::Status {
+    PrimitiveType type = shape.element_type();
+    if (!primitive_util::IsFloatingPointType(type) &&
+        !primitive_util::IsIntegralType(type)) {
+      // Among integral types, only S8 is supported. But CudnnFusedConvRewriter
+      // may rewrite convolutions of wider types into S8 convolutions, so allow
+      // all integral convolutions here.
+      return Unimplemented(
+          "Convolutions must have floating-point or integral operands/outputs, "
+          "but got convolution with type %s: %s",
+          primitive_util::LowercasePrimitiveTypeName(type), conv->ToString());
+    }
+    if (primitive_util::IsF8Type(type)) {
+      if (type != F8E4M3FN && type != F8E5M2) {
+        return Unimplemented(
+            "The only FP8 types supported in convolutions are f8e5m2 and "
+            "f8e4m3, "
+            "but got convolution with FP8 type %s: %s",
+            primitive_util::LowercasePrimitiveTypeName(type), conv->ToString());
+      }
+      if (!std::holds_alternative<se::CudaComputeCapability>(cc)) {
+        return Unimplemented(
+            "FP8 convolutions are only supported on CUDA GPUs, but got "
+            "FP8 convolution on ROCm GPU: %s",
+            conv->ToString());
+      } else if (!std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+        return Unimplemented(
+            "FP8 convolutions are only supported on CUDA GPUs with compute "
+            "capability at least 9.0, but got "
+            "FP8 convolution on GPU with compute capability %s: %s",
+            std::get<se::CudaComputeCapability>(cc).ToString(),
+            conv->ToString());
+      }
+    }
+    return OkStatus();
+  };
+
+  TF_RETURN_IF_ERROR(valid_shape(conv->shape()));
+  TF_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  TF_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  return OkStatus();
+}
+
 using ConvolutionMatch = std::optional<
     std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
 
@@ -603,10 +654,6 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   return std::make_tuple(new_window, dnums, rhs);
 }
 
-}  // namespace
-
-namespace {
-
 HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
                               HloInstruction* lhs, HloInstruction* rhs,
                               const Window& window,
@@ -715,7 +762,8 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
 static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
-    HloInstruction* conv) {
+    HloInstruction* conv, const se::GpuComputeCapability& cc) {
+  TF_RETURN_IF_ERROR(CheckTypes(conv, cc));
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -749,11 +797,12 @@ static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
 }
 
 // Tries to rewrite a single convolution into a call to cudnn/miopen.
-absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
+absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
+                                      const se::GpuComputeCapability& cc) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
   TF_ASSIGN_OR_RETURN(HloInstruction * custom_call,
-                      CreateCustomCallHelper(conv));
+                      CreateCustomCallHelper(conv, cc));
   if (custom_call == nullptr) {
     return false;
   }
@@ -777,7 +826,8 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
 // Rewrites the convolutions in the given computation into calls to
 // cudnn/miopen.
 // Returns true if it made any changes.
-absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                      const se::GpuComputeCapability& cc) {
   std::vector<HloInstruction*> convs;
   for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
@@ -787,7 +837,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv));
+    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc));
     changed |= result;
   }
   return changed;
@@ -801,7 +851,8 @@ absl::StatusOr<bool> GpuConvRewriter::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, compute_capability_));
     changed |= result;
   }
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), after:\n" + module->ToString());

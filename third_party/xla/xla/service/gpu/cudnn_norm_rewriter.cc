@@ -970,13 +970,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "Layer norm input dimensions not supported.";
         return absl::OkStatus();
       }
-      for (int i = 0; i < norm_dims.size(); ++i) {
-        if (x.Instr()->shape().dimensions(norm_dims[i]) !=
-            scale->shape().dimensions(i)) {
-          VLOG(1) << "Layer norm input dimensions not supported.";
-          return absl::OkStatus();
-        }
-      }
 
       // Verify the broadcasts of scale and bias.
       if (!ShapeUtil::EqualIgnoringElementType(
@@ -1116,8 +1109,12 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       for (HloInstruction* user : norm_factor->users()) {
         if (user->opcode() == HloOpcode::kDivide &&
             user->operand_index(norm_factor) == 0) {
-          TF_RETURN_IF_ERROR(MatchNormFactor(user, custom_call, variance,
-                                             expectation, epsilon));
+          TF_ASSIGN_OR_RETURN(bool changed,
+                              MatchNormFactor(user, custom_call, variance,
+                                              expectation, epsilon));
+          if (changed) {
+            break;
+          }
         }
       }
     }
@@ -1129,11 +1126,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
   // as the norm factor and its cube, (variance + epsilon)^-1/2 and (variance +
   // epsilon)^-3/2. When identified in the graph, these quantities are fused
   // into the layer norm Custom Call.
-  absl::Status MatchNormFactor(HloInstruction* instr,
-                               HloInstruction* custom_call,
-                               UniqueHloInstruction& variance,
-                               UniqueHloInstruction& expectation,
-                               UniqueHloInstruction& epsilon) {
+  absl::StatusOr<bool> MatchNormFactor(HloInstruction* instr,
+                                       HloInstruction* custom_call,
+                                       UniqueHloInstruction& variance,
+                                       UniqueHloInstruction& expectation,
+                                       UniqueHloInstruction& epsilon) {
     HloInstruction* gte = custom_call->users()[0];
     if (Match(instr,
               m::Divide(
@@ -1145,21 +1142,21 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // Verify the uniqueness of the operands.
       if (!variance.Instr() || !epsilon.Instr()) {
         VLOG(1) << "Layer norm operands not unique.";
-        return absl::OkStatus();
+        return false;
       }
 
       // Verify the element types.
       if (!CompatibleElementType(instr) ||
           !CompatibleElementType(expectation.Instr())) {
         VLOG(1) << "Layer norm input types not compatible.";
-        return absl::OkStatus();
+        return false;
       }
 
       // Retrieve metadata of the forward layer norm.
       auto norm_metadata = norm_metadata_.extract(custom_call);
       if (!norm_metadata) {
         VLOG(1) << "Unable to retrieve norm metadata of forward Custom Call.";
-        return absl::OkStatus();
+        return false;
       }
 
       // The shape of the expectation and norm factor return values of the
@@ -1248,7 +1245,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           << "Expectation and norm factor fused into layer norm Custom Call.";
     }
 
-    return absl::OkStatus();
+    return true;
   }
 
   // Matches and rewrites the backward graph of layer norm patterns into Custom

@@ -390,6 +390,20 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
   }
 };
 
+// Deprecated ops.
+template <>
+class StablehloToHloOpConverter<stablehlo::UnaryEinsumOp>
+    : public OpConversionPattern<UnaryEinsumOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(stablehlo::UnaryEinsumOp stablehloOp,
+                                typename stablehlo::UnaryEinsumOp::Adaptor,
+                                ConversionPatternRewriter&) const final {
+    return stablehloOp.emitError(
+        "UnaryEinsumOp is deprecated and not supported in MHLO");
+  }
+};
+
 template <typename... StablehloOpTypes>
 void populateStablehloToHloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,

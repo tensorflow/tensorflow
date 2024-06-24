@@ -73,6 +73,9 @@ absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace);
 std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
     const Trace& trace, std::vector<TraceEvent*>& events);
 
+// Returns the level that an event with `duration_ps` would go into.
+int GetLevelForDuration(uint64_t duration_ps);
+
 struct EventFactory {
   TraceEvent* Create() {
     events.push_back(std::make_unique<TraceEvent>());
@@ -130,7 +133,8 @@ class TraceEventsContainerBase {
   void AddFlowEvent(absl::string_view name, uint32_t resource_id,
                     uint32_t device_id, tsl::profiler::Timespan timespan,
                     uint64_t flow_id, TraceEvent::FlowEntryType flow_entry_type,
-                    ContextType flow_category = ContextType::kGeneric,
+                    tsl::profiler::ContextType flow_category =
+                        tsl::profiler::ContextType::kGeneric,
                     RawData* raw_data = nullptr,
                     std::optional<int64_t> group_id = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
@@ -162,7 +166,8 @@ class TraceEventsContainerBase {
   void AddAsyncEvent(absl::string_view name, uint32_t device_id,
                      tsl::profiler::Timespan timespan, uint64_t flow_id,
                      TraceEvent::FlowEntryType flow_entry_type,
-                     ContextType flow_category = ContextType::kGeneric,
+                     tsl::profiler::ContextType flow_category =
+                         tsl::profiler::ContextType::kGeneric,
                      RawData* raw_data = nullptr,
                      std::optional<int64_t> group_id = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();

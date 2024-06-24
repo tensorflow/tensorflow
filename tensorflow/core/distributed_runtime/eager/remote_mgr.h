@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
@@ -67,7 +68,7 @@ class RemoteMgr {
   // remote worker.
   Status SerializeRemoteTensorHandle(
       TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
-      Device* device, const string& device_name,
+      Device* device, absl::string_view device_name = "",
       const bool serialize_resource_dtype_and_shape = false);
 
   // Deserialize a RemoteTensorHandle to a TensorHandle(local/remote).

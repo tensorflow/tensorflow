@@ -21,8 +21,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/text_literal_reader.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"

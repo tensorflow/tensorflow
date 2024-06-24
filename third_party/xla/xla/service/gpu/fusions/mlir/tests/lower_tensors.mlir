@@ -709,3 +709,120 @@ module {
 // CHECK-NEXT:      "dummy.op2"
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return %[[I]] : index
+
+// -----
+
+module {
+  func.func @transfer_write(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> tensor<43xf32> {
+    %c16 = arith.constant 16 : index
+    %c22 = arith.constant 22 : index
+    %cst = arith.constant dense<[1.0, 2.0]> : vector<2xf32>
+    %out = vector.transfer_write %cst, %arg0[%c16] : vector<2xf32>, tensor<43xf32>
+    %out2 = vector.transfer_write %cst, %out[%c22] : vector<2xf32>, tensor<43xf32>
+    func.return %out2 : tensor<43xf32>
+  }
+}
+
+// CHECK-LABEL: @transfer_write
+// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK-NEXT:      llvm.store %[[CST:.*]], %[[PTR1]]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
+
+// -----
+
+module {
+  func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<2xf32> {
+    %c16 = arith.constant 16 : index
+    %c0 = arith.constant 0.0 : f32
+    %out = vector.transfer_read %arg0[%c16], %c0 : tensor<43xf32>, vector<2xf32>
+    func.return %out : vector<2xf32>
+  }
+}
+
+// CHECK-LABEL: @transfer_read
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<2xf32>
+
+// -----
+
+module {
+  func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
+                               %v1: vector<2xi1>, %v2: vector<2xi1>) -> tensor<43xi1> {
+    %c16 = arith.constant 16 : index
+    %c22 = arith.constant 22 : index
+    %out = vector.transfer_write %v1, %arg0[%c16] : vector<2xi1>, tensor<43xi1>
+    %out2 = vector.transfer_write %v2, %out[%c22] : vector<2xi1>, tensor<43xi1>
+    func.return %out2 : tensor<43xi1>
+  }
+}
+
+// CHECK-LABEL: @transfer_write_i1
+// CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
+// CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
+// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]]
+// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
+// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]]
+
+// -----
+
+module {
+  func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vector<2xi1> {
+    %c16 = arith.constant 16 : index
+    %false = arith.constant false
+    %out = vector.transfer_read %arg0[%c16], %false : tensor<43xi1>, vector<2xi1>
+    func.return %out : vector<2xi1>
+  }
+}
+
+// CHECK-LABEL: @transfer_read_i1
+// CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr
+// CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
+// CHECK:           return %[[CAST]] : vector<2xi1>
+
+// -----
+
+module {
+  func.func @transfer_write_i4(%arg0: tensor<43xi4> {xla.slice_index = 1},
+                               %v1: vector<4xi4>) -> tensor<43xi4> {
+    %c16 = arith.constant 16 : index
+    %out = vector.transfer_write %v1, %arg0[%c16] : vector<4xi4>, tensor<43xi4>
+    func.return %out : tensor<43xi4>
+  }
+}
+
+// CHECK-LABEL: @transfer_write_i4
+// CHECK-SAME:       , %[[V1:.*]]: vector<4xi4>
+// CHECK-DAG:       %[[A0:.*]] = vector.extract %[[V1]][0]
+// CHECK-DAG:       %[[A1:.*]] = vector.extract %[[V1]][1]
+// CHECK-DAG:       %[[A2:.*]] = vector.extract %[[V1]][2]
+// CHECK-DAG:       %[[A3:.*]] = vector.extract %[[V1]][3]
+// CHECK-DAG:       vector.insert %[[A0]], {{.*}}[1]
+// CHECK-DAG:       vector.insert %[[A1]], {{.*}}[0]
+// CHECK-DAG:       vector.insert %[[A2]], {{.*}}[3]
+// CHECK-DAG:       vector.insert %[[A3]], {{.*}}[2]
+
+module {
+  func.func @transfer_read_i4(%arg0: tensor<43xi4> {xla.slice_index = 1}) -> vector<4xi4> {
+    %c16 = arith.constant 16 : index
+    %c0 = arith.constant 0 : i4
+    %out = vector.transfer_read %arg0[%c16], %c0 : tensor<43xi4>, vector<4xi4>
+    func.return %out : vector<4xi4>
+  }
+}
+
+// CHECK-LABEL: @transfer_read_i4
+// CHECK:           %[[LOADED:.*]] = llvm.load
+// CHECK-DAG:       %[[A0:.*]] = vector.extract %[[LOADED]][0]
+// CHECK-DAG:       %[[A1:.*]] = vector.extract %[[LOADED]][1]
+// CHECK-DAG:       %[[A2:.*]] = vector.extract %[[LOADED]][2]
+// CHECK-DAG:       %[[A3:.*]] = vector.extract %[[LOADED]][3]
+// CHECK-DAG:       vector.insert %[[A0]], {{.*}}[1]
+// CHECK-DAG:       vector.insert %[[A1]], {{.*}}[0]
+// CHECK-DAG:       vector.insert %[[A2]], {{.*}}[3]
+// CHECK-DAG:       vector.insert %[[A3]], {{.*}}[2]

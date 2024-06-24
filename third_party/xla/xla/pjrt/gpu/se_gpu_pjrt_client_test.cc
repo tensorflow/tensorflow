@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
@@ -130,13 +130,17 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
 
   for (auto* device : client->devices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
-    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
     EXPECT_EQ(memory_space->kind(), StreamExecutorGpuHbmMemorySpace::kKind);
     EXPECT_EQ(memory_space->kind_id(),
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
         IsOkAndHolds(memory_space));
+    EXPECT_EQ(device->memory_spaces().size(), 2);
+    auto* pinned = device->memory_spaces()[1];
+    EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
+                IsOkAndHolds(pinned));
   }
 }
 
@@ -755,6 +759,25 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
                 ->description()
                 .core_on_chip(),
             0);
+}
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
+  const int num_nodes = 4;
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2);
+  EXPECT_EQ(client->device_count(), devices_per_host * num_nodes);
+  for (int i = 0; i < client->device_count(); i++) {
+    auto device = client->devices()[i];
+    auto slice_index =
+        std::get<int64_t>(device->Attributes().at("slice_index"));
+    auto host_index = device->process_index();
+    EXPECT_EQ(slice_index, host_index);
+  }
 }
 
 }  // namespace

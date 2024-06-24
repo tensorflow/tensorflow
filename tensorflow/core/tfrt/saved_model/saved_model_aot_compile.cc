@@ -310,8 +310,8 @@ AotCompileToGpuPjRtExecutable(
   xla::Compiler::TargetConfig gpu_config(gpu_target_config);
   xla::StreamExecutorGpuCompiler pjrt_gpu_compiler;
   // Create a trivial topology, which won't be used.
-  xla::StreamExecutorGpuTopologyDescription topology(xla::CudaId(),
-                                                     xla::CudaName(), nullptr);
+  xla::StreamExecutorGpuTopologyDescription topology(
+      xla::CudaId(), xla::CudaName(), "fake_device", {0});
   xla::CompileOptions pjrt_options =
       GetPjRtCompileOptions(options, **compilation_result);
   pjrt_options.target_config = gpu_config;

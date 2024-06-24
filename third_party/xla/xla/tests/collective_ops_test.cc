@@ -13,14 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -151,6 +157,25 @@ class CollectiveOpsTest : public HloTestBase {
         "minimum",
         /*input_value=*/input_value.Clone(),
         /*expected_value=*/to_literal({cast(1), cast(2), cast(3)}));
+    if constexpr (std::numeric_limits<LiteralType>::is_signed) {
+      input_value = to_literal({cast(-1), cast(-2), cast(-3)});
+      TestTwoReplicasOneOperand<LiteralType>(
+          "add",
+          /*input_value=*/input_value.Clone(),
+          /*expected_value=*/to_literal({cast(-2), cast(-4), cast(-6)}));
+      TestTwoReplicasOneOperand<LiteralType>(
+          "multiply",
+          /*input_value=*/input_value.Clone(),
+          /*expected_value=*/to_literal({cast(1), cast(4), cast(9)}));
+      TestTwoReplicasOneOperand<LiteralType>(
+          "maximum",
+          /*input_value=*/input_value.Clone(),
+          /*expected_value=*/to_literal({cast(-1), cast(-2), cast(-3)}));
+      TestTwoReplicasOneOperand<LiteralType>(
+          "minimum",
+          /*input_value=*/input_value.Clone(),
+          /*expected_value=*/to_literal({cast(-1), cast(-2), cast(-3)}));
+    }
   }
 
  protected:
@@ -1985,18 +2010,30 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
       channel_id=0, frontend_attributes={
         _xla_send_recv_source_target_pairs="{{0,1}}"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
     recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
-    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
 
     compare0 = pred[] compare(replica, c0), direction=EQ
     compare = pred[2] broadcast(compare0), dimensions={}
     recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
 
-    send-done.0 = token[] send-done(send.0), channel_id=0
-    send-done.1 = token[] send-done(send.1), channel_id=0
-
+    send-done.0 = token[] send-done(send.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
+    send-done.1 = token[] send-done(send.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     c1b = u32[2] broadcast(c1), dimensions={}
     ROOT result = u32[2] add(c1b, recv-data)
   })";
@@ -2042,9 +2079,15 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
         _xla_send_recv_source_target_pairs="{{1,0}}",
         _xla_send_recv_validation="invalid"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
-    send-done.0 = token[] send-done(send.0), channel_id=0
+    send-done.0 = token[] send-done(send.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     after-all.1 = token[] after-all()
     recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
@@ -2055,13 +2098,19 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
       channel_id=0, frontend_attributes={
         _xla_send_recv_source_target_pairs="{{0,1}}"
       }
-    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
 
     compare0 = pred[] compare(replica, c0), direction=EQ
     compare = pred[2] broadcast(compare0), dimensions={}
     recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
-    send-done.1 = token[] send-done(send.1), channel_id=0
+    send-done.1 = token[] send-done(send.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     c1b = u32[2] broadcast(c1), dimensions={}
     ROOT result = u32[2] add(c1b, recv-data)
@@ -2113,9 +2162,15 @@ body {
         _xla_send_recv_source_target_pairs="{{1,0}}",
         _xla_send_recv_validation="{{0,1}}"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
-    send-done.0 = token[] send-done(send.0), channel_id=0
+    send-done.0 = token[] send-done(send.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     after-all.1 = token[] after-all()
     recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
@@ -2127,7 +2182,10 @@ body {
       frontend_attributes={
         _xla_send_recv_source_target_pairs="{{0,1}}"
       }
-    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
 
     replica = u32[] replica-id()
@@ -2142,7 +2200,10 @@ body {
     r = u32[2] broadcast(c1), dimensions={}
     s = u32[2] add(r, recv-data)
 
-    send-done.1 = token[] send-done(send.1), channel_id=0
+    send-done.1 = token[] send-done(send.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     ROOT result = (u32[], u32[2]) tuple(new_count, s)
   }
 

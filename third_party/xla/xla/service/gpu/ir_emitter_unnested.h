@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -111,8 +112,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<ThunkSequence> ConsumeThunkSequence() {
-    return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
+    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                             std::move(thunk_sequence_));
   }
 
   // Emits code for the given HLO computation.
@@ -155,6 +157,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
   absl::Status EmitFusion(const HloFusionInstruction* instr);
+  absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
   absl::Status EmitSelectAndScatter(
       const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
@@ -184,9 +187,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
 
-  absl::Status EmitWaitForStreamsThunk(const HloInstruction* inst,
-                                       GpuBackendConfig& gpu_config,
-                                       bool is_async_done);
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 

@@ -20,14 +20,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -145,6 +149,69 @@ XLA_TEST_F(ComparatorsTest, CompareGtF64) {
   BuildComparatorAndComparisons<F64>(this, /*compare_less_than=*/false,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
+}
+
+const auto kCompareStr = HloOpcodeString(xla::HloOpcode::kCompare);
+const auto kParameterStr = HloOpcodeString(xla::HloOpcode::kParameter);
+const auto kSelectStr = HloOpcodeString(xla::HloOpcode::kSelect);
+
+// Checks that `op` is a compare instruction with the given `direction` and
+// whose inputs are parameter ops with the given numbers and `type`.
+void ExpectCompareOp(
+    const xla::HloInstructionProto op, xla::PrimitiveType type,
+    absl::string_view direction, int parameter0_number, int parameter1_number,
+    const tsl::protobuf::RepeatedPtrField<xla::HloInstructionProto>& all_ops) {
+  EXPECT_EQ(op.opcode(), kCompareStr);
+
+  const auto& operand0 = all_ops.at(op.operand_ids(0) - 1);
+  EXPECT_EQ(operand0.opcode(), kParameterStr);
+  EXPECT_EQ(operand0.parameter_number(), parameter0_number);
+  EXPECT_EQ(operand0.shape().element_type(), type);
+
+  const auto& operand1 = all_ops.at(op.operand_ids(1) - 1);
+  EXPECT_EQ(operand1.opcode(), kParameterStr);
+  EXPECT_EQ(operand1.parameter_number(), parameter1_number);
+  EXPECT_EQ(operand1.shape().element_type(), type);
+}
+
+TEST(VariadicComparatorTest, OneOperandOneComparison) {
+  XlaBuilder builder("test");
+  XlaComputation comp = CreateScalarComparisonComputation(
+      "computation", {U16}, {LtTotalOrder}, &builder);
+  EXPECT_EQ(comp.proto().computations_size(), 1);
+  EXPECT_EQ(comp.proto().computations(0).program_shape().parameters_size(), 2);
+
+  const auto& instr = comp.proto().computations(0).instructions();
+  const auto& root = instr.at(comp.proto().computations(0).root_id() - 1);
+  ExpectCompareOp(root, U16, "LT", 0, 1, instr);
+}
+
+TEST(VariadicComparatorTest, TwoOperandsOneComparison) {
+  XlaBuilder builder("test");
+  XlaComputation comp = CreateScalarComparisonComputation(
+      "computation", {U16, U32}, {LtTotalOrder, {}}, &builder);
+  EXPECT_EQ(comp.proto().computations_size(), 1);
+  EXPECT_EQ(comp.proto().computations(0).program_shape().parameters_size(), 4);
+
+  const auto& instr = comp.proto().computations(0).instructions();
+  const auto& root = instr.at(comp.proto().computations(0).root_id() - 1);
+  ExpectCompareOp(root, U16, "LT", 0, 1, instr);
+}
+
+TEST(VariadicComparatorTest, TwoOperandsTwoComparisons) {
+  XlaBuilder builder("test");
+  XlaComputation comp = CreateScalarComparisonComputation(
+      "computation", {U16, U32}, {LtTotalOrder, LtTotalOrder}, &builder);
+
+  EXPECT_EQ(comp.proto().computations_size(), 1);
+  EXPECT_EQ(comp.proto().computations(0).program_shape().parameters_size(), 4);
+
+  const auto& instr = comp.proto().computations(0).instructions();
+  const auto& root = instr.at(comp.proto().computations(0).root_id() - 1);
+  EXPECT_EQ(root.opcode(), HloOpcodeString(xla::HloOpcode::kSelect));
+  ExpectCompareOp(instr.at(root.operand_ids(0) - 1), U16, "EQ", 0, 1, instr);
+  ExpectCompareOp(instr.at(root.operand_ids(1) - 1), U32, "LT", 2, 3, instr);
+  ExpectCompareOp(instr.at(root.operand_ids(2) - 1), U16, "LT", 0, 1, instr);
 }
 
 }  // namespace

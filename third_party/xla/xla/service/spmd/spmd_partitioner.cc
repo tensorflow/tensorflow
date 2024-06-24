@@ -4059,12 +4059,13 @@ absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
                                                 next_channel_id_, logger_,
                                                 call_graph_)
                          .status());
-  SetPartitionedHlo(hlo, [&] {
-    return b_.AddInstruction(HloInstruction::CreateWhile(
-        MakePartitionedShape(hlo->shape(), sharding), hlo->while_condition(),
-        hlo->while_body(),
-        GetPartitionedHlo(hlo->operand(0)).Reshard(sharding).hlo()));
-  });
+
+  HloInstruction* whileOp = b_.AddInstruction(HloInstruction::CreateWhile(
+      MakePartitionedShape(hlo->shape(), sharding), hlo->while_condition(),
+      hlo->while_body(),
+      GetPartitionedHlo(hlo->operand(0)).Reshard(sharding).hlo()));
+  hlo->SetupDerivedInstruction(whileOp);
+  SetPartitionedHlo(hlo, [&] { return whileOp; });
   return absl::OkStatus();
 }
 
@@ -4095,9 +4096,19 @@ absl::Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
     if (!hlo->operand(0)->sharding().IsManual()) {
       // We replicate the predicate of the conditional (the first operand) so
       // that all partitions follow the same control flow.
-      cond = GetPartitionedHlo(hlo->operand(0))
-                 .Reshard(HloSharding::Replicate())
-                 .hlo();
+      if (hlo->operand(0)->sharding().IsManualSubgroup()) {
+        auto grouped_sharding = hlo_sharding_util::GetManualSubgroupSharding(
+            hlo->operand(0)->sharding());
+        grouped_sharding.sharding = HloSharding::Replicate();
+        cond =
+            GetPartitionedHlo(hlo->operand(0))
+                .Reshard(hlo_sharding_util::UngroupSharding(grouped_sharding))
+                .hlo();
+      } else {
+        cond = GetPartitionedHlo(hlo->operand(0))
+                   .Reshard(HloSharding::Replicate())
+                   .hlo();
+      }
     }
     return b_.AddInstruction(HloInstruction::CreateConditional(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,
@@ -5363,6 +5374,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           if (amount < 0) {
             continue;
           }
+          TF_RETURN_IF_ERROR(HandleRotateRightWhilePreprocessing(computation));
           HloInstruction* to_rotate = lhs->mutable_operand(0);
           HloInstruction* rotate = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim, amount));

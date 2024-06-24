@@ -905,6 +905,10 @@ class CustomCallCmd : public CommandBufferCmd {
 // 'from_stream_id' to the execution scope created from the
 // 'execution_stream_id', e.g. Async operator lowered to command buffer requires
 // a barrier from the launching stream to the async operator's execution stream.
+//
+// In other words, all future commands added to `execution_stream_id` are
+// guaranteed to begin executing only after all already-added commands in
+// `from_stream_id` have completed.
 //===----------------------------------------------------------------------===//
 
 class BarrierCmd : public CommandBufferCmd {
@@ -919,7 +923,7 @@ class BarrierCmd : public CommandBufferCmd {
   BufferUsageVector buffers() override;
 
  private:
-  ExecutionStreamId from_stream_id_;
+  const ExecutionStreamId from_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//

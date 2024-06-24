@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 #include "tensorflow/core/framework/resource_base.h"
-#include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {

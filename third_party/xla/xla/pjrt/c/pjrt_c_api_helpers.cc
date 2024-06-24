@@ -603,7 +603,7 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
   c_value.name_size = kXlaVersion.size();
   c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
   // TODO(b/327203806): figure out where to keep the xla_version.
-  c_value.int64_value = 1;
+  c_value.int64_value = 2;
   c_value.value_size = 1;
   static const std::vector<PJRT_NamedValue>* c_values =
       new std::vector<PJRT_NamedValue>({c_value});

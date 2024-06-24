@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <list>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -28,6 +28,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+// The source_location.h is not available in open source.
+#if defined(PLATFORM_GOOGLE)
+#include "absl/types/source_location.h"
+#endif  // PLATFORM_GOOGLE
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -36,9 +45,14 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -901,12 +915,10 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
                "operand that has the same value as the in-place buffer";
       }
     }
-    if (!producer->IsElementwise() &&
-        (consumer->operand(operand_number) == producer ||
-         absl::c_find(producer->operands(),
-                      consumer->operand(operand_number)) !=
-             producer->operands().end())) {
-      VLOG(4) << "Found non-elementwise producer that uses the same operand of "
+    if (consumer->operand(operand_number) == producer ||
+        absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
+            producer->operands().end()) {
+      VLOG(4) << "Found producer that uses the same operand of "
                  "an in-place consumer";
       auto get_real_operand = [](const HloInstruction* op,
                                  const HloInstruction* operand) {
@@ -927,19 +939,50 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       // A common special case is a slice or dynamic-slice and a
       // dynamic-update-slice that use the same indices. This pattern is safe.
 
+      auto is_nonelementwise_op = [](const HloInstruction* inst) {
+        return inst->opcode() != HloOpcode::kFusion && !inst->IsElementwise() &&
+               inst->opcode() != HloOpcode::kBitcast &&
+               inst->opcode() != HloOpcode::kParameter;
+      };
       auto producer_nonelementwise_ops =
-          ExtractInstructions(producer, [](const HloInstruction* inst) {
-            return inst->opcode() != HloOpcode::kFusion &&
-                   !inst->IsElementwise() &&
-                   inst->opcode() != HloOpcode::kBitcast &&
-                   inst->opcode() != HloOpcode::kParameter;
+          ExtractInstructions(producer, [&](const HloInstruction* inst) {
+            return is_nonelementwise_op(inst);
           });
       if (producer_nonelementwise_ops.size() > 1) {
         return "Producer fusion has multiple non-elementwise ops, bailing.";
       }
       // If the producer has only elementwise ops or bitcasts, we can fuse.
       if (producer_nonelementwise_ops.empty()) {
-        return {};
+        if (consumer->opcode() != HloOpcode::kFusion) {
+          return {};
+        }
+        // If the consumer fusion has both elementwise and non-elementwise ops,
+        // and ops of the two groups access the same buffer of the producer, we
+        // have a potential conflict even if all the ops in the producer are
+        // elementwise.
+        auto inplace_instr_and_index = FollowTupleIndirection(
+            consumer->fused_expression_root(), pair.second);
+        auto consumer_nonelementwise_ops =
+            ExtractInstructions(consumer, [&](const HloInstruction* inst) {
+              // Exclude instructions which are same as inplace fusion roots.
+              return is_nonelementwise_op(inst) &&
+                     inst != inplace_instr_and_index.first;
+            });
+        auto* fused_computation = consumer->fused_instructions_computation();
+        std::unique_ptr<HloReachabilityMap> reachability =
+            HloReachabilityMap::Build(fused_computation);
+        auto inplace_consumer_parameter =
+            fused_computation->parameter_instruction(
+                consumer->operand_index(producer));
+        bool inplace_conflict_after_fusion = absl::c_any_of(
+            consumer_nonelementwise_ops, [&](const HloInstruction* instr) {
+              return reachability->IsReachable(inplace_consumer_parameter,
+                                               instr);
+            });
+        return inplace_conflict_after_fusion
+                   ? "Non-elementwise ops in consumer lead to inplace conflict "
+                     "after fusion."
+                   : FusionDecision();
       }
       auto dus_ops =
           ExtractInstructions(consumer, HloOpcode::kDynamicUpdateSlice);

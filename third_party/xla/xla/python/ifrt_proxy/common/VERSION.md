@@ -11,3 +11,9 @@
 *   Added date: 2024-05-31.
 *   Changes:
     *   Added support for `Client::GetReadyFuture()`.
+
+## Version 3
+
+*   Added date: 2024-06-17.
+*   Changes:
+    *   Added native support for `Client::CopyArrays()`.

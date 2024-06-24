@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <random>
-#include <string>
+#include <string_view>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -28,32 +30,35 @@ limitations under the License.
 namespace xla::cpu {
 
 static void BM_AddF32(benchmark::State& state) {
-  std::string hlo_module = R"(
-    HloModule m
+  int64_t d0 = state.range(0);
 
-    add {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT add = f32[1024] add(p0, p1)
-    }
+  std::string_view hlo = R"(
+    HloModule add_f32_$d0
 
     ENTRY e {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT fusion = f32[1024] fusion(p0, p1), kind=kLoop, calls=add
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      p1 = f32[1,2,1,$d0,256] parameter(1)
+      ROOT add = f32[1,2,1,$d0,256] add(p0, p1)
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {1024});
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
-BENCHMARK(BM_AddF32)->MeasureProcessCPUTime();
+BENCHMARK(BM_AddF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(16384);
 
 }  // namespace xla::cpu

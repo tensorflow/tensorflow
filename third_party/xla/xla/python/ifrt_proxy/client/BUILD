@@ -156,6 +156,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/service:computation_placer_hdr",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform",

@@ -16,6 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "tsl/platform/errors.h"
 #define _USE_MATH_DEFINES
 
 #include <functional>
@@ -24,6 +34,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -37,7 +48,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -205,6 +215,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 
+  // Use fast path that doesn't use embedded evaluators in reduce.
+  void set_reduce_use_fast_path(bool value) { use_fast_path_reduce_ = value; }
+
   // Handles evaluation of a custom-call op.
   // Operand literals are provided in |operands| and implementations must
   // populate |output| before returning.
@@ -217,6 +230,16 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // return an output literal of the appropriate shape.
   void set_custom_call_handler(CustomCallHandler handler) {
     custom_call_handler_ = std::move(handler);
+  }
+
+  // Callback for each multiply-accumulate in each dot or convolution operation.
+  using TraceMACHandler = std::function<void(
+      int64_t result_index, int64_t lhs_index, int64_t rhs_index)>;
+
+  // Sets a callback for each multiply-accumulate in each dot or convolution
+  // operation.
+  void set_trace_mac_handler(TraceMACHandler handler) {
+    trace_mac_handler_ = std::move(handler);
   }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
@@ -436,6 +459,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;
 
+  // Use fast path that doesn't use embedded evaluators in reduce.
+  bool use_fast_path_reduce_ = true;
+
  private:
   template <typename ReturnT, typename NativeT>
   static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
@@ -477,6 +503,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
   // Optional handler for custom_call ops.
   CustomCallHandler custom_call_handler_;
+
+  // Optional handler for tracing MAC operations (eg in dot and convolution).
+  TraceMACHandler trace_mac_handler_;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;

@@ -61,7 +61,7 @@ def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
     (TFL_ResizeNearestNeighborOp
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-      (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+      ConstBoolAttrFalse,
       ConstBoolAttrTrue),
     [(IsNhwcLayoutOp $attrs)]>;
 
@@ -79,14 +79,23 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-        (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
+        ConstBoolAttrFalse,
         ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
     [(IsNchwLayoutOp $attrs)]>;
 
-def LegalizeCompositeGELU : Pat<(MHLO_CompositeOp:$composite 
-                                  (variadic $inputs), 
-                                  ConstantStrAttr<StrAttr, "odml.internal.gelu">, $_, $_, $_),
-                                (TFL_GeluOp $inputs, ConstBoolAttrFalse)>;
+def LegalizeCompositeExactAtenGELU : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "aten.gelu.default">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs, ConstBoolAttrFalse),
+        [(IsStrCompositeAttribute<"approximate", "none"> $attrs)]>;
+
+def LegalizeCompositeApproximateAtenGELU : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "aten.gelu.default">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs, ConstBoolAttrTrue),
+        [(IsStrCompositeAttribute<"approximate", "tanh"> $attrs)]>;

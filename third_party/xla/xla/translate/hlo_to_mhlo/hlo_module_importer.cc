@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape_util.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/translate/hlo_to_mhlo/module_config_importer.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -111,6 +112,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
       "mhlo.is_dynamic",
       mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
   ImportFrontendAttributes(hlo_module, module);
+  ImportHloModuleConfig(hlo_module.config(), module);
   module->setAttr("mhlo.use_auto_spmd_partitioning",
                   mlir::BoolAttr::get(builder_.getContext(),
                                       hlo_module.use_auto_spmd_partitioning()));

@@ -2030,7 +2030,7 @@ class MapOpToGenericConverter : public OpConversionPattern<mhlo::MapOp> {
     }
     signatureConverter.addInputs(resultType.getElementType());
 
-    rewriter.applySignatureConversion(&region, signatureConverter,
+    rewriter.applySignatureConversion(&region.front(), signatureConverter,
                                       getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
@@ -2079,7 +2079,7 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
               mlir::cast<ShapedType>(it.value().getType()).getElementType()));
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter,
+    rewriter.applySignatureConversion(&region.front(), signatureConverter,
                                       getTypeConverter());
     auto result = rewriter.createOrFold<tensor::CastOp>(loc, resultType,
                                                         linalgOp.getResults());
@@ -2222,7 +2222,7 @@ class ReduceOpToGenericConverter : public OpConversionPattern<mhlo::ReduceOp> {
               mlir::cast<ShapedType>(val.getType()).getElementType()));
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter,
+    rewriter.applySignatureConversion(&region.front(), signatureConverter,
                                       getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
@@ -2317,7 +2317,7 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
           // type for new operand number 'idx' + linalgOp.getNumInputs()
           typeConverter->convertType(val.getElementType()));
     }
-    rewriter.applySignatureConversion(&region, signatureConverter,
+    rewriter.applySignatureConversion(&region.front(), signatureConverter,
                                       getTypeConverter());
 
     // Cast the result to the correct type.
@@ -2520,8 +2520,8 @@ struct SelectAndScatterNoOverlapConverter
     reduceSignConverter.addInputs(srcETy);
     reduceSignConverter.addInputs(1, destETy);
     reduceSignConverter.addInputs(indexETy);
-    rewriter.applySignatureConversion(&reduceRegion, reduceSignConverter,
-                                      getTypeConverter());
+    rewriter.applySignatureConversion(&reduceRegion.front(),
+                                      reduceSignConverter, getTypeConverter());
 
     // Grab the terminator and use the turned value to now select the
     // correct index and value.
@@ -2628,8 +2628,8 @@ struct SelectAndScatterNoOverlapConverter
     scatterSignConverter.addInputs(indexETy);
     scatterSignConverter.addInputs(0, sourceTy.getElementType());
     scatterSignConverter.addInputs(1, sourceTy.getElementType());
-    rewriter.applySignatureConversion(&scatterRegion, scatterSignConverter,
-                                      getTypeConverter());
+    rewriter.applySignatureConversion(&scatterRegion.front(),
+                                      scatterSignConverter, getTypeConverter());
 
     auto& scatterBlock = scatterRegion.front();
     auto scatterTerminator = scatterBlock.getTerminator();
@@ -3678,7 +3678,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
           i, mlir::cast<ShapedType>(input.getType()).getElementType());
     }
 
-    rewriter.applySignatureConversion(&region, signatureConverter,
+    rewriter.applySignatureConversion(&region.front(), signatureConverter,
                                       getTypeConverter());
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();

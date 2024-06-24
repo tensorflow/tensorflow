@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"

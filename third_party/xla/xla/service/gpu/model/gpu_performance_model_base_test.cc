@@ -241,7 +241,7 @@ ENTRY e {
   p0 = f32[16,970]{1,0} parameter(0)
   ROOT r = f32[16,970]{1,0} fusion(p0), kind=kCustom,
     calls=triton_softmax_computation,
-    backend_config={"fusion_backend_config": {kind: "__triton_softmax"}}
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,

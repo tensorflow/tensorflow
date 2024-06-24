@@ -949,8 +949,8 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
-        "@local_tsl//tsl/framework:device_type",
         "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/framework:device_type",
     ],
 )
 
@@ -1301,21 +1301,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "vmodule_test",
-    srcs = ["vmodule_test.cc"],
-    tags = ["optonly"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
     ],
 )
 

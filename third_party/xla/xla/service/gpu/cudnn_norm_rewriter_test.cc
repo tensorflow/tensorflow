@@ -1543,7 +1543,7 @@ TEST_F(CudnnNormRewriterTest,
         norm_scale_bias = f32[2,4,6,8] add(norm_scale, bias_bcast)
         doutput = f32[2,4,48] parameter(3)
         dbias = f32[4] reduce(doutput, c0), dimensions={0,2}, to_apply=apply
-        doutput_bitcast = f32[2,4,6,8] reshape(doutput) 
+        doutput_bitcast = f32[2,4,6,8] reshape(doutput)
         norm_doutput = f32[2,4,6,8] multiply(norm, doutput_bitcast)
         dscale = f32[4] reduce(norm_doutput, c0), dimensions={0,2,3}, to_apply=apply
         scale_doutput = f32[2,4,6,8] multiply(scale_bcast, doutput_bitcast)
@@ -1664,7 +1664,7 @@ TEST_F(CudnnNormRewriterTest,
         norm_scale_bias = f32[2,4,6,8] add(norm_scale, bias_bcast)
         doutput = f32[2,4,6,2,2,2] parameter(3)
         dbias = f32[4] reduce(doutput, c0), dimensions={0,2,3,4,5}, to_apply=apply
-        doutput_bitcast = f32[2,4,6,8] reshape(doutput) 
+        doutput_bitcast = f32[2,4,6,8] reshape(doutput)
         norm_doutput = f32[2,4,6,8] multiply(norm, doutput_bitcast)
         dscale = f32[4] reduce(norm_doutput, c0), dimensions={0,2,3}, to_apply=apply
         scale_doutput = f32[2,4,6,8] multiply(scale_bcast, doutput_bitcast)

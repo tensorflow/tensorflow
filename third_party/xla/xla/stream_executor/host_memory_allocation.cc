@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 

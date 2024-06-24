@@ -33,6 +33,11 @@ auto OptionalConvert(Pattern pattern) {
   return m::AnyOf<HloInstruction>(m::Convert(pattern), std::move(pattern));
 }
 
+template <typename Pattern>
+auto OptionalBroadcast(Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Broadcast(pattern), std::move(pattern));
+}
+
 // Type conversion from and to any of BF16 and FP32.
 // TODO(intel-tf): Support more types when enabled.
 template <typename Pattern>

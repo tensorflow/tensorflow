@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "xla/service/all_reduce_folder.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -105,7 +115,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   }
 
   // Now verify, for each unique set of contributors, whether for all of the
-  // associated replica's have the same contributors. These unique sets now
+  // associated replicas have the same contributors. These unique sets now
   // become the folded replica groups.
   std::vector<ReplicaGroup> new_replica_groups;
   new_replica_groups.reserve(contributor_set_id.size());

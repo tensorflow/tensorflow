@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace xla {

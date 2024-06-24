@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"

@@ -16,19 +16,51 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_TILED_HLO_COMPUTATION_H_
 #define XLA_SERVICE_GPU_MODEL_TILED_HLO_COMPUTATION_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "xla/iterator_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "tsl/lib/gtl/iterator_range.h"
 
 namespace xla {
 namespace gpu {
 
-// Stores TiledHloInstructions in the computation.
+// A container for block-level parameters. Currently only used for Triton
+// fusions.
+struct BlockLevelParameters {
+  std::vector<int64_t> output_tile_sizes;
+
+  // Triton-specific parameters.
+  int64_t num_warps = 1;
+  int num_ctas = 1;
+  int num_stages = 1;
+
+  // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
+  static BlockLevelParameters FromBlockLevelFusionConfig(
+      const BlockLevelFusionConfig& config) {
+    return BlockLevelParameters{
+        /*output_tile_sizes=*/
+        std::vector<int64_t>(config.output_tile_sizes().begin(),
+                             config.output_tile_sizes().end()),
+        /*num_warps=*/config.num_warps()};
+  }
+
+  // Returns a BlockLevelFusionConfig proto from a BlockLevelParameters struct.
+  BlockLevelFusionConfig ToBlockLevelFusionConfig() const {
+    BlockLevelFusionConfig config;
+    config.mutable_output_tile_sizes()->Add(output_tile_sizes.begin(),
+                                            output_tile_sizes.end());
+    config.set_num_warps(num_warps);
+    return config;
+  }
+};
+
+// Stores `TiledHloInstruction`s in the computation.
 //  * Instructions reference each other with non-owning pointers.
 //  * Instructions with the same tiling parameters are CSE-ed during
 //  construction.

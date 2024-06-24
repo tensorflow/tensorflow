@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/status_macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

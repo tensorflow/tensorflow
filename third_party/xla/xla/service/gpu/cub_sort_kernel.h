@@ -19,15 +19,18 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "xla/stream_executor/gpu/gpu_types.h"
+
 namespace xla {
 namespace gpu {
 
 // Returns nullptr if no error, otherwise the error message as a null-terminated
 // string (cudaGetErrorString or similar).
-#define XLA_CUB_DECLARE_SORT_KEYS(suffix)                              \
-  const char* CubSortKeys_##suffix(                                    \
-      void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in, \
-      void* d_keys_out, size_t num_items, bool descending, size_t batch_size);
+#define XLA_CUB_DECLARE_SORT_KEYS(suffix)                                     \
+  const char* CubSortKeys_##suffix(                                           \
+      void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,        \
+      void* d_keys_out, size_t num_items, bool descending, size_t batch_size, \
+      stream_executor::gpu::GpuStreamHandle gpu_stream_handle);
 
 // Returns nullptr if no error, otherwise the error message as a null-terminated
 // string (cudaGetErrorString or similar).
@@ -35,7 +38,8 @@ namespace gpu {
   const char* CubSortPairs_##suffix(                                   \
       void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in, \
       void* d_keys_out, const void* d_values_in, void* d_values_out,   \
-      size_t num_items, bool descending, size_t batch_size);
+      size_t num_items, bool descending, size_t batch_size,            \
+      stream_executor::gpu::GpuStreamHandle gpu_stream_handle);
 
 XLA_CUB_DECLARE_SORT_KEYS(bf16)
 XLA_CUB_DECLARE_SORT_KEYS(f16)
@@ -50,6 +54,9 @@ XLA_CUB_DECLARE_SORT_KEYS(u16)
 XLA_CUB_DECLARE_SORT_KEYS(u32)
 XLA_CUB_DECLARE_SORT_KEYS(u64)
 
+XLA_CUB_DECLARE_SORT_PAIRS(u8_b16)
+XLA_CUB_DECLARE_SORT_PAIRS(u8_b32)
+XLA_CUB_DECLARE_SORT_PAIRS(u8_b64)
 XLA_CUB_DECLARE_SORT_PAIRS(u16_b16)
 XLA_CUB_DECLARE_SORT_PAIRS(u16_b32)
 XLA_CUB_DECLARE_SORT_PAIRS(u16_b64)

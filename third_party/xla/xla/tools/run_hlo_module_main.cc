@@ -39,7 +39,7 @@ const char* const kUsage = R"(
 This tool lets you read a HloModule from a file and execute the module on given
 platform.
 
-The file can be one of the followings:
+The file can be one of the following:
 1) An hlo text dump, the string should be in HloModule::ToString() format.
 2) A binary or text proto file, the proto should be in xla.HloProto type.
 
@@ -91,6 +91,12 @@ int main(int argc, char** argv) {
           "on a reference platform at all."),
       tsl::Flag("print_literals", &opts.print_literals,
                 "Print the input and result literals to stdout."),
+      tsl::Flag("output_literals_file", &opts.output_literals_file,
+                "Output literals as RunHloModuleLiterals protobuf to the"
+                " destimation file."),
+      tsl::Flag("input_literals_file", &opts.input_literals_file,
+                "Use arguments from the provided literals file. Cannot be used "
+                "in combination with \"force_fake_data\"."),
       tsl::Flag(
           "run_test_hlo_passes", &opts.run_test_hlo_passes,
           "Run HLO pass pipeline for the test platform on the HLO module "
@@ -148,6 +154,10 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << kUsageString;
   }
 
+  QCHECK(!(opts.force_fake_data && !opts.input_literals_file.empty()))
+      << "Cannot specify \"force_fake_data\" and \"input_literals_file\" "
+         "together";
+
   const std::string test_platform_name = GetTestPlatformName(opts.platform);
   const std::string reference_platform_name =
       GetReferencePlatformName(opts.reference_platform);
@@ -169,19 +179,40 @@ int main(int argc, char** argv) {
     const char* hlo_filename = argv[c];
     std::cout << "\n ** Running " << hlo_filename << "** \n";
 
+    xla::RunHloModuleLiterals literals_proto;
     std::unique_ptr<std::minstd_rand0> engine;
     if (opts.random_init_input_literals) {
       engine = std::make_unique<std::minstd_rand0>();
     }
     const int iteration_count = opts.iterations;
+    xla::RunHloModuleLiterals input_literals_proto;
+    if (!opts.input_literals_file.empty()) {
+      ReadInputLiteralsFromFile(opts.input_literals_file,
+                                &input_literals_proto);
+    }
+
     for (int i = 1; i <= iteration_count; ++i) {
       if (iteration_count != 1) {
         std::cerr << "\n=== Iteration " << i << "\n";
       }
+      xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr;
+      if (!opts.output_literals_file.empty() ||
+          !opts.input_literals_file.empty()) {
+        iteration_literals_proto = literals_proto.add_iterations();
+      }
+      // If input literals are specified populate arguments portion.
+      if (!opts.input_literals_file.empty() &&
+          i < input_literals_proto.iterations_size()) {
+        for (int argument_idx = 0;
+             argument_idx < input_literals_proto.iterations(i).arguments_size();
+             ++argument_idx) {
+          *iteration_literals_proto->add_arguments() =
+              input_literals_proto.iterations(i).arguments(argument_idx);
+        }
+      }
       absl::Status result = xla::RunAndCompare(
           hlo_filename, &test_runner, reference_runner.get(), engine.get(),
-          opts,
-          /*iteration_literals_proto=*/nullptr,
+          opts, iteration_literals_proto,
           /*reference_module_modifier_hook=*/{},
           [&](xla::HloModuleConfig* config) {
             config->set_seed(different_random_seeds ? i : 42);
@@ -200,6 +231,14 @@ int main(int argc, char** argv) {
 
     if (!reference_platform_name.empty()) {
       std::cerr << failure_count << "/" << iteration_count << " runs failed.\n";
+    }
+    if (!opts.output_literals_file.empty()) {
+      if (!tsl::WriteBinaryProto(tsl::Env::Default(), opts.output_literals_file,
+                                 literals_proto)
+               .ok()) {
+        std::cerr << "Failed to serialize literals to file "
+                  << opts.output_literals_file << "\n";
+      }
     }
   }
 

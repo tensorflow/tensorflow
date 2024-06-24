@@ -31,9 +31,28 @@ namespace gpu {
 SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
     : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
 
-std::string SequentialThunk::ToStringExtra(int indent) const {
-  std::string result = "\n";
-  absl::StrAppend(&result, thunks().ToString(indent + 1, nullptr));
+std::string SequentialThunk::ToString(int indent) const {
+  const std::string indent_str(indent * 2, ' ');
+  if (thunks_.empty()) return indent_str + "No thunks.";
+
+  auto thunk_with_longest_kind = absl::c_max_element(
+      thunks_,
+      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
+        return Thunk::KindToString(a->kind()).length() <
+               Thunk::KindToString(b->kind()).length();
+      });
+  int64_t max_thunk_kind_len =
+      Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
+  std::string result;
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    // Write out the thunk kind, padded out to max_thunk_kind_len.
+    absl::string_view kind_str = Thunk::KindToString(thunk->kind());
+    absl::StrAppend(&result, indent_str, kind_str,
+                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
+                    "\t");
+    absl::StrAppend(&result, thunk->ToString(indent + 1));
+    absl::StrAppend(&result, "\n");
+  }
   return result;
 }
 
@@ -53,10 +72,12 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
-  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
-  for (const auto& thunk : thunks_) {
-    auto annotation =
-        GetKernelAnnotation(annotations, thunk->profile_annotation());
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(thunk->profile_annotation());
+    if (params.mock_collectives && thunk->IsCollective()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();

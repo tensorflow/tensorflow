@@ -133,6 +133,9 @@ bool FuseProducerConsumerOutputToInputIndexing(
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
                           mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          const Shape& output_shape,
+                          mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
@@ -148,8 +151,16 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
 // shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
 // are thread indices (currently only 0 is used), dimensions 3 to 5 are block
 // indices (currently only 3 is used).
+mlir::AffineMap GetBlockOffsetsForTiling(
+    absl::Span<const int64_t> num_blocks,
+    absl::Span<const int64_t> tile_sizes_per_block, int64_t rank,
+    mlir::MLIRContext* mlir_context);
 mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
                                          mlir::MLIRContext* mlir_context);
+mlir::AffineMap GetThreadOffsetsForTiling(
+    absl::Span<const int64_t> num_threads,
+    absl::Span<const int64_t> tile_sizes_per_thread, int64_t rank,
+    mlir::MLIRContext* mlir_context);
 mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
                                           mlir::MLIRContext* mlir_context);
 

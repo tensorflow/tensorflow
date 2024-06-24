@@ -258,18 +258,31 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>
 // CHECK:         }
 
-func.func private @gelu_decomp(%arg0: tensor<2xf32>) -> tensor<2xf32>
-func.func @gelu(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = mhlo.composite "odml.internal.gelu" %arg0 {composite_attributes = {approx = false}, decomposition = @gelu_decomp} : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+func.func private @gelu_decomp_1(%arg0: tensor<5x10xf32>) -> tensor<5x10xf32>
+func.func @gelu_aten(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
+  %0 = mhlo.composite "aten.gelu.default" %arg0 {composite_attributes = {approximate = "none"}, decomposition = @gelu_decomp_1} : (tensor<5x10xf32>) -> tensor<5x10xf32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<5x10xf32>) -> tensor<*xf32>
+  %2 = "tf.Identity"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
 }
 
-// CHECK-LABEL: gelu
-// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<2xf32>) -> tensor<2xf32>
+// CHECK-LABEL: gelu_aten
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<5x10xf32>) -> tensor<5x10xf32>
+
+func.func private @gelu_decomp_2(%arg0: tensor<5x10xf32>) -> tensor<5x10xf32>
+func.func @gelu_aten_approximate(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
+  %0 = mhlo.composite "aten.gelu.default" %arg0 {composite_attributes = {approximate = "tanh"}, decomposition = @gelu_decomp_2} : (tensor<5x10xf32>) -> tensor<5x10xf32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<5x10xf32>) -> tensor<*xf32>
+  %2 = "tf.Identity"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+// CHECK-LABEL: gelu_aten_approximate
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<5x10xf32>) -> tensor<5x10xf32>
 
 // CHECK-LABEL  func.func @jax_image_resize_nearest
 func.func @jax_image_resize_nearest(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
-  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = false, align_corners = false, size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = false, size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
   return %1 : tensor<1x4x4x10xf32>
 }
 func.func private @XlaCallModule_tfl.resize_nearest_neighbor.impl_0(%arg0: tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32> {
@@ -324,7 +337,7 @@ func.func private @XlaCallModule__resize_0(%arg0: tensor<1x2x2x10xf32>) -> (tens
 // CHECK-LABEL  func.func @jax_image_resize_nearest_nchw
 func.func @jax_image_resize_nearest_nchw(%arg0: tensor<4x8x32x32xf32>) -> (tensor<4x8x64x64xf32>) {
   %0 = call @XlaCallModule_tfl.resize_nearest_neighbor.impl_1(%arg0) : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
-  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, size = dense<64> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_1} : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
+  %1 = mhlo.composite "tfl.resize_nearest_neighbor" %arg0 {composite_attributes = {is_nchw_op = true, size = dense<64> : tensor<2xi64>}, decomposition = @XlaCallModule_tfl.resize_nearest_neighbor.impl_1} : (tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32>
   return %1 : tensor<4x8x64x64xf32>
 }
 func.func private @XlaCallModule_tfl.resize_nearest_neighbor.impl_1(%arg0: tensor<4x8x32x32xf32>) -> tensor<4x8x64x64xf32> {

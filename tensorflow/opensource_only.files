@@ -7,7 +7,9 @@ tf_staging/tensorflow/cc/saved_model/image_format/README.md:
 tf_staging/tensorflow/compat_template.__init__:.py
 tf_staging/tensorflow/compat_template_v1.__init__:.py
 tf_staging/tensorflow/compiler/mlir/glob_lit_test.bzl:
+tf_staging/tensorflow/compiler/mlir/lite/core/special_rules.bzl:
 tf_staging/tensorflow/compiler/mlir/lite/schema/schema_generated.h:
+tf_staging/tensorflow/compiler/mlir/lite/special_rules.bzl:
 tf_staging/tensorflow/compiler/mlir/quantization/stablehlo/internal_visibility_allowlist.bzl:
 tf_staging/tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tf_staging/tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
@@ -102,7 +104,6 @@ tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/BUILD:
 tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.cc:
 tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h:
 tf_staging/tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader_test.cc:
-tf_staging/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h:
 tf_staging/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:

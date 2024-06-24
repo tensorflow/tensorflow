@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/triton_sparse_extensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/rocm_rocdl_path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
@@ -48,7 +50,7 @@ using mlir::ValueRange;
 
 absl::Status CreateTritonPipeline(
     mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
-    const TritonGemmConfig& config,
+    const BlockLevelParameters& block_level_parameters,
     mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
   // TODO(ROCm): Check whether value different than 0 can be used.
   const int ccAsInt = 0;
@@ -69,18 +71,19 @@ absl::Status CreateTritonPipeline(
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
-      config.num_ctas));
+      absl::StrFormat("cuda:%u", ccAsInt), block_level_parameters.num_warps,
+      threadsPerWarp, block_level_parameters.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul({ccAsInt}));
+  pm.addPass(createSparseBlockedToMMAPass());
+  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(mt::gpu::createTritonGPUPipeline(
-      {config.num_stages, config.num_warps, config.num_ctas, ccAsInt}));
+  pm.addPass(
+      mt::gpu::createTritonGPUPipeline({block_level_parameters.num_stages}));
   pm.addPass(mt::gpu::createTritonGPUPrefetch());
 
   // TODO ROCm Check if we want to compare MI100 and greater

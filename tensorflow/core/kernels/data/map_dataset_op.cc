@@ -39,6 +39,7 @@ namespace data {
 /* static */ constexpr const char* const MapDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const MapDatasetOp::kUseInterOpParallelism;
 /* static */ constexpr const char* const MapDatasetOp::kPreserveCardinality;
+/* static */ constexpr const char* const MapDatasetOp::kForceSynchronous;
 
 class MapDatasetOp::Dataset : public DatasetBase {
  public:
@@ -46,10 +47,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
           std::unique_ptr<CapturedFunction> captured_func,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
-          bool preserve_cardinality)
+          bool preserve_cardinality, bool force_synchronous)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         preserve_cardinality_(preserve_cardinality),
+        force_synchronous_(force_synchronous),
         captured_func_(std::move(captured_func)),
         output_types_(output_types),
         output_shapes_(output_shapes) {
@@ -142,14 +144,18 @@ class MapDatasetOp::Dataset : public DatasetBase {
     AttrValue preserve_cardinality_attr;
     b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
 
+    // Attr: force_synchronous
+    AttrValue force_synchronous_attr;
+    b->BuildAttrValue(force_synchronous_, &force_synchronous_attr);
+
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
         {std::make_pair(1, other_arguments)},         // Tensor list inputs.
         {std::make_pair(kFunc, f_attr),
          std::make_pair(kTarguments, other_arguments_types_attr),
          std::make_pair(kUseInterOpParallelism, use_inter_op_parallelism_attr),
-         std::make_pair(kPreserveCardinality,
-                        preserve_cardinality_attr)},  // Attrs
+         std::make_pair(kPreserveCardinality, preserve_cardinality_attr),
+         std::make_pair(kForceSynchronous, force_synchronous_attr)},  // Attrs
         output));
     return absl::OkStatus();
   }
@@ -230,6 +236,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
   const DatasetBase* const input_;
   const bool preserve_cardinality_;
+  const bool force_synchronous_;
   const std::unique_ptr<CapturedFunction> captured_func_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -250,6 +257,7 @@ MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kForceSynchronous, &force_synchronous_));
 }
 
 void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -259,8 +267,9 @@ void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  CapturedFunction::Create(ctx, func_metadata_, kOtherArguments,
                                           &captured_func));
 
-  *output = new Dataset(ctx, input, std::move(captured_func), output_types_,
-                        output_shapes_, preserve_cardinality_);
+  *output =
+      new Dataset(ctx, input, std::move(captured_func), output_types_,
+                  output_shapes_, preserve_cardinality_, force_synchronous_);
 }
 
 namespace {

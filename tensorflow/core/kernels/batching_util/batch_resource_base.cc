@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -663,14 +664,15 @@ Status BatchResourceBase::ConcatInputTensors(
   const int padding_amount =
       just_for_warmup ? padded_batch_size
                       : padded_batch_size - batch.size() - unbatched_tasks_size;
-  tsl::profiler::TraceMe trace_me([padded_batch_size, padding_amount,
-                                   disable_padding = batcher_queue_options_
-                                                         .disable_padding]() {
-    return profiler::TraceMeEncode(
-        "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
-                               {"padding_amount", padding_amount},
-                               {"disable_padding", disable_padding}});
-  });
+  tsl::profiler::TraceMe trace_me(
+      [padded_batch_size, padding_amount,
+       disable_padding = batcher_queue_options_.disable_padding]() {
+        return tsl::profiler::TraceMeEncode(
+            "ConcatInputTensors",
+            {{"batch_size_after_padding", padded_batch_size},
+             {"padding_amount", padding_amount},
+             {"disable_padding", disable_padding}});
+      });
   // TODO(b/316379576): Add metrics for the breakdown between the size of the
   // original batch size and the unbatched task size and update the batch size
   // to include the unbatched tasks.
@@ -959,6 +961,7 @@ void BatchResourceBase::ProcessFuncBatch(
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
   const std::string& model_name = GetModelName(last_task_context);
+  const std::string& op_name = last_task_context->op_kernel().name();
 
   // Regardless of the outcome, we need to propagate the status to the
   // individual tasks and signal that they are done. We use MakeCleanup() to
@@ -973,8 +976,9 @@ void BatchResourceBase::ProcessFuncBatch(
     // TODO(b/316379576): Update this to take the unbatch task cost into
     // consideration when excluding the wasted cost and propagate cost to the
     // unbatched tasks.
-    SplitBatchCostsAndRecordMetrics(model_name, batch_cost_measurements,
-                                    processed_size, *batch);
+    SplitBatchCostsAndRecordMetrics(
+        /* model_name= */ model_name, /* op_name= */ op_name,
+        batch_cost_measurements, processed_size, *batch);
     // Clear the measurements before unblocking the batch task, as measurements
     // are associated with the task's thread context.
     batch_cost_measurements.clear();
@@ -1069,10 +1073,12 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   AsyncOpKernel::DoneCallback last_task_callback =
       batch->task(batch->num_tasks() - 1).done_callback;
   const std::string& model_name = GetModelName(last_task_context);
+  const std::string& op_name = last_task_context->op_kernel().name();
 
   auto batch_cost_cleanup = gtl::MakeCleanup([&] {
-    SplitBatchCostsAndRecordMetrics(model_name, batch_cost_measurements,
-                                    processed_size, *batch);
+    SplitBatchCostsAndRecordMetrics(
+        /* model_name= */ model_name, /* op_name= */ op_name,
+        batch_cost_measurements, processed_size, *batch);
   });
 
   OP_REQUIRES_OK_ASYNC(last_task_context, ValidateBatch(*batch),
@@ -1201,7 +1207,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 }
 
 void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
-    const std::string& model_name,
+    const std::string& model_name, const std::string& op_name,
     const std::vector<std::unique_ptr<CostMeasurement>>&
         batch_cost_measurements,
     const int64_t processed_size, BatchT& batch) {
@@ -1234,6 +1240,15 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     RecordBatchCosts(model_name, processed_size,
                      absl::StrCat(cost_type, kNoSmearSuffix),
                      total_cost / processed_size * batch.size());
+
+    if (cost_type == kTpuCostName) {
+      // Register TPU cost for in-process use.
+      GlobalBatchStats()
+          .model(/* model_name= */ model_name, /* op_name= */ op_name)
+          .batch_size(processed_size)
+          .tpu_cost()
+          .Register(total_cost);
+    }
 
     for (int i = 0; i < batch.num_tasks(); i++) {
       RequestCost* request_cost = batch.task(i).request_cost;
