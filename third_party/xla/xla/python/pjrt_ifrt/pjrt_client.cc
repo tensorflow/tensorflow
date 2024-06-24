@@ -696,11 +696,17 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>> PjRtClient::CopyArrays(
   std::vector<tsl::RCReference<Array>> new_arrays;
   new_arrays.reserve(arrays.size());
   for (const auto& array : arrays) {
-    TF_ASSIGN_OR_RETURN(
-        auto new_sharding,
-        array->sharding().WithDeviceAssignment(devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
-                        array->Reshard(std::move(new_sharding), semantics));
+    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                          pjrt_array->Copy(devices, memory_kind, semantics));
+    } else if (auto* const string_array =
+                   llvm::dyn_cast<BasicStringArray>(array.get())) {
+      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                          string_array->Copy(devices, memory_kind, semantics));
+    } else {
+      return absl::InvalidArgumentError(
+          "Unsupported array type for PjRtClient::CopyArrays");
+    }
   }
   return new_arrays;
 }

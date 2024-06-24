@@ -697,13 +697,24 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           reshard_request.copy_semantics()));
 
-  TF_ASSIGN_OR_RETURN(auto resharded_array,
-                      array->Reshard(sharding, semantics));
+  // Emulate the old `Array::Reshard` behavior using `Client::CopyArrays`. No
+  // existing IFRT implementations before `Array::Reshard` was deleted actually
+  // supported resharding, so this should be safe.
+  if (!array->sharding().HasSamePartitioning(*sharding)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "IFRT Proxy does not support resharding, but got ",
+        array->sharding().DebugString(), " as the original sharding and ",
+        sharding->DebugString(), " as the target sharding"));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto copied_arrays,
+      client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
+                          sharding->memory_kind(), semantics));
 
   uint64_t resharded_array_handle = handle_generator_.New();
   {
     absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({resharded_array_handle, std::move(resharded_array)});
+    arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
   }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());

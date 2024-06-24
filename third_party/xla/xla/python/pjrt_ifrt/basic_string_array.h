@@ -34,8 +34,10 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -128,9 +130,10 @@ class BasicStringArray final
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> Reshard(
-      std::shared_ptr<const Sharding> new_sharding,
-      ArrayCopySemantics semantics) override;
+  absl::StatusOr<tsl::RCReference<Array>> Copy(
+      std::optional<xla::ifrt::DeviceList> devices,
+      std::optional<xla::ifrt::MemoryKind> memory_kind,
+      ArrayCopySemantics semantics);
 
   Future<> GetReadyFuture() const override;
 

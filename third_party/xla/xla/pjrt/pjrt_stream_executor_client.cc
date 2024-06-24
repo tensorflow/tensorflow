@@ -2287,6 +2287,7 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
   TransferManager* transfer_manager =
       client_->client()->backend().transfer_manager();
   executables_.reserve(executables.size());
+  tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
   for (auto& executable : executables) {
     const auto& computation_layout =
         executable->executable()->module().entry_computation_layout();
@@ -2296,10 +2297,14 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
       parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
           computation_layout.parameter_shape(i)));
     }
+    fingerprint = tsl::FingerprintCat128(
+        fingerprint,
+        tsl::Fingerprint128(executable->executable()->module().ToString()));
     executables_.emplace_back(std::move(executable));
     on_device_executable_parameter_shapes_.push_back(
         std::move(parameter_shapes));
   }
+  fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
 
   int num_partitions;
   if (device_assignment_ == nullptr) {
@@ -3249,22 +3254,6 @@ PjRtStreamExecutorLoadedExecutable::GetHloModules() const {
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
   return Unimplemented("GetOutputMemoryKinds is not supported.");
-}
-
-absl::StatusOr<std::string>
-PjRtStreamExecutorLoadedExecutable::FingerprintExecutable() const {
-  if (executables_.size() != 1) {
-    return absl::InternalError(
-        "Fingerprinting multiple executables within one "
-        "PjRtStreamExecutorLoadedExecutable is not supported.");
-  }
-
-  Executable* executable = executables_[0]->executable();
-  if (executable->has_module()) {
-    return executable->module().GetFingerprint128();
-  } else {
-    return absl::InternalError("Executable does not have HLO modules.");
-  }
 }
 
 absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>

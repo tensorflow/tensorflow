@@ -88,10 +88,6 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
                std::optional<absl::Span<const int64_t>> byte_strides,
                ArrayCopySemantics semantics),
               (final));
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, Reshard,
-              (std::shared_ptr<const Sharding> new_sharding,
-               ArrayCopySemantics semantics),
-              (final));
   // LINT.ThenChange(mock.cc:MockArrayDelegation)
 
   tsl::RCReference<xla::ifrt::Array> delegated() const { return delegated_; }
