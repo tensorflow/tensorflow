@@ -751,6 +751,46 @@ void ConstraintExpression::And(
   disjoint_conjoint_constraints_ = std::move(new_constraints);
 }
 
+std::string ConstraintExpression::ToString(
+    const AffineMapPrinter& printer) const {
+  std::stringstream ss;
+  Print(ss, printer);
+  return ss.str();
+}
+
+void ConstraintExpression::Print(std::ostream& out,
+                                 const AffineMapPrinter& printer) const {
+  if (IsAlwaysSatisfied()) {
+    out << "always satisfied";
+    return;
+  }
+
+  if (is_satisfiable()) {
+    // Accumulate constraints in a vector in order to put them in lexicographic
+    // order and to get deterministic output.
+    std::vector<std::string> conjunction_strings;
+    conjunction_strings.reserve(disjoint_conjoint_constraints_.size());
+    for (const auto& disjunction : disjoint_conjoint_constraints_) {
+      std::vector<std::string> constraint_strings;
+      constraint_strings.reserve(disjunction.size());
+      for (const auto& [expr, interval] : disjunction) {
+        std::stringstream ss;
+        printer.Print(ss, expr);
+        ss << " in ";
+        interval.Print(ss);
+        constraint_strings.push_back(ss.str());
+      }
+      std::sort(constraint_strings.begin(), constraint_strings.end());
+      conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
+    }
+    std::sort(conjunction_strings.begin(), conjunction_strings.end());
+    out << absl::StrJoin(conjunction_strings, " || ");
+  } else if (!is_satisfiable()) {
+    out << "unsatisfiable";
+  }
+  out << "\n";
+}
+
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     IndexingMap indexing_map) {
   VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map.ToString();
@@ -912,35 +952,10 @@ void SymbolicTile::Print(std::ostream& out,
                 /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(),
                 out, printer);
   }
-  if (is_satisfiable() && !constraints_.IsAlwaysSatisfied()) {
+  if (!constraints_.IsAlwaysSatisfied()) {
     out << "\n\tconstraints: ";
-    absl::Span<ConstraintExpression::ConjointConstraints const> conjunctions =
-        constraints_.DisjointConjointConstraints();
-    // Accumulate constraints in a vector in order to put them in lexicographic
-    // order and to get deterministic output.
-    std::vector<std::string> conjunction_strings;
-    conjunction_strings.reserve(conjunctions.size());
-    for (const auto& disjunction : conjunctions) {
-      std::vector<std::string> constraint_strings;
-      constraint_strings.reserve(disjunction.size());
-      for (const auto& [expr, interval] : disjunction) {
-        std::stringstream ss;
-        printer.Print(ss, expr);
-        ss << " in ";
-        interval.Print(ss);
-        constraint_strings.push_back(ss.str());
-      }
-      std::sort(constraint_strings.begin(), constraint_strings.end());
-      conjunction_strings.push_back(
-          absl::StrJoin(constraint_strings, " &&\n\t"));
-    }
-    std::sort(conjunction_strings.begin(), conjunction_strings.end());
-    out << "\n\t" << absl::StrJoin(conjunction_strings, "\n||\n\t");
-  } else if (!is_satisfiable()) {
-    out << "\n\tconstraints: ";
-    out << "\n\tunsatisfiable";
+    constraints_.Print(out, printer);
   }
-  out << "\n";
 }
 
 namespace {

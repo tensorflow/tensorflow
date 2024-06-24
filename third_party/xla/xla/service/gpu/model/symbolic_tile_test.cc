@@ -809,6 +809,25 @@ TEST_F(ConstraintExpressionTest,
   EXPECT_TRUE(ConstraintExpression().IsAlwaysSatisfied());
 }
 
+TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
+  EXPECT_TRUE(
+      ApproximateMatch(ConstraintExpression().ToString(), "always satisfied"));
+  EXPECT_TRUE(ApproximateMatch(
+      ConstraintExpression::GetUnsatisfiableConstraintExpression().ToString(),
+      "unsatisfiable"));
+
+  ConjointConstraints conjunction_1 =
+      GetConjointConstraints({{"d0", Interval{0, 5}}, {"d1", Interval{0, 5}}});
+  ConjointConstraints conjunction_2 =
+      GetConjointConstraints({{"d2", Interval{0, 5}}});
+
+  ConstraintExpression constraints;
+  constraints.Or(std::move(conjunction_1));
+  constraints.Or(std::move(conjunction_2));
+  EXPECT_TRUE(ApproximateMatch(constraints.ToString(),
+                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+}
+
 TEST_F(ConstraintExpressionTest,
        UnsatisfiableConstraintExpressionHoldsNoConstraint) {
   ConstraintExpression unsatisfiable_constraint =
