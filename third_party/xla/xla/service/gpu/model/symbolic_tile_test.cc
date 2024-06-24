@@ -57,6 +57,12 @@ MATCHER_P(MatchSymbolicTileString, symbolic_tile_string, "") {
       result_listener);
 }
 
+MATCHER_P(MatchConstraintExpressionString, constraint_expression_string, "") {
+  return ExplainMatchResult(
+      true, ApproximateMatch(constraint_expression_string, arg.ToString()),
+      result_listener);
+}
+
 std::vector<int64_t> EvaluateMapAt(AffineMap affine_map,
                                    absl::Span<int64_t const> parameters) {
   CHECK_EQ(affine_map.getNumSymbols(), parameters.size());
@@ -810,11 +816,10 @@ TEST_F(ConstraintExpressionTest,
 }
 
 TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
-  EXPECT_TRUE(
-      ApproximateMatch(ConstraintExpression().ToString(), "always satisfied"));
-  EXPECT_TRUE(ApproximateMatch(
-      ConstraintExpression::GetUnsatisfiableConstraintExpression().ToString(),
-      "unsatisfiable"));
+  EXPECT_THAT(ConstraintExpression(),
+              MatchConstraintExpressionString("always satisfied"));
+  EXPECT_THAT(ConstraintExpression::GetUnsatisfiableConstraintExpression(),
+              MatchConstraintExpressionString("unsatisfiable"));
 
   ConjointConstraints conjunction_1 =
       GetConjointConstraints({{"d0", Interval{0, 5}}, {"d1", Interval{0, 5}}});
@@ -824,7 +829,7 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   ConstraintExpression constraints;
   constraints.Or(std::move(conjunction_1));
   constraints.Or(std::move(conjunction_2));
-  EXPECT_TRUE(ApproximateMatch(constraints.ToString(),
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
 }
 
@@ -856,9 +861,39 @@ TEST_F(
   EXPECT_THAT(conjunctions, SizeIs(1));
   // There are three constraints in the single conjunction.
   EXPECT_THAT(conjunctions.front(), SizeIs(3));
+}
 
-  // TODO(bchetioui): add test for the case where a conjunction becomes
-  // unsatisfiable and thus gets eliminated from the disjoint expression.
+TEST_F(
+    ConstraintExpressionTest,
+    CorrectlyEliminatesConjunctionFromDisjunctionWhenItBecomesUnsatisfiable) {
+  ConjointConstraints conjunction_1 =
+      GetConjointConstraints({{"d0", Interval{0, 5}}});
+  ConjointConstraints conjunction_2 =
+      GetConjointConstraints({{"d1", Interval{0, 5}}});
+
+  ConstraintExpression constraints;
+  constraints.Or(std::move(conjunction_1));
+  constraints.Or(std::move(conjunction_2));
+  EXPECT_THAT(constraints,
+              MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
+
+  // `conjunction_1` && `conjunction_3` is an unsatisfiable constraint. Taking
+  // the conjunction of the existing constraint expression with `conjunction_3`
+  // should therefore evict the unsatisfiable intersection of `conjunction_1`
+  // and `conjunction_3` from the disjoint expression.
+  ConjointConstraints conjunction_3 =
+      GetConjointConstraints({{"d0", Interval{6, 6}}});
+  constraints.And(std::move(conjunction_3));
+
+  EXPECT_THAT(constraints,
+              MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
+
+  // But becomes unsatisfiable if we eliminate the last remaining constraint by
+  // constructing another unsatisfiable conjunction.
+  ConjointConstraints conjunction_4 =
+      GetConjointConstraints({{"d0", Interval{7, 7}}});
+  constraints.And(std::move(conjunction_4));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(
