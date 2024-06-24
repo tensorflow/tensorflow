@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 366> a = {{
+  static std::array<OpIndexInfo, 367> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -267,6 +267,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"Reshape", 1, {1}},
       {"ResizeBicubic", 1, {1}},
       {"ResizeBilinear", 1, {1}},
+      {"ResizeBilinearGrad"},
       {"ResizeNearestNeighbor", 1, {1}},
       {"Reverse", 1, {0}},
       {"ReverseSequence", 1, {0}},
