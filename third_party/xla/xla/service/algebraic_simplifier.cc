@@ -94,6 +94,19 @@ bool IsAll(const HloInstruction* op, int8_t value) {
   }
 }
 
+// Unwraps broadcasts hunting for a constant.  If we find one, checks if the
+// constant contains only the given value.
+bool IsAllFloat(const HloInstruction* op, float value) {
+  switch (op->opcode()) {
+    case HloOpcode::kBroadcast:
+      return IsAllFloat(op->operand(0), value);
+    case HloOpcode::kConstant:
+      return op->literal().IsAllFloat(value);
+    default:
+      return false;
+  }
+}
+
 bool IsAll(const HloInstruction* op, const Literal& scalar) {
   CHECK(ShapeUtil::IsScalar(scalar.shape()));
   switch (op->opcode()) {
@@ -5447,6 +5460,14 @@ absl::Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
                                             MakeScalarLike(lhs, 1), lhs));
+  }
+
+  VLOG(10) << "trying transform [pow(A, 0.5) => sqrt(A)], for A >= 0: "
+           << power->ToString();
+  if (IsAllFloat(rhs, 0.5) && IsNonNegative(lhs, options_)) {
+    return ReplaceWithNewInstruction(
+        power,
+        HloInstruction::CreateUnary(power->shape(), HloOpcode::kSqrt, lhs));
   }
 
   return absl::OkStatus();

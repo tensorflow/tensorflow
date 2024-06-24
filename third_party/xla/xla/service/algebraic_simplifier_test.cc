@@ -2166,6 +2166,40 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
+// pow(A, 0.5) => sqrt(A), for A >= 0
+TEST_F(AlgebraicSimplifierTest, PowHalf) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[1,32] parameter(0)
+      c0 = f32[] constant(0.5)
+      br0 = f32[1,32] broadcast(f32[] c0), dimensions={}
+      abs0 = f32[1,32] abs(p0)
+      ROOT pow = f32[1,32] power(abs0, br0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Sqrt(m::Abs(m::Parameter(0)))));
+}
+
+// pow(A, 0.5) ≠> sqrt(A)
+// if A is arbitrary number - no simplification
+TEST_F(AlgebraicSimplifierTest, PowHalf_NegativeTestCase) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[1,32] parameter(0)
+      c0 = f32[] constant(0.5)
+      br0 = f32[1,32] broadcast(f32[] c0), dimensions={}
+      ROOT pow = f32[1,32] power(p0, br0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
