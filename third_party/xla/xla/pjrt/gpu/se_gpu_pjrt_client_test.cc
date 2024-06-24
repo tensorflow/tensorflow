@@ -780,5 +780,101 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
   }
 }
 
+namespace {
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
+    xla::PjRtClient* client) {
+  auto device = client->addressable_devices()[0];
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                      device->default_memory_space());
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
+  TF_ASSIGN_OR_RETURN(
+      auto input, client->BufferFromHostBuffer(
+                      data.data(), shape.element_type(), shape.dimensions(),
+                      /*byte_strides=*/std::nullopt,
+                      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/nullptr, device));
+  EXPECT_EQ(input->memory_space()->kind(), "device");
+  return input;
+}
+
+}  // namespace
+
+TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+
+  static constexpr char const* kD2HProgram = R"(
+    HloModule f
+
+    ENTRY main.5 {
+      p = s32[4]{0} parameter(0)
+      ROOT cc = s32[4] custom-call(p),
+          custom_call_target="annotate_device_placement",
+          frontend_attributes={_xla_buffer_placement="pinned_host"}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
+
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "pinned_host");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_stats,
+                          executable->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
+}
+
+TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+
+  static constexpr char const* kD2HProgram = R"(
+    HloModule f
+
+    ENTRY main.5 {
+      p = s32[4]{0} parameter(0)
+      cc = s32[4] custom-call(p),
+          custom_call_target="annotate_device_placement",
+          frontend_attributes={_xla_buffer_placement="pinned_host"}
+      ROOT tuple = (s32[4]{0}, s32[4]{0}) tuple(s32[4]{0} p, s32[4]{0} cc)
+    }
+  )";
+
+  // Build the output shape with the correct memory space set.
+  Shape host_shape = input->on_device_shape();
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  Shape out_shape =
+      ShapeUtil::MakeTupleShape({input->on_device_shape(), host_shape});
+
+  // Set the result layout so that the compiler assertions on memory
+  // spaces pass.
+  xla::CompileOptions options;
+  options.executable_build_options.set_result_layout(out_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client, options));
+
+  // Untuple the result so that we get separate buffers.
+  // This is how JAX invokes XLA.
+  ExecuteOptions execute_options;
+  execute_options.untuple_result = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, executable->Execute({{input.get()}}, execute_options));
+
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  EXPECT_EQ(result_buffers.size(), 2);
+  EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
+  EXPECT_EQ(result_buffers[1]->memory_space()->kind(), "pinned_host");
+}
+
 }  // namespace
 }  // namespace xla
