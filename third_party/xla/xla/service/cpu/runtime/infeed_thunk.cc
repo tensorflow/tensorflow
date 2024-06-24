@@ -96,6 +96,15 @@ InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
   for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
     buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
   }
+
+  // TODO(ezhulenev): It is a hack to make sure that we execute all xfeed
+  // operations in the same order as in HLO schedule, because otherwise racing
+  // xfeeds lead to undefined behavior. Instead we should correctly model
+  // side effects of Thunks.
+  static auto* fake_alloc = new BufferAllocation(0, 1, 0);
+  buffer_uses.push_back(
+      BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
+
   return buffer_uses;
 }
 

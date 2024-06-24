@@ -592,6 +592,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "outfeed_thunk_test",
+    srcs = ["outfeed_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":outfeed_thunk",
+        ":thunk",
+        ":thunk_testlib",
+        "//xla:shape_util",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "replica_id_thunk",
     srcs = ["replica_id_thunk.cc"],
@@ -659,6 +681,28 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "infeed_thunk_test",
+    srcs = ["infeed_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":infeed_thunk",
+        ":thunk",
+        ":thunk_testlib",
+        "//xla:shape_util",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
