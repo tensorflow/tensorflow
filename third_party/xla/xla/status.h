@@ -16,15 +16,6 @@ limitations under the License.
 #ifndef XLA_STATUS_H_
 #define XLA_STATUS_H_
 
-#include "absl/log/check.h"  // IWYU pragma: export
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-
-namespace xla {
-// NOLINTBEGIN(misc-unused-using-decls)
-using absl::OkStatus;
-using absl::Status;
-// NOLINTEND(misc-unused-using-decls)
-}  // namespace xla
+// This is an obsolete header.  Please use absl/status/status.h instead.
 
 #endif  // XLA_STATUS_H_
