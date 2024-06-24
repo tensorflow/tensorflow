@@ -301,8 +301,9 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 absl::Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& status_handler,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    std::optional<Session*> session, std::string* result,
+    const mlir::lite::toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config, std::optional<Session*> session,
+    std::string* result,
     const std::unordered_set<std::string>& saved_model_tags) {
   // Currently, TF quantization only support dynamic range quant, as such
   // when toco flag post training quantization is specified with converting to
@@ -382,7 +383,8 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 }
 
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
+    mlir::ModuleOp module, bool export_to_mlir,
+    mlir::lite::toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,

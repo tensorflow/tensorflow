@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "tensorflow/compiler/mlir/lite/toco/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/toco_flags.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {
 
@@ -29,9 +29,9 @@ namespace tensorflow {
 // given model flags, toco flags and debug information. Returns error status if
 // it fails to convert the input.
 absl::Status ConvertGraphDefToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
-    const GraphDebugInfo& debug_info, const GraphDef& input,
-    std::string* result);
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags, const GraphDebugInfo& debug_info,
+    const GraphDef& input, std::string* result);
 
 }  // namespace tensorflow
 

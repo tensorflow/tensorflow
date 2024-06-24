@@ -24,15 +24,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
+#include "tensorflow/compiler/mlir/lite/toco/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -40,9 +40,9 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status ConvertGraphDefToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
-    const GraphDebugInfo& debug_info, const GraphDef& input,
-    std::string* result) {
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags, const GraphDebugInfo& debug_info,
+    const GraphDef& input, std::string* result) {
   using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
@@ -97,7 +97,8 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
       toco_flags.legalize_custom_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
-  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+  if (toco_flags.inference_type() ==
+      mlir::lite::toco::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
   pass_config.unfold_large_splat_constant =

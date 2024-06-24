@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/toco/toco_flags.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -67,7 +67,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
 Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& statusHandler,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    const mlir::lite::toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
     std::optional<tensorflow::Session*> session, std::string* result);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
@@ -83,7 +84,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
 // variables. If the `saved_model_dir` directory path is provided, then the
 // `tf_saved_model.asset` ops will be freezed.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
+    mlir::ModuleOp module, bool export_to_mlir,
+    mlir::lite::toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,

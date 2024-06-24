@@ -27,27 +27,28 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/toco/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/types.pb.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace internal {
 
 // Register all custom ops including user specified custom ops.
-Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags);
+Status RegisterAllCustomOps(const mlir::lite::toco::TocoFlags& toco_flags);
 
 // Populate quantization specs (or not) given user specified ranges for each
 // input arrays.
 Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<string>* node_names, std::vector<string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
@@ -57,7 +58,8 @@ Status PopulateQuantizationSpecs(
 // Convert imported MLIR file to TfLite flatbuffer.
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
@@ -65,8 +67,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
 // Give a warning for any unused flags that have been specified.
-void WarningUnusedFlags(const toco::ModelFlags& model_flags,
-                        const toco::TocoFlags& toco_flags);
+void WarningUnusedFlags(const mlir::lite::toco::ModelFlags& model_flags,
+                        const mlir::lite::toco::TocoFlags& toco_flags);
 }  // namespace internal
 }  // namespace tensorflow
 

@@ -323,7 +323,8 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
 // to resume the conversion after injecting more information in the middle of
 // it.
 void AddPostVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    llvm::StringRef saved_model_dir,
+    const mlir::lite::toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   // Note:
@@ -528,7 +529,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 }
 
 void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
-                                const toco::TocoFlags& toco_flags,
+                                const mlir::lite::toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
   AddPreVariableFreezingTFToTFLConversionPasses(pass_config, pass_manager);
@@ -537,7 +538,7 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
 }
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  const toco::TocoFlags toco_flags;
+  const mlir::lite::toco::TocoFlags toco_flags;
   AddTFToTFLConversionPasses(/*saved_model_dir=*/"", toco_flags, pass_config,
                              pass_manager);
 }

@@ -37,6 +37,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/toco/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/types.pb.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -48,9 +51,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -119,47 +119,47 @@ constexpr mlir::StringRef kUnidirectionalSequenceRnnOp =
 
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
-DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
+DataType ConvertIODataTypeToDataType(mlir::lite::toco::IODataType dtype) {
   switch (dtype) {
-    case toco::IODataType::FLOAT:
+    case mlir::lite::toco::IODataType::FLOAT:
       return DT_FLOAT;
-    case toco::IODataType::FLOAT16:
+    case mlir::lite::toco::IODataType::FLOAT16:
       return DT_HALF;
-    case toco::IODataType::FLOAT64:
+    case mlir::lite::toco::IODataType::FLOAT64:
       return DT_DOUBLE;
-    case toco::IODataType::QUANTIZED_UINT8:
+    case mlir::lite::toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
-    case toco::IODataType::QUANTIZED_INT8:
+    case mlir::lite::toco::IODataType::QUANTIZED_INT8:
       return DT_QINT8;
-    case toco::IODataType::QUANTIZED_INT16:
+    case mlir::lite::toco::IODataType::QUANTIZED_INT16:
       return DT_QINT16;
-    case toco::IODataType::INT8:
+    case mlir::lite::toco::IODataType::INT8:
       return DT_INT8;
-    case toco::IODataType::INT16:
+    case mlir::lite::toco::IODataType::INT16:
       return DT_INT16;
-    case toco::IODataType::UINT16:
+    case mlir::lite::toco::IODataType::UINT16:
       return DT_UINT16;
-    case toco::IODataType::INT32:
+    case mlir::lite::toco::IODataType::INT32:
       return DT_INT32;
-    case toco::IODataType::UINT32:
+    case mlir::lite::toco::IODataType::UINT32:
       return DT_UINT32;
-    case toco::IODataType::INT64:
+    case mlir::lite::toco::IODataType::INT64:
       return DT_INT64;
-    case toco::IODataType::UINT8:
+    case mlir::lite::toco::IODataType::UINT8:
       return DT_UINT8;
-    case toco::IODataType::UINT64:
+    case mlir::lite::toco::IODataType::UINT64:
       return DT_UINT64;
-    case toco::IODataType::STRING:
+    case mlir::lite::toco::IODataType::STRING:
       return DT_STRING;
-    case toco::IODataType::BOOL:
+    case mlir::lite::toco::IODataType::BOOL:
       return DT_BOOL;
-    case toco::IODataType::COMPLEX64:
+    case mlir::lite::toco::IODataType::COMPLEX64:
       return DT_COMPLEX64;
-    case toco::IODataType::COMPLEX128:
+    case mlir::lite::toco::IODataType::COMPLEX128:
       return DT_COMPLEX128;
-    case toco::IODataType::RESOURCE:
+    case mlir::lite::toco::IODataType::RESOURCE:
       return DT_RESOURCE;
-    case toco::IODataType::VARIANT:
+    case mlir::lite::toco::IODataType::VARIANT:
       return DT_VARIANT;
     default:
       return DT_INVALID;
@@ -207,7 +207,8 @@ absl::Status RegisterCustomBuiltinOps(
 
 }  // namespace
 
-absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
+absl::Status RegisterAllCustomOps(
+    const mlir::lite::toco::TocoFlags& toco_flags) {
   // Register any custom OpDefs.
   std::vector<std::string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
                                            toco_flags.custom_opdefs().end());
@@ -218,7 +219,8 @@ absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 }
 
 absl::Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
@@ -346,7 +348,8 @@ absl::Status DumpOpGraphToFile(mlir::ModuleOp module,
 }
 
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const mlir::lite::toco::ModelFlags& model_flags,
+    mlir::lite::toco::TocoFlags& toco_flags,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
@@ -388,8 +391,8 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   return status;
 }
 
-void WarningUnusedFlags(const toco::ModelFlags& model_flags,
-                        const toco::TocoFlags& toco_flags) {
+void WarningUnusedFlags(const mlir::lite::toco::ModelFlags& model_flags,
+                        const mlir::lite::toco::TocoFlags& toco_flags) {
   if (toco_flags.output_format()) {
     LOG(WARNING) << "Ignored output_format.";
   }

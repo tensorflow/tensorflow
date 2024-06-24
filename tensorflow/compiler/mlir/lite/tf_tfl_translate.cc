@@ -296,7 +296,7 @@ int main(int argc, char **argv) {
   pass_config.disable_hlo_to_tfl_conversion = disable_hlo_to_tfl_conversion;
   pass_config.reduce_type_precision = reduce_type_precision;
 
-  toco::TocoFlags toco_flags;
+  mlir::lite::toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
   toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
   toco_flags.set_allow_custom_ops(emit_custom_ops);
