@@ -1630,7 +1630,7 @@ void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape) {
     for (const auto& strategy : strategy_group->strategies) {
       if (strategy.output_sharding.IsReplicated()) {
         full_mem = strategy.memory_cost;
-        size_t size = GetInstructionSize(shape);
+        size_t size = ByteSizeOfShape(shape);
         CHECK_EQ(strategy.memory_cost, size);
       }
     }
@@ -2186,7 +2186,7 @@ void CheckHloSharding(
         ins->opcode() != HloOpcode::kGetTupleElement) {
       // TODO(yuemmawang) Check other cases when it's helpful (it's not
       // needed so far).
-      double size = GetInstructionSize(ins->shape()) / 1024 / 1024 / 1024;
+      double size = ByteSizeOfShape(ins->shape()) / 1024 / 1024 / 1024;
       if ((!ShardingIsComplete(ins->sharding(), total_num_devices) ||
            ins->sharding().IsReplicated()) &&
           size > 1) {
@@ -2224,7 +2224,7 @@ void CheckHloSharding(
             // of resharding overheads, and some inconsistent shardings are
             // unavoidable.
             size_t op_size =
-                GetInstructionSize(op->shape()) / (1024.0 * 1024 * 1024);
+                ByteSizeOfShape(op->shape()) / (1024.0 * 1024 * 1024);
             std::string str = absl::StrCat("Shardings not consistent (op size ",
                                            op_size, " GB):", ins->ToString(),
                                            "\n Operand: ", op->ToString());
@@ -4290,8 +4290,7 @@ bool ModuleIsManuallyPartitioned(const HloModule* module) {
 
 bool IsSmallTensor(const HloInstruction* ins,
                    const AutoShardingOption& option) {
-  return spmd::GetInstructionSize(ins->shape()) <=
-         option.small_tensor_byte_size;
+  return spmd::ByteSizeOfShape(ins->shape()) <= option.small_tensor_byte_size;
 }
 
 bool ShardedOnTooManyMeshAxes(const HloModule& module) {

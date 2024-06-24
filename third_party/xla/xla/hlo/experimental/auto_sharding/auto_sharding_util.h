@@ -54,6 +54,8 @@ inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
 
+inline constexpr int64_t kAutoShardingPointerSize = 8;
+
 inline bool IsSPMDFullToShardShapeCustomCall(const HloInstruction* ins) {
   return ins->IsCustomCall("SPMDFullToShardShape");
 }
@@ -157,9 +159,6 @@ std::string ToString(absl::Span<T> span) {
 
 // Get the number of bytes of a shape.
 inline double GetBytes(const Shape& shape) {
-  if (shape.IsArray()) {
-    return ShapeUtil::ByteSizeOfElements(shape);
-  }
   return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/8);
 }
 
@@ -584,7 +583,15 @@ size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 
-int64_t GetInstructionSize(const Shape& shape);
+// Computes bytes size of a shape recursively if it is sharded according to an
+// optionally provided sharding
+int64_t ByteSizeOfShapeWithSharding(const Shape& shape,
+                                    std::optional<HloSharding> sharding);
+
+// Computes bytes size of a shape recursively
+inline int64_t ByteSizeOfShape(const Shape& shape) {
+  return ByteSizeOfShapeWithSharding(shape, /*sharding=*/std::nullopt);
+}
 
 int64_t GetShardedInstructionSize(
     const Shape& shape, int64_t num_devices,

@@ -515,8 +515,12 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica: {
-      participant_counts.resize(participating_replica_groups.size(),
-                                num_partitions);
+      for (const auto& replica_group : participating_replica_groups) {
+        for (int partition_id = 0; partition_id < num_partitions;
+             ++partition_id) {
+          participant_counts.push_back(replica_group.replica_ids().size());
+        }
+      }
       return participant_counts;
     }
     case CollectiveOpGroupMode::kCrossPartition: {

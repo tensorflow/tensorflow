@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -129,6 +131,21 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
+// Creates a container of ReplicaGroups.
+std::vector<ReplicaGroup> CreateReplicaGroups(
+    const std::vector<std::vector<int64_t>> &replica_groups) {
+  std::vector<ReplicaGroup> result;
+  result.reserve(replica_groups.size());
+  for (const auto &replica_group : replica_groups) {
+    ReplicaGroup group;
+    for (auto id : replica_group) {
+      group.add_replica_ids(id);
+    }
+    result.push_back(group);
+  }
+  return result;
+}
+
 }  // namespace
 
 // Tests for GetCollectOpGroupMode
@@ -190,7 +207,7 @@ namespace GetParticipatingDevicesTest {
 // expected output corresponding to those values.
 struct TestCase {
   xla::Array2D<int> device_assignment;
-  std::vector<std::vector<int>> replica_groups;
+  std::vector<std::vector<int64_t>> replica_groups;
   bool has_channel_id;
   std::optional<bool> use_global_device_ids;
 
@@ -455,15 +472,8 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     }
   }
 
-  std::vector<ReplicaGroup> replica_groups;
-  absl::c_transform(tc.replica_groups, std::back_inserter(replica_groups),
-                    [](const std::vector<int> &ids) {
-                      ReplicaGroup group;
-                      for (int id : ids) {
-                        group.add_replica_ids(id);
-                      }
-                      return group;
-                    });
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups(tc.replica_groups);
 
   absl::StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
@@ -518,4 +528,77 @@ INSTANTIATE_TEST_SUITE_P(GetParticipatingDevices, GetParticipatingDevicesTest,
                          testing::ValuesIn(GetTestCases()));
 
 }  // namespace GetParticipatingDevicesTest
+
+namespace GetPariticipantCountsForReplicaGroupsTest {
+
+struct TestCase {
+  std::string test_name;
+  std::vector<std::vector<int64_t>> replica_groups;
+  CollectiveOpGroupMode group_mode;
+  int64_t num_replicas;
+  int64_t num_partitions;
+  std::vector<int64_t> expected;
+};
+
+class GetPariticipantCountsForReplicaGroupsTest
+    : public testing::TestWithParam<TestCase> {};
+
+TEST_P(GetPariticipantCountsForReplicaGroupsTest, Test) {
+  const TestCase &tc = GetParam();
+
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups(tc.replica_groups);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<int64_t> actual,
+      GetPariticipantCountsForReplicaGroups(tc.num_replicas, tc.num_partitions,
+                                            replica_groups, tc.group_mode));
+  EXPECT_THAT(actual, testing::ElementsAreArray(tc.expected));
+}
+
+std::vector<TestCase> GetTestCases() {
+  return {
+      {
+          "CrossReplicaEmptyGroup",
+          {},
+          CollectiveOpGroupMode::kCrossReplica,
+          8,
+          1,
+          {8},
+      },
+      {
+          "CrossReplicaWithPartitions",
+          {{0, 1}, {2, 3}},
+          CollectiveOpGroupMode::kCrossReplica,
+          4,
+          2,
+          {2, 2, 2, 2},
+      },
+      {
+          "CrossReplicaAndPartition",
+          {{0, 1}, {2, 3}},
+          CollectiveOpGroupMode::kCrossReplicaAndPartition,
+          4,
+          2,
+          {4, 4},
+      },
+      {
+          "FlattenedID",
+          {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}},
+          CollectiveOpGroupMode::kFlattenedID,
+          4,
+          2,
+          {1, 1, 1, 1, 1, 1, 1, 1},
+      },
+  };
+}
+INSTANTIATE_TEST_SUITE_P(
+    GetPariticipantCountsForReplicaGroups,
+    GetPariticipantCountsForReplicaGroupsTest,
+    testing::ValuesIn(GetTestCases()),
+    [](const testing::TestParamInfo<
+        GetPariticipantCountsForReplicaGroupsTest::ParamType> &info) {
+      return info.param.test_name;
+    });
+
+}  // namespace GetPariticipantCountsForReplicaGroupsTest
 }  // namespace xla
