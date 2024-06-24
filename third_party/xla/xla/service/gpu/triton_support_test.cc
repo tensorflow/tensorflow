@@ -48,11 +48,6 @@ namespace {
 using ::testing::Not;
 using ::testing::status::IsOk;
 
-se::GpuComputeCapability GetComputeCapability() {
-  // TODO(b/348572380) Make this more general and test additional platforms.
-  return se::CudaComputeCapability::Ampere();
-}
-
 auto AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
   std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
