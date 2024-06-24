@@ -1,5 +1,13 @@
 # Integrate image segmenters
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Image segmenters predict whether each pixel of an image is associated with a
 certain class. This is in contrast to
 <a href="../../examples/object_detection/overview">object detection</a>,

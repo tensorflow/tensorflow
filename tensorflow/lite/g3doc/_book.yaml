@@ -23,6 +23,7 @@ upper_tabs:
 
       - heading: "Libraries and tools"
       - title: "Task Library"
+        status: deprecated
         section:
         - title: "Overview"
           path: /lite/inference_with_metadata/task_library/overview
