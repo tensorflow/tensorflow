@@ -9203,6 +9203,38 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide_NegativeTestCase) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+// sqrt(x) * sqrt(x) => x, for x >= 0
+TEST_F(AlgebraicSimplifierTest, MultiplySelfSqrt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[1,32] parameter(0)
+      abs0 = f32[1,32] abs(p0)
+      sqrt = f32[1,32] sqrt(abs0)
+      ROOT mul = f32[1,32] multiply(sqrt, sqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Abs(m::Parameter(0))));
+}
+
+// sqrt(x) * sqrt(x) ≠> x
+// if x is arbitrary number - no simplification
+TEST_F(AlgebraicSimplifierTest, MultiplySelfSqrt_NegativeTestCase) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[1,32] parameter(0)
+      sqrt = f32[1,32] sqrt(p0)
+      ROOT mul = f32[1,32] multiply(sqrt, sqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 // rsqrt(x) * rsqrt(x) -> 1/x, for x >= 0
 TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
   const char* kModuleStr = R"(
