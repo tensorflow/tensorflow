@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -285,8 +286,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
 
   ElementalIrEmitter elemental_emitter(module_, &b, &hlo_module_,
                                        nested_ir_emitter_, fast_min_max());
-  FusedIrEmitter fused_emitter(elemental_emitter);
 
+  FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion->operand_count(); i++) {
     fused_emitter.BindGenerator(
         *fusion->fused_parameter(i), [&, i](llvm_ir::IrArray::Index idx) {
@@ -294,6 +295,22 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
         });
   }
 
+  // Check if the fusion can be emitted in-place and skip expensive loop for
+  // all elements in the output array.
+  if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(
+          const_cast<HloFusionInstruction*>(fusion),
+          nested_ir_emitter_->assignment())) {
+    // Delegate to common implementation of fused in-place dynamic-update-slice.
+    TF_RETURN_IF_ERROR(llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
+        const_cast<HloFusionInstruction*>(fusion), kernel_prototype.results[0],
+        &fused_emitter, &b));
+
+    return kernels_.emplace_back(
+        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                   se::ThreadDim()});
+  }
+
+  // Emit plain elemental loops for the fusion operation.
   TF_ASSIGN_OR_RETURN(
       auto element_generator,
       fused_emitter.GetGenerator(*fusion->fused_expression_root()));
