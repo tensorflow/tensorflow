@@ -917,11 +917,8 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-<<<<<<< HEAD
         "no_rocm", #TODO(rocm) TEMP, sync 24-06-03
-=======
         "test_xla_cpu_thunks",
->>>>>>> upstream/master
     ],
     deps = [
         ":client_library_test_base",
@@ -1364,22 +1361,13 @@ xla_test(
     name = "convolution_cudnn_test",
     timeout = "long",
     srcs = ["convolution_cudnn_test.cc"],
-<<<<<<< HEAD
-    backend_tags = {"gpu": [
-        "gpu",
-        "requires-gpu-sm80",
-        "no_rocm",
-    ]},
-    backends = ["gpu"],
     tags = ["no_rocm"],  # No int8
-=======
     backends = [
         "gpu_v100",
         "gpu_a100",
         "gpu_h100",
     ],
     data = ["data/cudnn_reproducer.hlo"],
->>>>>>> upstream/master
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",

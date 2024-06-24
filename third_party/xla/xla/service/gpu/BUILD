@@ -1292,15 +1292,10 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ],
-<<<<<<< HEAD
-    shard_count = 10,
     tags = [
         "nomac",
         "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
     ],
-=======
-    tags = ["nomac"],
->>>>>>> upstream/master
     deps = [
         ":gpu_device_info_for_tests",
         ":ir_emitter_triton",

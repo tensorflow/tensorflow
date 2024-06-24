@@ -4960,16 +4960,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
   GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
 #endif  // CUDA_VERSION < 12000
 
-<<<<<<< HEAD
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip UnscaledABUnscaledDMatrixBiasF8 on ROCm.";
-#endif  // TF_ROCM_VERSION 
-=======
 #if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION < 60200
   GTEST_SKIP() << "F8 gemm rewrite for D to be fp8 with Matrix Bias is only "
                   "supported in ROCm 6.2 and above.";
 #endif  // TF_ROCM_VERSION < 60200
->>>>>>> upstream/master
 
   const char* hlo_text = R"(
     HloModule test
