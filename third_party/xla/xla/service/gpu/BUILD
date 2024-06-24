@@ -6101,8 +6101,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         "//xla:literal_util",
-        "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
