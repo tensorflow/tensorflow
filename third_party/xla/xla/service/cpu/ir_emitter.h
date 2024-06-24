@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features.h"
@@ -53,6 +55,10 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+// Forward declare emitter for XLA:CPU thunks.
+class IrEmitter2;
+
 // This class is the top-level API for the XLA HLO --> LLVM IR compiler.  It
 // implements the DfsHloVisitor interface and emits HLO computations as LLVM IR
 // functions.
@@ -160,6 +166,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  protected:
+  friend class IrEmitter2;
+
   //
   // The following methods implement the DfsHloVisitor interface.
   //
@@ -216,6 +224,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   absl::Status Preprocess(HloInstruction* hlo) override;
   absl::Status Postprocess(HloInstruction* hlo) override;
+
+  absl::Status HandleSelectAndScatter(HloInstruction* select_and_scatter,
+                                      const llvm_ir::IrArray& operand_array,
+                                      const llvm_ir::IrArray& source_array,
+                                      const llvm_ir::IrArray& output_array);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(

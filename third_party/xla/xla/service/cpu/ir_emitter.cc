@@ -738,6 +738,19 @@ absl::Status IrEmitter::HandleSelectAndScatter(
   CHECK_EQ(select_and_scatter->operand_count(), 3);
   const auto operand = select_and_scatter->operand(0);
   const auto source = select_and_scatter->operand(1);
+
+  return HandleSelectAndScatter(select_and_scatter, GetIrArrayFor(operand),
+                                GetIrArrayFor(source),
+                                GetIrArrayFor(select_and_scatter));
+}
+
+absl::Status IrEmitter::HandleSelectAndScatter(
+    HloInstruction* select_and_scatter, const llvm_ir::IrArray& operand_array,
+    const llvm_ir::IrArray& source_array,
+    const llvm_ir::IrArray& output_array) {
+  CHECK_EQ(select_and_scatter->operand_count(), 3);
+  const auto operand = select_and_scatter->operand(0);
+  const auto source = select_and_scatter->operand(1);
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
@@ -849,7 +862,6 @@ absl::Status IrEmitter::HandleSelectAndScatter(
           Store(operand_index[i], selected_index_address_slot);
         }
       };
-  llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
   llvm_ir::IrArray::Index operand_index(
       operand_multi_index, operand_array.GetShape(), b_.getInt64Ty());
   llvm::Value* operand_data =
@@ -899,10 +911,8 @@ absl::Status IrEmitter::HandleSelectAndScatter(
         selected_index_address->getAllocatedType(), gep_index);
     selected_multi_index.push_back(Load(type, selected_index_address_slot));
   }
-  llvm_ir::IrArray source_array(GetIrArrayFor(source));
   llvm::Value* source_value =
       source_array.EmitReadArrayElement(source_index, &b_);
-  llvm_ir::IrArray output_array(GetIrArrayFor(select_and_scatter));
   llvm_ir::IrArray::Index selected_index(
       selected_multi_index, output_array.GetShape(), source_index.GetType());
   llvm::Value* output_value =

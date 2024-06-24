@@ -415,6 +415,24 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
                  se::ThreadDim()});
 }
 
+// Emits a host kernel for the given select-and-scatter instruction.
+absl::StatusOr<IrEmitter2::KernelInfo>
+IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
+  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+
+  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
+  llvm_ir::IrArray source_array = kernel_prototype.arguments[1];
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+
+  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandleSelectAndScatter(
+      const_cast<HloInstruction*>(instr), operand_array, source_array,
+      output_array));
+
+  return kernels_.emplace_back(
+      KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                 se::ThreadDim()});
+}
+
 //===----------------------------------------------------------------------===//
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//

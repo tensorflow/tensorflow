@@ -123,6 +123,10 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitDotFusionHostKernel(
       const HloFusionInstruction* fusion);
 
+  // Emits a host kernel for the given select-and-scatter instruction.
+  absl::StatusOr<KernelInfo> EmitSelectAndScatterHostKernel(
+      const HloInstruction* instr);
+
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   KernelPrototype EmitKernelPrototype(std::string_view name,
