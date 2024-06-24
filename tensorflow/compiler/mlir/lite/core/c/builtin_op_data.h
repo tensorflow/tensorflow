@@ -15,13 +15,45 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_CORE_C_BUILTIN_OP_DATA_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_CORE_C_BUILTIN_OP_DATA_H_
 
-// LINT.IfChange
+// LINT.IfChange(enum)
 typedef enum {
   kTfLitePaddingUnknown = 0,
   kTfLitePaddingSame,
   kTfLitePaddingValid,
 } TfLitePadding;
 
+// Possible fused activation functions.
+typedef enum {
+  kTfLiteActNone = 0,
+  kTfLiteActRelu,
+  kTfLiteActReluN1To1,  // min(max(-1, x), 1)
+  kTfLiteActRelu6,      // min(max(0, x), 6)
+  kTfLiteActTanh,
+  kTfLiteActSignBit,
+  kTfLiteActSigmoid,
+} TfLiteFusedActivation;
+// LINT.ThenChange(//tensorflow/lite/core/c/builtin_op_data.h)
+
+// LINT.IfChange(struct)
+// TODO(b/130259536): We should move this out of builtin_op_data.
+typedef struct {
+  int width;
+  int height;
+  int width_offset;
+  int height_offset;
+} TfLitePaddingValues;
+
+typedef struct {
+  TfLitePadding padding;
+  int stride_width;
+  int stride_height;
+  int filter_width;
+  int filter_height;
+  TfLiteFusedActivation activation;
+  struct {
+    TfLitePaddingValues padding;
+  } computed;
+} TfLitePoolParams;
 // LINT.ThenChange(//tensorflow/lite/core/c/builtin_op_data.h)
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_CORE_C_BUILTIN_OP_DATA_H_
