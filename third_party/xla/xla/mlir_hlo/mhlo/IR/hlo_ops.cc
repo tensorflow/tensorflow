@@ -5378,84 +5378,97 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
 }
 
 // transpose(transpose(X)) => transpose(X)
-static LogicalResult eliminateRedundantTranspose(TransposeOp op,
-                                                 PatternRewriter& rewriter) {
-  auto tranposeOperand = op.getOperand().getDefiningOp<TransposeOp>();
-  if (!tranposeOperand) {
-    return failure();
-  }
-  auto operandPermutation = tranposeOperand.getPermutation().getValues<APInt>();
-  auto newPermutation =
-      cast<DenseIntElementsAttr>(op.getPermutation().mapValues(
-          op.getPermutation().getElementType(),
-          [&operandPermutation](const APInt& index) -> APInt {
-            return operandPermutation[index.getSExtValue()];
-          }));
-  rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
-                                           tranposeOperand.getOperand(),
-                                           newPermutation);
-  return success();
-}
-
-// transpose(broadcast_in_dim(X)) => broadcast_in_dim(X)
-static LogicalResult eliminateBroadcastInDimTranspose(
-    TransposeOp op, PatternRewriter& rewriter) {
-  auto broadcastInDimOp = op.getOperand().getDefiningOp<BroadcastInDimOp>();
-  if (!broadcastInDimOp) {
-    return failure();
-  }
-  DenseIntElementsAttr broadcastDimensions =
-      broadcastInDimOp.getBroadcastDimensions();
-  DenseIntElementsAttr permutation = op.getPermutation();
-  SmallVector<int64_t> newBroadcastDimensions;
-  for (auto dimension : broadcastDimensions.getValues<int64_t>()) {
-    int64_t index = 0;
-    for (auto p : permutation.getValues<int64_t>()) {
-      if (p == dimension) {
-        newBroadcastDimensions.push_back(index);
-        break;
-      }
-      index++;
+class EliminateRedundantTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tranposeOperand = op.getOperand().getDefiningOp<TransposeOp>();
+    if (!tranposeOperand) {
+      return failure();
     }
-  }
-  rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
-      op, op->getResultTypes(), broadcastInDimOp.getOperand(),
-      rewriter.getI64TensorAttr(newBroadcastDimensions));
-  return success();
-}
-
-// simplify Transpose: replace Transpose with Reshape if they are equivalent
-static LogicalResult simplifyTranspose(TransposeOp op,
-                                       PatternRewriter& rewriter) {
-  auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
-  auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
-  if (!operandType || !resultType) {
-    return failure();
-  }
-  // Not support dynamic shape a.t.m. BTW, when it's dynamic shape,
-  // maybe Transpose should be replaced by DynamicReshape.
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape()) {
-    return failure();
-  }
-  auto permutation = op.getPermutation().getValues<int64_t>();
-  llvm::SmallVector<int64_t> sortedPermutation;
-  for (int64_t i = 0, e = resultType.getRank(); i < e; i++) {
-    if (resultType.getDimSize(i) != 1) {
-      sortedPermutation.push_back(permutation[i]);
-    }
-  }
-  if (llvm::is_sorted(sortedPermutation)) {
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+    auto operandPermutation =
+        tranposeOperand.getPermutation().getValues<APInt>();
+    auto newPermutation =
+        cast<DenseIntElementsAttr>(op.getPermutation().mapValues(
+            op.getPermutation().getElementType(),
+            [&operandPermutation](const APInt& index) -> APInt {
+              return operandPermutation[index.getSExtValue()];
+            }));
+    rewriter.replaceOpWithNewOp<TransposeOp>(op, op.getResult().getType(),
+                                             tranposeOperand.getOperand(),
+                                             newPermutation);
     return success();
   }
-  return failure();
-}
+};
+
+// BroadcastInDim(BroadcastInDim(X)) => BroadcastInDim(X)
+class EliminateBroadcastInDimTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto broadcastInDimOp = op.getOperand().getDefiningOp<BroadcastInDimOp>();
+    if (!broadcastInDimOp) {
+      return failure();
+    }
+    DenseIntElementsAttr broadcastDimensions =
+        broadcastInDimOp.getBroadcastDimensions();
+    DenseIntElementsAttr permutation = op.getPermutation();
+    SmallVector<int64_t> newBroadcastDimensions;
+    for (auto dimension : broadcastDimensions.getValues<int64_t>()) {
+      int64_t index = 0;
+      for (auto p : permutation.getValues<int64_t>()) {
+        if (p == dimension) {
+          newBroadcastDimensions.push_back(index);
+          break;
+        }
+        index++;
+      }
+    }
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+        op, op->getResultTypes(), broadcastInDimOp.getOperand(),
+        rewriter.getI64TensorAttr(newBroadcastDimensions));
+    return success();
+  }
+};
+
+// simplify Transpose: replace Transpose with Reshape if they are equivalent
+class SimplifyTranspose : public OpRewritePattern<TransposeOp> {
+ public:
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
+    auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
+    if (!operandType || !resultType) {
+      return failure();
+    }
+    // Not support dynamic shape a.t.m. BTW, when it's dynamic shape,
+    // maybe Transpose should be replaced by DynamicReshape.
+    if (!operandType.hasStaticShape() || !resultType.hasStaticShape()) {
+      return failure();
+    }
+    auto permutation = op.getPermutation().getValues<int64_t>();
+    llvm::SmallVector<int64_t> sortedPermutation;
+    for (int64_t i = 0, e = resultType.getRank(); i < e; i++) {
+      if (resultType.getDimSize(i) != 1) {
+        sortedPermutation.push_back(permutation[i]);
+      }
+    }
+    if (llvm::is_sorted(sortedPermutation)) {
+      rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+      return success();
+    }
+    return failure();
+  }
+};
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                              MLIRContext* /*context*/) {
-  results.add(eliminateRedundantTranspose);
-  results.add(eliminateBroadcastInDimTranspose);
-  results.add(simplifyTranspose);
+                                              MLIRContext* context) {
+  results.add<EliminateRedundantTranspose>(context);
+  results.add<EliminateBroadcastInDimTranspose>(context);
+  results.add<SimplifyTranspose>(context);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
