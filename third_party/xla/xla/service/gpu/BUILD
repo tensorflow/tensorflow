@@ -735,6 +735,7 @@ xla_test(
         "large",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
         "nomac",
+        "nozapfhahn",  # Times out under coverage
         "requires-mem:16g",
     ],
     deps = [

@@ -1565,6 +1565,7 @@ tf_xla_py_strict_test(
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "nozapfhahn",  # Times out under coverage
         "optonly",
     ],
     deps = [
