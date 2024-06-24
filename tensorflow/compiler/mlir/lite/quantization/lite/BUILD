@@ -37,9 +37,9 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/c:c_api_types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -114,7 +114,7 @@ tf_cc_binary(
     deps = [
         ":quantize_model",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/lite/c:c_api_types",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -168,11 +168,12 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools/optimize:test_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
 
