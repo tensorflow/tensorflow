@@ -192,6 +192,10 @@ struct Options {
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
 
+  // If true, tries to replace the synchronous copy instructions with
+  // asynchronous. If it fails to replace the copy, it keeps the sync version.
+  bool enable_sync_copy_replacement = true;
+
   // The ratio of use bytes to copy bytes for a given allocation site below
   // which we consider the site to be inefficient. A value of 0 would treat all
   // sites as efficient and a value of 1 would require the amount of bytes used

@@ -140,6 +140,11 @@ class AllocationValue {
     // All the positions where this use aliases with. The aliased positions
     // must get the same allocation.
     std::vector<HloPosition> aliases;
+    // If the use is copying from an allocation value produced by a sync copy,
+    // we keep a pointer to the use that defined the copy. This helps to make
+    // sure the alternative copy allocations are create right before the time
+    // of the original sync copy.
+    HloInstruction* copy_source = nullptr;
 
     bool operator==(const Use& other) const {
       return hlo_use == other.hlo_use && time == other.time &&
@@ -383,6 +388,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, const MsaBufferInterval& prefetch_candidate);
 
+  std::vector<const HloValue*> GetIntervalsClosure(
+      const MsaBufferInterval& interval,
+      const std::vector<MsaBufferInterval>& sorted_buffer_intervals);
+
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
  protected:
@@ -452,10 +461,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     int64_t inclusive_start_time;
     int64_t end_time;
     int64_t latest_prefetch_time;
+    int64_t required_copy_allocation_latest_time;
     int64_t size;
     bool prefer_no_copy_alternate_mem_allocation;
     bool allow_no_copy_alternate_mem_allocation;
     bool require_no_copy_alternate_mem_allocation;
+    bool require_copy_allocation;
     bool allow_prefetch;
     std::optional<int64_t> earliest_prefetch_time;
     std::optional<int64_t> preferred_prefetch_time;
@@ -463,6 +474,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     const AllocationValue::Use* use;
     AllocationValue* allocation_value;
     absl::Span<const int64_t> all_use_times;
+    HloInstruction* required_copy_for;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an
@@ -652,12 +664,55 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     // which case, we fallback to an unsliced solution.
     kAllSlicesHaveTheSameStartTime = 128,
     // There were conflicting preferred offsets.
-    kFailConflictingPreferredOffsets = 256
+    kFailConflictingPreferredOffsets = 256,
+    // Could not replace the synchronous copy with an asynchronous one
+    kFailSyncCopyReplacement = 512
   };
 
   // Return true if the result belongs to a failure.
   static bool result_is(Result result, Result failure) {
     return static_cast<int>(result) & static_cast<int>(failure);
+  }
+
+  // Return a string representation of the result.
+  static std::string result_to_string(const Result& result) {
+    std::string result_str = "";
+    if (result == Result::kSuccess) {
+      result_str += "Success | ";
+    } else {
+      if (result_is(result, Result::kFailOutOfMemory)) {
+        result_str += "FailOutOfMemory | ";
+      }
+      if (result_is(result, Result::kFailPrevAllocationNotInAlternateMem)) {
+        result_str += "FailPrevAllocationNotInAlternateMem | ";
+      }
+      if (result_is(result, Result::kFailLiveRangeTooLong)) {
+        result_str += "FailLiveRangeTooLong | ";
+      }
+      if (result_is(result, Result::kFailLiveRangeTooShort)) {
+        result_str += "FailLiveRangeTooShort | ";
+      }
+      if (result_is(result, Result::kFailOutOfAsyncCopies)) {
+        result_str += "FailOutOfAsyncCopies | ";
+      }
+      if (result_is(result, Result::kFailViolatesAsyncCopyResource)) {
+        result_str += "FailViolatesAsyncCopyResource | ";
+      }
+      if (result_is(result, Result::kFailRequiresUncommit)) {
+        result_str += "FailRequiresUncommit | ";
+      }
+      if (result_is(result, Result::kAllSlicesHaveTheSameStartTime)) {
+        result_str += "AllSlicesHaveTheSameStartTime | ";
+      }
+      if (result_is(result, Result::kFailConflictingPreferredOffsets)) {
+        result_str += "FailConflictingPreferredOffsets | ";
+      }
+      if (result_is(result, Result::kFailSyncCopyReplacement)) {
+        result_str += "FailSyncCopyReplacement | ";
+      }
+    }
+    result_str = result_str.substr(0, result_str.size() - 3);
+    return result_str;
   }
 
   // Mark (bitwise OR) a failure to the result.
@@ -690,6 +745,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Identify memory-bound loops in the graph and call OptimizeMemoryBoundLoop
   // for the found loops.
   void IdentifyAndOptimizeMemoryBoundLoops();
+
+  bool IsNonLayoutChangingUnassignedSyncCopy(
+      const HloInstruction* instruction) const;
 
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
@@ -780,7 +838,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Result::kSuccess if the buffer could be placed in alternate memory or some
   // other Result with an OR of reasons why the buffer couldn't be placed in
   // alternate memory.
-  Result AllocateSegment(const AllocationRequest& request);
+  Result AllocateSegment(AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies.
   Result AllocateInAlternateMemoryNoCopy(const AllocationRequest& request);
@@ -841,6 +899,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // corrected time is the time of the parameter of the earliest-scheduled
   // called computation.
   int64_t GetCorrectedUseTime(const HloUse& use) const;
+
+  int64_t GetCorrectedUseTime(const HloInstruction* instruction) const;
 
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
@@ -982,6 +1042,24 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Clears all pending chunks and asynchronous copies.
   void ClearPendingChunks();
 
+  bool IsInstructionInPendingCopyReplacements(
+      const AllocationValue::Use& use) const {
+    return IsInstructionInPendingCopyReplacements(use.hlo_use.instruction);
+  }
+
+  bool IsInstructionInPendingCopyReplacements(
+      const HloInstruction* instruction) const {
+    return std::find(sorted_pending_replaceable_copies_.begin(),
+                     sorted_pending_replaceable_copies_.end(),
+                     instruction) != sorted_pending_replaceable_copies_.end();
+  }
+
+  void CreateAllocationValuesForIntervalsClosure(
+      std::vector<const HloValue*>& intervals_closure,
+      std::vector<AllocationValue>& closure_allocation_values,
+      std::vector<std::vector<const MsaBufferInterval*>>&
+          closure_colocated_intervals);
+
   // Append buffer and allocation infos for debugging and dump it into a file,
   // if enabled.
   void AppendBufferInfoDebugString(const MsaBufferInterval& interval,
@@ -1052,6 +1130,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
+  std::vector<const HloInstruction*> sorted_pending_replaceable_copies_;
   // A cache to keep the peak memory usage at each point in the graph. We use
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
@@ -1096,6 +1175,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // alternate memory.
   absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<ShapeIndex>>
       outputs_in_alternate_memory_map_;
+  absl::flat_hash_set<const HloValue*> processed_values_;
+  absl::flat_hash_set<const HloInstruction*> failed_copy_replacements_set_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
