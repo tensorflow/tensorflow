@@ -88,7 +88,6 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
       /*compute_stats*/ true);
   allocator.SetStreamAndPreallocateMemory(
       se::gpu::AsGpuStreamValue(stream.get()));
-
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
@@ -115,7 +114,6 @@ TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
       /*compute_stats*/ true);
   allocator.SetStreamAndPreallocateMemory(
       se::gpu::AsGpuStreamValue(stream.get()));
-
   void* addr1 = allocator.AllocateRaw(128, 127);
   void* addr2 = allocator.AllocateRaw(128, 129);
   CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);

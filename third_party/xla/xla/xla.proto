@@ -831,7 +831,14 @@ message DebugOptions {
   // updating command buffer instance.
   int64 xla_cmd_buffer_trace_cache_size = 311;
 
-  // Next id: 312
+  // Enable this flag will use a separate memory space color for
+  // temp buffer, and then will use separate memory allocator to allocate it,
+  // as there is no other memory allocation interference,
+  // it will allocate temp buffer to some fix address on every iteration,
+  // which is good for cuda-graph perf.
+  bool xla_gpu_temp_buffer_use_separate_color = 312;
+
+  // Next id: 313
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -93,11 +93,13 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include "xla/debug_options_flags.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -797,59 +799,53 @@ namespace {
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
-absl::StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
-CreateCudaAsyncAllocator(
-    se::Platform* platform,
-    const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
-    double memory_fraction, bool preallocate) {
-  CHECK_GT(addressable_devices.size(), 0);
-  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
+absl::StatusOr<std::unique_ptr<se::GpuCudaMallocAsyncAllocator>>
+CreateCudaAsyncAllocator(const LocalDeviceState& device, double memory_fraction,
+                         bool reserve_memory, bool create_new_pool,
+                         bool sync_mode, bool compute_stats = true) {
+  se::StreamExecutor* executor = device.executor();
+  int device_ordinal = executor->device_ordinal();
 
-  for (auto& ordinal_and_device : addressable_devices) {
-    se::StreamExecutor* executor = ordinal_and_device.second->executor();
-    int device_ordinal = executor->device_ordinal();
-
-    int64_t free_memory;
-    int64_t total_memory;
-    if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
-      return Unavailable("Failed to query available memory from device %i",
-                         device_ordinal);
-    }
-    // To allow full GPU memory to be visible to the Cuda Async allocator
-    // if using unified memory.
-    // When unified memory is enabled, allow GPU memory oversubscription by
-    // setting memory_fraction > 1.
-    size_t allocator_memory = total_memory * memory_fraction;
-    if (preallocate) {
-      LOG(INFO) << "XLA backend allocating " << allocator_memory
-                << " bytes on device " << device_ordinal
-                << " for CudaAsyncAllocator.";
-    } else {
-      LOG(INFO) << "XLA backend will use up to " << allocator_memory
-                << " bytes on device " << device_ordinal
-                << " for CudaAsyncAllocator.";
-    }
-
-    auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
-        tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
-    allocator->SetStreamAndPreallocateMemory(
-        ordinal_and_device.second->compute_stream()
-            ->platform_specific_handle()
-            .stream);
-    allocators.emplace_back(std::move(allocator),
-                            ordinal_and_device.second->compute_stream(),
-                            /*memory_space=*/0);
+  int64_t free_memory;
+  int64_t total_memory;
+  if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+    return Unavailable("Failed to query available memory from device %i",
+                       device_ordinal);
   }
-  return allocators;
+  // To allow full GPU memory to be visible to the Cuda Async allocator
+  // if using unified memory.
+  // When unified memory is enabled, allow GPU memory oversubscription by
+  // setting memory_fraction > 1.
+  size_t allocator_memory = total_memory * memory_fraction;
+  if (reserve_memory) {
+    LOG(INFO) << "XLA backend allocating " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CudaAsyncAllocator.";
+  } else {
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CudaAsyncAllocator.";
+  }
+
+  auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
+      /*platform_device_id*/ tsl::PlatformDeviceId(device_ordinal),
+      /*create_new_pool*/ create_new_pool,
+      /*new_pool_size*/ allocator_memory,
+      /*reserve_memory*/ reserve_memory,
+      /*reserve_memory_size*/ reserve_memory ? allocator_memory : 0,
+      /*sync_mode*/ sync_mode,
+      /*compute_stats*/ compute_stats);
+
+  allocator->SetStreamAndPreallocateMemory(
+      device.compute_stream()->platform_specific_handle().stream);
+
+  return allocator;
 }
 
 #else  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
-
-absl::StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
-CreateCudaAsyncAllocator(
-    se::Platform* platform,
-    const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
-    double memory_fraction, bool preallocate) {
+absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateCudaAsyncAllocator(
+    const LocalDeviceState& device, double memory_fraction, bool reserve_memory,
+    bool create_new_pool, bool sync_mode, bool compute_stats = true) {
   return FailedPrecondition("CUDA async allocator requires CUDA >= 11.2");
 }
 
@@ -881,17 +877,17 @@ GetStreamExecutorGpuDeviceAllocator(
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   switch (allocator_config.kind) {
     case GpuAllocatorConfig::Kind::kCudaAsync: {
-      auto allocators_or = CreateCudaAsyncAllocator(
-          platform, addressable_devices, allocator_config.memory_fraction,
-          allocator_config.preallocate);
-      if (allocators_or.ok()) {
-        LOG(INFO) << "Using CUDA async allocator.";
-        allocators = std::move(allocators_or.value());
-        break;
+      for (const auto& ordinal_and_device : addressable_devices) {
+        TF_ASSIGN_OR_RETURN(
+            auto async_allocator,
+            CreateCudaAsyncAllocator(
+                *(ordinal_and_device.second), allocator_config.memory_fraction,
+                allocator_config.preallocate, false, false, true));
+        allocators.emplace_back(std::move(async_allocator),
+                                ordinal_and_device.second->compute_stream(),
+                                /*memory_space=*/0);
       }
-      LOG(ERROR) << "Failed to initialize CUDA async allocator: "
-                 << allocators_or.status() << "; falling back to BFC.";
-      [[fallthrough]];
+      break;
     }
 
     case GpuAllocatorConfig::Kind::kDefault:
@@ -945,6 +941,23 @@ GetStreamExecutorGpuDeviceAllocator(
                             static_cast<int>(se::MemoryType::kHost));
   }
 
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
+  const auto& debug_options = xla::GetDebugOptionsFromFlags();
+  if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
+    // Add memory allocator to allocate memory buffers with persistent temp
+    // memory space color.
+    for (const auto& ordinal_and_device : addressable_devices) {
+      TF_ASSIGN_OR_RETURN(
+          auto async_allocator,
+          CreateCudaAsyncAllocator(*(ordinal_and_device.second), 1.0, false,
+                                   true, true, true));
+      allocators.emplace_back(
+          std::move(async_allocator),
+          ordinal_and_device.second->compute_stream(),
+          /*memory_space=*/gpu::kTempBufferMemorySpaceColor);
+    }
+  }
+#endif
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }

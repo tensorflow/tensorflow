@@ -123,6 +123,8 @@ cc_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+        "//xla/service/gpu:gpu_memory_space_assignment",
+        "//xla:debug_options_flags",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
     ]),
