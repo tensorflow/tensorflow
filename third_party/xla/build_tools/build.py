@@ -274,7 +274,9 @@ _JAX_CPU_BUILD = Build(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
 )
 
 _JAX_GPU_BUILD = Build(
@@ -294,7 +296,9 @@ _JAX_GPU_BUILD = Build(
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+    ),
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {

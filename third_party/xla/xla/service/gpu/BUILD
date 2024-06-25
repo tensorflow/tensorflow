@@ -4796,7 +4796,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-    ]) + if_static([
+    ]) + if_google([
         "@com_google_protobuf//:wrappers_cc_proto",
     ]),
 )
