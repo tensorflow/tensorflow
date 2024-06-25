@@ -6721,6 +6721,66 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
   EXPECT_EQ(root->slice_limits(0), 2);
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfReduceWindowOneReduceDim) {
+  const char* hlo = R"(
+    HloModule m
+    Add.1 {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT r = s32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = s32[2,8] parameter(0)
+      c0 = s32[] constant(0)
+      r = s32[2,8] reduce-window(s32[2,8] p0, s32[] c0), window={size=1x8 pad=0_0x7_0}, to_apply=Add.1
+      ROOT s = s32[2,1] slice(s32[2,8] r), slice={[0:2], [7:8]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Reshape(m::Reduce(m::Parameter(0), m::Constant())
+                                .WithShape(S32, {2})
+                                .WithPredicate([](const HloInstruction* instr) {
+                                  return instr->dimensions() ==
+                                         std::vector<int64_t>({1});
+                                }))
+                     .WithShape(S32, {2, 1})));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfReduceWindowTwoReduceDims) {
+  const char* hlo = R"(
+    HloModule m
+    Add.1 {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT r = s32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = s32[3,4,2] parameter(0)
+      c0 = s32[] constant(0)
+      r = s32[3,4,2] reduce-window(s32[3,4,2] p0, s32[] c0), window={size=1x4x2 pad=0_0x3_0x1_0}, to_apply=Add.1
+      ROOT s = s32[3,1,1] slice(s32[3,4,2] r), slice={[0:3], [3:4], [1:2]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Reshape(m::Reduce(m::Parameter(0), m::Constant())
+                                .WithShape(S32, {3})
+                                .WithPredicate([](const HloInstruction* instr) {
+                                  return instr->dimensions() ==
+                                         std::vector<int64_t>({1, 2});
+                                }))
+                     .WithShape(S32, {3, 1, 1})));
+}
+
 TEST_F(AlgebraicSimplifierTest, ConcatToBroadcast) {
   const char* hlo_string = R"(
     HloModule module
