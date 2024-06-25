@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:criticality",
@@ -135,6 +136,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -148,8 +150,12 @@ cc_library(
     srcs = ["batch_scheduler_utils.cc"],
     hdrs = ["batch_scheduler_utils.h"],
     deps = [
+        ":batch_scheduler_hdrs",
+        ":batch_stats",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -183,7 +189,10 @@ tf_cc_test(
     name = "batch_scheduler_utils_test",
     srcs = ["batch_scheduler_utils_test.cc"],
     deps = [
+        ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
+        ":batch_stats",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -195,6 +204,7 @@ cc_library(
         ":batch_input_task",
         ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
+        ":batch_stats",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
@@ -225,6 +235,7 @@ cc_library(
         ":batch_input_task",
         ":batch_scheduler",
         ":batch_scheduler_utils",
+        ":batch_stats",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
@@ -246,6 +257,7 @@ tf_cc_test(
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":batch_scheduler",
+        ":batch_scheduler_utils",
         ":fake_clock_env",
         ":shared_batch_scheduler",
         "//tensorflow/core:lib",

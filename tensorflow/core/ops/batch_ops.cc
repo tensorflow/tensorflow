@@ -71,6 +71,22 @@ REGISTER_OP("BatchFunction")
         "{'low_priority_padding_with_max_batch_size', "
         "'low_priority_padding_with_next_allowed_batch_size', "
         "'priority_isolation'} = 'low_priority_padding_with_max_batch_size'")
+    // The policy that a batch scheduler is using when deciding what to do when,
+    // say, 18 requests need to be batched, but only 16 and 32 batch sizes are
+    // allowed. The following options are available.
+    //
+    //   - PAD_UP: pad to size 32.
+    //   - BATCH_DOWN: schedule a batch of size 16 and leave 2 requests in the
+    //     batch buffer.
+    //   - MINIMIZE_TPU_COST_PER_REQUEST: a smarter greedy policy that chooses
+    //     to either PAD_UP or BATCH_DOWN so as to minimize the TPU costs per
+    //     real request. In this case, it would compare (batch_16_cost / 16) and
+    //     (batch_32_cost / 18).
+    //
+    // WARNING: Not all batch schedulers might support this attribute.
+    .Attr(
+        "batch_padding_policy: "
+        "{'PAD_UP', 'BATCH_DOWN', 'MINIMIZE_TPU_COST_PER_REQUEST'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
