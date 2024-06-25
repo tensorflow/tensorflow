@@ -511,26 +511,6 @@ ENTRY main {
   EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(2));
 }
 
-TEST_F(SymbolicTileAnalysisTest, BailsOutWhenConstraintsCanNotBeMerged) {
-  // TODO(bchetioui): allow merging a constraint with itself.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-fusion {
-  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
-  p1 = f32[1,48,4,8]{3,2,1,0} parameter(1)
-  bitcast_p0 = f32[48,32]{1,0} bitcast(p0)
-  bitcast_p1 = f32[48,32]{1,0} bitcast(p1)
-  ROOT add = f32[48,32]{1,0} add(bitcast_p0, bitcast_p1)
-}
-
-ENTRY main {
-  p0 = f32[1,48,4,8]{3,2,1,0} parameter(0)
-  p1 = f32[1,48,4,8]{3,2,1,0} parameter(1)
-  ROOT fusion = f32[48,32]{1,0} fusion(p0, p1), kind=kLoop, calls=fusion
-})"));
-  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
-}
-
 bool AlwaysValid(absl::Span<const int64_t>) { return true; }
 
 TEST(GetGoodTilingsTest, ReturnsOneTilingWhenRankIsZero) {

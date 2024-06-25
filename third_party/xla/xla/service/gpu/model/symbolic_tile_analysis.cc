@@ -69,7 +69,6 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
-using ConstraintMap = SymbolicTile::ConstraintMap;
 
 // Computes indexing map from program id into the tile offset for the given
 // shape and tile sizes.

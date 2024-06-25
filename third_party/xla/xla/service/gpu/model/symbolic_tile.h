@@ -230,8 +230,6 @@ class SymbolicTile {
  public:
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
-  using ConstraintMap = llvm::DenseMap<mlir::AffineExpr, Interval>;
-
   // For printing in tests.
   std::string RtVarsToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;

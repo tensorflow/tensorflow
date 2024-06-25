@@ -2592,6 +2592,7 @@ xla_cc_test(
         ":softmax_rewriter_triton",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:instruction_fusion",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
