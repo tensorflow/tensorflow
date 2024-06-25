@@ -23,8 +23,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -49,7 +51,12 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::Create(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
-    std::optional<int64_t> min_alignment) {
+    std::optional<uint64_t> min_alignment) {
+  if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
+    return Internal("Host kernel %s minimum alignment %d is not a power of 2",
+                    info.op_name, *min_alignment);
+  }
+
   return absl::WrapUnique(
       new KernelThunk(std::move(info), arguments_buffers, results_buffers,
                       std::move(kernel_name), thread_dim, min_alignment));
@@ -59,13 +66,14 @@ KernelThunk::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
-    std::optional<int64_t> min_alignment)
+    std::optional<uint64_t> min_alignment)
     : Thunk(Kind::kKernel, std::move(info)),
       arguments_buffers_(arguments_buffers.begin(), arguments_buffers.end()),
       results_buffers_(results_buffers.begin(), results_buffers.end()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
       min_alignment_(min_alignment),
+      use_task_runner_(thread_dim != se::ThreadDim()),
       kernel_ptr_(nullptr) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
@@ -104,12 +112,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
   // will crash with a segmentation fault, or worse, produce incorrect results.
   if (min_alignment_.has_value()) {
     for (int64_t i = 0; i < buffers_data.size(); ++i) {
-      se::DeviceMemoryBase& data = buffers_data[i];
-      if (reinterpret_cast<uintptr_t>(data.opaque()) % *min_alignment_ != 0) {
+      auto ptr = reinterpret_cast<uintptr_t>(buffers_data[i].opaque());
+      if (ABSL_PREDICT_FALSE((ptr & (*min_alignment_ - 1)) != 0)) {
         return Internal(
             "Host kernel %s buffer argument #%d (%p) is not aligned to a "
             "required minimum alignment of %d bytes",
-            info().op_name, i, data.opaque(), *min_alignment_);
+            info().op_name, i, buffers_data[i].opaque(), *min_alignment_);
       }
     }
   }
@@ -130,7 +138,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
   // If intra-op thread pool is not nullptr, we launch HostKernel in async mode
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
-  if (params.intra_op_threadpool) {
+  if (params.intra_op_threadpool && use_task_runner_) {
     return kernel.Launch(thread_dim_, buffers_data,
                          [&params](se::host::HostKernel::Task task) {
                            params.intra_op_threadpool->getPool()->Schedule(
