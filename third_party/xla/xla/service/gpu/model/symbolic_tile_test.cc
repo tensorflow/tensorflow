@@ -733,28 +733,6 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
 }
 
 TEST_F(SymbolicTileTest,
-       DerivesUnsatisfiableConstraintWhenMergingOfConstraintsIsUnsupported) {
-  // This is kind of an artificial test case that we could easily support---we
-  // assume here that we can't merge two constraints that are the same.
-  // Nevertheless, there doesn't seem to be an obvious way to produce other
-  // constraints that would trigger this particular failure at the moment. This
-  // will change as we support more constraints, disjunctions, etc...
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0) -> (d0 mod 6, d0 mod 6)", &mlir_context_),
-      /*dimensions=*/{DimVar{0, 10}}, /*range_vars=*/{}, /*rt_vars=*/{});
-
-  EXPECT_THAT(SymbolicTile::FromIndexingMap(std::move(indexing_map)),
-              Optional(MatchSymbolicTileString(R"(
-              Symbolic tile with
-              offset_map: ()[s0] -> (0, 0)
-              size_map: ()[s0] -> (s0 - ((s0 - 1) floordiv 6) * 6, s0 - ((s0 - 1) floordiv 6) * 6)
-              stride_map: ()[s0] -> (1, 1)
-              constraints:
-                unsatisfiable
-              )")));
-}
-
-TEST_F(SymbolicTileTest,
        CanDeriveTileWhenPreexistingConstraintsCanBeSimplifiedAway) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
@@ -831,6 +809,22 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   constraints.Or(std::move(conjunction_2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+}
+
+TEST_F(ConstraintExpressionTest,
+       ConjunctionOfConstraintsOnTheSameExpressionAreIntersected) {
+  ConstraintExpression constraints;
+
+  constraints.And(GetConjointConstraints({{"d0", Interval{0, 5}}}));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 5]"));
+
+  // Constraints are intersected.
+  constraints.And(GetConjointConstraints({{"d0", Interval{3, 6}}}));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 5]"));
+
+  // Empty intersection results in unsatisfiability.
+  constraints.And(GetConjointConstraints({{"d0", Interval{7, 8}}}));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(ConstraintExpressionTest,
@@ -1068,9 +1062,6 @@ TEST_F(
   EXPECT_FALSE(
       ConstraintExpression::And(constraints_1, constraints_2).is_satisfiable());
 }
-
-// TODO(b/334043867): add support for intersecting constraints within a single
-// conjunction.
 
 }  // namespace
 }  // namespace gpu

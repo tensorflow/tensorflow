@@ -54,7 +54,7 @@ using ::mlir::AffineSymbolExpr;
 using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
-using ConstraintMap = SymbolicTile::ConstraintMap;
+using ConjointConstraints = ConstraintExpression::ConjointConstraints;
 
 // Gets a modified version of `expressions` where both the original dimensions
 // and symbols are replaced with symbols.
@@ -597,42 +597,37 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   return tmp_indexing_map.GetAffineMap().getResults().back();
 }
 
-// Merges `maybe_first_map` and `second_map` if
-//  (1) `maybe_first_map` is present, and
-//  (2) `second_map` and `*maybe_first_map` have distinct sets of keys.
-// Otherwise, returns `std::nullopt`.
-//
-//
-// The behaviour of this function is in spirit equivalent to using C++23's
-// `std::optional<T>::and_then` to merge a collection of `ConstraintMap`s.
-//
-// We pass `maybe_first_map` by value here in order to exploit move semantics
-// to avoid copies when possible.
-//
-// TODO(bchetioui): allow merging constraints in more edge cases, e.g. if one
-// of the intervals is contained within the other.
-// TODO(bchetioui): clean up this util.
-std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
-    std::optional<ConstraintMap> maybe_first_map,
-    const ConstraintMap& second_map) {
-  if (!maybe_first_map.has_value()) {
-    return std::nullopt;
+// Tries to take the conjunction of `conjunction_1` and `conjunction_2`.
+// Fails and returns `std::nullopt` if and only if the conjunction attempt
+// results in an unsatisfiable constraint.
+std::optional<ConjointConstraints> TryIntersectConjointConstraints(
+    ConjointConstraints conjunction_1,
+    const ConjointConstraints& conjunction_2) {
+  if (conjunction_1.empty()) {
+    return conjunction_2;
   }
 
-  ConstraintMap& first_map = *maybe_first_map;
+  if (conjunction_2.empty()) {
+    return std::move(conjunction_1);
+  }
 
-  for (const auto& [expr, interval] : second_map) {
-    if (first_map.contains(expr)) {
-      AffineMapPrinter printer;
-      VLOG(1) << "Got two different constraints for expression "
-              << printer.ToString(expr);
-      return std::nullopt;
+  ConjointConstraints result = std::move(conjunction_1);
+  for (const auto& [expr, interval] : conjunction_2) {
+    if (auto result_it = result.find(expr); result_it != result.end()) {
+      auto& [result_expr, result_interval] = *result_it;
+      result_interval = result_interval.Intersect(interval);
+      if (!result_interval.IsFeasible()) {
+        AffineMapPrinter printer;
+        VLOG(1) << "Got two incompatible intervals for expression "
+                << printer.ToString(expr);
+        return std::nullopt;
+      }
+    } else {
+      result.insert({expr, interval});
     }
-
-    first_map.insert({expr, interval});
   }
 
-  return first_map;
+  return result;
 }
 
 }  // anonymous namespace
@@ -674,8 +669,7 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
     for (ConjointConstraints& conjunction_2 :
          second.disjoint_conjoint_constraints_) {
       std::optional<ConjointConstraints> maybe_conjunction =
-          MergeConstraintMapIfPresentAndCompatible(conjunction_1,
-                                                   conjunction_2);
+          TryIntersectConjointConstraints(conjunction_1, conjunction_2);
       // We only add the resulting conjunction to the result
       // `ConstraintExpression` if it is satisfiable, since it is otherwise
       // redundant:
@@ -713,8 +707,7 @@ std::optional<ConstraintMap> MergeConstraintMapIfPresentAndCompatible(
   return first;
 }
 
-void ConstraintExpression::Or(
-    ConstraintExpression::ConjointConstraints conjunction) {
+void ConstraintExpression::Or(ConjointConstraints conjunction) {
   if (conjunction.empty()) {
     return;
   }
@@ -723,8 +716,7 @@ void ConstraintExpression::Or(
   is_satisfiable_ = true;
 }
 
-void ConstraintExpression::And(
-    ConstraintExpression::ConjointConstraints conjunction) {
+void ConstraintExpression::And(ConjointConstraints conjunction) {
   if (!is_satisfiable_ || conjunction.empty()) {
     return;
   }
@@ -739,8 +731,7 @@ void ConstraintExpression::And(
 
   for (ConjointConstraints& conjunction_2 : disjoint_conjoint_constraints_) {
     std::optional<ConjointConstraints> maybe_result =
-        MergeConstraintMapIfPresentAndCompatible(std::move(conjunction_2),
-                                                 conjunction);
+        TryIntersectConjointConstraints(std::move(conjunction_2), conjunction);
     // TODO(bchetioui): rework `MergeConstraintMapIfPresentAndCompatible`.
     if (maybe_result.has_value()) {
       new_constraints.push_back(std::move(*maybe_result));

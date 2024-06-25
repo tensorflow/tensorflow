@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -251,51 +252,8 @@ ENTRY main {
           m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
-TEST_P(SoftmaxRewriterTritonTest,
-       CanNotFuseSoftmaxWhenResultingComputationCanNotBeTiledCorrectly) {
-  PrimitiveType data_type = GetParam();
-  const std::string hlo_string_template = R"(
-HloModule softmax
-max_computation {
-  arg_0 = $0[] parameter(0)
-  arg_1 = $0[] parameter(1)
-  ROOT maximum = $0[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = $0[130,125]{1,0} parameter(0)
-  constant_neg_inf = $0[] constant(-inf)
-  bitcasted_param_0 = $0[65,2,125] bitcast(param_0)
-  reduce = $0[65,2]{1,0} reduce(bitcasted_param_0, constant_neg_inf), dimensions={2}, to_apply=max_computation
-  bitcasted_reduce = $0[130] bitcast(reduce)
-  broadcast = $0[130,125]{1,0} broadcast(bitcasted_reduce), dimensions={0}
-  bitcasted_broadcast = $0[65,2,125] bitcast(broadcast)
-  subtract = $0[65,2,125]{2,1,0} subtract(bitcasted_param_0, bitcasted_broadcast)
-  bitcasted_subtract = $0[130,125] bitcast(subtract)
-  exponential = $0[130,125]{1,0} exponential(bitcasted_subtract)
-  constant_zero = $0[] constant(0)
-  bitcasted_exponential = $0[2,65,125] bitcast(exponential)
-  second_reduce = $0[2,65]{1,0} reduce(bitcasted_exponential, constant_zero), dimensions={2}, to_apply=add_computation
-  second_bitcasted_reduce = $0[130] bitcast(second_reduce)
-  second_broadcast = $0[130,125]{1,0} broadcast(second_bitcasted_reduce), dimensions={0}
-  second_bitcasted_broadcast = $0[2,65,125] bitcast(second_broadcast)
-  divide = $0[2,65,125]{2,1,0} divide(bitcasted_exponential, second_bitcasted_broadcast)
-  ROOT bitcasted_divide = $0[130,125] bitcast(divide)
-}
-)";
-  const std::string hlo_string =
-      absl::Substitute(hlo_string_template,
-                       primitive_util::LowercasePrimitiveTypeName(data_type));
-
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
-}
+// TODO(b/334043867): is there still a meaningful written that can be written
+// here for 'CanNotFuseSoftmaxWhenResultingComputationCanNotBeTiledCorrectly'?
 
 TEST_P(SoftmaxRewriterTritonTest, CanNotFuseSoftmaxDiamondWithWrongLayout) {
   PrimitiveType data_type = GetParam();
