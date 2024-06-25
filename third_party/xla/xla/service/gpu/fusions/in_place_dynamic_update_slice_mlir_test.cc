@@ -66,14 +66,14 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     th_x floordiv 6, th_x mod 6)
     domain:
-    th_x in [0, 29]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 0]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
+    th_x in [0, 30)
+    th_y in [0, 1)
+    th_z in [0, 1)
+    bl_x in [0, 1)
+    bl_y in [0, 1)
+    bl_z in [0, 1)
+    chunk_id in [0, 1)
+    unroll_id in [0, 1)
   )"));
   auto thread_id_dst_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -112,8 +112,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, SimpleDUS) {
     // CHECK-DAG:   %[[C_15:.*]] = arith.constant 15
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
-    // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]] in [0, 29])
-    // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]] in [0, 29])
+    // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]] in [0, 30))
+    // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]] in [0, 30))
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
     // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
@@ -162,8 +162,8 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
     // CHECK-DAG:   %[[C_5:.*]] = arith.constant 5
     // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
     // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
-    // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]] in [0, 5])
-    // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]] in [0, 5])
+    // CHECK:       %[[INPUT_INDEX_0:.*]] = xla_gpu.apply_indexing #[[MAP_1]](%[[THREAD_ID]] in [0, 6))
+    // CHECK:       %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_2]](%[[THREAD_ID]] in [0, 6))
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
     // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]

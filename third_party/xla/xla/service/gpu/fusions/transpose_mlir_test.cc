@@ -56,15 +56,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -75,15 +75,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
 }
 
@@ -113,15 +113,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
           d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -132,15 +132,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
 }
 
@@ -170,14 +170,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 8191]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 15]
-        s1 in [0, 1]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 8192)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 16)
+        s1 in [0, 2)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -188,14 +188,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized021) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 8191]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 15]
-        s1 in [0, 1]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 8192)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 16)
+        s1 in [0, 2)
       )"));
 }
 
@@ -224,14 +224,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
           (d0 mod 32) * 2 + s1 + (d3 mod 128) * 64
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 8191]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 15]
-        s1 in [0, 1]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 8192)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 16)
+        s1 in [0, 2)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -242,14 +242,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
           (d0 mod 32) * 2 + s1
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 8191]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 15]
-        s1 in [0, 1]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 8192)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 16)
+        s1 in [0, 2)
       )"));
 }
 
@@ -620,15 +620,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
           d0 floordiv 32 + s0 * 4
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
@@ -639,15 +639,15 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingSideOutput) {
           (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 128)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 200)
+        d4 in [0, 1)
+        d5 in [0, 1)
 
-        s0 in [0, 7]
-        s1 in [0, 0]
+        s0 in [0, 8)
+        s1 in [0, 1)
       )"));
 }
 

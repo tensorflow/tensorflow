@@ -59,15 +59,15 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     (bl_x * 128 + th_x) mod 400)
     domain:
-    th_x in [0, 127]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 3]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
-    th_x + bl_x * 128 in [0, 399]
+    th_x in [0, 128)
+    th_y in [0, 1)
+    th_z in [0, 1)
+    bl_x in [0, 4)
+    bl_y in [0, 1)
+    bl_z in [0, 1)
+    chunk_id in [0, 1)
+    unroll_id in [0, 1)
+    th_x + bl_x * 128 in [0, 400)
   )";
   auto thread_id_to_output_indexing_0 = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);

@@ -359,9 +359,9 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
 // For example, for the following indexing map:
 //   (d0)[s0] -> (d0 + s0)
 //   domain:
-//   d0 in [0, 3]
+//   d0 in [0, 4)
 //   s0 in [0, 1, 2]
-//   s0 mod 2 in [0, 0]
+//   s0 mod 2 in [0, 1)
 // The function will compute the following indices [0, 2, 1, 3, 2, 4, 3, 5].
 void FindAllIndices(AffineExpr expr, int dim_id, int symbol_id,
                     const std::vector<Interval>& dimension_ranges,
@@ -397,8 +397,8 @@ void FindAllIndices(AffineExpr expr, int dim_id, int symbol_id,
 // Computes contiguous intervals of accessed elements.
 // For example, for an indexing map
 //   (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
-//   d0 in [0, 31]
-//   s0 in [0, 3]
+//   d0 in [0, 32)
+//   s0 in [0, 4)
 // The intervals are [0, 63] and [2047, 2111].
 std::vector<Interval> FindIntervals(
     AffineExpr expr, const std::vector<Interval>& dimension_ranges,
