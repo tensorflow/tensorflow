@@ -472,8 +472,10 @@ Status BatchResourceBase::RegisterInput(
   }
 
   BatcherQueueT* batcher_queue;
-  TF_RETURN_IF_ERROR(
-      LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
+  TF_RETURN_IF_ERROR(LookupOrCreateBatcherQueue(
+      /* queue_name= */ batcher_queue_name,
+      /* model_name= */ GetModelName(context),
+      /* op_name= */ context->op_kernel().name(), /* queue= */ &batcher_queue));
 
   if (!session_metadata().name().empty()) {
     absl::MutexLock lock(&outstanding_batch_mu_);
@@ -1172,9 +1174,9 @@ void BatchResourceBase::ProcessBatchCallBack(
   }
 }
 
-// Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
-// creates it.
 Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
+                                                     const string& model_name,
+                                                     const string& op_name,
                                                      BatcherQueueT** queue) {
   mutex_lock l(batcher_queues_mu_);
 
@@ -1186,8 +1188,12 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 
   std::unique_ptr<BatcherQueueT> new_queue;
   if (batcher_) {
+    BatcherT::QueueOptions batcher_queue_options = batcher_queue_options_;
+    batcher_queue_options.model_batch_stats = &GlobalBatchStats().model(
+        /* model_name= */ model_name, /* op_name= */ op_name);
+
     TF_RETURN_IF_ERROR(batcher_->AddQueue(
-        batcher_queue_options_,
+        batcher_queue_options,
         absl::bind_front(&BatchResourceBase::ProcessBatchCallBack, this),
         &new_queue));
   } else if (adaptive_batcher_) {

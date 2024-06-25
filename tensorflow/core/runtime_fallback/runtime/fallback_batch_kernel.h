@@ -83,6 +83,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
+  std::string batch_padding_policy_;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
