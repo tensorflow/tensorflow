@@ -433,6 +433,11 @@ REGISTER_OP("_BatchFunctionFallback")
         "{'low_priority_padding_with_max_batch_size', "
         "'low_priority_padding_with_next_allowed_batch_size', "
         "'priority_isolation'} = 'low_priority_padding_with_max_batch_size'")
+    // See the description of the batch_padding_policy attribute of
+    // BatchFunction in core/ops/batch_ops.cc.
+    .Attr(
+        "batch_padding_policy: "
+        "{'PAD_UP'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
