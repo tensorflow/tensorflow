@@ -1,5 +1,17 @@
 # Implementing a Custom Delegate
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/android/delegates/nnapi">
+  NNAPI</a> and <a href="https://www.tensorflow.org/lite/android/delegates/hexagon">
+  Hexagon</a> delegates are deprecated and no longer supported by TensorFlow
+  Lite. For more information, see the
+  <a href="https://developer.android.com/ndk/guides/neuralnetworks/migration-guide">
+  NNAPI Migration Guide</a> and
+  <a href="https://www.tensorflow.org/lite/performance/delegates">TF Lite
+  delegates documentation</a>.</p>
+</aside>
+
 [TOC]
 
 ## What is a TensorFlow Lite Delegate?
