@@ -150,14 +150,18 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
                                                dim_expr - 1, modulus) *
                        modulus;
 
-    AffineExpr constrained_expr =
-        getAffineSymbolExpr(dim_expr.getPosition(), lhs.getContext()) % modulus;
+    AffineExpr tile_size_expr =
+        getAffineSymbolExpr(dim_expr.getPosition(), lhs.getContext());
+    Interval zero_interval{/*lower=*/0, /*upper=*/0};
+    // TODO(b/326998704): the below also becomes more complicated if stride is
+    // not unit.
+    //
+    // tile_size % modulus == 0 || modulus % tile_size == 0
     ConstraintExpression constraints;
-    // TODO(b/334043867): we only add a constraint for n being a multiple of c
-    // while we do not support disjunctions.
-    ConstraintExpression::ConjointConstraints conjunction;
-    conjunction.insert({constrained_expr, Interval{/*lower=*/0, /*upper=*/0}});
-    constraints.And(std::move(conjunction));
+    constraints.And(
+        /*conjunction=*/{{tile_size_expr % modulus, zero_interval}});
+    constraints.Or(
+        /*conjunction=*/{{modulus % tile_size_expr, zero_interval}});
 
     // In this case, stride is effectively 1 mod modulus = 1.
     return SizeAndStrideExpression(

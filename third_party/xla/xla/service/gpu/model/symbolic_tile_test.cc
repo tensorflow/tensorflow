@@ -141,10 +141,6 @@ TEST_F(SymbolicTileTest,
 
   // TODO(bchetioui): support expanding one dimension to more than two
   // dimensions and constrain accordingly.
-  // TODO(b/334043867): add disjunctions in order to relax some of these
-  // constraints. Currently we only support the reshaped tile size to be a
-  // multiple of the smaller collapsed axes---we also need to support the case
-  // where the tile size is a divisor of the collapsed axis.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
@@ -153,7 +149,7 @@ TEST_F(SymbolicTileTest,
         size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, s1)
         stride_map: ()[s0, s1] -> (0, 1, 1, 1)
         constraints:
-          s0 mod 6 in [0, 0]
+          6 mod s0 in [0, 0] || s0 mod 6 in [0, 0]
       )")));
 }
 
@@ -716,9 +712,6 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
     }
   )"));
 
-  // TODO(b/334043867): add disjunctions in order to relax some of these
-  // constraints. Currently we only support the reshaped axis to be a multiple
-  // of the smaller collapsed axes.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
@@ -727,8 +720,10 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
         size_map: ()[s0, s1] -> (1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, (s1 + 7) floordiv 8, s1 - ((s1 - 1) floordiv 8) * 8)
         stride_map: ()[s0, s1] -> (0, 1, 1, 1, 1)
         constraints:
-          s0 mod 6 in [0, 0] &&
-          s1 mod 8 in [0, 0]
+          6 mod s0 in [0, 0] && 8 mod s1 in [0, 0] ||
+          6 mod s0 in [0, 0] && s1 mod 8 in [0, 0] ||
+          8 mod s1 in [0, 0] && s0 mod 6 in [0, 0] ||
+          s0 mod 6 in [0, 0] && s1 mod 8 in [0, 0]
       )")));
 }
 
