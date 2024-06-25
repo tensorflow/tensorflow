@@ -32,9 +32,6 @@ namespace gpu {
 class GpuServingDeviceSelector;
 const char kGpuServingDeviceSelectorResourceName[] =
     "gpu_serving_device_selector";
-// TODO(b/335729939): Disable GPU load tracker for performance regression
-// investigation. Remove when fixed.
-const bool kUseGpuServingDeviceSelector = false;
 
 class GpuServingDeviceSelectorResource : public ResourceBase {
  public:

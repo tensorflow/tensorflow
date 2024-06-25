@@ -63,13 +63,15 @@ using ::testing::ElementsAre;
 class AddI32Thunk final : public Thunk {
  public:
   AddI32Thunk(std::string name, std::vector<BufferAllocation::Slice> srcs,
-              std::vector<BufferAllocation::Slice> dsts, bool inject_error,
-              std::vector<std::string>* trace);
+              std::vector<BufferAllocation::Slice> dsts,
+              std::vector<std::string>* trace, bool inject_error,
+              bool inject_side_effect);
 
   static std::unique_ptr<Thunk> Create(
       std::string name, std::vector<BufferAllocation::Slice> srcs,
-      std::vector<BufferAllocation::Slice> dsts, bool inject_error = false,
-      std::vector<std::string>* trace = nullptr);
+      std::vector<BufferAllocation::Slice> dsts,
+      std::vector<std::string>* trace = nullptr, bool inject_error = false,
+      bool inject_side_effect = false);
 
   static std::vector<MaybeOwningDeviceMemory> AsDeviceMemory(
       absl::Span<std::vector<int32_t>* const> data);
@@ -86,16 +88,18 @@ class AddI32Thunk final : public Thunk {
  private:
   std::vector<BufferAllocation::Slice> srcs_;
   std::vector<BufferAllocation::Slice> dsts_;
-  bool inject_error_;
   std::vector<std::string>* trace_;
+  bool inject_error_;
+  bool inject_side_effect_;
 };
 
 std::unique_ptr<Thunk> AddI32Thunk::Create(
     std::string name, std::vector<BufferAllocation::Slice> srcs,
-    std::vector<BufferAllocation::Slice> dsts, bool inject_error,
-    std::vector<std::string>* trace) {
+    std::vector<BufferAllocation::Slice> dsts, std::vector<std::string>* trace,
+    bool inject_error, bool inject_side_effect) {
   return std::make_unique<AddI32Thunk>(std::move(name), std::move(srcs),
-                                       std::move(dsts), inject_error, trace);
+                                       std::move(dsts), trace, inject_error,
+                                       inject_side_effect);
 }
 
 std::vector<MaybeOwningDeviceMemory> AddI32Thunk::AsDeviceMemory(
@@ -111,12 +115,14 @@ std::vector<MaybeOwningDeviceMemory> AddI32Thunk::AsDeviceMemory(
 AddI32Thunk::AddI32Thunk(std::string name,
                          std::vector<BufferAllocation::Slice> srcs,
                          std::vector<BufferAllocation::Slice> dsts,
-                         bool inject_error, std::vector<std::string>* trace)
+                         std::vector<std::string>* trace, bool inject_error,
+                         bool inject_side_effect)
     : Thunk(Kind::kKernel, Info{name}),
       srcs_(std::move(srcs)),
       dsts_(std::move(dsts)),
+      trace_(trace),
       inject_error_(inject_error),
-      trace_(trace) {}
+      inject_side_effect_(inject_side_effect) {}
 
 absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
                                   BufferAllocation::Slice src_slice,
@@ -178,10 +184,20 @@ AddI32Thunk::BufferUses AddI32Thunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const auto& src : srcs_) buffer_uses.push_back(BufferUse::Read(src));
   for (const auto& dst : dsts_) buffer_uses.push_back(BufferUse::Write(dst));
+
+  // TODO(ezhulenev): Add proper side-effect support to Thunks. For now we just
+  // inject a write to a random slice of allocation 0 to emulate a side-effect
+  // and force all thunks to be executed sequentially.
+  if (inject_side_effect_) {
+    static auto* fake_alloc = new BufferAllocation(0, 1, 0);
+    buffer_uses.push_back(
+        BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
+  }
+
   return buffer_uses;
 }
 
-TEST(ThunkExecutorTest, Ordering) {
+TEST(ThunkExecutorTest, DependencyOrdering) {
   BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
 
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/40);
@@ -196,7 +212,25 @@ TEST(ThunkExecutorTest, Ordering) {
   TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
                           ThunkExecutor::Create(std::move(sequence)));
 
+  EXPECT_FALSE(executor.is_sequential());
   EXPECT_THAT(executor.source(), ElementsAre(0, 1));
+  EXPECT_THAT(executor.sink(), ElementsAre(2));
+}
+
+TEST(ThunkExecutorTest, SequentialOrdering) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/80, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/40);
+
+  ThunkSequence sequence;
+  sequence.push_back(AddI32Thunk::Create("a", {slice}, {slice}));
+  sequence.push_back(AddI32Thunk::Create("b", {slice}, {slice}));
+  sequence.push_back(AddI32Thunk::Create("c", {slice}, {slice}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
+                          ThunkExecutor::Create(std::move(sequence)));
+
+  EXPECT_TRUE(executor.is_sequential());
+  EXPECT_THAT(executor.source(), ElementsAre(0));
   EXPECT_THAT(executor.sink(), ElementsAre(2));
 }
 
@@ -231,12 +265,9 @@ TEST(ThunkExecutorTest, Execute) {
   std::vector<std::string> trace;
 
   ThunkSequence sequence;
-  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0},
-                                         /*inject_error=*/false, &trace));
-  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1},
-                                         /*inject_error=*/false, &trace));
-  sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2},
-                                         /*inject_error=*/false, &trace));
+  sequence.push_back(AddI32Thunk::Create("a", {slice0}, {slice0}, &trace));
+  sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1}, &trace));
+  sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2}, &trace));
 
   TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
                           ThunkExecutor::Create(std::move(sequence)));
@@ -281,7 +312,7 @@ struct GeneratedThunkSequence {
 
 static absl::StatusOr<std::unique_ptr<GeneratedThunkSequence>>
 GenerateThunkSequence(size_t num_elements, size_t num_thunks,
-                      bool inject_errors = false) {
+                      bool inject_errors, bool inject_side_effects) {
   auto g = std::make_unique<GeneratedThunkSequence>(GeneratedThunkSequence{
       BufferAllocation(/*index=*/0, num_elements * sizeof(int32_t), 0),
       BufferAllocation(/*index=*/1, num_elements * sizeof(int32_t), 0),
@@ -316,8 +347,9 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
     TF_RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
 
     bool inject_error = inject_errors && inject_error_dist(engine) == 0;
-    g->sequence.push_back(
-        AddI32Thunk::Create(absl::StrCat(i), {src}, {dst}, inject_error));
+    g->sequence.push_back(AddI32Thunk::Create(absl::StrCat(i), {src}, {dst},
+                                              /*trace=*/nullptr, inject_error,
+                                              inject_side_effects));
   }
 
   return g;
@@ -326,10 +358,12 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
 // Parameterized thunk executor stress tests that builds a random thunk sequence
 // and optionally uses a thread pool to execute thunk executor tasks.
 class ThunkExecutorStressTest
-    : public testing::TestWithParam<std::tuple<int32_t, bool, bool, bool>> {
+    : public testing::TestWithParam<
+          std::tuple<int32_t, bool, bool, bool, bool>> {
  public:
   void SetUp() override {
-    auto& [_, use_task_runner, use_device, inject_errors] = GetParam();
+    auto& [_, use_task_runner, use_device, inject_errors, inject_side_effects] =
+        GetParam();
 
     use_task_runner_ = use_task_runner;
     use_device_ = use_device;
@@ -366,11 +400,13 @@ class ThunkExecutorStressTest
 };
 
 TEST_P(ThunkExecutorStressTest, Execute) {
-  auto [num_thunks, use_task_runner, use_device, inject_errors] = GetParam();
+  auto [num_thunks, use_task_runner, use_device, inject_errors,
+        inject_side_effects] = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GeneratedThunkSequence> g,
-      GenerateThunkSequence(/*num_elements=*/1024, num_thunks, inject_errors));
+      GenerateThunkSequence(/*num_elements=*/1024, num_thunks, inject_errors,
+                            inject_side_effects));
 
   TF_ASSERT_OK_AND_ASSIGN(ThunkExecutor executor,
                           ThunkExecutor::Create(std::move(g->sequence)));
@@ -393,7 +429,7 @@ TEST_P(ThunkExecutorStressTest, Execute) {
 INSTANTIATE_TEST_SUITE_P(ThunkExecutor, ThunkExecutorStressTest,
                          testing::Combine(testing::ValuesIn({10, 100, 1000}),
                                           testing::Bool(), testing::Bool(),
-                                          testing::Bool()));
+                                          testing::Bool(), testing::Bool()));
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
@@ -402,7 +438,10 @@ INSTANTIATE_TEST_SUITE_P(ThunkExecutor, ThunkExecutorStressTest,
 static void BM_SyncThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);
 
-  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks).value();
+  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
+                                 /*inject_errors=*/false,
+                                 /*inject_side_effects=*/false)
+               .value();
   auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
 
   BufferAllocations allocations(g->buffers);
@@ -422,7 +461,10 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   Eigen::ThreadPoolDevice device(thread_pool.AsEigenThreadPool(),
                                  thread_pool.NumThreads());
 
-  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks).value();
+  auto g = GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
+                                 /*inject_errors=*/false,
+                                 /*inject_side_effects=*/false)
+               .value();
   auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
 
   BufferAllocations allocations(g->buffers);

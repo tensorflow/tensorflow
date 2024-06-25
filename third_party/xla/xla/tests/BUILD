@@ -1718,6 +1718,7 @@ xla_test(
         "nomac",  # b/194731834
         "nozapfhahn",
         "optonly",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
