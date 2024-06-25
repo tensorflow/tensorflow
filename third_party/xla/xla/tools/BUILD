@@ -797,7 +797,7 @@ tsl_gpu_library(
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/service/gpu:gpu_symbol_repository",
-    ]),
+    ]) + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
 xla_test(
@@ -840,7 +840,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/protobuf:status_proto_cc",
-    ],
+    ] + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
 xla_test(

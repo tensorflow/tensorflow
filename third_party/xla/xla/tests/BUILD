@@ -1718,6 +1718,7 @@ xla_test(
         "nomac",  # b/194731834
         "nozapfhahn",
         "optonly",
+        "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
@@ -2227,12 +2228,15 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_pipeliner",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -66,10 +66,10 @@ limitations under the License.
 
 namespace tsl {
 namespace {
-constexpr char kGcsUriBase[] = "https://www.googleapis.com./storage/v1/";
+constexpr char kGcsUriBase[] = "https://www.googleapis.com/storage/v1/";
 constexpr char kGcsUploadUriBase[] =
-    "https://www.googleapis.com./upload/storage/v1/";
-constexpr char kStorageHost[] = "storage.googleapis.com.";
+    "https://www.googleapis.com/upload/storage/v1/";
+constexpr char kStorageHost[] = "storage.googleapis.com";
 constexpr char kBucketMetadataLocationKey[] = "location";
 constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;

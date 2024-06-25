@@ -40,7 +40,7 @@ class KernelThunk final : public Thunk {
       Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim,
-      std::optional<int64_t> min_alignment = std::nullopt);
+      std::optional<uint64_t> min_alignment = std::nullopt);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -51,13 +51,18 @@ class KernelThunk final : public Thunk {
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
               std::string kernel_name, se::ThreadDim thread_dim,
-              std::optional<int64_t> min_alignment);
+              std::optional<uint64_t> min_alignment);
 
   std::vector<BufferAllocation::Slice> arguments_buffers_;
   std::vector<BufferAllocation::Slice> results_buffers_;
   std::string kernel_name_;
   se::ThreadDim thread_dim_;
-  std::optional<int64_t> min_alignment_;
+  std::optional<uint64_t> min_alignment_;
+
+  // If `true`, pass a HostKernel::TaskRunner to the kernel launch. If kernel
+  // has a single thread, we skip constructing HostKernel::TaskRunner and
+  // launch the kernel directly in the caller thread.
+  bool use_task_runner_;
 
   // Pointer to the host kernel corresponding to `kernel_name_`. Initialized
   // lazily at run time by looking it up in the HostKernels passed via params.

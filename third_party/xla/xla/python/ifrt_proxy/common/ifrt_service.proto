@@ -55,7 +55,7 @@ message IfrtRequest {
         disassemble_into_single_device_arrays_request = 7;
     DeleteArrayRequest delete_array_request = 9;
     CopyArraysRequest copy_arrays_request = 24;
-    ReshardRequest reshard_request = 10;
+    ReshardRequest reshard_request = 10 [deprecated = true];
     FullyReplicatedShardRequest fully_replicated_shard_request = 20;
     IsArrayDeletedRequest is_array_deleted_request = 11;
     DestructArrayRequest destruct_array_request = 12;
@@ -102,7 +102,7 @@ message IfrtResponse {
         disassemble_into_single_device_arrays_response = 7;
     DeleteArrayResponse delete_array_response = 9;
     CopyArraysResponse copy_arrays_response = 24;
-    ReshardResponse reshard_response = 10;
+    ReshardResponse reshard_response = 10 [deprecated = true];
     FullyReplicatedShardResponse fully_replicated_shard_response = 20;
     IsArrayDeletedResponse is_array_deleted_response = 11;
     DestructArrayResponse destruct_array_response = 12;

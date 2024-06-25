@@ -227,8 +227,15 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       TF_ASSIGN_OR_RETURN(
           auto new_sharding,
           array->sharding().WithDeviceAssignment(devices, memory_kind));
-      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
-                          array->Reshard(std::move(new_sharding), semantics));
+      if (auto* const proxy_array =
+              llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+        TF_ASSIGN_OR_RETURN(
+            new_arrays.emplace_back(),
+            proxy_array->Reshard(std::move(new_sharding), semantics));
+      } else {
+        return absl::InvalidArgumentError(
+            "Unsupported array type for xla::ifrt::proxy::Client::CopyArrays");
+      }
     }
     return new_arrays;
   }

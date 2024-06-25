@@ -20,14 +20,18 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
@@ -119,6 +123,71 @@ ENTRY entry {
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
   EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 200).value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest, TransformIncrementIndexByOneNoReuse) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   /*pipelining_direction=*/
+                   CollectivePipeliner::PipeliningDirection::kForward,
+                   /*pipeline_use_tree=*/false,
+                   /*acceptable_formatting=*/HloPredicateTrue,
+                   /*reuse_pipelined_op_buffer=*/HloPredicateFalse)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -946,6 +1015,282 @@ ENTRY entry {
                    /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
                    CollectivePipeliner::PipeliningDirection::kForwardSink,
                    /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest, TransformIncrementByTwoFormat) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  c = bf16[] constant(5.0)
+  b = bf16[1,8,128] broadcast(c), dimensions={}
+  a = bf16[1,8,128] add(ar.1, b)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, a, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest, MultiUsesElementwiseMerge) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  c2 = bf16[] constant(2.0)
+  bc = bf16[1,8,128] broadcast(c2)
+  ar.1 = bf16[1,8,128] sqrt(mul)
+  ar.2 = bf16[1,8,128] negate(mul)
+  mul2 = bf16[1,8,128] multiply(ar.1, bc)
+  mul3 = bf16[1,8,128] multiply(mul2, ar.2)
+  mul4 = bf16[1,8,128] multiply(mul3, mul)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul4, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/
+                   HloPredicateIsOp<HloOpcode::kNegate, HloOpcode::kSqrt>,
+                   CollectivePipeliner::PipeliningDirection::kForward,
+                   /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest, BroadcastAsFormattingOp) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add.1 {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  b.1 = bf16[1,8,128,32] broadcast(ar.1), dimensions={0,1,2}
+  constant = bf16[] constant(0)
+  reduce = bf16[1,8,128] reduce(b.1, constant), dimensions={3}, to_apply=add.1
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, reduce, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module2->ToString());
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
+                                      ErrorSpec{0.1, 0.1}));
+}
+
+TEST_F(CollectivePipelinerExecutionTest,
+       ForwardSinkDependentPipelineableCollectives) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add.1 {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] negate(mul)
+  b.1 = bf16[1,8,128,32] broadcast(ar.1), dimensions={0,1,2}
+  constant = bf16[] constant(0)
+  reduce = bf16[1,8,128] reduce(b.1, constant), dimensions={3}, to_apply=add.1
+  ar.2 = bf16[1,8,128] negate(reduce)
+  c1 = bf16[] constant(2.0)
+  bc = bf16[1,8,128] broadcast(c1)
+  mul1 = bf16[1,8,128] multiply(ar.2, bc)
+  mul3 = bf16[1,8,128] multiply(mul1, ar.2)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul3, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
+  auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true, 0,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+          CollectivePipeliner::PipeliningDirection::kForwardSink,
+          /*pipeline_use_tree=*/true,
+          /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kNegate>)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());

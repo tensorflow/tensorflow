@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -52,6 +53,13 @@ class AddF32HostKernels : public Thunk::HostKernels {
     };
   }
 };
+
+TEST(KernelThunkTest, CheckAlignment) {
+  auto thunk = KernelThunk::Create({"test"}, {}, {}, "test", se::ThreadDim(),
+                                   /*min_alignment=*/3);
+  EXPECT_TRUE(absl::StrContains(thunk.status().message(),
+                                "minimum alignment 3 is not a power of 2"));
+}
 
 TEST(KernelThunkTest, AddF32) {
   std::vector<MaybeOwningDeviceMemory> buffers;

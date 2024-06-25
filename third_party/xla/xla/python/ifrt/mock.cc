@@ -95,11 +95,6 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
                  ArrayCopySemantics semantics) {
             return delegated_->CopyToHostBuffer(data, byte_strides, semantics);
           });
-  ON_CALL(*this, Reshard)
-      .WillByDefault([this](std::shared_ptr<const Sharding> new_sharding,
-                            ArrayCopySemantics semantics) {
-        return delegated_->Reshard(std::move(new_sharding), semantics);
-      });
 }
 // LINT.ThenChange()
 
