@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef XLA_STATUSOR_H_
 #define XLA_STATUSOR_H_
 
-// This file is deprecated.  Use absl/status/statusor.h and/or
-// tsl/platform/statusor.h instead.
+#include "tsl/platform/statusor.h"
+
+namespace xla {
+
+// Use steam_executor's absl::StatusOr so we don't duplicate code.
+using tsl::StatusOr;  // TENSORFLOW_STATUS_OK
+
+}  // namespace xla
 
 #endif  // XLA_STATUSOR_H_

@@ -271,6 +271,7 @@ cc_library(
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -278,7 +279,6 @@ cc_library(
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -315,7 +315,6 @@ cc_library(
     hdrs = [
         "statusor.h",
     ],
-    deprecation = "Use @com_google_absl//absl/status:statusor and/or //third_party/tensorflow/tsl/platform:statusor instead.",
     linkopts = select({
         "//xla/tsl:freebsd": ["-lexecinfo"],
         "//conditions:default": [],
