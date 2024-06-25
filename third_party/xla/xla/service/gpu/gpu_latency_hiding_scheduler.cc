@@ -116,7 +116,9 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-// GpuAsyncTrackerBase implementations begin
+//===--------------------------------------------------------------------===//
+// GpuAsyncTrackerBase
+//===--------------------------------------------------------------------===//
 GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
@@ -160,9 +162,10 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     }
   }
 }
-// GpuAsyncTrackerBase implementations end
 
-// GpuAsyncTracker implementations begin
+//===--------------------------------------------------------------------===//
+// GpuAsyncTracker
+//===--------------------------------------------------------------------===//
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
@@ -308,9 +311,9 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
   return num_resources - (found ? 1 : 0);
 }
 
-// GpuAsyncTracker implementations end
-
-// GpuLatencyEstimator implementations begin
+//===--------------------------------------------------------------------===//
+// GpuLatencyEstimator
+//===--------------------------------------------------------------------===//
 GpuLatencyEstimator::GpuLatencyEstimator(int64_t pointer_size,
                                          GetCanonicalAsyncOpFunc func)
     : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
