@@ -165,6 +165,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return target_machine_features_;
   }
 
+  const BufferAssignment& assignment() const { return assignment_; }
+
  protected:
   friend class IrEmitter2;
 
