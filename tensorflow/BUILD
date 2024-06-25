@@ -10,6 +10,7 @@ load(
     "VERSION",
     "VERSION_MAJOR",
     "check_deps",
+    "config_setting_for_bazel7",
     "if_google",
     "if_oss",
     "if_xla_available",
@@ -249,97 +250,85 @@ config_setting(
 )
 
 # Config setting for determining if we are building for Android.
-config_setting(
+config_setting_for_bazel7(
     name = "android",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/crosstool"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:android"],
+    legacy_values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_x86",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-        cpu = "x86",
-    ),
+    constraint_values = [
+        "@platforms//cpu:x86_32",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86",
+    },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-        cpu = "x86_64",
-    ),
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86_64",
+    },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_armeabi",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-        cpu = "armeabi",
-    ),
+    constraint_values = [
+        "@platforms//cpu:armv7",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "armeabi",
+    },
     visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
 # config_setting(
 #     name = "chromiumos_x86_64",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
-#     values = {"cpu": "k8"},
+#     constraint_values = [
+#         "@platforms//cpu:x86_64",
+#         "@platforms//os:chromiumos",
+#     ],
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_arm64",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
-#     values = {"cpu": "arm"},
+#     constraint_values = [
+#         "@platforms//cpu:arm64",
+#         "@platforms//os:chromiumos",
+#     ],
 #     visibility = ["//visibility:public"],
 # )
 #
 # config_setting(
 #     name = "chromiumos_armv7",
-#     constraint_values = ["//third_party/bazel_platforms/os:chromiumos"],
-#     values = {"cpu": "armeabi-v7a"},
+#     constraint_values = [
+#         "@platforms//cpu:armv7",
+#         "@platforms//os:chromiumos",
+#     ],
 #     visibility = ["//visibility:public"],
 # )
 # copybara:uncomment_end
 
-config_setting(
+config_setting_for_bazel7(
     name = "emscripten",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:emscripten"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/emscripten"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:emscripten"],
+    legacy_values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
 )
 
@@ -352,48 +341,52 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_arm",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-        cpu = "armeabi-v7a",
-    ),
+    constraint_values = [
+        "@platforms//cpu:armv7",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "armeabi-v7a",
+    },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_arm64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:android"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//external:android/crosstool"},
-        ),
-        cpu = "arm64-v8a",
-    ),
+    constraint_values = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "arm64-v8a",
+    },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_mips",
-    values = {
+    constraint_values = [
+        "@platforms//cpu:mips64",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
         "crosstool_top": "//external:android/crosstool",
         "cpu": "mips",
     },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "android_mips64",
-    values = {
+    constraint_values = [
+        "@platforms//cpu:mips64",
+        "@platforms//os:android",
+    ],
+    legacy_values = {
         "crosstool_top": "//external:android/crosstool",
         "cpu": "mips64",
     },
@@ -401,18 +394,12 @@ config_setting(
 )
 
 # TODO(jakeharmon8): Remove in favor of TSL version
-config_setting(
+config_setting_for_bazel7(
     name = "windows",
     # Internal builds query the target OS.
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:windows"],
-        [],
-    ),
+    constraint_values = ["@platforms//os:windows"],
     # OSS builds query the CPU type.
-    values = if_oss(
-        {"cpu": "x64_windows"},
-        {},
-    ),
+    legacy_values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
 
@@ -426,25 +413,26 @@ config_setting(
 # "darwin_x86_64". The former shows up when building on a Mac x86_64 host for a Mac x86_64 target.
 # The latter shows up when cross-compiling for Mac x86_64 from a Mac ARM machine and in internal
 # Google builds.
-config_setting(
+config_setting_for_bazel7(
     name = "macos_x86_64_default",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
-        [],
-    ),
-    values = {
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+    legacy_values = {
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "macos_x86_64_crosscompile",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
-        [],
-    ),
-    values = {
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+        # TODO: introduce cross_compilable_cpu constraint in Bazel
+    ],
+    legacy_values = {
         "apple_platform_type": "macos",
         "cpu": "darwin_x86_64",
     },
@@ -459,13 +447,13 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "macos_arm64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:macos"],
-        [],
-    ),
-    values = {
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:arm64",
+    ],
+    legacy_values = {
         "apple_platform_type": "macos",
         "cpu": "darwin_arm64",
     },
@@ -482,174 +470,157 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "ios",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
-        [],
-    ),
-    values = if_oss(
-        {"apple_platform_type": "ios"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:ios"],
+    legacy_values = {"apple_platform_type": "ios"},
     visibility = ["//visibility:public"],
 )
 
 # TODO(jakeharmon8): Remove in favor of TSL version
-config_setting(
+config_setting_for_bazel7(
     name = "fuchsia",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
-        [],
-    ),
-    values = if_oss(
-        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
-        {"cpu": "fuchsia"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:fuchsia"],
+    # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+    legacy_values = {"cpu": "fuchsia"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "fuchsia_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:fuchsia"],
-        [],
-    ),
-    values = {
+    constraint_values = [
+        "@platforms//os:fuchsia",
+        "@platforms//cpu:x86_64",
+    ],
+    legacy_values = {
         "cpu": "x86_64",
     },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "ios_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:ios"],
-        [],
-    ),
-    values = dict(
-        if_oss(
-            {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-        ),
-        cpu = "ios_x86_64",
-    ),
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:x86_64",
+    ],
+    legacy_values = {
+        "crosstool_top": "//tools/osx/crosstool:crosstool",
+        "cpu": "ios_x86_64",
+    },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "chromiumos",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:chromiumos"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/chromiumos"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:chromiumos"],
+    legacy_values = {"crosstool_top": "//external:android/chromiumos"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_aarch64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "aarch64"},
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_armhf",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "armhf"},
+    constraint_values = [
+        "@platforms//cpu:armv7e-mf",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "armhf"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_x86_64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "k8"},
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "haswell",
-    values = {"cpu": "haswell"},
+    constraint_values = [
+        # TODO: introduce haswell constraint in Bazel
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "haswell"},
     visibility = ["//visibility:public"],
 )
 
 # This condition takes precedence over :linux_x86_64
-config_setting(
+config_setting_for_bazel7(
     name = "linux_x86_64_no_sse",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {
-        "cpu": "k8",
-        "copt": "-mno-sse4.2",
-    },
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "k8"},
+    values = {"copt": "-mno-sse4.2"},
     visibility = ["//visibility:public"],
 )
 
 # This condition takes precedence over :linux_x86_64
 # TODO(b/290533709): Remove this with PJRT build rule cleanup.
-config_setting(
+config_setting_for_bazel7(
     name = "linux_x86_64_with_weightwatcher",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
     define_values = {"tensorflow_weightwatcher": "true"},
-    values = {"cpu": "k8"},
+    legacy_values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_ppc64le",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "ppc"},
+    constraint_values = [
+        "@platforms//cpu:ppc64le",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "ppc"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_s390x",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "s390x"},
+    constraint_values = [
+        "@platforms//cpu:s390x",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "s390x"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_mips64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "mips64"},
+    constraint_values = [
+        "@platforms//cpu:mips64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "mips64"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "linux_riscv64",
-    constraint_values = if_google(
-        ["//third_party/bazel_platforms/os:linux"],
-        [],
-    ),
-    values = {"cpu": "riscv64"},
+    constraint_values = [
+        "@platforms//cpu:riscv64",
+        "@platforms//os:linux",
+    ],
+    legacy_values = {"cpu": "riscv64"},
     visibility = ["//visibility:public"],
 )
 
@@ -669,27 +640,39 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "arm",
-    values = {"cpu": "arm"},
+    constraint_values = [
+        "@platforms//cpu:arm",
+    ],
+    legacy_values = {"cpu": "arm"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "armeabi",
-    values = {"cpu": "armeabi"},
+    constraint_values = [
+        "@platforms//cpu:armv7",
+    ],
+    legacy_values = {"cpu": "armeabi"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "armeabi-v7a",
-    values = {"cpu": "armeabi-v7a"},
+    constraint_values = [
+        "@platforms//cpu:armv7",
+    ],
+    legacy_values = {"cpu": "armeabi-v7a"},
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "arm64-v8a",
-    values = {"cpu": "arm64-v8a"},
+    constraint_values = [
+        "@platforms//cpu:arm64",
+    ],
+    legacy_values = {"cpu": "arm64-v8a"},
     visibility = ["//visibility:public"],
 )
 
@@ -705,9 +688,10 @@ selects.config_setting_group(
     ],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "freebsd",
-    values = {"cpu": "freebsd"},
+    constraint_values = ["@platforms//os:freebsd"],
+    legacy_values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
 )
 
@@ -749,24 +733,32 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "macos_x86_64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
-    values = {
+    legacy_values = {
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
+config_setting_for_bazel7(
     name = "macos_arm64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:arm64",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
-    values = {
+    legacy_values = {
         "apple_platform_type": "macos",
         "cpu": "darwin_arm64",
     },
