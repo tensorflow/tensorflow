@@ -23,11 +23,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -64,12 +66,10 @@ class KernelThunk final : public Thunk {
   // launch the kernel directly in the caller thread.
   bool use_task_runner_;
 
-  // Pointer to the host kernel corresponding to `kernel_name_`. Initialized
-  // lazily at run time by looking it up in the HostKernels passed via params.
-  //
-  // TODO(ezhulenev): This should be moved to initialization stage when we'll
-  // have it for CPU thunks.
-  std::atomic<SE_HOST_Kernel*> kernel_ptr_;
+  // Lazily loaded host kernel corresponding to `kernel_name_`.
+  absl::Mutex mutex_;
+  std::optional<se::host::HostKernel> kernel_ ABSL_GUARDED_BY(mutex_);
+  std::atomic<se::host::HostKernel*> kernel_ptr_;  // pointer to `kernel_`
 };
 
 }  // namespace xla::cpu

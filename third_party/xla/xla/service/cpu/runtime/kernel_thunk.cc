@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/runtime/buffer_use.h"
@@ -124,29 +125,31 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
   // initialization stage.
-  SE_HOST_Kernel* kernel_ptr = kernel_ptr_.load();
+  se::host::HostKernel* kernel = kernel_ptr_.load();
 
   // Because thunks are owned by a parent CpuExecutable, we can safely assume
   // that kernel pointer will not change after we find it the first time.
-  if (kernel_ptr == nullptr) {
-    TF_ASSIGN_OR_RETURN(kernel_ptr, params.host_kernels->Find(kernel_name_));
-    kernel_ptr_.store(kernel_ptr);
-  }
+  if (ABSL_PREDICT_FALSE(kernel == nullptr)) {
+    TF_ASSIGN_OR_RETURN(SE_HOST_Kernel * kernel_fn,
+                        params.host_kernels->Find(kernel_name_));
 
-  se::host::HostKernel kernel(buffers_data.size(), kernel_ptr, nullptr);
+    absl::MutexLock lock(&mutex_);
+    kernel_.emplace(buffers_data.size(), kernel_fn, nullptr);
+    kernel_ptr_.store(kernel = &kernel_.value());
+  }
 
   // If intra-op thread pool is not nullptr, we launch HostKernel in async mode
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
-  if (params.intra_op_threadpool && use_task_runner_) {
-    return kernel.Launch(thread_dim_, buffers_data,
-                         [&params](se::host::HostKernel::Task task) {
-                           params.intra_op_threadpool->getPool()->Schedule(
-                               ToCopyableTask(std::move(task)));
-                         });
+  if (ABSL_PREDICT_FALSE(params.intra_op_threadpool && use_task_runner_)) {
+    return kernel->Launch(thread_dim_, buffers_data,
+                          [&params](se::host::HostKernel::Task task) {
+                            params.intra_op_threadpool->getPool()->Schedule(
+                                ToCopyableTask(std::move(task)));
+                          });
   }
 
-  TF_RETURN_IF_ERROR(kernel.Launch(thread_dim_, buffers_data));
+  TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, buffers_data));
   return OkExecuteEvent();
 }
 
