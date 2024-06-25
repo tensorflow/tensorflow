@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04@sha256:874aca52f79ae5f8258faff03e10ce99ae836f6e7d2df6ecd3da5c1cad3a912b as builder
+FROM ubuntu:24.04@sha256:2e863c44b718727c860746568e1d54afd13b2fa71b160f5cd9058fc436217b30 as builder
 ################################################################################
 
 # Install devtoolset build dependencies
