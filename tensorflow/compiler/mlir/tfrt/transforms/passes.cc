@@ -122,6 +122,10 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
       {.min_num_batch_threads = options.min_num_batch_threads,
        .min_max_enqueued_batches = options.min_max_enqueued_batches}));
 
+  // Sets the batch_padding_policy attribute in `tf.BatchFunction`.
+  pm.addPass(tfrt_compiler::CreateBatchPaddingPolicyPass(
+      options.batch_padding_policy));
+
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name
   pm.addPass(

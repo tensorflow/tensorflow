@@ -149,6 +149,10 @@ struct TfrtCompileOptions {
   // resources.
   int64_t min_max_enqueued_batches = 1;
 
+  // See the description of the batch_padding_policy attribute of BatchFunction
+  // in core/ops/batch_ops.cc.
+  std::string batch_padding_policy;
+
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;

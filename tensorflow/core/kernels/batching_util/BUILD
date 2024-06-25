@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:criticality",
@@ -135,6 +136,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -148,8 +150,10 @@ cc_library(
     srcs = ["batch_scheduler_utils.cc"],
     hdrs = ["batch_scheduler_utils.h"],
     deps = [
+        ":batch_scheduler_hdrs",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -183,7 +187,9 @@ tf_cc_test(
     name = "batch_scheduler_utils_test",
     srcs = ["batch_scheduler_utils_test.cc"],
     deps = [
+        ":batch_scheduler_hdrs",
         ":batch_scheduler_utils",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_googletest//:gtest_main",
     ],
 )
