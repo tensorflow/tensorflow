@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -92,7 +93,7 @@ class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
  private:
   LogicalResult matchAndRewrite(TF::TPUPartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
-    auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     auto module_op = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module_op);
 

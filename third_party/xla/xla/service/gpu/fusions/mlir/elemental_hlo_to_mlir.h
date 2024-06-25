@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -40,18 +41,22 @@ using OperandProvider =
     std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
         const HloInstruction* instr, int index, mlir::ValueRange indices)>;
 
-// Emits MLIR to produce the value(s) of a parameter. The parameter must be
-// located outside the subgraph.
+// Emits MLIR to produce the value of a parameter. The parameter must be located
+// outside the subgraph. By default, the caller subgraph will be determined by
+// searching in 'computation' for the subgraph that contains 'instr'. If
+// 'instr' does not belong to 'computation', the caller subgraph can be passed
+// directly.
 llvm::SmallVector<mlir::Value> ProvideParameter(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
-    mlir::ImplicitLocOpBuilder& builder);
+    mlir::ImplicitLocOpBuilder& builder,
+    const PartitionedComputation::Subgraph* caller = nullptr);
 
 // Emits MLIR to produce the values of a range of parameters. The parameters
 // must all be scalars. The parameters are all evaluated at the same indices.
 llvm::SmallVector<mlir::Value> ProvideParameterRange(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     mlir::ImplicitLocOpBuilder& builder);
@@ -76,16 +81,22 @@ absl::Status SubgraphToMlirFunction(
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
     const CallTargetProvider& call_target_provider);
 
+mlir::Value UnrealizedConversionCast(mlir::Type type, mlir::Value value,
+                                     mlir::ImplicitLocOpBuilder& b);
+mlir::SmallVector<mlir::Value> UnrealizedConversionCast(
+    mlir::TypeRange types, mlir::ValueRange values,
+    mlir::ImplicitLocOpBuilder& b);
+
 // Creates an affine.apply op for the given expression and values.
 mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ValueRange symbols,
                             mlir::ImplicitLocOpBuilder& b);
 
-// Creates affine.apply ops for each result of the given map.
-llvm::SmallVector<mlir::Value> ApplyAffineMap(mlir::AffineMap map,
-                                              mlir::ValueRange dims,
-                                              mlir::ValueRange symbols,
-                                              mlir::ImplicitLocOpBuilder& b);
+// Creates an `apply_indexing` op for the given map.
+llvm::SmallVector<mlir::Value> ApplyIndexing(const IndexingMap& map,
+                                             mlir::ValueRange dims,
+                                             mlir::ValueRange symbols,
+                                             mlir::ImplicitLocOpBuilder& b);
 
 // Checks all the constraints and dimension ranges in the map.
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
@@ -94,12 +105,36 @@ mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
 
 // Emits a loop nest over the entire domain of the indexing_map at a point
 // `dim_values`.
+// If `vectorize` is set, the loop essentially turns into multiple independent
+// loops, and the results of all the loops are returned as a vector. The last
+// symbol dimension is used as the vectorized dimension.
+// If `vectorize` is set:
+// - the body will still be called with scalars and should return scalars.
+// - the loop for the last symbol in `indexing_map` will be vectorized
+// - the symbol range should be [0, 2] or [0, 4] for vectorization to work.
+//   [0, 1] is supported and will have no effect. The lower bound must be 0.
+// - all scalar results of `EmitLoopNest` will become vectors instead. Scalar
+//   inits will be initialized with a vector splat. Passing a vector init is
+//   supported.
+// - Tensor arguments and results are unaffected.
 llvm::SmallVector<mlir::Value> EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
-    const std::function<llvm::SmallVector<mlir::Value>(
+    mlir::function_ref<llvm::SmallVector<mlir::Value>(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
-        mlir::ValueRange symbol_values)>& create_body);
+        mlir::ValueRange symbol_values)>
+        create_body,
+    bool vectorize = false);
+
+// Same as EmitLoopNest, but the body building function can return an error
+// which gets returned from EmitLoopNestWithStatus.
+absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitLoopNestWithStatus(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    mlir::function_ref<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
+        mlir::ValueRange iter_args, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>
+        create_body);
 
 // Clamps `index` to [0, high] boundaries.
 mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,

@@ -81,7 +81,7 @@ std::vector<Flag> DefaultExecutionProvider::CreateFlags(
       CreateFlag<int32_t>(
           "gpu_invoke_loop_times", params,
           "Number of GPU delegate invoke loop iterations. Used only when "
-          "TFLITE_GPU_ENABLE_INVOKE_LOOP is defined. Default is -1."),
+          "TFLITE_GPU_ENABLE_INVOKE_LOOP is defined. Default is 1."),
       CreateFlag<std::string>(
           "delegate_serialize_dir", params,
           "Directory to be used by delegates for serializing any model data. "

@@ -15,11 +15,14 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/tfrt/gpu/kernel/gpu_runner.h"
 
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -33,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tsl/framework/serving_device_selector_policies.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
@@ -145,7 +147,7 @@ class GpuRunnerTest : public ::testing::Test {
     exec_ctx_ = std::make_unique<tfrt::ExecutionContext>(std::move(*req_ctx));
 
     // Create a gpu runner.
-    auto policy = std::make_unique<RoundRobinPolicy>();
+    auto policy = std::make_unique<tsl::RoundRobinPolicy>();
     serving_device_selector_ = std::make_unique<GpuServingDeviceSelector>(
         kNumVirtualGpuDevices, std::move(policy));
     gpu_runner_ = std::make_unique<GpuRunner>(serving_device_selector_.get());

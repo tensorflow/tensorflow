@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace sharding_op_util {
@@ -31,8 +31,8 @@ namespace sharding_op_util {
 std::string EncodeAttributes(absl::Span<const int64_t> unspecified_dims);
 
 // Parses the opaque string of Sharding and auto/manual conversion custom ops.
-Status ParseAttributes(absl::string_view opaque,
-                       std::vector<int64_t>* unspecified_dims);
+absl::Status ParseAttributes(absl::string_view opaque,
+                             std::vector<int64_t>* unspecified_dims);
 
 }  // namespace sharding_op_util
 }  // namespace xla

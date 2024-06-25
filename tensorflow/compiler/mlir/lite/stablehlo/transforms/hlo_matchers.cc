@@ -237,9 +237,9 @@ bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
   auto reshape_op = dyn_cast_or_null<mhlo::ReshapeOp>(iota.getDefiningOp());
   if (!reshape_op) return false;
   auto operand_type =
-      reshape_op.getOperand().getType().dyn_cast<RankedTensorType>();
+      mlir::dyn_cast<RankedTensorType>(reshape_op.getOperand().getType());
   if (!operand_type || !operand_type.hasStaticShape()) return false;
-  auto reshape_type = reshape_op.getType().cast<RankedTensorType>();
+  auto reshape_type = mlir::cast<RankedTensorType>(reshape_op.getType());
 
   // Reshape can take a 1-D iota input and add extra dims of size one.
   if (operand_type.getRank() != 1) return false;

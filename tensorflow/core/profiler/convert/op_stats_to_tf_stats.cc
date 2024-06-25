@@ -59,7 +59,8 @@ TfStatsTable GenerateTfStatsTable(
 
   // Sets device-side TF stats.
   uint64 total_device_time_ps = TotalTimePs(device_tf_metrics_db, exclude_idle);
-  double total_device_time_us = PicoToMicro(total_device_time_ps);
+  double total_device_time_us =
+      tsl::profiler::PicoToMicro(total_device_time_ps);
   for (const OpMetrics* metrics :
        SortedOpMetricsDb(device_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
@@ -70,8 +71,8 @@ TfStatsTable GenerateTfStatsTable(
     auto iter = kernel_stats_by_op_name.find(record->op_name());
     if (iter != kernel_stats_by_op_name.end()) {
       record->set_gpu_tensorcore_utilization(
-          SafeDivide(iter->second.tensor_core_duration_ns,
-                     iter->second.total_duration_ns));
+          tsl::profiler::SafeDivide(iter->second.tensor_core_duration_ns,
+                                    iter->second.total_duration_ns));
     } else {
       record->set_gpu_tensorcore_utilization(0.0);
     }
@@ -81,7 +82,7 @@ TfStatsTable GenerateTfStatsTable(
 
   // Sets host-side TF stats.
   uint64 total_host_time_ps = TotalTimePs(host_tf_metrics_db, exclude_idle);
-  double total_host_time_us = PicoToMicro(total_host_time_ps);
+  double total_host_time_us = tsl::profiler::PicoToMicro(total_host_time_ps);
   for (const OpMetrics* metrics : tensorflow::profiler::SortedOpMetricsDb(
            host_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;

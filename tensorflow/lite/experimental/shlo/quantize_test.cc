@@ -85,6 +85,21 @@ TEST(QuantizeTest, QuantizedValueClamped) {
               Eq(expected_value));
 }
 
+TEST(QuantizeTest, SI4NegativeValue) {
+  using StorageT = StorageType<DataType::kSI4>;
+  using ExpressedT = StorageType<DataType::kF32>;
+
+  StorageT value = -8;
+  StorageT zero_point = 0;
+  ExpressedT scale = 1;
+  ExpressedT expected_value = -8.0f;
+
+  EXPECT_THAT((Dequantize(value, zero_point, scale)), Eq(expected_value));
+  EXPECT_THAT((Quantize<DataType::kSI4, DataType::kF32>(expected_value,
+                                                        zero_point, 1 / scale)),
+              Eq(value));
+}
+
 TEST(QuantizeTest, QuantizedValueRoundDown) {
   using StorageT = StorageType<DataType::kSI8>;
   using ExpressedT = StorageType<DataType::kF32>;

@@ -192,3 +192,12 @@ enum FusedMHAKind {
   BMM1_OUTPUT_INPUT_TYPE = 1;
   BMM1_OUTPUT_FLOAT = 2;
 }
+
+// FusedMHAMaskKind kind
+enum FMHAMaskKind {
+  NO_MASK = 0;
+  PADDING = 1;
+  CAUSAL = 2;
+  PADDING_CAUSAL = 3;
+  ALIBI = 4;
+}

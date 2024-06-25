@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -61,12 +62,12 @@ LogicalResult ReplacePartitionedOp(IntegerAttr num_cores_per_replica, T op) {
   }
 
   auto element_type = getElementTypeOrSelf(first_operand_type);
-  if (element_type.isa<TF::ResourceType>()) {
+  if (mlir::isa<TF::ResourceType>(element_type)) {
     first_operand_type =
-        element_type.cast<TF::ResourceType>().getSubtypes().front();
+        mlir::cast<TF::ResourceType>(element_type).getSubtypes().front();
   }
 
-  auto tensor_type = first_operand_type.dyn_cast_or_null<TensorType>();
+  auto tensor_type = mlir::dyn_cast_or_null<TensorType>(first_operand_type);
   if (!(tensor_type && tensor_type.hasRank())) {
     return op->emitError()
            << "cannot convert op with unranked or non-tensor input type "

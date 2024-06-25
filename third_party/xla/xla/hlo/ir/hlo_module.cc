@@ -79,11 +79,11 @@ HloModule::HloModule(const std::string& name,
   metadata_.set_canonical_module_id(unique_id_);
 }
 
-Status HloModule::set_schedule(HloSchedule schedule) {
+absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
@@ -187,7 +187,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
                                 /*preserve_entry_layouts=*/true);
 }
 
-Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
@@ -199,7 +199,7 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -493,8 +493,7 @@ HloModuleProto HloModule::ToProto() const {
   }
   if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
-    TF_CHECK_OK(
-        config_.get().static_device_assignment().Serialize(&device_assignment));
+    config_.get().static_device_assignment().Serialize(&device_assignment);
     (*proto.mutable_device_assignment()) = device_assignment;
   }
 
@@ -504,14 +503,15 @@ HloModuleProto HloModule::ToProto() const {
   return proto;
 }
 
-StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
+HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
+  *result.mutable_config() = config_.get().ToProto();
   *result.mutable_hlo_module() = ToProto();
   return result;
 }
 
-Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
+absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
+    const {
   absl::flat_hash_set<absl::string_view> computation_names;
   absl::flat_hash_set<int> computation_ids;
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -536,11 +536,11 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
       instruction_ids.insert(instruction->unique_id());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
@@ -684,7 +684,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     const ProgramShape& program_shape, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   HloModuleConfig module_config(ProgramShape{program_shape});
@@ -700,16 +700,12 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
-    std::vector<int64_t> mesh_shape;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
-      mesh_shape.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
-    std::vector<int64_t> mesh_ids;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
-      mesh_ids.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+    module_config.set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_shape().begin(),
+        execution_options->auto_spmd_partitioning_mesh_shape().end()));
+    module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_ids().begin(),
+        execution_options->auto_spmd_partitioning_mesh_ids().end()));
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
              .empty()) {
@@ -735,11 +731,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
                  module_config.num_partitions());
       }
     }
-    std::vector<bool> param_requires_broadcast_via_collectives(
+    module_config.set_param_requires_broadcast_via_collectives(std::vector<
+                                                               bool>(
         execution_options->param_requires_broadcast_via_collectives().begin(),
-        execution_options->param_requires_broadcast_via_collectives().end());
-    module_config.set_param_requires_broadcast_via_collectives(
-        param_requires_broadcast_via_collectives);
+        execution_options->param_requires_broadcast_via_collectives().end()));
     module_config.set_allow_separate_sharding_programs(
         execution_options->allow_separate_sharding_programs());
     HloModuleConfig::AssignStructShardableValueUpdatePairs(
@@ -761,7 +756,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
@@ -784,9 +779,9 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   return config;
 }
 
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
-  auto hlo_module_proto = proto.hlo_module();
+  const auto& hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                       HloModuleConfig::CreateFromProto(proto.config()));
   return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
@@ -903,18 +898,16 @@ int64_t HloModule::instruction_count() const {
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     const absl::flat_hash_set<HloComputation*>& allow_list) const {
-  std::vector<HloComputation*> filtered_post_order(allow_list.size());
-  auto post_order = this->MakeComputationPostOrder(execution_threads);
+  std::vector<HloComputation*> post_order =
+      this->MakeComputationPostOrder(execution_threads);
 
-  int filtered_idx = 0;
-  for (auto& computation : post_order) {
-    if (allow_list.contains(computation)) {
-      filtered_post_order[filtered_idx] = computation;
-      filtered_idx += 1;
-    }
-  }
+  post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                  [&allow_list](HloComputation* computation) {
+                                    return !allow_list.contains(computation);
+                                  }),
+                   post_order.end());
 
-  return filtered_post_order;
+  return post_order;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
@@ -951,9 +944,8 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     }
     for (HloComputation* embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
-      if (!added_computations.contains(embedded_computation)) {
+      if (added_computations.insert(embedded_computation).second) {
         post_order.push_back(embedded_computation);
-        added_computations.insert(embedded_computation);
       }
     }
     // Root computations should only be encountered once.
@@ -973,17 +965,15 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
                << " computation_count=" << computations_.size();
   }
-  if (execution_threads.empty()) {
-    return post_order;
+  if (!execution_threads.empty()) {
+    post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                    [&](HloComputation* computation) {
+                                      return !execution_threads.contains(
+                                          computation->execution_thread());
+                                    }),
+                     post_order.end());
   }
-  std::vector<HloComputation*> post_order_with_execution_threads;
-  absl::c_copy_if(
-      post_order, std::back_inserter(post_order_with_execution_threads),
-      [&execution_threads](HloComputation* computation) {
-        return execution_threads.find(computation->execution_thread()) !=
-               execution_threads.end();
-      });
-  return post_order_with_execution_threads;
+  return post_order;
 }
 
 namespace {
@@ -1123,7 +1113,7 @@ std::unique_ptr<HloModule> HloModule::Clone(
   return module;
 }
 
-Status HloModule::RemoveUnusedComputations() {
+absl::Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, "-", suffix), config(),
@@ -1140,7 +1130,7 @@ Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,

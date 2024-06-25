@@ -16,18 +16,22 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_CLIENT_H_
 #define XLA_PJRT_DISTRIBUTED_CLIENT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
 #include "tsl/platform/env.h"
 
 namespace tsl {
@@ -71,16 +75,17 @@ class DistributedRuntimeClient {
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
     // Exposed so tests can override this behavior to something non-fatal.
-    std::function<void(xla::Status, bool coordinator_reported_failure)>
+    std::function<void(absl::Status, bool coordinator_reported_failure)>
         missed_heartbeat_callback =
-            [](xla::Status status, bool coordinator_reported_failure) {
+            [](absl::Status status, bool coordinator_reported_failure) {
               if (coordinator_reported_failure) {
                 LOG(QFATAL)
                     << "Terminating process because the coordinator detected "
                        "missing heartbeats. This most likely indicates that "
                        "another task died; see the other task logs for more "
                        "details. Disable Python buffering, i.e. `python -u`, "
-                       "to be sure to see all the previous output. Status: "
+                       "to be sure to see all the previous output. "
+                       "absl::Status: "
                     << status;
               } else {
                 LOG(QFATAL)
@@ -89,7 +94,7 @@ class DistributedRuntimeClient {
                        "indicates that the coordinator task died; see the "
                        "coordinator's task logs for more details. "
                        "Disable Python buffering, i.e. `python -u`, to be "
-                       "sure to see all the previous output. Status: "
+                       "sure to see all the previous output. absl::Status: "
                     << status;
               }
             };
@@ -104,12 +109,12 @@ class DistributedRuntimeClient {
   // connected.
   // Not thread-safe, i.e., calls to Connect()/Shutdown() must be serialized by
   // some other means.
-  virtual xla::Status Connect() = 0;
+  virtual absl::Status Connect() = 0;
 
   // Reports to the master that the client is ready to shutdown, and blocks
   // until all clients are ready to shutdown or the shutdown timeout expires.
   // Not thread-safe.
-  virtual xla::Status Shutdown() = 0;
+  virtual absl::Status Shutdown() = 0;
 
   // The following APIs are thread-safe.
 
@@ -127,17 +132,21 @@ class DistributedRuntimeClient {
   virtual absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(std::string_view key) = 0;
 
-  virtual xla::Status KeyValueSet(std::string_view key,
-                                  std::string_view value) = 0;
+  virtual absl::Status KeyValueSet(std::string_view key,
+                                   std::string_view value) = 0;
+  virtual absl::Status KeyValueSet(std::string_view key, std::string_view value,
+                                   bool allow_overwrite) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual xla::Status KeyValueDelete(std::string_view key) = 0;
+  virtual absl::Status KeyValueDelete(std::string_view key) = 0;
 
-  // Blocks until all nodes are at the barrier or the barrier times out.
-  // `barrier_id` should be unique across barriers.
-  virtual xla::Status WaitAtBarrier(std::string barrier_id,
-                                    absl::Duration timeout) = 0;
+  // Blocks until all nodes (or the ones specified in `nodes`) are at the
+  // barrier or the barrier times out. `barrier_id` should be unique across
+  // barriers.
+  virtual absl::Status WaitAtBarrier(
+      std::string barrier_id, absl::Duration timeout,
+      std::optional<absl::Span<const int32_t>> nodes) = 0;
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.

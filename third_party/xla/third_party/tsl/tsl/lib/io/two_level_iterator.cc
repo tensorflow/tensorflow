@@ -49,7 +49,7 @@ class TwoLevelIterator : public Iterator {
     assert(Valid());
     return data_iter_->value();
   }
-  Status status() const override {
+  absl::Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a
     // Status
     if (!index_iter_->status().ok()) {
@@ -62,7 +62,7 @@ class TwoLevelIterator : public Iterator {
   }
 
  private:
-  void SaveError(const Status& s) {
+  void SaveError(const absl::Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
   }
   void SkipEmptyDataBlocksForward();
@@ -71,7 +71,7 @@ class TwoLevelIterator : public Iterator {
 
   BlockFunction block_function_;
   void* arg_;
-  Status status_;
+  absl::Status status_;
   Iterator* index_iter_;
   Iterator* data_iter_;  // May be NULL
   // If data_iter_ is non-NULL, then "data_block_handle_" holds the

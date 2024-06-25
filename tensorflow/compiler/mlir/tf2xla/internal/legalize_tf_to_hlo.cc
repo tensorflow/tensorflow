@@ -44,7 +44,7 @@ using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
 using metrics::MlirBridgeSecondPhaseMetric;
 using tpu::MlirToHloArgs;
 
-tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
+absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,
@@ -57,8 +57,8 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
                           "Combined MLIR Tf2Xla Bridge.";
 
-  tsl::StatusOr<std::string> mlir_compilation
-      = internal::CompileFromMlirToXlaHlo(
+  absl::StatusOr<std::string> mlir_compilation =
+      internal::CompileFromMlirToXlaHlo(
           /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
           shape_determination_fns, use_tuple_args, compilation_result,
           custom_legalization_passes, arg_shapes, arg_core_mapping,

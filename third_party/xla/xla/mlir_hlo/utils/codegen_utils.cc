@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 using llvm::SmallVector;
 
@@ -28,7 +29,7 @@ namespace mlir {
 namespace codegen_utils {
 
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref) {
-  int rank = memref.getType().cast<MemRefType>().getRank();
+  int rank = mlir::cast<MemRefType>(memref.getType()).getRank();
   Value numElements;
   numElements = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
@@ -83,7 +84,7 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
 
 SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
                                      Value linearIndex, Value memref) {
-  int rank = memref.getType().cast<MemRefType>().getRank();
+  int rank = mlir::cast<MemRefType>(memref.getType()).getRank();
   SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {

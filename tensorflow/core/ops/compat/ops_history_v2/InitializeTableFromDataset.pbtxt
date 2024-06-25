@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "InitializeTableFromDataset"
   input_arg {
     name: "table_handle"

@@ -116,7 +116,7 @@ TYPED_TEST(Construct1DTensorHandleTest,
 
   EXPECT_EQ(tensor.dims(), 1);
   EXPECT_EQ(tensor.dtype(), dtype);
-  tensorflow::gtl::ArraySlice<typename TypeParam::type> tensor_view(
+  absl::Span<const typename TypeParam::type> tensor_view(
       reinterpret_cast<typename TypeParam::type*>(tensor.data()), value.size());
   EXPECT_EQ(tensor_view[0], 42);
   EXPECT_EQ(tensor_view[1], 100);
@@ -166,7 +166,7 @@ TYPED_TEST(Construct2DTensorHandleTest,
 
   EXPECT_EQ(tensor.dims(), 2);
   EXPECT_EQ(tensor.dtype(), dtype);
-  tensorflow::gtl::ArraySlice<typename TypeParam::type> tensor_view(
+  absl::Span<const typename TypeParam::type> tensor_view(
       reinterpret_cast<typename TypeParam::type*>(tensor.data()), value.size());
   EXPECT_EQ(tensor_view[0], 42);
   EXPECT_EQ(tensor_view[1], 100);

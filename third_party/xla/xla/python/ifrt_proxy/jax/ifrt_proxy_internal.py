@@ -12,14 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Library to help create a IFRT proxy client."""
+"""Library to help create a IFRT proxy client.
+
+This library is no longer recommended nor used in OSS; it is used internally
+within google code. TODO(madthanu): Remove library.
+"""
 
 import dataclasses
 from typing import Callable, Optional
 
-from pybind11_abseil import status
 from xla.python import xla_client
-from xla.python.ifrt_proxy.client import py_module
 
 
 @dataclasses.dataclass
@@ -35,7 +37,7 @@ class ConnectionOptions:
       provided as human-readable strings, and an end-user may find them helpful.
   """
 
-  on_disconnect: Optional[Callable[[status.Status], None]] = None
+  on_disconnect: Optional[Callable[[str], None]] = None
   on_connection_update: Optional[Callable[[str], None]] = None
 
 
@@ -47,6 +49,7 @@ def get_client(proxy_server_address: str) -> xla_client.Client:
   """Creates an IFRT Proxy client for the given server address."""
   global _backend_created
   _backend_created = True
+  py_module = xla_client._xla.ifrt_proxy  # pylint: disable=protected-access
   cpp_options = py_module.ClientConnectionOptions()
   cpp_options.on_disconnect = _connection_options.on_disconnect
   cpp_options.on_connection_update = _connection_options.on_connection_update

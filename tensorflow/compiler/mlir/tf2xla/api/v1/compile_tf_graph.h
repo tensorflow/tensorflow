@@ -34,7 +34,7 @@ namespace v1 {
 // Compiles the given Tensorflow graph into xla::HLO. The result is in
 // compilation_result. If the input computation is in MLIR, it will be
 // converted to a Tensorflow graph. Otherwise, the graph compiler will be run.
-tsl::Status CompileTensorflowGraphToHlo(
+absl::Status CompileTensorflowGraphToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_funcs,

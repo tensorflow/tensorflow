@@ -20,12 +20,13 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/status_macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 EventPool::Handle::~Handle() {
   if (pool_ && event_) {
-    absl::MutexLock lock(&pool_->mu_);
+    absl::MutexLock lock(&pool_->mu_free_events_);
     pool_->free_events_.push(std::move(event_));
   }
 }
@@ -39,21 +40,20 @@ absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
 
   if (allow_reuse_) {
     event.pool_ = this;
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(&mu_free_events_);
     if (!free_events_.empty()) {
       event.event_ = std::move(free_events_.top());
       free_events_.pop();
     }
   }
   if (!event.event_) {
-    event.event_ = std::make_unique<se::Event>(executor);
-    TF_RET_CHECK(event.event_->Init()) << "Event initialization failed";
+    TF_ASSIGN_OR_RETURN(event.event_, executor->CreateEvent());
   }
   return event;
 }
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(&mu_sequence_number_);
   stream->RecordEvent(handle.event_.get()).IgnoreError();
   handle.sequence_number_ = next_sequence_number_++;
 }

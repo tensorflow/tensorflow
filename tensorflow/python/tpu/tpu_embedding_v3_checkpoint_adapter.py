@@ -188,7 +188,7 @@ class TpuEmbeddingV3CheckpointAdapter(
       return cls(None)
     layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
     layouts.ParseFromString(sparsecore_layouts_str)
-    logging.vlog(1, "Loaded layouts from checkpoint: %s", layouts)
+    logging.info("Loaded layouts from checkpoint: %s", layouts)
     return cls(layouts)
 
   def initialize_reshard_callbacks(
@@ -225,12 +225,35 @@ class TpuEmbeddingV3CheckpointAdapter(
     raise NotImplementedError("Changing topology is not implemented yet.")
 
   def is_layouts_same(self, embedding_layouts) -> bool:
-    """Returns True if the all the embedding and checkpoint layouts are the same."""
-    if self._checkpoint_layouts.keys() == embedding_layouts.keys():
-      for key, layout in self._checkpoint_layouts.items():
-        if not compare.ProtoEq(layout, embedding_layouts[key]):
-          return False
-      return True
+    """Returns True if the all the embedding and checkpoint layouts are the same.
+
+    Args:
+      embedding_layouts: dict of layouts for embedding tables.
+
+    Raises: ValueError if the embedding layouts and checkpoint layouts do not
+      have the same keys.
+    Returns: Bool representing if the embedding layouts match the layouts in
+      checkpoint.
+    """
+    if self._checkpoint_layouts.keys() != embedding_layouts.keys():
+      raise ValueError(
+          "Layouts in checkpoint and embedding must have the same keys. found"
+          " {} and {}".format(
+              self._checkpoint_layouts.keys(), embedding_layouts.keys()
+          )
+      )
+
+    for key, layout in self._checkpoint_layouts.items():
+      if not compare.ProtoEq(layout, embedding_layouts[key]):
+        logging.info(
+            "Layouts do not match for %s this will require resharding; %s"
+            " vs %s",
+            key,
+            layout,
+            embedding_layouts[key],
+        )
+        return False
+    return True
 
   def is_applicable(self, trackable: trackable_base.Trackable) -> bool:
     # issubclass(trackable, TPUEmbeddingBase) adds circular deps, hence using

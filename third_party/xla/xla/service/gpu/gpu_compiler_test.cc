@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/gpu_compiler.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -31,17 +33,25 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -52,13 +62,17 @@ namespace m = ::xla::match;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
+using ::tsl::testing::StatusIs;
 
 class GpuCompilerTest : public HloTestBase {
  public:
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module) {
+  absl::Status Schedule(HloModule* module) {
     auto compiler = backend().compiler();
-    return compiler->AssignBuffers(module, backend().default_stream_executor());
+    const se::DeviceDescription& gpu_device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
+    return tensorflow::down_cast<GpuCompiler*>(compiler)
+        ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
 };
 
@@ -72,6 +86,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ResetCompiledProgramsCountForTesting();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -168,6 +183,28 @@ ENTRY main {
       GmockMatch(m::Tuple(
           m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()),
           m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()))));
+}
+
+TEST_F(GpuCompilerTest, CanRunScheduledModules) {
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_disable_all_hlo_passes(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+w {
+  p = s8[] parameter(0)
+  ROOT n = s8[] negate(p)
+}
+
+ENTRY e {
+  p = s8[] parameter(0)
+  ROOT _ = s8[] fusion(p), kind=kLoop, calls=w
+})",
+                                                       config));
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 class PersistedAutotuningTest : public HloTestBase {
@@ -311,7 +348,7 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, AssignBuffers(module.get()));
+  TF_ASSERT_OK(Schedule(module.get()));
   EXPECT_EQ(CountCopies(*module), 4);
   module->entry_computation()->root_instruction();
   while_op = root->operand(0)->operand(0);
@@ -322,6 +359,16 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+  GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
+               << " until flakiness is fixed.";
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
+                 << "and Hopper GPUs";
+  }
   const absl::string_view hlo_string = R"(
 HloModule test
 
@@ -349,16 +396,31 @@ ENTRY main {
 )";
 
   HloModuleConfig config;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  config.set_debug_options(GetDebugOptionsForTest());
+  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
+  triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
+      false);
+  triton_enabled_debug_options
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
+  config.set_debug_options(triton_enabled_debug_options);
   config.set_replica_count(1);
   config.set_num_partitions(1);
+
+  // Load autotuning DB. We shouldn't depend on actual execution times in a unit
+  // test.
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                        "gpu_compiler_test_autotune_db.textproto");
+  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
                           GetOptimizedModule(std::move(module)));
-  debug_options.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(debug_options);
+  AutotunerUtil::ClearAutotuneResults();
+  DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
+  triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
+      false);
+  triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
@@ -372,6 +434,243 @@ ENTRY main {
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
             triton_disabled_module->computation_count());
+}
+
+TEST_F(GpuCompilerTest, CollectivePermuteDecompositionAndPipelining) {
+  const char* kModuleStr = R"(
+HloModule cp
+
+cond {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(11)
+    ROOT result = pred[] compare(count, ub), direction=LT
+ }
+
+body {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    recv-data = f32[1, 1024, 1024] collective-permute(send-data),
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}, channel_id=1
+
+    // The computation code that uses the current recv-data and
+    // produces the send-data for the next iteration.
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+    replica = u32[] replica-id()
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    b = f32[1, 1024, 1024] add(p, recv-data)
+    c = f32[1, 1024, 1024] multiply(b, b)
+    d = f32[1, 1024, 1024] tan(c)
+    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+
+    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
+}
+
+ENTRY test_computation {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+    while_init = (u32[], f32[1, 1024, 1024]) tuple(c0, init)
+    while_result = (u32[], f32[1, 1024, 1024]) while(while_init), body=body, condition=cond
+    ROOT result = f32[1, 1024, 1024] get-tuple-element(while_result), index=1
+}
+)";
+
+  const char* kExpected = R"(
+CHECK:       recv-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID:[0-9]+]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       send-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       %[[CUSTOM_CALL:.*]] = custom-call
+CHECK:       %[[AFTER_ALL:.*]] = after-all
+CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
+CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
+CHECK-SAME:    channel_id=1
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
+CHECK:       ROOT
+// We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
+// However, despite popular belief, CHECK-DAG-SAME is not actually a valid
+// directive. Checking for both without using a DAG would be inherently flaky,
+// so we take the hit and only check for one of them.
+CHECK-SAME:    %[[RESULT_RECV]]
+
+CHECK: ENTRY
+CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
+CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
+CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
+CHECK-SAME:    channel_id=1
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
+CHECK:       %[[WHILE_INIT:.*]] = tuple
+// Check here that the send argument is likewise passed to the while loop, as
+// a counterpart to the check in the child computation above.
+CHECK-SAME:    %[[ENTRY_SEND]]
+CHECK:       while(%[[WHILE_INIT]])
+CHECK:       recv-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       send-done
+CHECK-SAME:    channel_id=[[CHANNEL_ID]]
+CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+)";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
+  debug_options.set_xla_gpu_collective_permute_decomposer_threshold(1);
+  debug_options.set_xla_gpu_enable_pipelined_p2p(true);
+  debug_options.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  TF_ASSERT_OK(Schedule(optimized_module.get()));
+
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(optimized_module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+class KernelCacheTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    TF_ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
+                            dynamic_cast<GpuCompiler*>(backend().compiler())
+                                ->CanUseLinkModules(config));
+    if (!can_use_link_modules) {
+      GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
+    }
+  }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
+    return debug_options;
+  }
+
+  bool CacheFileExists() {
+    if (!tsl::Env::Default()->FileExists(cache_file_name_).ok()) {
+      return false;
+    }
+    return true;
+  }
+
+  int CacheEntryCount() {
+    if (!CacheFileExists()) {
+      return 0;
+    }
+    std::string serialized;
+    TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
+                                       &serialized));
+    CompilationCacheProto proto;
+    EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
+    return proto.entries_size();
+  }
+
+  std::string cache_file_name_;
+  static constexpr absl::string_view kHloText = R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    c = s8[] constant(8)
+    ROOT _ = s8[] add(p, c)
+  })";
+};
+
+TEST_F(KernelCacheTest, CacheIsGenerated) {
+  // First run - no cache file
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  // First run generates a cache
+  EXPECT_EQ(CacheEntryCount(), 1);
+  // Second run - with cache file
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
+}
+
+TEST_F(KernelCacheTest, NoCacheIsGeneratedWithoutCompiledKernels) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    a = f32[5,5] parameter(0)
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+      backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+  })",
+                  /*run_hlo_passes=*/false));
+  EXPECT_FALSE(CacheFileExists());
+}
+
+TEST_F(KernelCacheTest, CacheGrowsWithNewKernels) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
+  // Second run - with cache file and another HLO
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    ROOT _ = s8[] multiply(p, p)
+  })",
+                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 2);
+}
+
+class KernelCacheTestSingleThreaded : public KernelCacheTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_force_compilation_parallelism(1);
+    return debug_options;
+  }
+};
+
+TEST_F(KernelCacheTestSingleThreaded, CacheIsGenerated) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 1);
+}
+
+class NoKernelCacheTest : public KernelCacheTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
+    return debug_options;
+  }
+};
+
+TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
+  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  EXPECT_FALSE(CacheFileExists());
 }
 
 }  // namespace

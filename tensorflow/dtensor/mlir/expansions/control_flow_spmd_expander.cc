@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/control_flow_spmd_expander.h"
 
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+
 namespace tensorflow {
 namespace dtensor {
 
@@ -79,7 +81,7 @@ StatusOr<mlir::Operation*> IfRegionSPMDExpander::ExpandOp(mlir::Operation* op) {
 
       result.setType(mlir::RankedTensorType::get(
           layout.LocalShapeFromGlobalShape(*global_shape),
-          result.getType().cast<mlir::TensorType>().getElementType()));
+          mlir::cast<mlir::TensorType>(result.getType()).getElementType()));
     }
   }
   return op;

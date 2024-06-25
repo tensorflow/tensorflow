@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -77,8 +78,9 @@ void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
   SmallVector<int32_t> lhs_dilation_values(num_dims - 2, 1);
   SmallVector<int32_t> stride_values, rhs_dilation_values;
   for (int64_t i : llvm::seq<int64_t>(1, num_dims - 1)) {
-    stride_values.push_back(strides[i].cast<IntegerAttr>().getInt());
-    rhs_dilation_values.push_back(dilations[i].cast<IntegerAttr>().getInt());
+    stride_values.push_back(mlir::cast<IntegerAttr>(strides[i]).getInt());
+    rhs_dilation_values.push_back(
+        mlir::cast<IntegerAttr>(dilations[i]).getInt());
   }
   window_strides = Create1DConstValue<int32_t>(builder, loc, stride_values);
   lhs_dilation = Create1DConstValue<int32_t>(builder, loc, lhs_dilation_values);
@@ -96,7 +98,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
     return CreateScalarConstValue<int32_t>(builder, loc, 0);
   }
 
-  auto shape = tensor.getType().template cast<ShapedType>();
+  auto shape = mlir::cast<ShapedType>(tensor.getType());
   SmallVector<int64_t> non_output_indices;
   for (int64_t i : llvm::seq<int64_t>(0, shape.getRank())) {
     if (absl::c_count(output_dims, i) == 0) {
@@ -108,7 +110,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
       Create1DConstValue<int64_t>(builder, loc, non_output_indices);
   auto zp = CreateScalarConstValue<int32_t>(builder, loc, other_tensor_zp);
 
-  TensorType tensor_type = tensor.getType().dyn_cast<TensorType>();
+  TensorType tensor_type = mlir::dyn_cast<TensorType>(tensor.getType());
   Value tensor_i32 = builder.create<TF::CastOp>(
       loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
   auto reduced =
@@ -136,7 +138,7 @@ Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
                            int8_t input_zp, int8_t weight_zp,
                            Value zp_input_contribution,
                            Value zp_weight_contribution) {
-  auto weight_shape = weight.getType().template cast<ShapedType>();
+  auto weight_shape = mlir::cast<ShapedType>(weight.getType());
   SmallVector<int64_t> weight_non_output_indices;
   for (auto i : llvm::seq<int64_t>(0, weight_shape.getRank())) {
     if (absl::c_count(weight_output_dims, i) == 0) {
@@ -498,7 +500,7 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
     return CreateScalarConstValue<int32_t>(builder, loc, 0);
   }
 
-  auto shape = tensor.getType().template cast<ShapedType>();
+  auto shape = mlir::cast<ShapedType>(tensor.getType());
   SmallVector<int64_t> tensor_shape;
   for (auto v : shape.getShape()) {
     tensor_shape.push_back(v);
@@ -506,7 +508,7 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
 
   auto zp = CreateScalarConstValue<int32_t>(builder, loc, other_tensor_zp);
 
-  TensorType tensor_type = tensor.getType().dyn_cast<TensorType>();
+  TensorType tensor_type = mlir::dyn_cast<TensorType>(tensor.getType());
   Value tensor_i32 = builder.create<TF::CastOp>(
       loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
 
@@ -596,7 +598,7 @@ Value CalculateZeroPointOffsetXLADotV2(OpBuilder &builder, Location loc,
   Value zp_weight_contribution = CreateZeroPointPartialOffsetXlaDotV2(
       builder, loc, weight, input_zp, dnums, /*is_lhs=*/false, output_rank);
 
-  auto weight_shape = weight.getType().template cast<ShapedType>();
+  auto weight_shape = mlir::cast<ShapedType>(weight.getType());
 
   absl::flat_hash_set<int64_t> rhs_contracting_dims;
   for (auto dim : dnums.rhs_contracting_dimensions()) {
@@ -711,8 +713,8 @@ Value CreateXlaConvOpFromTfConv2dOp(OpBuilder &builder, Location loc,
                                     ArrayAttr dilations,
                                     StringAttr conv_padding,
                                     ArrayAttr explicit_paddings) {
-  auto input_shape = input.getType().template cast<ShapedType>();
-  auto filter_shape = filter.getType().template cast<ShapedType>();
+  auto input_shape = mlir::cast<ShapedType>(input.getType());
+  auto filter_shape = mlir::cast<ShapedType>(filter.getType());
   if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
       !filter_shape.hasRank() || filter_shape.getRank() != 4) {
     emitError(loc, "input and filter are expected to be 4D tensors");
@@ -731,8 +733,8 @@ Value CreateXlaConvOpFromTfDepthwiseConv2dOp(
     OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
     Value conv_output, ArrayAttr strides, ArrayAttr dilations,
     StringAttr conv_padding, ArrayAttr explicit_paddings) {
-  auto input_shape = input.getType().template cast<ShapedType>();
-  auto filter_shape = filter.getType().template cast<ShapedType>();
+  auto input_shape = mlir::cast<ShapedType>(input.getType());
+  auto filter_shape = mlir::cast<ShapedType>(filter.getType());
   if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
       !filter_shape.hasRank() || filter_shape.getRank() != 4) {
     emitError(loc, "input and filter are expected to be 4D tensors");
@@ -759,8 +761,8 @@ Value CreateXlaConvOpFromTfConv3dOp(OpBuilder &builder, Location loc,
                                     Value conv_output, ArrayAttr strides,
                                     ArrayAttr dilations,
                                     StringAttr conv_padding) {
-  auto input_shape = input.getType().template cast<ShapedType>();
-  auto filter_shape = filter.getType().template cast<ShapedType>();
+  auto input_shape = mlir::cast<ShapedType>(input.getType());
+  auto filter_shape = mlir::cast<ShapedType>(filter.getType());
   if (!input_shape.hasRank() || input_shape.getRank() != 5 ||
       !filter_shape.hasRank() || filter_shape.getRank() != 5) {
     emitError(loc, "input and filter are expected to be 5D tensors");
@@ -819,7 +821,7 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
 
   Value zp_offset = CalculateZeroPointOffsetXLADotV2(
       builder, loc, input, weight, input_zp_value, weight_zp_value, dnums,
-      output.getType().template cast<ShapedType>().getRank());
+      mlir::cast<ShapedType>(output.getType()).getRank());
 
   return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
 }
@@ -891,8 +893,8 @@ GetBroadcastShapesForBatchMatmul(ShapedType input_type,
 // function, except BroadcastTo, are expected to be folded.
 void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
                                             Value &input, Value &weight) {
-  ShapedType input_type = input.getType().template cast<ShapedType>();
-  ShapedType weight_type = weight.getType().template cast<ShapedType>();
+  ShapedType input_type = mlir::cast<ShapedType>(input.getType());
+  ShapedType weight_type = mlir::cast<ShapedType>(weight.getType());
   const int32_t input_rank = input_type.getRank();
   const int32_t weight_rank = weight_type.getRank();
   const int32_t broadcasted_rank = std::max(input_rank, weight_rank);
@@ -984,7 +986,7 @@ Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
   BroadcastBatchDimensionsForBatchMatMul(builder, loc, input, weight);
 
   // Both input and weight have the same rank after broadcasting.
-  ShapedType weight_shape = weight.getType().template cast<ShapedType>();
+  ShapedType weight_shape = mlir::cast<ShapedType>(weight.getType());
   int num_batch_dim = weight_shape.getRank() - 2;
 
   // Transpose and constant-fold the weight if needed.
@@ -1016,7 +1018,7 @@ Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
 
 // Check if the given value is a ranked type with specified integer width.
 bool IsRankedInt(Value value, const int integer_width) {
-  ShapedType value_type = value.getType().template cast<ShapedType>();
+  ShapedType value_type = mlir::cast<ShapedType>(value.getType());
   if (!value_type.hasRank()) return false;
   if (!value_type.getElementType().isInteger(integer_width)) return false;
 

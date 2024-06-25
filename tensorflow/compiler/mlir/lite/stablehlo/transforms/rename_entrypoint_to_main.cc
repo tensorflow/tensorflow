@@ -18,10 +18,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
@@ -61,21 +63,40 @@ class RenameEntrypointToMainPass
       //   }
       // clang-format on
       for (auto attr : session_initializer.getInitializers()) {
-        auto sym_attr = attr.dyn_cast<FlatSymbolRefAttr>();
+        auto sym_attr = mlir::dyn_cast<FlatSymbolRefAttr>(attr);
         if (!sym_attr) break;
         entrypoints.erase(sym_attr.getValue());
       }
     }
 
     if (entrypoints.empty()) {
-      fail(module, "No entrypoints found");
-    } else if (entrypoints.size() == 1) {
+      return fail(module, "No entrypoints found");
+    }
+    if (entrypoints.size() == 1) {
       auto entrypoint = entrypoints.begin()->second;
       Builder builder(entrypoint);
       entrypoint.setName(builder.getStringAttr("main"));
-    } else {
-      fail(module, "Too many entrypoints found");
+      return;
     }
+
+    // In case we have more than 1 entry points, choose the one with
+    // 'tf.entry_function' attribute set.
+    llvm::SmallVector<func::FuncOp, 4> candidate_funcs;
+    for (auto& entrypoint : entrypoints) {
+      if (entrypoint.second->hasAttr("tf.entry_function")) {
+        candidate_funcs.push_back(entrypoint.second);
+      }
+    }
+
+    if (candidate_funcs.empty()) {
+      return fail(module, "No entrypoints found");
+    }
+    if (candidate_funcs.size() > 1) {
+      return fail(module, "Too many entrypoints found");
+    }
+    // Found entrypoint
+    Builder builder(candidate_funcs[0]);
+    candidate_funcs[0].setName(builder.getStringAttr("main"));
   }
 };
 

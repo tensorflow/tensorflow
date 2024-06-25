@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/logical_buffer_analysis.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/compactptrset.h"
@@ -132,7 +132,7 @@ class PointsToSet {
     });
   }
   template <typename Fn>
-  Status ForEachElementWithStatus(const Fn& fn) const {
+  absl::Status ForEachElementWithStatus(const Fn& fn) const {
     return tree_.ForEachElementWithStatus(
         [&fn](const ShapeIndex& index, const Elem& elem) {
           return fn(index, elem.buffers);
@@ -183,7 +183,7 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
   // Runs points-to analysis on 'module'.
-  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
 
   // Return the points-to set of an instruction. This describes the potential
@@ -196,7 +196,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Returns the buffer defined at the given instruction and index. An error is
   // returned if no buffer is defined at that point.
-  StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
+  absl::StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
   // Return a (possibly empty) vector containing all BufferAliases of the given
@@ -241,25 +241,26 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // which is not defined is a tuple element in a Tuple instruction. In this
   // case, the Tuple instruction does not define the LogicalBuffer, rather that
   // index aliases one of its operands.
-  Status VerifyBuffer(const LogicalBuffer& buffer) const;
+  absl::Status VerifyBuffer(const LogicalBuffer& buffer) const;
 
-  Status DefaultAction(HloInstruction* hlo_instruction) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleAsyncStart(HloInstruction* async_start) override;
-  Status HandleAsyncUpdate(HloInstruction* async_update) override;
-  Status HandleAsyncDone(HloInstruction* async_done) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleDomain(HloInstruction* domain) override;
-  Status HandleCopy(HloInstruction* copy) override;
-  Status HandleCopyStart(HloInstruction* copy_start) override;
-  Status HandleCopyDone(HloInstruction* copy_done) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleAsyncStart(HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(HloInstruction* async_done) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleDomain(HloInstruction* domain) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
+  absl::Status HandleCopyStart(HloInstruction* copy_start) override;
+  absl::Status HandleCopyDone(HloInstruction* copy_done) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
   std::string ToString() const;
 
@@ -280,11 +281,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
-  Status Analyze();
+  absl::Status Analyze();
 
   // Populates instruction-defined buffers and aliases for each instruction
   // in 'instructions'.
-  Status PopulateDefinedBuffersAndAliases(
+  absl::Status PopulateDefinedBuffersAndAliases(
       const decltype(std::declval<HloComputation>()
                          .instructions())& instructions);
 
@@ -298,8 +299,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                                        const HloInstruction* src);
 
   // Adds the buffers defined by the given instruction to the given vector.
-  Status GatherBuffersDefinedByInstruction(const HloInstruction* instruction,
-                                           BufferDefinitionVector* buffers);
+  absl::Status GatherBuffersDefinedByInstruction(
+      const HloInstruction* instruction, BufferDefinitionVector* buffers);
 
   // Print points-to set for 'instruction' to 'output'.
   void InstructionToString(const HloInstruction* instruction,

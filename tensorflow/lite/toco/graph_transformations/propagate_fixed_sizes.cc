@@ -2398,7 +2398,7 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
           static_cast<TensorFlowUnsupportedOperator*>(op);
       // Attribute can be not specified, ignore it.
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
       for (size_t i = 0; i < op->outputs.size(); ++i) {
         const std::string& output = op->outputs[i];
@@ -2492,10 +2492,10 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
       AddMessageF("Set shape of %s to [%s]", output,
                   absl::StrJoin(model->GetArray(output).shape().dims(), ","));
       *modified = true;
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

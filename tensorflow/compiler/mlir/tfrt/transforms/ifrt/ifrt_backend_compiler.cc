@@ -88,11 +88,19 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
       }
     });
 
-    auto executable = std::make_unique<IfrtServingExecutable>(
-        model_name, entry_function_name.str(), *std::move(submodule),
-        ifrt_model_context.GetClient(), &ifrt_model_context.GetThreadPool(),
-        &ifrt_model_context.GetLoadedVariableRegistry(),
-        ifrt_model_context.GetShapeRepresentationFn());
+    TF_ASSIGN_OR_RETURN(
+        auto executable,
+        IfrtServingExecutable::Create(
+            program_id, model_name, entry_function_name.str(),
+            *std::move(submodule), ifrt_model_context.GetClient(),
+            &ifrt_model_context.GetThreadPool(),
+            &ifrt_model_context.GetLoadedVariableRegistry(),
+            &ifrt_model_context.GetRestoreTensorRegistry(),
+            ifrt_model_context.checkpoint_loader_queue(),
+            ifrt_model_context.GetDeviceMgr(),
+            ifrt_model_context.GetShapeRepresentationFn(),
+            ifrt_model_context.GetIfrtServingCoreSelector(),
+            ifrt_model_context.GetCompilationEnvironmentProto()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.
@@ -145,14 +153,14 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_before", module);
   }
 
-  // Run backward compat pass so that we can use bridge to do clustering.
-  auto backward_compat_result =
-      tensorflow::RunTPUBackwardCompatConversion(module, {});
-  if (mlir::failed(backward_compat_result)) {
-    return diag_handler.Combine(
-        absl::InternalError("Failed to handle legacy TPU Ops"));
+  if (tpu_compiler_ != nullptr) {
+    // Run backward compat pass so that we can use bridge to do clustering.
+    if (mlir::failed(
+            tpu_compiler_->RunTPUBackwardCompatConversion(module, {}))) {
+      return diag_handler.Combine(
+          absl::InternalError("Failed to handle legacy TPU Ops"));
+    }
   }
-
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_after", module);
   }

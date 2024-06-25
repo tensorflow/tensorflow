@@ -29,7 +29,6 @@ limitations under the License.
 namespace xla {
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 PythonRefManager::ManagedPyObjects::ManagedPyObjects(
     PythonRefManager* manager, absl::Span<nb::object> objects)
@@ -44,24 +43,6 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
   if (manager_ && !objects_.empty()) {
     manager_->AddGarbage(absl::MakeSpan(objects_));
   }
-}
-
-std::shared_ptr<PythonRefManager::ManagedPyObjects>
-PythonRefManager::ManageReference(py::object object) {
-  nb::object o = nb::steal(object.release().ptr());
-  return std::make_shared<ManagedPyObjects>(this,
-                                            absl::Span<nb::object>(&o, 1));
-}
-
-std::shared_ptr<PythonRefManager::ManagedPyObjects>
-PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
-  std::vector<nb::object> objects_to_manage;
-  objects_to_manage.reserve(objects.size());
-  for (py::object& object : objects) {
-    objects_to_manage.push_back(nb::steal(object.release().ptr()));
-  }
-  return std::make_shared<ManagedPyObjects>(this,
-                                            absl::MakeSpan(objects_to_manage));
 }
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
@@ -88,22 +69,6 @@ void PythonRefManager::AddGarbage(absl::Span<nb::object> garbage) {
   garbage_count_.fetch_add(100, std::memory_order_relaxed);
   for (nb::object& o : garbage) {
     python_garbage_.push_back(std::move(o));
-  }
-}
-
-void PythonRefManager::AddGarbage(py::object garbage) {
-  absl::MutexLock lock(&mu_);
-  // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
-  garbage_count_.fetch_add(100, std::memory_order_relaxed);
-  python_garbage_.push_back(nb::steal(garbage.release().ptr()));
-}
-
-void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
-  absl::MutexLock lock(&mu_);
-  // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
-  garbage_count_.fetch_add(100, std::memory_order_relaxed);
-  for (py::object& o : garbage) {
-    python_garbage_.push_back(nb::steal(o.release().ptr()));
   }
 }
 

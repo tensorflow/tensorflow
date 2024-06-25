@@ -155,9 +155,10 @@ tf_cc_test(
     deps = [
         ":error_util",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/concurrency:async_value",
         "@tf_runtime//:support",
-        "@tf_runtime//cpp_tests:common",
     ],
 )
 

@@ -61,12 +61,12 @@ void DFS(const Graph& g, const std::function<void(Node*)>& enter,
 // If stable_comparator is set, a stable ordering of visit is achieved by
 // sorting a node's neighbors first before visiting them.
 // If edge_filter is set then ignores edges for which edge_filter returns false.
-void DFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+void DFSFrom(const Graph& g, absl::Span<Node* const> start,
              const std::function<void(Node*)>& enter,
              const std::function<void(Node*)>& leave,
              const NodeComparator& stable_comparator = {},
              const EdgeFilter& edge_filter = {});
-void DFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
+void DFSFrom(const Graph& g, absl::Span<const Node* const> start,
              const std::function<void(const Node*)>& enter,
              const std::function<void(const Node*)>& leave,
              const NodeComparator& stable_comparator = {},
@@ -89,24 +89,24 @@ void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
 // If stable_comparator is set, a stable ordering of visit is achieved by
 // sorting a node's neighbors first before visiting them.
 // If edge_filter is set then ignores edges for which edge_filter returns false.
-void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+void ReverseDFSFrom(const Graph& g, absl::Span<Node* const> start,
                     const std::function<void(Node*)>& enter,
                     const std::function<void(Node*)>& leave,
                     const NodeComparator& stable_comparator = {},
                     const EdgeFilter& edge_filter = {});
-void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
+void ReverseDFSFrom(const Graph& g, absl::Span<const Node* const> start,
                     const std::function<void(const Node*)>& enter,
                     const std::function<void(const Node*)>& leave,
                     const NodeComparator& stable_comparator = {},
                     const EdgeFilter& edge_filter = {});
 
 void BreadthFirstTraversal(
-    const Graph& g, gtl::ArraySlice<const Node*> start,
+    const Graph& g, absl::Span<const Node* const> start,
     const std::function<void(const Node*)>& visit,
     NodeComparator stable_comparator = NodeComparatorID());
 
 void BreadthFirstTraversal(
-    Graph& g, gtl::ArraySlice<Node*> start,
+    Graph& g, absl::Span<Node* const> start,
     const std::function<void(Node*)>& visit,
     NodeComparator stable_comparator = NodeComparatorID());
 

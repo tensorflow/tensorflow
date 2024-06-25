@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "xla_cc_binary")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -52,10 +52,10 @@ xla_cc_binary(
         "//xla/mlir/framework/transforms:passes",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service:cpu_plugin",
-        "//xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:platform_port",
         "@stablehlo//:register",
     ],

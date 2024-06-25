@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
@@ -53,20 +54,20 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-   (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
-   (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
-   (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000) mod 100,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
+    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:
-  th_x in [0, 127]
-  th_y in [0, 0]
-  th_z in [0, 0]
-  bl_x in [0, 1007]
-  bl_y in [0, 0]
-  bl_z in [0, 0]
-  chunk_id in [0, 11]
-  unroll_id in [0, 3]
-  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+  th_x in [0, 128)
+  th_y in [0, 1)
+  th_z in [0, 1)
+  bl_x in [0, 1008)
+  bl_y in [0, 1)
+  bl_z in [0, 1)
+  chunk_id in [0, 12)
+  unroll_id in [0, 4)
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999997)
 )"));
 }
 
@@ -96,14 +97,14 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
-              th_x in [0, 19]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 0]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              chunk_id in [0, 0]
-              unroll_id in [0, 0]
+              th_x in [0, 20)
+              th_y in [0, 1)
+              th_z in [0, 1)
+              bl_x in [0, 1)
+              bl_y in [0, 1)
+              bl_z in [0, 1)
+              chunk_id in [0, 1)
+              unroll_id in [0, 1)
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
@@ -111,14 +112,14 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
-              th_x in [0, 19]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 0]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              chunk_id in [0, 0]
-              unroll_id in [0, 0]
+              th_x in [0, 20)
+              th_y in [0, 1)
+              th_z in [0, 1)
+              bl_x in [0, 1)
+              bl_y in [0, 1)
+              bl_z in [0, 1)
+              chunk_id in [0, 1)
+              unroll_id in [0, 1)
             )"));
 }
 
@@ -147,37 +148,74 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
-                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
-                (th_x + bl_x * 128) mod 30)
+                  ((bl_x * 128 + th_x) floordiv 600) mod 10,
+                  ((bl_x * 128 + th_x) floordiv 30) mod 20,
+                  (bl_x * 128 + th_x) mod 30
+                )
                 domain:
-                th_x in [0, 127]
-                th_y in [0, 0]
-                th_z in [0, 0]
-                bl_x in [0, 46]
-                bl_y in [0, 0]
-                bl_z in [0, 0]
-                chunk_id in [0, 0]
-                unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                th_x in [0, 128)
+                th_y in [0, 1)
+                th_z in [0, 1)
+                bl_x in [0, 47)
+                bl_y in [0, 1)
+                bl_z in [0, 1)
+                chunk_id in [0, 1)
+                unroll_id in [0, 1)
+                th_x + bl_x * 128 in [0, 6000)
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
   EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
-              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20)
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
+                (((bl_x * 128 + th_x) floordiv 30) mod 20)
                 domain:
-                th_x in [0, 127]
-                th_y in [0, 0]
-                th_z in [0, 0]
-                bl_x in [0, 46]
-                bl_y in [0, 0]
-                bl_z in [0, 0]
-                chunk_id in [0, 0]
-                unroll_id in [0, 0]
-                th_x + bl_x * 128 in [0, 5999]
+                th_x in [0, 128)
+                th_y in [0, 1)
+                th_z in [0, 1)
+                bl_x in [0, 47)
+                bl_y in [0, 1)
+                bl_z in [0, 1)
+                chunk_id in [0, 1)
+                unroll_id in [0, 1)
+                th_x + bl_x * 128 in [0, 6000)
             )"));
+}
+
+TEST_F(MlirLoopFusionTest, Constant_Broadcast) {
+  auto kHloString = R"(
+    HloModule module
+
+    bcast {
+      zero = bf16[] constant(0)
+      ROOT broadcast = bf16[2,16,48]{2,1,0} broadcast(zero), dimensions={}
+    }
+
+    ENTRY entry {
+      ROOT %fusion = bf16[2,16,48]{2,1,0} fusion(), kind=kLoop, calls=bcast
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d1 * 1024 + d0)>
+    // CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 768) mod 2)>
+    // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1) -> (((d1 * 1024 + d0) floordiv 48) mod 16)>
+    // CHECK: #[[MAP3:.*]] = affine_map<(d0, d1) -> ((d1 * 1024 + d0) mod 48)>
+    // CHECK: func.func @fused_computation(%[[ARG0:.*]]: tensor<2x16x48xbf16>
+    // CHECK: %[[UPPER_BOUND:.*]] = arith.constant 1535 : index
+    // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id
+    // CHECK: %[[BLOCK_ID:.*]] = gpu.block_id
+    // CHECK: %[[LINEAR:.*]] = xla_gpu.apply_indexing #[[MAP0]]
+    // CHECL: %[[IN_BOUNDS:.*]] = arith.cmpi sle, %[[LINEAR]], %[[UPPER_BOUND]] : index
+    // scf.if %[[IN_BOUNDS]]
+    // CHECK: %[[I0:.*]] = xla_gpu.apply_indexing #[[MAP1]]
+    // CHECK: %[[I1:.*]] = xla_gpu.apply_indexing #[[MAP2]]
+    // CHECK: %[[I2:.*]] = xla_gpu.apply_indexing #[[MAP3]]
+    // CHECK: %[[BCAST:.*]] = xla_gpu.pure_call @bcast_broadcast
+    // CHECK: %[[INSERTED:.*]] = tensor.insert %[[BCAST]] into %[[ARG0]][%[[I0]], %[[I1]], %[[I2]]]
+    // CHECK: func.func private @bcast_broadcast
+    // CHECK: arith.constant 0.000000e+00
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0}));
 }
 
 TEST_F(MlirLoopFusionTest, NoCodeDuplication) {
@@ -263,7 +301,9 @@ TEST_F(MlirLoopFusionTest, ComplexOps) {
       %p1 = f32[2]{0} parameter(1)
       %p2 = c64[2]{0} parameter(2)
       %complex = c64[2] complex(%p0, %p1)
-      ROOT %add = c64[2] add(%complex, %p2)
+      %add = c64[2] add(%complex, %p2)
+      %cst = c64[2]{0} constant({(2.0, 0.0), (0.0, 2.0)})
+      ROOT %mul = c64[2] multiply(%add, %cst)
     }
     ENTRY entry_computation {
       p0 = f32[2] parameter(0)
@@ -275,16 +315,19 @@ TEST_F(MlirLoopFusionTest, ComplexOps) {
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
-    // CHECK-NEXT: pure_call @fused_computation_add
+    // CHECK-NEXT: pure_call @fused_computation_mul
     // CHECK-NEXT: tensor.insert
     // CHECK-NEXT: return
 
-    // CHECK: func.func private @fused_computation_add
+    // CHECK: func.func private @fused_computation_mul
+    // CHECK-NEXT: arith.constant
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: complex.create
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: complex.add
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: complex.mul
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -380,9 +423,90 @@ TEST_F(MlirLoopFusionTest, MinimumMaximum) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-LABEL: fused_computation_tuple
-    // CHECK:   arith.minimumf
-    // CHECK:   arith.maximumf
+    // CHECK:       func.func @fused_computation
+    // CHECK:         xla_gpu.pure_call @fused_computation_tuple
+    // CHECK:       func.func private @fused_computation_tuple
+    // CHECK-DAG:     arith.minimumf
+    // CHECK-DAG:     arith.maximumf
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, TupleBitcast) {
+  auto kHloString = R"(
+    HloModule Test
+
+    fused_computation {
+      param0 = f64[8] parameter(0)
+      param1 = f64[8] parameter(1)
+
+      minimum = f64[8] minimum(param0, param1)
+      maximum = f64[8] maximum(param0, param1)
+      bc = f64[2, 4] bitcast(maximum)
+      ROOT tuple = (f64[8], f64[2,4]) tuple(minimum, bc)
+    }
+
+    ENTRY main {
+      param0 = f64[8] parameter(0)
+      param1 = f64[8] parameter(1)
+      ROOT fusion = (f64[8], f64[2,4]) fusion(param0, param1),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, NestedTuple) {
+  auto kHloString = R"(
+    add {
+      scalar_lhs.0 = f32[] parameter(0)
+      scalar_lhs.1 = f32[] parameter(1)
+      scalar_rhs.0 = f32[] parameter(2)
+      scalar_rhs.1 = f32[] parameter(3)
+      add = f32[] add(scalar_lhs.0, scalar_rhs.0)
+      mul = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
+      ROOT t = (f32[], f32[]) tuple(add, mul)
+    }
+    fused_computation {
+      param_0 = f32[3,4,5]{2,1,0} parameter(0)
+      param_1 = f32[3,4,5]{2,1,0} parameter(1)
+      param_2 = f32[] parameter(2)
+      param_3 = f32[4] parameter(3)
+      reduce = (f32[4], f32[4]) reduce(f32[3,4,5]{2,1,0} param_0,
+          f32[3,4,5]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
+          dimensions={0,2}, to_apply=add
+      log = f32[4] log(param_3)
+      ROOT tuple = ((f32[4], f32[4]), f32[4]) tuple(reduce, log)
+    }
+    ENTRY main {
+      a = f32[3,4,5]{2,1,0} parameter(0)
+      b = f32[3,4,5]{2,1,0} parameter(1)
+      c = f32[] constant(0)
+      d = f32[4] parameter(2)
+      ROOT fusion = ((f32[4], f32[4]), f32[4]) fusion(a, b, c, d),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, DynamicSliceWith64BitInput) {
+  // Lowering this kernel with 32 bit indices causes an underflow of `c`,
+  // resulting in slicing the last four elements instead of the first four.
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      %p0 = s64[] parameter(0)
+      %p1 = f64[5] parameter(1)
+      ROOT slice = f64[4] dynamic-slice(%p1, %p0), dynamic_slice_sizes={4}
+    }
+
+    ENTRY main {
+      %c = s64[] constant(-1000000000000)
+      %p0 = f64[5] parameter(0)
+      ROOT %fusion = f64[4]{0} fusion(%c, %p0), kind=kInput, calls=%fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64 : i32>>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

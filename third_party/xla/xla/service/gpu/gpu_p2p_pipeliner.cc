@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
-#include "xla/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -38,20 +38,34 @@ namespace gpu {
 namespace {
 
 bool ShouldPipeline(const HloInstruction* instr) {
-  if (!HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr)) {
+  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
     return false;
   }
-
   // Not annotated for pipelining.
   auto it = instr->frontend_attributes().map().find(kSendRecvPipelineAttr);
   if (it == instr->frontend_attributes().map().end()) {
     return false;
   }
 
-  // Check that the Send or Recv is used for non-trivial computation. This
-  // avoids repeatedly pipelining a loop.
-  return (instr->user_count() == 1 && instr->parent() != nullptr &&
-          instr->users()[0] != instr->parent()->root_instruction());
+  // Allow RecvDone to have a Send as a control predecessor. This control
+  // predecessor will be dropped by the pipeliner, which is what we needed
+  // when we rotate the RecvDone to the beginning of the while-body.
+  auto allowed_predecessor = [&]() {
+    return instr->opcode() == HloOpcode::kRecvDone &&
+           instr->control_predecessors().size() == 1 &&
+           instr->control_predecessors()[0]->opcode() == HloOpcode::kSend;
+  };
+  if (!instr->control_successors().empty() ||
+      (!instr->control_predecessors().empty() && !allowed_predecessor())) {
+    return false;
+  }
+
+  // Checks that the SendDone or RecvDone is used for non-trivial computation.
+  // This avoids repeatedly pipelining a loop.
+  bool is_pipelined =
+      (instr->user_count() == 1 && instr->parent() != nullptr &&
+       instr->users()[0] == instr->parent()->root_instruction());
+  return !is_pipelined;
 }
 
 bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
@@ -62,14 +76,22 @@ bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
   return true;
 }
 
-Status PostprocessP2PImpl(
+absl::Status PostprocessP2PImpl(
     HloInstruction* instr,
     std::function<std::string(std::vector<ReplicaGroup>&)> transformer) {
+  // The input instruction is a Done instruction.
+  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
+    return Internal("Expected SendDone/RecvDone as the pipelined collective");
+  }
+  instr = instr->mutable_operand(0);
+  if (!HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr)) {
+    return Internal("Expected Send/Recv as the SendDone/RecvDone operand");
+  }
   auto validation_it =
       instr->frontend_attributes().map().find(kSendRecvValidationAttr);
   if (validation_it == instr->frontend_attributes().map().end() ||
       validation_it->second == "invalid") {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto statusor_bounds = ParseReplicaGroupsOnly(validation_it->second);
   if (!statusor_bounds.ok()) {
@@ -79,12 +101,12 @@ Status PostprocessP2PImpl(
   xla::FrontendAttributes attributes = instr->frontend_attributes();
   (*attributes.mutable_map())[kSendRecvValidationAttr] = validation_attr;
   instr->set_frontend_attributes(attributes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Modifies the loop iteration frontend attribute for the peeled off Send and
 // Recv for the first iteration of a loop.
-Status PostprocessPeeledP2P(HloInstruction* instr) {
+absl::Status PostprocessPeeledP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -127,7 +149,7 @@ Status PostprocessPeeledP2P(HloInstruction* instr) {
 
 // Modifies the loop iteration frontend attribute for the rotated Send and Recv
 // for the remaining iterations in a loop.
-Status PostprocessRotatedP2P(HloInstruction* instr) {
+absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -189,11 +211,15 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward, ShouldPipeline,
+      CollectivePipeliner::PipeliningDirection::kBackward,
+      /*should_process=*/ShouldPipeline,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
-      ShouldAllowLoopVariantParameterInChain, PostprocessPeeledP2P,
-      PostprocessRotatedP2P};
+      /*should_allow_loop_variant_parameter_in_chain=*/
+      ShouldAllowLoopVariantParameterInChain,
+      /*should_allow_control_dependencies=*/true,
+      /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
+      /*=postprocess_backward_rotated_op*/ PostprocessRotatedP2P};
   pipeline.AddPass<CollectivePipeliner>(config);
 }
 

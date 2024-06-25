@@ -18,6 +18,8 @@ from typing import Any, Callable, Optional, Sequence, Tuple
 import numpy as np
 from xla.python import xla_extension
 
+from . import pytree
+
 Client = xla_extension.Client
 Device = xla_extension.Device
 
@@ -50,3 +52,26 @@ def _ArgSignatureOfValue(
     __jax_enable_x64: bool) -> ArgSignature: ...
 
 def _is_float0(__arg: Any) -> bool: ...
+
+
+class ArgumentSignature:
+  static_args: Sequence[Any]
+  static_arg_names: Sequence[str]
+  dynamic_arg_names: Sequence[str]
+  dynamic_arg_treedefs: Sequence[pytree.PyTreeDef]
+
+  def __eq__(self, value, /): ...
+  def __ne__(self, value, /): ...
+  def __hash__(self, /): ...
+  def __str__(self): ...
+  def __repr__(self): ...
+
+
+def parse_arguments(
+    positional_args: Sequence[Any],
+    keyword_args: Sequence[Any],
+    kwnames: Tuple[str, ...],
+    static_argnums: Sequence[int],
+    static_argnames: Sequence[str],
+    pytree_registry: pytree.PyTreeRegistry,
+) -> tuple[ArgumentSignature, Sequence[Any]]: ...

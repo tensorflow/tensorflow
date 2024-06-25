@@ -30,7 +30,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "tsl/python/lib/core/numpy.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 
 #if NPY_ABI_VERSION < 0x02000000
 #define PyDataType_ELSIZE(descr) ((descr)->elsize)
@@ -84,6 +84,10 @@ class nb_numpy_ndarray : public nanobind::object {
   // In case of an error, nullptr is returned and the Python error is cleared.
   static nb_numpy_ndarray ensure(nanobind::handle h,
                                  int extra_requirements = 0);
+
+  // Constructs a numpy ndarray via the PyArray_From Any API. This throws an
+  // error if an exception occurs.
+  static nb_numpy_ndarray from_any(nanobind::handle h, int extra_requirements);
 
   nb_dtype dtype() const;
   npy_intp ndim() const;

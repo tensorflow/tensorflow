@@ -270,3 +270,4 @@ cudnnSpatialTfSamplerForward
 cudnnTransformFilter
 cudnnTransformTensor
 cudnnTransformTensorEx
+cudnnGetLastErrorString

@@ -365,7 +365,7 @@ struct RestoreOp {
 Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                         const Tensor& tensor_names,
                         const Tensor& shape_and_slices,
-                        gtl::ArraySlice<DataType> dtypes) {
+                        absl::Span<const DataType> dtypes) {
   const string& prefix_string = prefix.scalar<tstring>()();
 
   const auto& tensor_names_flat = tensor_names.flat<tstring>();

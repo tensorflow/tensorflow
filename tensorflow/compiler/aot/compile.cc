@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/status/statusor.h"
 #include "llvm-c/Target.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/client/compile_only_client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -100,7 +100,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -196,6 +196,13 @@ static void InitializeTargets() {
   LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
 #endif
+#if TF_LLVM_HEXAGON_AVAILABLE
+  LLVMInitializeHexagonTarget();
+  LLVMInitializeHexagonTargetInfo();
+  LLVMInitializeHexagonTargetMC();
+  LLVMInitializeHexagonAsmParser();
+  LLVMInitializeHexagonAsmPrinter();
+#endif
 #if TF_LLVM_POWERPC_AVAILABLE
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
@@ -252,7 +259,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Read and initialize the graph.
@@ -306,7 +313,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfcompile

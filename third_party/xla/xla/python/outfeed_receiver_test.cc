@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
@@ -33,8 +34,8 @@ namespace xla {
 
 namespace {
 
-Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
-                         PjRtClient* client) {
+absl::Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
+                               PjRtClient* client) {
   XlaComputation computation = builder->Build(root).value();
 
   CompileOptions compile_options;
@@ -51,7 +52,7 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Accumulates the received data.
@@ -79,7 +80,8 @@ class Accumulator {
 
 // TODO(necula): update this test for the TFRT CPU client, which current does
 // not support non-local devices.
-// StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
+// absl::StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice()
+// {
 //   TF_ASSIGN_OR_RETURN(se::Platform * platform,
 //                       PlatformUtil::GetPlatform("Host"));
 //   if (platform->VisibleDeviceCount() <= 0) {
@@ -113,11 +115,12 @@ class Accumulator {
 TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetTfrtCpuClient(CpuClientOptions()));
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+  auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+  std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+      [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
@@ -146,11 +149,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetTfrtCpuClient(CpuClientOptions()));
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+  auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+  std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+      [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
@@ -191,11 +195,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetTfrtCpuClient(CpuClientOptions()));
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+  auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+  std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+      [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
@@ -234,11 +239,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
 TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetTfrtCpuClient(CpuClientOptions()));
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+  auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+  std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+      [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
@@ -261,18 +267,26 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   absl::StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
       &builder, send0, consumer_id0, {data1}, 0);
   EXPECT_FALSE(send1.ok());
-  EXPECT_THAT(send1.status().ToString(),
-              testing::HasSubstr("does not match previous shape element_type"));
+  EXPECT_THAT(
+      send1.status().ToString(),
+      testing::ContainsRegex(
+#if defined(PLATFORM_WINDOWS)
+          "does not match previous shape \\w*/*\\w* *\\n?element_type"));
+#else
+          "does not match previous shape (go/\\w+[ "
+          "]+\\n)?element_type"));
+#endif
 }
 
 TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetTfrtCpuClient(CpuClientOptions()));
-  std::vector<PjRtClient*> clients{cpu_client.get()};
+  auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+  std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
   auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+      [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
@@ -294,11 +308,12 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
 // TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
 //   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
 //                           GetCpuClientWithNonLocalDevice());
-//   std::vector<PjRtClient*> clients{cpu_client.get()};
+//     auto ifrt_cpu_client = ifrt::PjRtClient::Create(cpu_client);
+// std::vector<ifrt::PjRtClient*> clients{ifrt_cpu_client.get()};
 
 //   auto receiver = std::make_unique<Accumulator>();
 //   OutfeedReceiver::Callback callback =
-//       [&receiver](PjRtDevice* device, uint32_t consumer_id,
+//       [&receiver](xla::ifrt::PjRtDevice* device, uint32_t consumer_id,
 //                   std::shared_ptr<Literal> data) {
 //         receiver->Receive(consumer_id, data);
 //       };

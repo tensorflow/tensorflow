@@ -346,7 +346,7 @@ HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
 }  // namespace
 
 // Distributed FFT using the algorithm described in go/tpu-spmd-fft.
-Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   if (hlo->operand(0)->shape().rank() < 3 || hlo->fft_type() != FftType::FFT) {
     return DefaultAction(hlo);
   }
@@ -427,7 +427,7 @@ Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   auto partitioned_fft =
       PartitionedHlo(result, hlo->shape(), partitioned_input.state());
   SetPartitionedHlo(hlo, partitioned_fft);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -56,7 +56,7 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
 
 CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
                                        ThunkInfo thunk_info,
-                                       std::optional<ThunkSequence> thunks)
+                                       std::unique_ptr<SequentialThunk> thunks)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)),
       thunks_(std::move(thunks)),
@@ -80,6 +80,10 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     const CommandBufferCmdSequence& commands,
     const Thunk::ExecuteParams& params) {
+  if (commands.force_update()) {
+    return true;
+  }
+
   bool should_update = false;
   const BufferAllocations* allocs = params.buffer_allocations;
 
@@ -112,10 +116,8 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params,
 
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
-  if (thunks_.has_value()) {
-    for (auto& thunk : *thunks_) {
-      TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
-    }
+  if (thunks_) {
+    TF_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
   }
 
   return absl::OkStatus();
@@ -135,27 +137,29 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
-  if (thunks_.has_value()) {
-    for (auto& thunk : *thunks_) {
-      TF_RETURN_IF_ERROR(thunk->Initialize(params));
-    }
+  if (thunks_) {
+    TF_RETURN_IF_ERROR(thunks_->Initialize(params));
   }
 
   // Construct ExecuteParams with empty fields for everything that is not needed
   // for recording commands.
   Thunk::ExecuteParams execute_params(
       params.buffer_allocations, params.stream,
-      params.command_buffer_trace_stream, {}, params.collective_params,
+      params.command_buffer_trace_stream, params.collective_params,
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr);
+      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
+  //
+  // If command buffer in any other state we check it is has to be updated, i.e.
+  // if captured pointers changed or command buffer has commands that require
+  // update on each call.
   if (cmd_buffer->command_buffer->state() ==
           se::CommandBuffer::State::kCreate &&
       cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
@@ -181,6 +185,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << params.executor->device_ordinal() << " in "
             << (end_micros - start_micros)
             << " μs; num_commands=" << commands_.size();
+    cmd_buffer->num_executions = 0;
   }
 
   return absl::OkStatus();
@@ -194,15 +199,10 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // TODO(b/290773547): Profiler (CUPTI) + CUDA graphs lead to memory
   // corruption. As a work around disable command buffers (CUDA graphs) and run
   // everything in op-by-op mode.
-  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_.has_value()) {
+  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
-    const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
-    for (auto& thunk : *thunks_) {
-      auto scoped_annotation =
-          GetKernelAnnotation(annotations, thunk->profile_annotation());
-      TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
-    }
+    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
     return absl::OkStatus();
   }
 
@@ -265,7 +265,9 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
+  TF_ASSIGN_OR_RETURN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       executor,
       std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));

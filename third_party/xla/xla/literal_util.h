@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
@@ -251,7 +251,7 @@ class LiteralUtil {
 
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
@@ -260,7 +260,7 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation, and using the engine as entropy generator.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename E,
             typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
@@ -270,7 +270,7 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
                                                      T stddev);

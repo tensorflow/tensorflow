@@ -10,6 +10,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
+load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
@@ -19,6 +20,7 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     dlpack()
     gloo()
+    mpitrampoline()
     nanobind()
     robin_map()
     stablehlo()
@@ -35,12 +37,20 @@ def _tf_repositories():
     # and update the sha256 with the result.
 
     tf_http_archive(
+        name = "jsoncpp_git",
+        sha256 = "f409856e5920c18d0c2fb85276e24ee607d2a09b5e7d5f0a371368903c275da2",
+        strip_prefix = "jsoncpp-1.9.5",
+        system_build_file = "//third_party/systemlibs:jsoncpp.BUILD",
+        urls = tf_mirror_urls("https://github.com/open-source-parsers/jsoncpp/archive/1.9.5.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "c2f5373ddf84e33d289dad5766667f52de652dfbbb1dccb2fada9cfcf2d774cf",
-        strip_prefix = "cudnn-frontend-1.1.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.1.0.zip"),
+        sha256 = "281789777ac296f5f8215a7c4bd066de8816d240eb44c760788beebf8d25a99f",
+        strip_prefix = "cudnn-frontend-1.5.1",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.5.1.zip"),
     )
 
     tf_http_archive(

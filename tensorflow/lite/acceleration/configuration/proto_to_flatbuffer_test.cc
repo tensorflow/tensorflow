@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -114,6 +115,122 @@ TEST(ConversionTest, StableDelegateLoaderSettings) {
             kDelegatePath);
   EXPECT_EQ(output_stable_delegate_loader_settings->delegate_name()->str(),
             kDelegateName);
+}
+
+TEST(ConversionTest, CompilationCachingSettings) {
+  // Define the fields to be tested.
+  const std::string kCacheDir = "TEST_CACHE_DIR";
+  const std::string kModelToken = "TEST_MODEL_TOKEN";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* compilation_caching_settings =
+      input_settings.mutable_compilation_caching_settings();
+  compilation_caching_settings->set_cache_dir(kCacheDir);
+  compilation_caching_settings->set_model_token(kModelToken);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_compilation_caching_settings =
+      output_settings->compilation_caching_settings();
+  ASSERT_NE(output_compilation_caching_settings, nullptr);
+  EXPECT_EQ(output_compilation_caching_settings->cache_dir()->str(), kCacheDir);
+  EXPECT_EQ(output_compilation_caching_settings->model_token()->str(),
+            kModelToken);
+}
+
+TEST(ConversionTest, ArmNNSettings) {
+  // Define the fields to be tested.
+  const std::string kBackends = "TEST_BACKENDS";
+  const bool kFastmath = true;
+  const std::string kAdditionalParameters = "TEST_ADDITIONAL_PARAMETERS";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* armnn_settings = input_settings.mutable_armnn_settings();
+  armnn_settings->set_backends(kBackends);
+  armnn_settings->set_fastmath(kFastmath);
+  armnn_settings->set_additional_parameters(kAdditionalParameters);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_armnn_settings = output_settings->armnn_settings();
+  ASSERT_NE(output_armnn_settings, nullptr);
+  EXPECT_EQ(output_armnn_settings->backends()->str(), kBackends);
+  EXPECT_EQ(output_armnn_settings->fastmath(), kFastmath);
+  EXPECT_EQ(output_armnn_settings->additional_parameters()->str(),
+            kAdditionalParameters);
+}
+
+TEST(ConversionTest, MtkNeuronSettings) {
+  // Define the fields to be tested.
+  const proto::MtkNeuronSettings_ExecutionPreference kExecutionPreference =
+      proto::MtkNeuronSettings::PREFERENCE_FAST_SINGLE_ANSWER;
+  const proto::MtkNeuronSettings_ExecutionPriority kExecutionPriority =
+      proto::MtkNeuronSettings::PRIORITY_MEDIUM;
+  const proto::MtkNeuronSettings_OptimizationHint kOptimizationHint =
+      proto::MtkNeuronSettings::OPTIMIZATION_LOW_LATENCY;
+  const proto::MtkNeuronSettings_OperationCheckMode kOperationCheckMode =
+      proto::MtkNeuronSettings::PER_NODE_OPERATION_CHECK;
+  const bool kAllowFp16 = true;
+  const bool kUseAhwb = false;
+  const bool kUseCacheableBuffer = true;
+  const std::string kCompileOptions = "TEST_COMPILE_OPTIONS";
+  const std::string kAcceleratorName = "TEST_ACCELERATOR_NAME";
+  const std::string kNeuronConfigPath = "TEST_NEURON_CONFIG_PATH";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* mtk_neuron_settings = input_settings.mutable_mtk_neuron_settings();
+  mtk_neuron_settings->set_execution_preference(kExecutionPreference);
+  mtk_neuron_settings->set_execution_priority(kExecutionPriority);
+  mtk_neuron_settings->add_optimization_hints(kOptimizationHint);
+  mtk_neuron_settings->set_operation_check_mode(kOperationCheckMode);
+  mtk_neuron_settings->set_allow_fp16_precision_for_fp32(kAllowFp16);
+  mtk_neuron_settings->set_use_ahwb(kUseAhwb);
+  mtk_neuron_settings->set_use_cacheable_buffer(kUseCacheableBuffer);
+  mtk_neuron_settings->add_compile_options(kCompileOptions);
+  mtk_neuron_settings->add_accelerator_names(kAcceleratorName);
+  mtk_neuron_settings->set_neuron_config_path(kNeuronConfigPath);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_mtk_neuron_settings =
+      output_settings->mtk_neuron_settings();
+  ASSERT_NE(output_mtk_neuron_settings, nullptr);
+  EXPECT_EQ(
+      output_mtk_neuron_settings->execution_preference(),
+      MtkNeuronSettings_::ExecutionPreference_PREFERENCE_FAST_SINGLE_ANSWER);
+  EXPECT_EQ(output_mtk_neuron_settings->execution_priority(),
+            MtkNeuronSettings_::ExecutionPriority_PRIORITY_MEDIUM);
+
+  EXPECT_EQ(output_mtk_neuron_settings->optimization_hints()->size(), 1);
+  EXPECT_EQ(output_mtk_neuron_settings->optimization_hints()->Get(0),
+            kOptimizationHint);
+  EXPECT_EQ(output_mtk_neuron_settings->operation_check_mode(),
+            MtkNeuronSettings_::OperationCheckMode_PER_NODE_OPERATION_CHECK);
+  EXPECT_EQ(output_mtk_neuron_settings->allow_fp16_precision_for_fp32(),
+            kAllowFp16);
+  EXPECT_EQ(output_mtk_neuron_settings->use_ahwb(), kUseAhwb);
+  EXPECT_EQ(output_mtk_neuron_settings->use_cacheable_buffer(),
+            kUseCacheableBuffer);
+  EXPECT_EQ(output_mtk_neuron_settings->compile_options()->size(), 1);
+  EXPECT_EQ(output_mtk_neuron_settings->compile_options()->Get(0)->str(),
+            kCompileOptions);
+  EXPECT_EQ(output_mtk_neuron_settings->accelerator_names()->size(), 1);
+  EXPECT_EQ(output_mtk_neuron_settings->accelerator_names()->Get(0)->str(),
+            kAcceleratorName);
+  EXPECT_EQ(output_mtk_neuron_settings->neuron_config_path()->str(),
+            kNeuronConfigPath);
 }
 
 }  // namespace

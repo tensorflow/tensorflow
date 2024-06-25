@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
 
-#include "xla/status.h"
+#include <stdbool.h>
+
+#include "absl/status/status.h"
 
 namespace mlir {
 class ModuleOp;
@@ -27,17 +29,28 @@ class HloModule;
 class HloModuleProto;
 
 // Converts an HLO module proto to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
+//
+// If `import_all_computation` is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto const* hlo_module,
-                           bool import_all_computations = false);
+//
+// If `flatten_computation_args_result` is set to true, flattens all tuple
+// arguments and result of every computation when importing them as func ops.
+absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
+                                 xla::HloModuleProto const* hlo_module,
+                                 bool import_all_computations = false,
+                                 bool flatten_computation_args_result = false);
 
 // Converts an HLO module to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
+//
+// If `import_all_computation` is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
-                           bool import_all_computations = false);
+//
+// If `flatten_computation_args_result` is set to true, flattens all tuple
+// arguments and result of every computation when importing them as func ops.
+absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
+                                 xla::HloModule* hlo_module,
+                                 bool import_all_computations = false,
+                                 bool flatten_computation_args_result = false);
 
 }  // namespace xla
 

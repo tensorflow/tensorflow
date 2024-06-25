@@ -95,9 +95,9 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
       OperandRange updates = scatter_op.getUpdates();
       if (operands.size() != 1 || updates.size() != 1) return failure();
 
-      ShapedType operand_type = operands[0].getType().cast<ShapedType>();
-      ShapedType indices_type = indices.getType().cast<ShapedType>();
-      ShapedType updates_type = updates[0].getType().cast<ShapedType>();
+      ShapedType operand_type = mlir::cast<ShapedType>(operands[0].getType());
+      ShapedType indices_type = mlir::cast<ShapedType>(indices.getType());
+      ShapedType updates_type = mlir::cast<ShapedType>(updates[0].getType());
 
       Value new_updates = updates[0];
 

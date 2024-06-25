@@ -96,6 +96,30 @@ func.func @hoist_const_return(%arg: tensor<i32> {tf_saved_model.index_path = ["i
 
 module attributes {tf_saved_model.semantics} {
 
+// Test not hoisting `tf.BatchFunction`.
+
+// CHECK-LABEL: func @_tfrt_resource_init
+// CHECK: [[const:%.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> {device = "/CPU:0"} : () -> tensor<1xi32>
+// CHECK: "tf._TfrtSetResource"([[const]]) <{index = 0 : i64}> {device = "/CPU:0"} : (tensor<1xi32>) -> ()
+
+// CHECK-LABEL: func.func private @func_with_batch_function
+func.func private @func_with_batch_function() -> tensor<*xi32> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:0"}} {
+  // CHECK:  "tf._TfrtGetResource"()
+  %cst = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> {device = "/CPU:0"} : () -> tensor<1xi32>
+  // CHECK:  "tf.BatchFunction"
+  %0 = "tf.BatchFunction"(%cst) <{allowed_batch_sizes = [1], batch_timeout_micros = 5000 : i64, batching_queue = "", container = "", enable_large_batch_splitting = true, f = @_batched, low_priority_allowed_batch_sizes = [], low_priority_batch_timeout_micros = 0 : i64, low_priority_max_batch_size = 0 : i64, low_priority_max_enqueued_batches = 0 : i64, max_batch_size = 1 : i64, max_enqueued_batches = 1 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = "batch_function___inference_signature_wrapper_fn_with_defaults_36"}> {device = "/CPU:0"} : (tensor<1xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+func.func private @_batched(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  return %arg0 : tensor<1xi32>
+}
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
 // Test hoisting write side-effect ops.
 
 // CHECK-LABEL: func @_tfrt_resource_init

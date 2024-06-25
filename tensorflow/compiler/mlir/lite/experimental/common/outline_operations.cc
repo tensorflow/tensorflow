@@ -44,7 +44,7 @@ namespace common {
 
 bool IsConstantOrNone(Operation* op) {
   return (op->getNumResults() == 1 &&
-          op->getResult(0).getType().isa<NoneType>()) ||
+          mlir::isa<NoneType>(op->getResult(0).getType())) ||
          matchPattern(op, m_Constant()) || isa<QConstOp>(op);
 }
 

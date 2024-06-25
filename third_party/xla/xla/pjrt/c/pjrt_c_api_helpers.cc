@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -135,6 +135,21 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
 
     pjrt::LogFatalIfPjrtError(
         api->PJRT_TopologyDescription_Destroy(&destroy_args), api);
+  };
+}
+
+PJRT_Layouts_MemoryLayoutDeleter MakeMemoryLayoutDeleter(const PJRT_Api* api) {
+  PJRT_Layouts_Extension* ext_api =
+      FindExtension<PJRT_Layouts_Extension>(api, PJRT_Extension_Type_Layouts);
+  CHECK_NE(ext_api, nullptr) << "MakeMemoryLayoutDeleter passed PJRT_Api that "
+                                "doesn't support layouts extension";
+  return [api, ext_api](PJRT_Layouts_MemoryLayout* layout) -> void {
+    PJRT_Layouts_MemoryLayout_Destroy_Args args;
+    args.struct_size = PJRT_Layouts_MemoryLayout_Destroy_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.layout = layout;
+    pjrt::LogFatalIfPjrtError(ext_api->PJRT_Layouts_MemoryLayout_Destroy(&args),
+                              api);
   };
 }
 
@@ -244,6 +259,10 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID;
     case xla::PrimitiveType::PRED:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
+    case xla::PrimitiveType::TOKEN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN;
+    case xla::PrimitiveType::S2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S2;
     case xla::PrimitiveType::S4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S4;
     case xla::PrimitiveType::S8:
@@ -254,6 +273,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U2;
     case xla::PrimitiveType::U4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U4;
     case xla::PrimitiveType::U8:
@@ -297,6 +318,10 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
   switch (type) {
     case PJRT_Buffer_Type::PJRT_Buffer_Type_PRED:
       return xla::PrimitiveType::PRED;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN:
+      return xla::PrimitiveType::TOKEN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S2:
+      return xla::PrimitiveType::S2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
       return xla::PrimitiveType::S4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S8:
@@ -307,6 +332,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U2:
+      return xla::PrimitiveType::U2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
       return xla::PrimitiveType::U4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U8:
@@ -349,8 +376,10 @@ const char* HostBufferSemanticsToString(
   switch (h) {
     case xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall:
       return "xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall";
-    case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
-      return "xla::PjRtClient::HostBufferSemantics::kZeroCopy";
+    case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
+      return "xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy";
+    case xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy:
+      return "xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy";
     case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
       return "xla::PjRtClient::HostBufferSemantics::"
              "kImmutableUntilTransferCompletes";
@@ -366,8 +395,12 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
     case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
       return PJRT_HostBufferSemantics::
           PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes;
-    case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
-      return PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy;
+    case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kImmutableZeroCopy;
+    case xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kMutableZeroCopy;
     default:
       CHECK(false)
           << "Input host buffer semantics is not supported in C API layer: "
@@ -385,28 +418,29 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
         PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes:
       return xla::PjRtClient::HostBufferSemantics::
           kImmutableUntilTransferCompletes;
-    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy:
-      return xla::PjRtClient::HostBufferSemantics::kZeroCopy;
+    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kImmutableZeroCopy:
+      return xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy;
+    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kMutableZeroCopy:
+      return xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy;
   }
 }
 
-xla::PjRtFuture<absl::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                                       const PJRT_Api* c_api) {
-  using absl::Status, xla::PjRtFuture;
+xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                           const PJRT_Api* c_api) {
+  using xla::PjRtFuture;
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise, c_event, c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          absl::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
-          promise.Set(s);
+          promise.Set(::pjrt::PjrtErrorToStatus(error, c_api));
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set(absl::OkStatus());
+          promise.Set();
         }
         ::pjrt::MakeEventDeleter(c_api)(c_event);
       });
@@ -419,10 +453,9 @@ xla::PjRtFuture<absl::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 
   PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
   if (error != nullptr) {
-    absl::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
-    return PjRtFuture<Status>(s);
+    return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error, c_api));
   }
-  return PjRtFuture<Status>(std::move(promise));
+  return PjRtFuture<>(std::move(promise));
 }
 
 static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
@@ -559,6 +592,22 @@ absl::Status ValidateCreateOptions(
     }
   }
   return absl::OkStatus();
+}
+
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
+  constexpr absl::string_view kXlaVersion = "xla_version";
+  PJRT_NamedValue c_value;
+  c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+  c_value.extension_start = nullptr;
+  c_value.name = kXlaVersion.data();
+  c_value.name_size = kXlaVersion.size();
+  c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
+  // TODO(b/327203806): figure out where to keep the xla_version.
+  c_value.int64_value = 2;
+  c_value.value_size = 1;
+  static const std::vector<PJRT_NamedValue>* c_values =
+      new std::vector<PJRT_NamedValue>({c_value});
+  return *c_values;
 }
 
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
@@ -874,14 +923,21 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
   return {args.dims, args.num_dims};
 }
 
-PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
-                                         PJRT_Buffer* buffer) {
-  PJRT_Buffer_GetMemoryLayout_Args args;
-  args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+std::unique_ptr<PJRT_Layouts_MemoryLayout, PJRT_Layouts_MemoryLayoutDeleter>
+GetMemoryLayout(const PJRT_Api* api, PJRT_Buffer* buffer) {
+  PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args args;
+  args.struct_size = PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer;
-  LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
-  return args.layout;
+  PJRT_Layouts_Extension* ext_api =
+      FindExtension<PJRT_Layouts_Extension>(api, PJRT_Extension_Type_Layouts);
+  CHECK_NE(ext_api, nullptr) << "GetMemoryLayout called with PJRT_Api that "
+                                "doesn't support layouts extension";
+  LogFatalIfPjrtError(ext_api->PJRT_Layouts_PJRT_Buffer_MemoryLayout(&args),
+                      api);
+  return std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                         PJRT_Layouts_MemoryLayoutDeleter>(
+      args.layout, MakeMemoryLayoutDeleter(api));
 }
 
 absl::StatusOr<xla::Shape> BuildXlaShapeFromC(

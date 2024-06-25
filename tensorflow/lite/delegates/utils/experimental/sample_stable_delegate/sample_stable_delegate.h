@@ -42,10 +42,9 @@ class SampleStableDelegate : public SimpleOpaqueDelegateInterface {
   // Returns true if the inputs of 'node' are two tensors of float32 with the
   // same shape and the operation is addition or subtraction (without fused
   // activation).
-  bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node,
-      TfLiteOpaqueContext* context) const override;
+  bool IsNodeSupportedByDelegate(const TfLiteOperator* registration_external,
+                                 const TfLiteOpaqueNode* node,
+                                 TfLiteOpaqueContext* context) const override;
 
   // No-op. The delegate doesn't have extra steps to perform during
   // initialization.

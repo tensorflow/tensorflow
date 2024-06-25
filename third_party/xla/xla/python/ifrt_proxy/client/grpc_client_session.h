@@ -23,6 +23,7 @@
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -61,12 +62,14 @@ class GrpcClientSession : public ClientSession {
       GrpcIfrtSessionMetadata metadata,
       StreamTerminatedCallback stream_terminated_cb);
 
-  Future<Response> Enqueue(std::unique_ptr<IfrtRequest> request) override;
+  Future<std::shared_ptr<IfrtResponse>> Enqueue(
+      std::unique_ptr<IfrtRequest> request) override;
 
   // `ResponseCallback` represents a function that can be invoked when
   // `ClientSession` receives an `IfrtResponse`. May be invoked by the "primary"
   // thread and with various mutex locks held.
-  using ResponseCallback = std::function<void(Response)>;
+  using ResponseCallback =
+      std::function<void(absl::StatusOr<std::shared_ptr<IfrtResponse>>)>;
 
   absl::Status Enqueue(std::unique_ptr<IfrtRequest> req,
                        ResponseCallback callback);

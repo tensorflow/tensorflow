@@ -28,18 +28,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
@@ -128,6 +128,8 @@ class Compiler {
              other.ToProto().SerializeAsString();
     }
 
+    std::string ToString() { return ToProto().DebugString(); }
+
     se::DeviceDescription device_description;
     std::string platform_name;
     se::dnn::VersionInfo dnn_version_info;
@@ -158,6 +160,8 @@ class Compiler {
     // Registry of MLIR dialects and plugins to be loaded during optimization.
     // If non-null, it will be used to construct relevant MLIR contexts.
     mlir::DialectRegistry* registry = nullptr;
+
+    MultiProcessKeyValueStore key_value_store;
   };
 
   virtual ~Compiler() = default;
@@ -175,15 +179,6 @@ class Compiler {
       se::DeviceMemoryAllocator* device_allocator) {
     return RunHloPasses(std::move(module), executor,
                         CompileOptions{device_allocator});
-  }
-
-  // Performs scheduling and buffer assignment and returns the buffer
-  // assignments.
-  // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
-  // the module must live at least as long as the buffer assignments.
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, const se::StreamExecutor* executor) {
-    return Unimplemented("This compiler does not support this method");
   }
 
   // Compiles the HLO module for execution on a device given by the executor,
@@ -448,7 +443,7 @@ class AotCompilationOptions {
     return target_config_;
   }
   void set_target_config(const Compiler::TargetConfig& target_config) {
-    target_config_ = std::move(target_config);
+    target_config_ = target_config;
   }
 
  protected:

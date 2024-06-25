@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "OutfeedDequeueTuple"
   output_arg {
     name: "outputs"

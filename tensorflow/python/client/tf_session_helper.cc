@@ -495,11 +495,11 @@ string EqualAttrValueWrapper(const string& actual, const string& expected) {
 }
 
 // Return value set to 6 inlined elements so it fits in a 64-byte cache line.
-tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+absl::InlinedVector<int64_t, 6UL> TF_GraphGetTensorShapeHelper(
     TF_Graph* graph, TF_Output output, TF_Status* out_status,
     bool* unknown_shape) {
   // Allocate a single variable for holding the result for RVO.
-  tensorflow::gtl::InlinedVector<int64_t, 6> result;
+  absl::InlinedVector<int64_t, 6UL> result;
   *unknown_shape = false;
   int num_dims = TF_GraphGetTensorNumDims(graph, output, out_status);
   if (TF_GetCode(out_status) != TF_OK) {

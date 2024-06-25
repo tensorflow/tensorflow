@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/log.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 #include "tensorflow/c/experimental/filesystem/plugins/posix/posix_filesystem.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

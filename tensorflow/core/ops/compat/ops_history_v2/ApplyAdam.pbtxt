@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ApplyAdam"
   input_arg {
     name: "var"

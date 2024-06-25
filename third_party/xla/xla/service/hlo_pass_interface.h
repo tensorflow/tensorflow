@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_HLO_PASS_INTERFACE_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -77,16 +77,16 @@ class HloPassInterface {
   //      absl::string_view name() const override { return "my-new-pass"; }
   //
   //      using HloPassInterface::Run;
-  //      StatusOr<bool> Run(
+  //      absl::StatusOr<bool> Run(
   //        HloModule* module,
   //        const absl::flat_hash_set<absl::string_view>& execution_threads)
   //        override;
   //   };
   //
-  StatusOr<bool> Run(HloModule* module) {
+  absl::StatusOr<bool> Run(HloModule* module) {
     return Run(module, /*execution_threads=*/{});
   }
-  virtual StatusOr<bool> Run(
+  virtual absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
@@ -97,7 +97,7 @@ class HloPassInterface {
   // NOTE: This is a temporary default implementation that conservatively treats
   // all computations as changed. Eventually all passes should override this
   // method instead of Run() and Run() will call into this method instead.
-  virtual Status RunOnChangedComputations(
+  virtual absl::Status RunOnChangedComputations(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(bool changed, Run(module, execution_threads));
@@ -106,7 +106,7 @@ class HloPassInterface {
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Run the pass on the given HLO module group for specified
@@ -126,16 +126,16 @@ class HloPassInterface {
   //      absl::string_view name() const override { return "my-new-pass"; }
   //
   //      using HloPassInterface::RunOnModuleGroup;
-  //      StatusOr<bool> RunOnModuleGroup(
+  //      absl::StatusOr<bool> RunOnModuleGroup(
   //        HloModuleGroup* module_group,
   //        const absl::flat_hash_set<absl::string_view>& execution_threads)
   //        override;
   //   };
   //
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
+  absl::StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
     return RunOnModuleGroup(module_group, /*execution_threads=*/{});
   }
-  virtual StatusOr<bool> RunOnModuleGroup(
+  virtual absl::StatusOr<bool> RunOnModuleGroup(
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
@@ -147,9 +147,10 @@ class HloModulePass : public HloPassInterface {
  public:
   // Runs the pass on a module group by iterating through each module in the
   // group.
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     bool changed = false;
     for (HloModule* module : module_group->modules()) {
       TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
@@ -171,9 +172,9 @@ class HloModulePass : public HloPassInterface {
 // on an HLO module.
 class HloModuleGroupPass : public HloPassInterface {
  public:
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     return Internal("Module group pass cannot be run on a module");
   }
 };

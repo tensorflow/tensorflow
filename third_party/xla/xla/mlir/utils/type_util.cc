@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/primitive_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -91,11 +92,11 @@ xla::PrimitiveType ConvertMlirTypeToPrimitiveType(mlir::Type type) {
     return xla::PrimitiveType::F32;
   } else if (type.isF64()) {
     return xla::PrimitiveType::F64;
-  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+  } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
     mlir::Type element_ty = complex_type.getElementType();
     return xla::primitive_util::ComplexType(
         ConvertMlirTypeToPrimitiveType(element_ty));
-  } else if (auto integer_type = type.dyn_cast<mlir::IntegerType>()) {
+  } else if (auto integer_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     bool is_unsigned = integer_type.isUnsigned();
     if (integer_type.getWidth() == 1) {
       return xla::PrimitiveType::PRED;

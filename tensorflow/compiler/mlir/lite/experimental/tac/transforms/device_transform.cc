@@ -156,13 +156,13 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     if (!IsQI32Type(input_dequant.getType())) return failure();
 
     auto output_type =
-        dequant_op.getOutput().getType().dyn_cast_or_null<ShapedType>();
+        mlir::dyn_cast_or_null<ShapedType>(dequant_op.getOutput().getType());
     if (!output_type || !output_type.getElementType().isF32()) return failure();
 
-    auto input_type = input_dequant.getType().dyn_cast<ShapedType>();
+    auto input_type = mlir::dyn_cast<ShapedType>(input_dequant.getType());
     // TODO(renjieliu): support UniformQuantizedPerAxisType.
-    auto q_type = input_type.getElementType()
-                      .dyn_cast_or_null<quant::UniformQuantizedType>();
+    auto q_type = mlir::dyn_cast_or_null<quant::UniformQuantizedType>(
+        input_type.getElementType());
     if (!q_type) return failure();
 
     const float scale = q_type.getScale();
@@ -183,9 +183,9 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     };
 
     auto dequant_values =
-        input_values.cast<DenseIntOrFPElementsAttr>().mapValues(
-            FloatType::getF32(rewriter.getContext()),
-            llvm::function_ref<DequantizeFuncType>(dequantize_func));
+        mlir::cast<DenseIntOrFPElementsAttr>(input_values)
+            .mapValues(FloatType::getF32(rewriter.getContext()),
+                       llvm::function_ref<DequantizeFuncType>(dequantize_func));
     rewriter.replaceOpWithNewOp<TFL::ConstOp>(dequant_op, dequant_op.getType(),
                                               dequant_values);
 

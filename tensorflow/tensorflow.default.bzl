@@ -10,7 +10,7 @@ load(
     _genrule = "genrule",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_indexing_source_code = "if_indexing_source_code",
-    _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
+    _if_not_mobile_or_arm_or_macos_or_lgpl_restricted = "if_not_mobile_or_arm_or_macos_or_lgpl_restricted",
     _if_portable = "if_portable",
     _internal_tfrt_deps = "internal_tfrt_deps",
     _pybind_extension = "pybind_extension",
@@ -47,7 +47,7 @@ load(
 )
 
 clean_dep = _clean_dep
-if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
+if_not_mobile_or_arm_or_macos_or_lgpl_restricted = _if_not_mobile_or_arm_or_macos_or_lgpl_restricted
 if_portable = _if_portable
 ADDITIONAL_API_INDEXABLE_SETTINGS = _ADDITIONAL_API_INDEXABLE_SETTINGS
 if_indexing_source_code = _if_indexing_source_code

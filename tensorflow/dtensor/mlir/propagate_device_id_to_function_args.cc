@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -69,7 +70,7 @@ llvm::SmallVector<FunctionToChangeInfo, 4> FindFunctionsToRewrite(
       symbol = call_op.getF();
     } else {
       auto symbol_ref = llvm::dyn_cast<mlir::TF::PartitionedCallOp>(op).getF();
-      if (!symbol_ref.isa<mlir::FlatSymbolRefAttr>()) return;
+      if (!mlir::isa<mlir::FlatSymbolRefAttr>(symbol_ref)) return;
       symbol = symbol_ref.getRootReference().getValue();
     }
 

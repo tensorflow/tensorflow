@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.17.0'
+_VERSION = '2.18.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -78,12 +78,12 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes ~= 0.3.1',
+    'ml_dtypes >= 0.3.1, < 0.5.0',
     # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
     'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
     'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
@@ -114,8 +114,8 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.17.0.a',
-    'keras-nightly ~= 3.1.0.dev',
+    'tb-nightly ~= 2.18.0.a',
+    'keras-nightly >= 3.2.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -312,7 +312,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)

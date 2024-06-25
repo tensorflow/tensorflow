@@ -15,16 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_TRACEME_H_
 
-#include <new>
+#include <cstdint>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/traceme_encode.h"  // IWYU pragma: export
+#include "tsl/profiler/utils/no_init.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
@@ -33,14 +33,6 @@ limitations under the License.
 
 namespace tsl {
 namespace profiler {
-
-// NOTE: Borrowed from boost C++ libraries. When TF embrace C++17 this should
-// be replaced with std::is_invocable;
-template <typename F, typename... Args>
-struct is_invocable
-    : std::is_constructible<
-          std::function<void(Args...)>,
-          std::reference_wrapper<typename std::remove_reference<F>::type> > {};
 
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
@@ -100,7 +92,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name) std::string(name);
+      name_.Emplace(std::string(name));
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -142,13 +134,12 @@ class TraceMe {
   //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
   //   });
   template <typename NameGeneratorT,
-            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+            std::enable_if_t<std::is_invocable_v<NameGeneratorT>, bool> = true>
   explicit TraceMe(NameGeneratorT&& name_generator, int level = 1) {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name)
-          std::string(std::forward<NameGeneratorT>(name_generator)());
+      name_.Emplace(std::forward<NameGeneratorT>(name_generator)());
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -159,8 +150,7 @@ class TraceMe {
   TraceMe& operator=(TraceMe&& other) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(other.start_time_ != kUntracedActivity)) {
-      new (&no_init_.name) std::string(std::move(other.no_init_.name));
-      other.no_init_.name.~string();
+      name_.Emplace(std::move(other.name_).Consume());
       start_time_ = std::exchange(other.start_time_, kUntracedActivity);
     }
 #endif
@@ -185,9 +175,9 @@ class TraceMe {
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record(
-            {std::move(no_init_.name), start_time_, GetCurrentTimeNanos()});
+            {std::move(name_.value), start_time_, GetCurrentTimeNanos()});
       }
-      no_init_.name.~string();
+      name_.Destroy();
       start_time_ = kUntracedActivity;
     }
 #endif
@@ -205,13 +195,13 @@ class TraceMe {
   //   });
   template <
       typename MetadataGeneratorT,
-      std::enable_if_t<is_invocable<MetadataGeneratorT>::value, bool> = true>
+      std::enable_if_t<std::is_invocable_v<MetadataGeneratorT>, bool> = true>
   void AppendMetadata(MetadataGeneratorT&& metadata_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         traceme_internal::AppendMetadata(
-            &no_init_.name,
+            &name_.value,
             std::forward<MetadataGeneratorT>(metadata_generator)());
       }
     }
@@ -224,7 +214,7 @@ class TraceMe {
   // Returns the activity ID, which is used to stop the activity.
   // Calls `name_generator` to get the name for activity.
   template <typename NameGeneratorT,
-            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+            std::enable_if_t<std::is_invocable_v<NameGeneratorT>, bool> = true>
   static int64_t ActivityStart(NameGeneratorT&& name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
@@ -276,7 +266,7 @@ class TraceMe {
 
   // Records the time of an instant activity.
   template <typename NameGeneratorT,
-            std::enable_if_t<is_invocable<NameGeneratorT>::value, bool> = true>
+            std::enable_if_t<std::is_invocable_v<NameGeneratorT>, bool> = true>
   static void InstantActivity(NameGeneratorT&& name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
@@ -310,13 +300,7 @@ class TraceMe {
   TraceMe(const TraceMe&) = delete;
   void operator=(const TraceMe&) = delete;
 
-  // Wrap the name into a union so that we can avoid the cost of string
-  // initialization when tracing is disabled.
-  union NoInit {
-    NoInit() {}
-    ~NoInit() {}
-    std::string name;
-  } no_init_;
+  NoInit<std::string> name_;
 
   int64_t start_time_ = kUntracedActivity;
 };

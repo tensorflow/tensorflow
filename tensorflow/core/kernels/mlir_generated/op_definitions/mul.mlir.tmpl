@@ -44,7 +44,7 @@ func.func @Mul_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %arg1:
         %cast = tensor.cast %23 : tensor<?xoutput_type> to tensor<*xoutput_type>
         scf.yield %cast : tensor<*xoutput_type>
       } else {
-        %19:2 = chlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %19:2 = mhlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
         %20 = shape.rank %19#0 : tensor<?xindex> -> index
         %21 = shape.rank %19#1 : tensor<?xindex> -> index
         %22 = arith.cmpi sgt, %20, %21 : index

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/scatter_expander.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/while_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -497,7 +497,7 @@ bool IsCombinerAssociative(const HloComputation* combiner) {
     case HloOpcode::kMinimum:
     case HloOpcode::kMaximum:
       return true;
-    // Other common combiners are associative at least for interger arithmetic.
+    // Other common combiners are associative at least for integer arithmetic.
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kOr:
@@ -525,7 +525,7 @@ bool ScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
   return (scatter != nullptr) && (mode_ == kEliminateAllScatters ||
                                   (mode_ == kEliminateSimpleScatters &&
                                    ScatterTripCount(scatter) == 1) ||
-                                  (mode_ == kEliminateIndeterminisitcScatters &&
+                                  (mode_ == kEliminateIndeterministicScatters &&
                                    !IsDeterministic(scatter)));
 }
 

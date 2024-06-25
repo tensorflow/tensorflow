@@ -44,7 +44,7 @@ constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";
 
 // Extracts and deduplicates the HLO protos from all the XSpaces.
 // Stores the HLO protos as files in the same directory as the xspace files.
-StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
+absl::StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
   // Get all HLO protos from XSpaces and deduplicate.
   HloProtoMap hlo_proto_map;
@@ -86,7 +86,7 @@ StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
 
 }  // namespace
 
-StatusOr<xla::HloProto> GetHloProtoByModuleName(
+absl::StatusOr<xla::HloProto> GetHloProtoByModuleName(
     const SessionSnapshot& session_snapshot,
     const absl::string_view module_name) {
   std::string file_name =
@@ -98,7 +98,7 @@ StatusOr<xla::HloProto> GetHloProtoByModuleName(
   return hlo_proto;
 }
 
-StatusOr<bool> ConvertMultiXSpaceToHloProto(
+absl::StatusOr<bool> ConvertMultiXSpaceToHloProto(
     const SessionSnapshot& session_snapshot) {
   // Gets all the files in session run directory.
   // TODO(profiler): Move this glob to SessionSnapshot and build a map from file

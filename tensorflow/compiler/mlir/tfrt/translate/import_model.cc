@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -66,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -80,7 +81,7 @@ namespace {
 
 // Exports all XLA functions in the form of XlaLaunch, and their nested
 // functions.
-StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
+absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
     mlir::ModuleOp module, std::vector<std::string>* added_xla_function_names) {
   // Find all XLA functions.
   std::vector<std::string> xla_functions;
@@ -114,8 +115,9 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
           absl::StrCat("Function ", func_name, " is not found."));
     }
     FunctionDef func_def;
-    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
-        func_op, GraphExportConfig(), &func_def));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+            func_op, GraphExportConfig(), &func_def));
     xla_func_defs.push_back(func_def);
 
     // Visit each op in the function and find out referenced functions from the
@@ -123,7 +125,7 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
     func_op->walk([&](mlir::Operation* op) {
       for (const mlir::NamedAttribute& attr : op->getAttrs()) {
         if (const auto sym =
-                attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+                mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr.getValue())) {
           mlir::Operation* func =
               mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
           if (func) {
@@ -146,35 +148,6 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
 }
 
 }  // namespace
-
-Status ConvertFunctionToBef(
-    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
-    const FunctionLibraryDefinition& flib_def,
-    tfrt::ArrayRef<tfrt::string_view> devices,
-    const tensorflow::TfrtFunctionCompileOptions& options,
-    tfrt::BefBuffer* bef_buffer) {
-  mlir::MLIRContext context;
-  // FunctionDef -> TF Dialect
-  auto expected_module =
-      tensorflow::ConvertFunctionToMlir(fbody, flib_def, &context);
-
-  if (!expected_module.ok())
-    return absl::InternalError(absl::StrCat(
-        "Failed to convert function to mlir for function ", function_name.str(),
-        ". Error: ", expected_module.status().message()));
-
-  auto module = std::move(expected_module).value();
-
-  // Attach devices to the MLIR module.
-  if (!devices.empty()) {
-    mlir::Builder builder(module->getContext());
-    module->getOperation()->setAttr("tf.devices",
-                                    builder.getStrArrayAttr(devices));
-  }
-
-  // TF Dialect -> BEF
-  return tensorflow::CompileTFMLIRToBEF(options, module.get(), bef_buffer);
-}
 
 Status ConvertTfMlirToRuntimeExecutable(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
@@ -335,7 +308,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
               absl::InternalError("failed to convert MLIR to BEF."));
 
         bef_buffer->shrink_to_fit();
-        return OkStatus();
+        return absl::OkStatus();
       },
       model_context, fallback_state, added_xla_function_names);
 }
@@ -371,10 +344,12 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->hoist_invariant_ops = options.hoist_invariant_ops;
   pipeline_options->fuse_get_resource_ops_in_hoisting =
       options.fuse_get_resource_ops_in_hoisting;
-  pipeline_options->func_use_fallback_tensor = true;
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;
+  pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
+  pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
+
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 
@@ -393,7 +368,7 @@ tensorflow::Status AddXlaFunctions(
     }
   }
 
-  return tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

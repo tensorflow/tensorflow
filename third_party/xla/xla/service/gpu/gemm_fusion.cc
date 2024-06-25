@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -49,30 +50,27 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-using triton_fusion::CombineRequirements;
+using triton_fusion::CombineDotRequirements;
 using triton_fusion::DimensionOrder;
 using triton_fusion::DimOrderMap;
 using triton_fusion::DimOrdersAndReqs;
 using triton_fusion::DimOrdersAndReqsOrError;
+using triton_fusion::DotProperties;
 using triton_fusion::DotRequirements;
+using triton_fusion::DotRequirementsOrError;
 using triton_fusion::FusionContext;
 using triton_fusion::GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible;
-using triton_fusion::HeroProperties;
-using triton_fusion::Requirements;
-using triton_fusion::RequirementsOrError;
 using triton_fusion::TransformDirection;
 
 // This represents a directed graph.
@@ -140,7 +138,7 @@ struct FusionPlan {
 
 struct FusionPlanAndRequirements {
   FusionPlan fusion_plan;
-  Requirements requirements;
+  DotRequirements requirements;
 };
 
 struct HlosAndRequirements {
@@ -155,21 +153,24 @@ struct HlosAndRequirements {
   //
   // If we fuse further operations they may have to conform to these
   // requirements.
-  Requirements requirements;
+  DotRequirements requirements;
 };
 
 // Clones the hero kDot operation into the fusion.
 HloInstruction& FuseDot(const HloDotInstruction& dot,
                         const HloInstruction& fused_lhs,
                         const HloInstruction& fused_rhs,
+                        std::optional<const HloInstruction*> fused_meta,
                         HloComputation::Builder& builder  // append
 ) {
-  CHECK_EQ(dot.operand_count(), 2);
   VLOG(3) << "Fusing " << dot.ToString();
 
-  std::array<HloInstruction*, 2> hlo_new_operands = {
+  std::vector<HloInstruction*> hlo_new_operands = {
       const_cast<HloInstruction*>(&fused_lhs),
       const_cast<HloInstruction*>(&fused_rhs)};
+  if (fused_meta.has_value()) {
+    hlo_new_operands.push_back(const_cast<HloInstruction*>(fused_meta.value()));
+  }
   return *builder.AddInstruction(
       dot.CloneWithNewOperands(dot.shape(), hlo_new_operands));
 }
@@ -190,32 +191,32 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
     const HloInstruction& hlo, const DimensionOrder& dim_order,
-    const HeroProperties& properties,
+    const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
           hlo, dim_order, TransformDirection::kOutputToInput, properties);
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
     const HloInstruction& hlo, const DimensionOrder& dim_order,
-    const HeroProperties& properties,
+    const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           hlo, TransformDirection::kOutputToInput,
@@ -224,23 +225,23 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Just a helper to reduce "unwrapping" code where we use this.
 std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
     const HloInstruction& hlo, const DimensionOrder& hlo_dim_order,
-    const HloInstruction& user, const HeroProperties& properties,
+    const HloInstruction& user, const DotProperties& properties,
     const se::GpuComputeCapability& gpu_version,
-    const Requirements& requirements) {
+    const DotRequirements& requirements) {
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           user, TransformDirection::kInputToOutput, user.operand_index(&hlo),
@@ -248,15 +249,15 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
   if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
     return std::nullopt;
   }
-  RequirementsOrError combined_reqs = CombineRequirements(
+  DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<Requirements>(combined_reqs)) {
+  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
     return std::nullopt;
   }
   return DimOrdersAndReqs{
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).dim_orders,
-      std::get<Requirements>(combined_reqs)};
+      std::get<DotRequirements>(combined_reqs)};
 }
 
 // Builds the fusion map and the requirements which can later be used to
@@ -265,7 +266,8 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
     const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements_so_far) {
+    const DotProperties& properties,
+    const DotRequirements& requirements_so_far) {
   CHECK(!max_params.has_value() || max_params.value() >= 1);
 
   // The graph describing the structure of the fusion that we build - nodes
@@ -288,7 +290,7 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
   // The requirements imposed by the fusion choices made in this function,
   // combined with the existing requirements. This is one of the outputs of this
   // function.
-  Requirements combined_reqs = requirements_so_far;
+  DotRequirements combined_reqs = requirements_so_far;
 
   auto get_or_create_fusion_node =
       [&](const HloInstruction& hlo, const DimensionOrder& dim_order,
@@ -451,7 +453,7 @@ HlosAndRequirements FuseTowardOperands(
     const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
     const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements_so_far,
+    const DotProperties& properties, const DotRequirements& requirements_so_far,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
@@ -477,19 +479,19 @@ HlosAndRequirements FuseTowardOperands(
 //
 // The return value contains the HLOs corresponding to the given dot operand and
 // the requirements corresponding to the whole fusion so far.
-HlosAndRequirements FuseDotOperand(
+absl::StatusOr<HlosAndRequirements> FuseDotOperand(
     const HloInstruction& dot, int operand_index,
     const se::GpuComputeCapability& gpu_version,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
   // Direct dot inputs have well defined dimension orders.
-  const FusionContext context =
-      FusionContext::FromDotOperand(dot, operand_index);
+  TF_ASSIGN_OR_RETURN(const FusionContext context,
+                      FusionContext::FromDotOperand(dot, operand_index));
   const HloInstruction& operand = *dot.operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
                             TritonFusionAnalysis::kMaxParameterPerDotOperand,
-                            gpu_version, context.hero_properties(),
+                            gpu_version, context.dot_properties(),
                             context.requirements(), builder, fusion_params);
 }
 
@@ -510,7 +512,7 @@ HlosAndRequirements FuseTowardUsers(
     const HloInstruction& hlo, const HloInstruction& fused_hlo,
     const DimensionOrder& hlo_dim_order,
     const se::GpuComputeCapability& gpu_version,
-    const HeroProperties& properties, const Requirements& requirements,
+    const DotProperties& properties, const DotRequirements& requirements,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
@@ -520,7 +522,7 @@ HlosAndRequirements FuseTowardUsers(
     return existing_hlos_and_requirements;
   }
   const HloInstruction& user = *hlo.users()[0];
-  if (!IsDistributiveOverAddition(user)) {
+  if (!legacy_triton::IsDistributiveOverAddition(user)) {
     return existing_hlos_and_requirements;
   }
 
@@ -531,7 +533,7 @@ HlosAndRequirements FuseTowardUsers(
     return existing_hlos_and_requirements;
   }
   DimensionOrder user_dim_order = opt_user_result->dim_orders.at(&user);
-  Requirements combined_requirements = opt_user_result->requirements;
+  DotRequirements combined_requirements = opt_user_result->requirements;
 
   HloInstruction::InstructionVector new_operands;
   if (user.operand_count() == 1) {
@@ -599,7 +601,7 @@ HlosAndRequirements FuseDotOutput(
   const auto context =
       FusionContext::FromDotOutput(dot, /*split_k=*/1, requirements);
   return FuseTowardUsers(dot, fused_dot, context.dim_orders().at(&dot),
-                         gpu_version, context.hero_properties(),
+                         gpu_version, context.dot_properties(),
                          context.requirements(), builder, fusion_params);
 }
 
@@ -614,23 +616,47 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     std::vector<HloInstruction*>& fusion_inputs,
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
-  if (FusionDecision can_handle = CanTritonHandleGEMM(dot, gpu_version);
-      !can_handle) {
-    VLOG(3) << can_handle.Explain();
-    return can_handle;
+  if (CodegenDecision is_supported =
+          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
+      !is_supported) {
+    VLOG(3) << is_supported.Explain();
+    return is_supported;
   }
 
-  HlosAndRequirements lhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/0, gpu_version, builder, fusion_inputs);
-  HlosAndRequirements rhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/1, gpu_version, builder, fusion_inputs);
-  HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
-                                      *rhs_hlos_and_reqs.fused_hlo, builder);
+  // Verify sparse dot constraints.
+  if (dot.sparse_operands()) {
+    const SparsityDescriptor& descriptor = dot.sparsity().front();
+    if (dot.sparse_operands() != 1 || descriptor.index() != 0) {
+      return InvalidArgument("Sparsity is only supported on left operand");
+    }
+    if (descriptor.type() != SparsityType::SPARSITY_STRUCTURED_N_M ||
+        descriptor.n() != 2 || descriptor.m() != 4) {
+      return InvalidArgument("Only 2:4 structured sparsity is supported");
+    }
+    // DotDimensionSorter pass makes sure the sparse dimension is minor.
+    CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
+  }
+
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
+                                     builder, fusion_inputs));
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
+                                     builder, fusion_inputs));
+  std::optional<const HloInstruction*> meta_hlo;
+  if (dot.sparse_operands()) {
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements meta_hlos_and_reqs,
+                        FuseDotOperand(dot, /*operand_index=*/2, gpu_version,
+                                       builder, fusion_inputs));
+    meta_hlo.emplace(meta_hlos_and_reqs.fused_hlo);
+  }
+  HloInstruction& fused_dot =
+      FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo, *rhs_hlos_and_reqs.fused_hlo,
+              meta_hlo, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
-      FuseDotOutput(dot, fused_dot, gpu_version,
-                    std::get<DotRequirements>(lhs_hlos_and_reqs.requirements),
+      FuseDotOutput(dot, fused_dot, gpu_version, lhs_hlos_and_reqs.requirements,
                     builder, fusion_inputs);
 
   if (fusion_output_ptr != nullptr) {
@@ -642,7 +668,8 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
-      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
+      dot.sparse_operands()) {
     return FusionDecision{};
   }
 
@@ -703,9 +730,14 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
-        !should_fuse) {
-      return absl::OkStatus();
+    // TODO(rocm): check ROCM padding requirements.
+    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
+      if (!CublasRequiresPadding(
+              *Cast<HloDotInstruction>(dot),
+              std::get<se::CudaComputeCapability>(gpu_version_)) &&
+          !should_fuse) {
+        return absl::OkStatus();
+      }
     }
 
     HloComputation* computation =
@@ -751,107 +783,8 @@ absl::StatusOr<bool> RunOnComputation(
   return visitor.changed();
 }
 
-bool IsSupportedByTriton(
-    PrecisionConfig::Algorithm algorithm,
-    const se::CudaComputeCapability& cuda_compute_capability) {
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      return true;
-
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      return cuda_compute_capability.IsAtLeastAmpere();
-
-    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
-    // here.
-    case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    // Slow to compile:
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
-    default:
-      return false;
-  }
-}
 
 }  // namespace
-
-FusionDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-
-  if (!cuda_compute_capability) return "Non CUDA device.";
-
-  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
-                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
-      return "Non-default precision.";
-    }
-  } else {
-    if (!IsSupportedByTriton(dot.precision_config().algorithm(),
-                             *cuda_compute_capability)) {
-      return "Unsupported algorithm on the current device(s).";
-    }
-  }
-
-  auto supported_output_type = [&](const PrimitiveType t) {
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        return cuda_compute_capability->IsAtLeast(
-            stream_executor::CudaComputeCapability::AMPERE);
-      default:
-        return false;
-    }
-  };
-
-  // TODO(b/266862493): Support more output types.
-  if (!supported_output_type(dot.shape().element_type())) {
-    return "Unsupported output data type.";
-  }
-
-  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
-                                 gpu_version) ||
-      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
-                                 gpu_version)) {
-    return "Unsupported input data type.";
-  }
-
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // TODO(b/269580541): support multiple batch dimensions.
-  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
-    return "Multiple batch dimensions.";
-  }
-
-  // Cases where lhs or rhs have no non-contracting dims are not handled.
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
-    return "No non-contracting dimensions.";
-  }
-
-  for (int operand_number = 0; operand_number <= 1; ++operand_number) {
-    // This pass relies on dot decomposer which ensures that all non-contracting
-    // dimensions are merged into one. Using NonContractingDimensionIndex is
-    // sufficient.
-    const int64_t nc_size =
-        dot.operand(operand_number)
-            ->shape()
-            .dimensions(NonContractingDimensionIndex(dot, operand_number));
-    if (nc_size <= 1) {
-      return "Trivial non-contracting dimensions.";
-    }
-  }
-
-  return FusionDecision{};
-}
 
 bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
                             const se::GpuComputeCapability& gpu_version) {
@@ -865,6 +798,23 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
 absl::StatusOr<bool> GemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version_);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version_);
+  if (!cuda_compute_capability && !rocm_compute_capability) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for CUDA and ROCm GPUs.");
+  }
+
+  if (cuda_compute_capability && !cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_compute_capability->major, ".",
+                     cuda_compute_capability->minor, "."));
+  }
+
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {

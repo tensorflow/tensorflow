@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"

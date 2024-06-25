@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -70,9 +69,6 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
-
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* hlo_module, const se::StreamExecutor* stream_exec) override;
 
   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -119,10 +115,18 @@ class GpuCompiler : public LLVMCompiler {
     return &FusionCanShareBufferHint;
   }
 
+  virtual int32_t GetToolkitVersion() const = 0;
+
+  virtual absl::StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& config) {
+    return false;
+  }
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
+    Thunk::BinaryMap dnn_compiled_graphs;
   };
 
   // During compilation with device, stream_exec != null and autotune_results
@@ -155,13 +159,21 @@ class GpuCompiler : public LLVMCompiler {
   // Add autotuning passes for GEMM fusions.
   virtual absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      const MultiProcessKeyValueStore& key_value_store) {
     return absl::OkStatus();
   }
 
   // Add passes that convert HLO operations to custom kernels.
   virtual absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+    return absl::OkStatus();
+  }
+
+  // Runs CUDNN fusion compiler pass.
+  virtual absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 
@@ -180,8 +192,9 @@ class GpuCompiler : public LLVMCompiler {
       se::StreamExecutor* executor, const CompileOptions& options,
       const se::DeviceDescription& gpu_device_info);
 
-  absl::StatusOr<BackendCompileResult> CompileToTargetBinary(
-      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+  absl::StatusOr<BackendCompileResult> CompileAndLink(
+      const HloModuleConfig& module_config,
+      CompileModuleResults& compile_module_results,
       se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const HloModule* debug_module);
 
@@ -194,6 +207,9 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
   absl::Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options);
+
+  absl::Status RunPreSchedulingPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
@@ -216,11 +232,6 @@ class GpuCompiler : public LLVMCompiler {
       const HloModule* debug_module, const CompileOptions& options) = 0;
 
   absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
-
-  virtual absl::StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& config) {
-    return false;
-  }
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,

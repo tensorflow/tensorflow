@@ -401,7 +401,8 @@ void LocalRendezvous::DoAbort(const Status& status) {
     mutex_lock l(mu_);
     status_.Update(status);
   }
-  LOG(WARNING) << "Local rendezvous is aborting with status: " << status;
+  LOG_EVERY_POW_2(INFO) << "Local rendezvous is aborting with status: "
+                        << status;
 
   // Keeps one Item to make sure the current rendezvous won't be destructed.
   std::unique_ptr<Item> to_delete;

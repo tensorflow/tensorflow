@@ -34,8 +34,8 @@ class AnnotatedTraceMe {
   template <typename NameGeneratorT>
   explicit AnnotatedTraceMe(NameGeneratorT&& name_generator, int level = 1) {
     DCHECK_GE(level, 1);
-    bool annotation_enabled = ScopedAnnotation::IsEnabled();
-    bool traceme_enabled = TraceMe::Active(level);
+    bool annotation_enabled = tsl::profiler::ScopedAnnotation::IsEnabled();
+    bool traceme_enabled = tsl::profiler::TraceMe::Active(level);
     if (TF_PREDICT_TRUE(!annotation_enabled && !traceme_enabled)) {
       return;
     }
@@ -49,8 +49,8 @@ class AnnotatedTraceMe {
   }
 
  private:
-  std::optional<TraceMe> trace_me_;
-  std::optional<ScopedAnnotation> scoped_annotation_;
+  std::optional<tsl::profiler::TraceMe> trace_me_;
+  std::optional<tsl::profiler::ScopedAnnotation> scoped_annotation_;
 };
 
 }  // namespace profiler

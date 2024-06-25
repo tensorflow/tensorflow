@@ -15,34 +15,52 @@ limitations under the License.
 
 #include "xla/service/dump.h"
 
+#include <cstdint>
 #include <functional>
+#include <iostream>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/lib/io/zlib_compression_options.h"
 #include "tsl/lib/io/zlib_outputbuffer.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 
@@ -83,7 +101,8 @@ struct CanonicalDebugOptions {
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
+        dump_large_constants(opts.xla_dump_large_constants()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -200,6 +219,7 @@ struct CanonicalDebugOptions {
   bool dump_hlo_metadata;
   bool dump_as_long_text;
   bool dump_mlir_pretty_form;
+  bool dump_large_constants;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -224,8 +244,9 @@ class DataProducer {
   std::queue<std::function<std::string()>> produce_funcs_;
 };
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                DataProducer& data_producer, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      DataProducer& data_producer,
+                                      bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
@@ -245,8 +266,8 @@ static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
   }
 }
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                absl::string_view data, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      absl::string_view data, bool compressed) {
   if (!compressed) {
     return tsl::WriteStringToFile(env, fname, data);
   }
@@ -406,6 +427,10 @@ static bool IsTrivial(const HloComputation& computation) {
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
+                           module.name(), module.unique_id());
+  });
   std::string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<std::optional<std::string>> file_paths;
@@ -414,7 +439,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     auto print_options = opts.dump_as_long_text
                              ? HloPrintOptions::Default()
                              : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(false);
+    print_options.set_print_large_constants(opts.dump_large_constants);
     print_options.set_print_control_dependencies(true);
     print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
@@ -646,6 +671,9 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
   CanonicalDebugOptions opts(debug_options);
   tsl::Env* env = tsl::Env::Default();
   const std::string& dir = opts.dump_to;
+  if (dir.empty()) {
+    return;
+  }
   if (!env->IsDirectory(dir).ok()) {
     auto status = env->RecursivelyCreateDir(dir);
     if (!status.ok()) {
@@ -658,7 +686,7 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     return;
   }
   const std::string path = tsl::io::JoinPath(dir, filename);
-  Status status;
+  absl::Status status;
   if (opts.dump_as_text) {
     if (text_formatter) {
       auto written_proto = text_formatter(env, proto);
@@ -692,21 +720,24 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
+                                                string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, TimestampFor(module),
-                      name, opts);
+    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr,
+                             TimestampFor(module), name, opts);
   }
+  return {};
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module,
-                            const BufferAssignment& buffer_assn,
-                            string_view name) {
+std::vector<std::string> DumpHloModuleIfEnabled(
+    const HloModule& module, const BufferAssignment& buffer_assn,
+    string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
   }
+  return {};
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,

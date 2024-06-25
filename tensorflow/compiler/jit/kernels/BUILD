@@ -30,7 +30,6 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_op_registry",
     "@local_xla//xla:executable_run_options",
     "@local_xla//xla:status_macros",
-    "@local_xla//xla:statusor",
     "@local_xla//xla/client:client_library",
     "@local_xla//xla/client:local_client",
     "@local_xla//xla/service:compiler",
@@ -59,8 +58,10 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/concurrency:async_value",
     ],
     alwayslink = 1,
 )

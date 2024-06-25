@@ -67,7 +67,7 @@ Status CustomDeviceOpHandler::Execute(ImmediateExecutionOperation* op,
   }
 
   // The op will be placed on physical device. However, it contains custom
-  // device tensor handles. The tensor handles will be copy to physical device
+  // device tensor handles. The tensor handles will be copied to physical device
   // first.
   if (op->HasCustomDeviceInput()) {
     auto inputs = op->GetInputs();
@@ -175,7 +175,8 @@ Status CustomDeviceOpHandler::MaybePinToCustomDevice(
     // When there is a single custom device present, let the custom device
     // choose whether to pin on the custom device if it overrides choosing.
     if (first != nullptr) {
-      StatusOr<bool> pin_to_custom_device = first->ShallPinToThisDevice(&op);
+      absl::StatusOr<bool> pin_to_custom_device =
+          first->ShallPinToThisDevice(&op);
       // Custom devices that do not override will throw an unimplemented error.
       if (pin_to_custom_device.ok()) {
         if (pin_to_custom_device.value()) {

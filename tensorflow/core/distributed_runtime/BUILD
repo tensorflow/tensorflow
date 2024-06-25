@@ -3,7 +3,6 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -21,6 +20,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -172,10 +172,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
     ],
 )
 
@@ -273,7 +273,7 @@ cc_library(
     hdrs = ["call_options.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_tsl//tsl/distributed_runtime:call_options",
+        "@local_xla//xla/tsl/distributed_runtime:call_options",
     ],
 )
 
@@ -507,14 +507,17 @@ cc_library(
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -776,6 +779,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@eigen_archive//:eigen3",
     ] + tf_grpc_cc_dependencies(),
 )
 

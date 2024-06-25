@@ -16,7 +16,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
@@ -30,20 +36,24 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
                                                   bool emit_use_tuple_arg) {
   if (!module) return mlir::failure();
 
-  HloProto hloProto;
-  Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
-  if (!status.ok()) {
-    module.emitOpError() << status.message();
-    LOG(ERROR) << "Module conversion failed: " << status;
+  mlir::MlirToHloConversionOptions options;
+  options.use_tuple_args = emit_use_tuple_arg;
+  options.return_tuple = emit_return_tuple;
+  absl::StatusOr<std::unique_ptr<HloModule>> statusOrModule =
+      mlir::ConvertMlirHloToHloModule(module, options);
+
+  if (!statusOrModule.ok()) {
+    module.emitOpError() << statusOrModule.status().message();
+    LOG(ERROR) << "Module conversion failed: " << statusOrModule.status();
     return mlir::failure();
   }
 
-  output << hloProto.DebugString();
+  // Print as HloProto with empty BufferAssignment for legacy compatibility.
+  output << MakeHloProto(*statusOrModule.value()).DebugString();
   return mlir::success();
 }
 
-StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
@@ -54,9 +64,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 
 // Wraps BuildHloFromMlirHlo to output an HloProto that's the same as
 // ConvertMlirHloToHlo.
-Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
-                                     ::xla::HloProto* hlo_proto,
-                                     mlir::MlirToHloConversionOptions options) {
+absl::Status ConvertMlirHloToHloViaBuilder(
+    mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
+    mlir::MlirToHloConversionOptions options) {
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
@@ -99,12 +109,12 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
             ->mutable_instructions(i)
             ->mutable_parameter_replication()
             ->add_replicated_at_leaf_buffers(
-                b.cast<mlir::BoolAttr>().getValue());
+                mlir::cast<mlir::BoolAttr>(b).getValue());
 
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
@@ -116,20 +126,23 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
-  Status status =
-      via_builder
-          ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
-          : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
-                                      emit_return_tuple, options);
-  if (!status.ok()) {
-    module.emitOpError() << status.message();
-    LOG(ERROR) << "Module conversion failed: " << status;
-    return mlir::failure();
+  options.use_tuple_args = emit_use_tuple_arg;
+  options.return_tuple = emit_return_tuple;
+  absl::StatusOr<std::unique_ptr<HloModule>> statusOrHloModule;
+  if (via_builder) {
+    auto status = ConvertMlirHloToHloViaBuilder(module, &hloProto, options);
+    if (!status.ok()) {
+      module.emitOpError() << status.message();
+      LOG(ERROR) << "Module conversion failed: " << status;
+      return mlir::failure();
+    }
+    statusOrHloModule = HloModuleFromProto(hloProto);
+  } else {
+    statusOrHloModule = mlir::ConvertMlirHloToHloModule(module, options);
   }
 
-  auto statusOrHloModule = HloModuleFromProto(hloProto);
-
   if (!statusOrHloModule.ok()) {
+    module.emitOpError() << statusOrHloModule.status().message();
     LOG(ERROR) << "Conversion to HLO module failed: "
                << statusOrHloModule.status();
     return mlir::failure();

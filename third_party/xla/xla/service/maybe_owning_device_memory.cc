@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 
 #include "absl/types/variant.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 

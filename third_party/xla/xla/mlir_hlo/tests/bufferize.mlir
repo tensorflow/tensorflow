@@ -233,7 +233,7 @@ func.func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>
 
   // Select whether to use the original shapes in case of invalid broadcasts.
   // CHECK: %[[FINAL_RESULT_RHS:.*]] = arith.select %[[MAIN_FOR]]#4, %[[RHS]], %[[REDUCED_RESULT_RHS:.*]] : memref<?xindex>
-  %0, %1 = chlo.minimum_broadcast_shapes %lhs, %rhs :
+  %0, %1 = mhlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
   // CHECK-NEXT: return %[[FINAL_RESULT_LHS]], %[[FINAL_RESULT_RHS]] : memref<?xindex>, memref<?xindex>
   func.return %0, %1 : tensor<?xindex>, tensor<?xindex>
@@ -257,7 +257,7 @@ func.func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
 
 func.func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK: memref.copy
-  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   func.return %bcast : tensor<?x?xf32>
 }
 

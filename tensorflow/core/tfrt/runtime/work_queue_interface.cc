@@ -75,7 +75,7 @@ class DefaultWorkQueueWrapper : public WorkQueueInterface {
     return work_queue_->IsInWorkerThread();
   }
 
-  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
+  absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       int64_t request_id) const override {
     return {std::make_unique<DefaultWorkQueueWrapper>(request_id, work_queue_,
                                                       GetIntraOpThreadPool())};

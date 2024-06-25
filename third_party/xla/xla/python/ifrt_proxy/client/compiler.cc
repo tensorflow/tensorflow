@@ -32,14 +32,16 @@
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 
@@ -101,17 +103,16 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       response->addressable_device_logical_ids_size());
   for (const auto& logical_device_id :
        response->addressable_device_logical_ids()) {
-    addressable_device_logical_device_ids.push_back({
-        .replica = logical_device_id.replica(),
-        .partition = logical_device_id.partition(),
-    });
+    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{
+        logical_device_id.replica(), logical_device_id.partition()};
+    addressable_device_logical_device_ids.push_back(id);
   }
 
   std::vector<xla::ifrt::Device*> addressable_devices;
   addressable_devices.reserve(response->addressable_device_ids_size());
   for (const int32_t device_id : response->addressable_device_ids()) {
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
-                        client_->LookupDevice(device_id));
+                        client_->LookupDevice(DeviceId(device_id)));
     addressable_devices.push_back(device);
   }
 
@@ -128,7 +129,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       break;
   }
 
-  Future<absl::Status> ready_future =
+  Future<> ready_future =
       rpc_helper_->CheckFuture(response->ready_future_handle());
 
   std::vector<uint64_t> loaded_host_callback_handles(
@@ -142,6 +143,13 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       std::move(addressable_devices), std::move(fingerprint),
       std::move(ready_future), std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> Compiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
+  return absl::UnimplementedError(
+      "IFRT service compiler does not support `Compile` with a topology");
 }
 
 absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>

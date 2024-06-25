@@ -56,7 +56,7 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
   // interface so that the interface is more composable. Per-request logic
   // should be handled separately.
   ABSL_DEPRECATED("Create the instance directly instead.")
-  virtual StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
+  virtual absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       int64_t request_id) const {
     return {nullptr};
   }
@@ -87,17 +87,17 @@ template <typename Callable>
 tfrt::TaskFunction WrapWork(int64_t id, absl::string_view name,
                             Callable&& work) {
   tensorflow::Context context(tensorflow::ContextKind::kThread);
-  tensorflow::profiler::TraceMeProducer producer(
+  tsl::profiler::TraceMeProducer producer(
       [&]() { return absl::StrCat("producer_", name); },
-      tensorflow::profiler::ContextType::kTfrtExecutor);
+      tsl::profiler::ContextType::kTfrtExecutor);
   return tfrt::TaskFunction([traceme_id = producer.GetContextId(),
                              name = std::string(name),
                              context = std::move(context),
                              work = std::forward<Callable>(work)]() mutable {
-    tensorflow::profiler::TraceMeConsumer consumer(
+    tsl::profiler::TraceMeConsumer consumer(
         [&]() { return absl::StrCat("consumer_", name); },
-        tensorflow::profiler::ContextType::kTfrtExecutor, traceme_id,
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::ContextType::kTfrtExecutor, traceme_id,
+        tsl::profiler::TraceMeLevel::kInfo);
     tensorflow::WithContext wc(context);
     std::forward<Callable>(work)();
   });

@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
@@ -40,9 +42,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
  public:
   TpuTransferManager();
   ~TpuTransferManager() override;
-
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
 
   stream_executor::Platform::Id PlatformId() const override;
 
@@ -77,7 +76,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   int64_t GetByteSizeRequirement(const xla::Shape& shape) const override;
 
-  StatusOr<xla::Shape> ChooseCompactLayoutForShape(
+  absl::StatusOr<xla::Shape> ChooseCompactLayoutForShape(
       const xla::Shape& host_shape) const override;
 
   bool CanShapedBufferBeAccessedNow(

@@ -86,7 +86,7 @@ Status DecodeTensorNameSlice(const string& code, string* name,
       slice->set_length(d, length);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,

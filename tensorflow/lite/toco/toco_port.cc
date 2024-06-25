@@ -77,7 +77,7 @@ tensorflow::Status ToStatus(const absl::Status& uts) {
     return tensorflow::Status(absl::StatusCode(::util::RetrieveErrorCode(uts)),
                               uts.message());
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Conversion to our wrapper Options.

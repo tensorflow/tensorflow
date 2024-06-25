@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,11 +31,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/xla_computation.h"
@@ -52,11 +51,9 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 
 // API notes:
@@ -92,7 +89,12 @@ class PjRtMemorySpace {
 
   // A platform-dependent string that uniquely identifies the kind of the
   // memory space.
-  virtual absl::string_view memory_space_kind() const = 0;
+  virtual absl::string_view kind() const = 0;
+
+  // An ID uniquely identifies the kind of the memory space among those attached
+  // to the same `PjRtClient`. The IDs assigned to a kind is implementation
+  // specific.
+  virtual int kind_id() const = 0;
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.
@@ -206,15 +208,15 @@ class PjRtDevice {
       absl::string_view description) const = 0;
 
   // Transfer the given literal to the infeed queue.
-  virtual Status TransferToInfeed(const LiteralSlice& literal) = 0;
+  virtual absl::Status TransferToInfeed(const LiteralSlice& literal) = 0;
 
   // Transfer and return a value of the given shape from the outfeed queue.
-  virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
+  virtual absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
 
   // Returns allocator stats for the device. Only some PjRtDevice
   // implementations support allocator_stats, and those that do not will return
   // an Unimplemented error.
-  virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
+  virtual absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
     return Unimplemented("GetAllocatorStats is not supported");
   }
 
@@ -223,7 +225,7 @@ class PjRtDevice {
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
-  virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+  virtual absl::StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
 
   virtual absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
       absl::string_view memory_space_kind) const {
@@ -234,7 +236,8 @@ class PjRtDevice {
   // an externally-managed buffer is ready to use on this device. This is
   // intended to support dlpack on GPU and is not expected to be implemented for
   // all hardware platforms.
-  virtual StatusOr<std::intptr_t> GetStreamForExternalReadyEvents() const {
+  virtual absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
+      const {
     return Unimplemented(
         "PjRtDevice::GetStreamForExternalReadyEvents only implemented for "
         "GPU");
@@ -252,7 +255,8 @@ class PjRtDevice {
   //
   // Returns error otherwise, including in the case that poisoning is not
   // implemented by this client.
-  virtual StatusOr<bool> PoisonExecution(int32_t launch_id, Status error) {
+  virtual absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
+                                               absl::Status error) {
     return Unimplemented("PoisonExecution is not supported");
   }
 };
@@ -283,9 +287,9 @@ struct PjRtCrossHostRecvDescriptors {
 // duplicate (e.g., both send and cancel) then the system will be left in an
 // undefined state. If there is no send or cancellation then the system will
 // hang indefinitely.
-using PjRtCrossHostSendCancelNotifier =
-    std::function<void(absl::string_view serialized_descriptor, Status reason,
-                       std::function<void(Status)> on_canceled)>;
+using PjRtCrossHostSendCancelNotifier = std::function<void(
+    absl::string_view serialized_descriptor, absl::Status reason,
+    std::function<void(absl::Status)> on_canceled)>;
 // State asynchronously returned by MakeCrossHostReceiveBuffers. "descriptors"
 // will match the returned PjRtBuffer objects 1:1. Specifically, each PjRtBuffer
 // returned by MakeCrossHostReceiveBuffers will have one
@@ -295,7 +299,7 @@ struct PjRtCrossHostRecvState {
   PjRtCrossHostSendCancelNotifier cancel_notifier;
 };
 using PjRtCrossHostRecvNotifier =
-    std::function<void(StatusOr<PjRtCrossHostRecvState>)>;
+    std::function<void(absl::StatusOr<PjRtCrossHostRecvState>)>;
 
 // A sized chunk of host data. The host data can be either in host layout or in
 // device layout, and it can be one part of the entire buffer. The PjRt
@@ -372,14 +376,14 @@ class CopyToDeviceStream {
 
   virtual ~CopyToDeviceStream();
 
-  // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
+  // Emplaces a new Chunk of data to copy to the device. Returns an error future
   // if the Chunk's size causes the amount of transferred data to exceed
   // total_bytes(), if the stream is already complete, or if the chunk is not a
   // multiple of granule_size_in_bytes().
   //
   // The transfer is started immediately, and the returned future is fulfilled
   // when the transfer completes or fails.
-  virtual PjRtFuture<Status> AddChunk(PjRtChunk chunk) = 0;
+  virtual PjRtFuture<> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }
@@ -423,17 +427,17 @@ class PjRtHostMemoryForDeviceManager {
   // Transforms the host memory representations of a shape with the host layout
   // to the host memory representation of the same shape with the device layout.
   // `src_shape` and `dst_shape` may only differ in their layouts.
-  virtual StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data,
-                                             size_t src_size,
-                                             const Shape& host_shape,
-                                             const Shape& device_shape) = 0;
+  virtual absl::StatusOr<PjRtChunk> ToDeviceLayout(
+      const void* src_data, size_t src_size, const Shape& host_shape,
+      const Shape& device_shape) = 0;
 
   // Transforms the host memory representations of a shape with the device
   // layout to the host memory representation of the same shape with the host
   // layout. `src_shape` and `dst_shape` may only differ in their layouts.
-  virtual Status ToHostLayout(const void* src_data, size_t src_size,
-                              const Shape& src_shape, void* dst_data,
-                              size_t dst_size, const Shape& dst_shape) = 0;
+  virtual absl::Status ToHostLayout(const void* src_data, size_t src_size,
+                                    const Shape& src_shape, void* dst_data,
+                                    size_t dst_size,
+                                    const Shape& dst_shape) = 0;
 };
 
 class PjRtLoadedExecutable;
@@ -441,6 +445,7 @@ class PjRtLoadedExecutable;
 struct PjRtPluginAttributes {
   int64_t pjrt_c_api_major_version;
   int64_t pjrt_c_api_minor_version;
+  absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -521,21 +526,12 @@ class PjRtClient {
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
-  ABSL_DEPRECATED("Use LookupDevice(PjRtGlobalDeviceId) instead")
-  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
-  virtual StatusOr<PjRtDevice*> LookupDevice(
+  virtual absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const = 0;
 
   // Return an addressable PjRtDevice for a given
-  // PjRtDevice::local_hardware_id().
-  ABSL_DEPRECATED("Use LookupAddressableDevice(PjRtLocalDeviceId) instead")
-  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const {
-    return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
-  }
-  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
+  // PjRtDevice::local_device_id().
+  virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const = 0;
 
   // Return all memory spaces owned by the client.
@@ -565,7 +561,7 @@ class PjRtClient {
 
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
-  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
 
   // Returns a device-specific default device assignment for multi-slice system.
@@ -574,7 +570,7 @@ class PjRtClient {
   // communication happens across replicas assuming then that
   // num_replicas_per_slice is going to be "num_replicas / num_slices".
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
-  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, std::optional<int> num_replicas_per_slice,
       int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
@@ -586,19 +582,19 @@ class PjRtClient {
   // default layout is used for program arguments and outputs unless
   // user-specified or compiler-chosen layouts are requested via the
   // "mhlo.layout_mode" attribute.
-  virtual StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
-                                            absl::Span<const int64_t> dims) = 0;
+  virtual absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) = 0;
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+  virtual absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const = 0;
 
   // Compile `computation` with given `options`.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
 
   // Deserializes a serialized executable as produced by
@@ -608,13 +604,14 @@ class PjRtClient {
   // Pending completion of b/237720161, `options` is a mandatory argument in
   // most implementations of this interface. They _are_ optional for
   // implementations related to the PJRT C API.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::optional<CompileOptions> options) = 0;
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  DeserializeExecutable(absl::string_view serialized,
+                        std::optional<CompileOptions> options) = 0;
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) {
@@ -627,33 +624,41 @@ class PjRtClient {
   // PjRtExecutable contains a copy of the CompileOptions that was used to
   // generate the executable. Load will use the CompileOptions from within the
   // executable.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) {
     return Unimplemented("Loading executable not supported.");
   }
 
   // Creates a buffer on the device without initializing or copying any data.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
 
-  // Creates buffer that carries an error future without allocating memory.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtDevice* device) {
+  // Creates buffer in the given memory space that carries an error future
+  // without allocating memory.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
     return Unimplemented("CreateErrorBuffer not supported.");
   }
 
-  // Gets the pointer to the topology description held by the client.
-  virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
-      const {
-    return Unimplemented("GetTopologyDescription not supported on platform %s",
-                         platform_name());
+  // Creates buffer in the given device that carries an error future without
+  // allocating memory.
+  ABSL_DEPRECATED(
+      "Use CreateErrorBuffer(absl::Status, Shape, PjRtMemorySpace*)")
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtDevice* device) {
+    auto default_memory_space = device->default_memory_space();
+    if (!default_memory_space.ok()) {
+      return default_memory_space.status();
+    }
+    return CreateErrorBuffer(std::move(error), shape, *default_memory_space);
   }
 
-  // Returns topology object for compilation based on this client's topology.
-  virtual StatusOr<const PjRtTopologyDescription*>
-  GetFullTopologyForCompilation() const {
-    return GetTopologyDescription();
+  // Gets the pointer to the topology description held by the client.
+  virtual absl::StatusOr<const PjRtTopologyDescription*>
+  GetTopologyDescription() const {
+    return Unimplemented("GetTopologyDescription not supported on platform %s",
+                         platform_name());
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
@@ -701,7 +706,7 @@ class PjRtClient {
     // transfer is complete but before the buffers are made available to
     // their consumers. 'literal' must remain in scope until on_done is
     // called.
-    virtual Status TransferLiteralToBuffer(
+    virtual absl::Status TransferLiteralToBuffer(
         int buffer_index, const LiteralSlice& literal,
         absl::AnyInvocable<void() &&> on_done) = 0;
 
@@ -714,7 +719,7 @@ class PjRtClient {
     // buffer_index can be made after this call. on_done is called when the
     // transfer is complete but before the buffers are made available to their
     // consumers. 'data' must remain in scope until on_done is called.
-    virtual Status TransferRawDataToBuffer(
+    virtual absl::Status TransferRawDataToBuffer(
         int buffer_index, absl::string_view data,
         absl::AnyInvocable<void() &&> on_done) = 0;
 
@@ -728,7 +733,7 @@ class PjRtClient {
     // calls) into buffer_index can be made after this call. on_done is called
     // when the transfer is complete but before the buffers are made available
     // to their consumers. 'data' must remain in scope until on_done is called.
-    virtual Status TransferRawDataToSubBuffer(
+    virtual absl::Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64_t offset,
         int64_t transfer_size, bool is_last_transfer,
         absl::AnyInvocable<void() &&> on_done) = 0;
@@ -736,7 +741,7 @@ class PjRtClient {
     // Indicates that a specific buffer should result in an error status. No
     // transfer calls (or further SetBufferError calls) into buffer_index can
     // be made after this call.
-    virtual void SetBufferError(int buffer_index, Status error) = 0;
+    virtual void SetBufferError(int buffer_index, absl::Status error) = 0;
 
     // Adds the specified key/value metadata for the transfer operation.
     // This is typically used for debugging purposes, such as adding a handle
@@ -747,12 +752,12 @@ class PjRtClient {
 
   // Returns a manager for async transfers into a set of buffers with on-host
   // shapes 'shapes'.
-  virtual StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) = 0;
 
   // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
-  virtual StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) = 0;
 
@@ -771,23 +776,23 @@ class PjRtClient {
 
     // Transfers data to the device buffer. Data should already be in the
     // device layout.
-    virtual Status TransferRawDataToSubBuffer(
+    virtual absl::Status TransferRawDataToSubBuffer(
         const void* data, int64_t offset, int64_t transfer_size,
         bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) = 0;
 
     // The resulting buffer becomes ready when all transfers complete.
-    virtual StatusOr<std::unique_ptr<PjRtBuffer>> Slice(
+    virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> Slice(
         int64_t offset, PrimitiveType type, absl::Span<int64_t const> dims,
         const Layout& layout) = 0;
   };
   // Creates a raw device buffer of a given size in bytes.
-  virtual StatusOr<std::unique_ptr<PjRtRawDeviceBuffer>> CreateRawDeviceBuffer(
-      int64_t size, PjRtDevice* device) {
+  virtual absl::StatusOr<std::unique_ptr<PjRtRawDeviceBuffer>>
+  CreateRawDeviceBuffer(int64_t size, PjRtDevice* device) {
     return Unimplemented("CreateRawDeviceBuffer is not implemented.");
   }
 
   // On-device bytes required for a PjRt buffer with these `Shape` attributes.
-  virtual StatusOr<int64_t> GetOnDeviceSizeInBytes(
+  virtual absl::StatusOr<int64_t> GetOnDeviceSizeInBytes(
       PrimitiveType type, absl::Span<int64_t const> dims,
       const Layout& layout) {
     return Unimplemented("GetOnDeviceSizeInBytes is not implemented.");
@@ -812,13 +817,25 @@ class PjRtClient {
     kImmutableUntilTransferCompletes,
 
     // The PjRtBuffer may alias `data` internally and the runtime may use the
-    // `data` contents as long as the buffer is alive. The caller promises to
-    // keep `data` alive and not to mutate its contents as long as the buffer is
-    // alive; to notify the caller that the buffer may be freed, the runtime
-    // will call `on_done_with_host_buffer` when the PjRtBuffer is freed. On
-    // non-CPU platforms this acts identically to
+    // `data` contents as long as the buffer is alive. The runtime promises not
+    // to mutate contents of the buffer (i.e. it will not use it for aliased
+    // output buffers). The caller promises to keep `data` alive and also not to
+    // mutate its contents as long as the buffer is alive; to notify the caller
+    // that the buffer may be freed, the runtime will call
+    // `on_done_with_host_buffer` when the PjRtBuffer is freed. On non-CPU
+    // platforms this acts identically to kImmutableUntilTransferCompletes.
+    kImmutableZeroCopy,
+
+    // The PjRtBuffer may alias `data` internally and the runtime may use the
+    // `data` contents as long as the buffer is alive. The runtime is allowed
+    // to mutate contents of the buffer (i.e. use it for aliased output
+    // buffers). The caller promises to keep `data` alive and not to mutate its
+    // contents as long as the buffer is alive (otherwise it could be a data
+    // race with the runtime); to notify the caller that the buffer may be
+    // freed, the runtime will call `on_done_with_host_buffer` when the
+    // PjRtBuffer is freed. On non-CPU platforms this acts identically to
     // kImmutableUntilTransferCompletes.
-    kZeroCopy,
+    kMutableZeroCopy,
   };
 
   // on_done_with_host_buffer is optional and may be null.
@@ -830,7 +847,7 @@ class PjRtClient {
   //
   // If byte_strides is omitted, the array is assumed to have a dense layout
   // with dimensions in major-to-minor order.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
@@ -841,7 +858,7 @@ class PjRtClient {
   // used when non-compact layout is preferred.
   // TODO(b/275645543): remove BufferFromHostBuffer without optional device
   // layout after all the inherited classes and call sites are updated.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
@@ -855,7 +872,7 @@ class PjRtClient {
 
   // TODO(b/277820585): remove BufferFromHostBuffer with PjRtDevice after the
   // migration is done.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
@@ -870,12 +887,12 @@ class PjRtClient {
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
 
   // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
   // migration is done.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
     return tsl::errors::Unimplemented(
         "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
@@ -895,14 +912,15 @@ class PjRtClient {
   // indicates when the returned buffer is ready to use. This is intended to
   // support dlpack on GPU and is not expected to be supported on all hardware
   // platforms.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream = std::nullopt) = 0;
 
   // Returns platform-dependent address for the given buffer that is often but
   // not guaranteed to be the physical/device address.
-  virtual StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer);
+  virtual absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
+      PjRtBuffer* buffer);
 
   // Returns a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. Asynchronously calls
@@ -922,7 +940,7 @@ class PjRtClient {
   //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) = 0;
@@ -956,19 +974,19 @@ class PjRtClient {
     // completes.
     std::vector<int64_t> slice_boundaries;
   };
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) = 0;
 
   // Create ChannelHandles for XLA send/recv.
-  virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
-  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
-  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+  virtual absl::StatusOr<ChannelHandle> CreateChannelHandle() = 0;
+  virtual absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
+  virtual absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
-  virtual Status Defragment() = 0;
+  virtual absl::Status Defragment() = 0;
 
   // If false, this client does not support send/recv host callbacks, and
   // callers should not set the `send_callbacks` and `recv_callbacks` arguments
@@ -1038,7 +1056,7 @@ class PjRtBuffer {
   //
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
-  virtual StatusOr<std::vector<int64_t>> logical_dimensions() {
+  virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
     TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
@@ -1051,7 +1069,7 @@ class PjRtBuffer {
   //
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
-  virtual StatusOr<Shape> logical_on_device_shape() {
+  virtual absl::StatusOr<Shape> logical_on_device_shape() {
     const Shape& shape = on_device_shape();
     CHECK(shape.is_static())
         << "logical_on_device_shape needs to be overridden for platform '"
@@ -1079,7 +1097,7 @@ class PjRtBuffer {
 
     // Stream is platform-specific. This is intended to support dlpack on GPU
     // and is not expected to be implemented for all hardware platforms.
-    virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+    virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
       return Unimplemented(
           "WaitUntilBufferReadyOnStream is only implemented for GPU.");
     }
@@ -1087,7 +1105,7 @@ class PjRtBuffer {
    protected:
     void* data_ptr_;
   };
-  virtual StatusOr<std::unique_ptr<ExternalReference>>
+  virtual absl::StatusOr<std::unique_ptr<ExternalReference>>
   AcquireExternalReference() = 0;
 
   // Asynchronously copies the buffer's value into `literal`.
@@ -1095,21 +1113,21 @@ class PjRtBuffer {
   // Return value is a future the caller can use to discover when the copy has
   // completed. The transfer respects the layout of `literal`; to specify a
   // particular layout, set the layout before calling `ToLiteral`.
-  virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+  virtual PjRtFuture<> ToLiteral(MutableLiteralBase* literal) = 0;
   // This version of ToLiteral allows the implementation to defer the
   // construction of the literal (e.g. until the underlying buffer is ready).
   // The specific timing of calling `generator` is implementation defined, and
   // might be done eagerly, but it is guaranteed to be earlier than when the
   // returned future becomes ready.
-  virtual PjRtFuture<Status> LazyToLiteral(
+  virtual PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&>
           generator) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
-  Status ToLiteralSync(MutableLiteralBase* literal) {
+  absl::Status ToLiteralSync(MutableLiteralBase* literal) {
     absl::Notification done;
-    Status status;
-    ToLiteral(literal).OnReady([&](Status s) {
+    absl::Status status;
+    ToLiteral(literal).OnReady([&](absl::Status s) {
       status = std::move(s);
       done.Notify();
     });
@@ -1155,7 +1173,7 @@ class PjRtBuffer {
   }
 
   // Returns the number of bytes of the buffer storage on the device.
-  virtual StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
+  virtual absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -1165,19 +1183,23 @@ class PjRtBuffer {
   // Note that the underlying driver may have requirements
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                           int64_t transfer_size) = 0;
+  virtual PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                                     int64_t transfer_size) = 0;
 
   // As above, but the transfer will not happen until `dst` is fulfilled with a
   // valid pointer. If `dst` is fulfilled with a non-Ok status, then the
-  // transfer will be cancelled.
+  // transfer will be cancelled. The implementation must ensure that the
+  // underlying buffer is kept alive even if the `PjRtBuffer` is deleted before
+  // the `dst` future is fulfilled.
   //
   // In error cases it is possible for the returned Future to become ready
   // before `dst` is fulfilled.
   //
-  // Note that the default implementation will block until `dst` is fulfilled.
-  virtual PjRtFuture<Status> CopyRawToHostFuture(
-      PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size);
+  // The default implementation always returns a future that is fulfilled with
+  // an UNIMPLEMENTED error.
+  virtual PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst,
+                                           int64_t offset,
+                                           int64_t transfer_size);
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -1206,7 +1228,7 @@ class PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from ReleaseDeviceMemoryOwnership.
-  virtual StatusOr<std::unique_ptr<ExternalReference>>
+  virtual absl::StatusOr<std::unique_ptr<ExternalReference>>
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) = 0;
 
   // True if and only if Delete or Release has previously been called.
@@ -1219,7 +1241,7 @@ class PjRtBuffer {
   //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) = 0;
 
   // Copies the buffer to memory space `dst_memory_space`.
@@ -1231,7 +1253,7 @@ class PjRtBuffer {
   //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) = 0;
 
   // Prepares to send a copy of the buffer to a remote device. The destination
@@ -1264,10 +1286,9 @@ class PjRtBuffer {
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
   using RemoteSendCallback =
-      std::function<void(Status status, bool sends_were_enqueued)>;
-  virtual void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) = 0;
+      std::function<void(absl::Status status, bool sends_were_enqueued)>;
+  virtual void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                                  RemoteSendCallback on_done) = 0;
   struct ScatterDetails {
     // The dimensions of the corresponding buffer that the scatter slices
     // across. These dimensions must be the major dimensions in the on-device
@@ -1291,7 +1312,7 @@ class PjRtBuffer {
   // `calbacks.size()` and (if Ok) `serialized_descriptors.size()` match the
   // product of the major dimensions specified in `scatter_details`.
   virtual void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) = 0;
 
@@ -1303,8 +1324,8 @@ class PjRtBuffer {
   //
   // If either 'this' or 'dependency' transitions to error, then the returned
   // buffer will transition to error.
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<Status> dependency) {
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+  DonateWithControlDependency(PjRtFuture<> dependency) {
     return Unimplemented("DonateWithControlDependency is not supported.");
   }
 
@@ -1331,11 +1352,11 @@ class PjRtBuffer {
     virtual ~AsyncSendPlaceholder() = default;
 
     // Equivalent to PjRtBuffer::ToLiteral on the underlying buffer;
-    virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+    virtual PjRtFuture<> ToLiteral(MutableLiteralBase* literal) = 0;
 
     // Equivalent to PjRtBuffer::CopyRawToHost on the underlying buffer;
-    virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                             int64_t transfer_size) = 0;
+    virtual PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                                       int64_t transfer_size) = 0;
 
     // Equivalent to PjRtBuffer::CopyToRemoteDevice on the underlying buffer;
     virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
@@ -1348,7 +1369,7 @@ class PjRtBuffer {
         std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
         const ScatterDetails& scatter_details) = 0;
   };
-  virtual StatusOr<std::unique_ptr<AsyncSendPlaceholder>>
+  virtual absl::StatusOr<std::unique_ptr<AsyncSendPlaceholder>>
   CreateAsyncSendPlaceholder() {
     return Unimplemented("AsyncSendPlaceholder is not supported.");
   }
@@ -1362,12 +1383,12 @@ class PjRtBuffer {
   // the buffer has been deleted or donated then the returned future will stay
   // valid (will not transition to error as a consequence of buffer deletion)
   // even if the buffer is subsequently donated or deleted.
-  virtual PjRtFuture<Status> GetReadyFuture() = 0;
+  virtual PjRtFuture<> GetReadyFuture() = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   ABSL_DEPRECATED("Use GetReadyFuture().Await() instead")
-  Status BlockHostUntilReady() {
+  absl::Status BlockHostUntilReady() {
     auto s = GetReadyFuture().Await();
     // Fix up error string because some clients rely on it.
     if (!s.ok() &&
@@ -1397,8 +1418,8 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
-      const override;
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
@@ -1445,15 +1466,15 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   //
   // The caller is *NOT* required to ensure that PjRtLoadedExecutable stays
   // alive until futures are ready.
-  virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+  virtual absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options,
-          std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
+          std::optional<std::vector<PjRtFuture<>>>& returned_futures) = 0;
   // Convenience wrapper for Execute that never returns futures.
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) {
-    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::optional<std::vector<PjRtFuture<>>> returned_futures;
     return Execute(std::move(argument_handles), options, returned_futures);
   }
 
@@ -1467,23 +1488,24 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   //     once the execution has completed.
   //    else:
   //     returned_future will not be modified.
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
+                 PjRtDevice* device, const ExecuteOptions& options,
+                 std::optional<PjRtFuture<>>& returned_future,
+                 bool fill_future) = 0;
   // Convenience wrapper for ExecuteSharded that always returns a future.
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<>>& returned_future) {
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/true);
   }
   // Convenience wrapper for ExecuteSharded that never returns a future.
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    std::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<>> returned_future;
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/false);
   }
@@ -1498,23 +1520,24 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   //     once the execution has completed.
   //    else:
   //     returned_future will not be modified.
-  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  ExecutePortable(absl::Span<PjRtBuffer* const> argument_handles,
+                  PjRtDevice* device, const ExecuteOptions& options,
+                  std::optional<PjRtFuture<>>& returned_future,
+                  bool fill_future) = 0;
   // Convenience wrapper for ExecutePortable that always returns a future.
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<>>& returned_future) {
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/true);
   }
   // Convenience wrapper for ExecutePortable that never returns a future.
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    std::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
   }
@@ -1539,7 +1562,7 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // combining the result buffers with a future that becomes ready when the
   // execution completes.
   struct Result {
-    std::optional<PjRtFuture<Status>> future;
+    std::optional<PjRtFuture<>> future;
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   };
 };

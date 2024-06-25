@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
-#include <cstdlib>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -65,7 +65,7 @@ Status GetTfrtExecutionContext(OpKernelContext* c,
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
   int64_t exec_ctx_intptr = *reinterpret_cast<const int64_t*>(tensor->data());
   *exec_ctx = absl::bit_cast<const tfrt::ExecutionContext*>(exec_ctx_intptr);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
@@ -109,10 +109,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     return batch_function->name();
   }
 
-  static Status Create(OpKernelContext* c, int32_t num_batch_threads,
-                       int32_t max_batch_size, int32_t batch_timeout_micros,
-                       int32_t max_enqueued_batches,
-                       ArrayRef<int32_t> allowed_batch_sizes,
+  static Status Create(OpKernelContext* c,
+                       const serving::BatchResourceOptions& options,
                        tsl::RCReference<const tfrt::Function> bef_func,
                        bool enable_large_batch_splitting, bool disable_padding,
                        std::unique_ptr<FallbackBatchResource>* resource) {
@@ -120,7 +118,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
 
     BatcherT::Options batcher_options;
-    batcher_options.num_batch_threads = num_batch_threads;
+    batcher_options.num_batch_threads = options.num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
@@ -135,12 +133,17 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     resource->reset(new FallbackBatchResource(
         *exec_ctx, *fallback_request_state, std::move(bef_func),
         std::move(batcher),
-        GetBatcherQueueOptions(num_batch_threads, max_batch_size,
-                               batch_timeout_micros, max_enqueued_batches,
-                               allowed_batch_sizes,
-                               enable_large_batch_splitting, disable_padding),
-        allowed_batch_sizes));
-    return OkStatus();
+        GetBatcherQueueOptions(
+            options.num_batch_threads, options.max_batch_size,
+            options.batch_timeout_micros, options.max_enqueued_batches,
+            options.allowed_batch_sizes, enable_large_batch_splitting,
+            disable_padding, options.low_priority_max_batch_size,
+            options.low_priority_batch_timeout_micros,
+            options.low_priority_max_enqueued_batches,
+            options.low_priority_allowed_batch_sizes,
+            options.mixed_priority_batching_policy),
+        options.allowed_batch_sizes));
+    return absl::OkStatus();
   }
 
   static Status Create(
@@ -173,7 +176,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                                        true /* enable large batch split */,
                                        allowed_batch_sizes, disable_padding),
         allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const final { return "FallbackBatchResource"; }
@@ -325,14 +328,14 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   auto req_ctx = std::move(statusor).value();
 
   int64_t id = req_ctx->id();
-  tensorflow::profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [id] {
-        return tensorflow::profiler::TraceMeEncode("RunBefFunction",
-                                                   {{"id", id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode("RunBefFunction",
+                                            {{"id", id}, {"_r", 1}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor, id,
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfrtExecutor, id,
+      tsl::profiler::TraceMeLevel::kInfo);
 
   tfrt::ExecutionContext batch_exec_ctx(std::move(req_ctx));
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
@@ -410,6 +413,26 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("low_priority_batch_timeout_micros: int = 0")
     .Attr("low_priority_allowed_batch_sizes: list(int) = []")
     .Attr("low_priority_max_enqueued_batches: int = 0")
+    // Policy that determines the mixed priority batching behavior when low
+    // priority batch parameters are present.
+    //
+    // low_priority_padding_with_next_allowed_batch_size: If high priority
+    // batches time out without reaching the max batch size, low priority inputs
+    // pad the high priority batches up to the next allowed batch size. A low
+    // priority only batch gets schedule only when the low priority input times
+    // out or reaches the max batch size while there is no high priority input
+    // waiting to be processed.
+    // low_priority_padding_with_max_batch_size: Same as above but pad up to the
+    // max batch size.
+    // priority_isolation: High priority and low priority inputs never share the
+    // same batch, i.e., no low priority input padding high priority batches.
+    // Low priority inputs get scheduled only as part of low priority only
+    // batches as described above.
+    .Attr(
+        "mixed_priority_policy: "
+        "{'low_priority_padding_with_max_batch_size', "
+        "'low_priority_padding_with_next_allowed_batch_size', "
+        "'priority_isolation'} = 'low_priority_padding_with_max_batch_size'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -47,8 +48,6 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -244,7 +243,8 @@ absl::Status MakeDotComputationSplitKBatch(
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
-  const int64_t lhs_contracting_idx = ContractingDimensionIndex(*dot, 0);
+  TF_ASSIGN_OR_RETURN(const int64_t lhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 0));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_contracting_dimensions(),
       *new_dim_numbers.mutable_lhs_contracting_dimensions(),
@@ -254,7 +254,8 @@ absl::Status MakeDotComputationSplitKBatch(
       old_dim_numbers.lhs_batch_dimensions(),
       *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
 
-  const int64_t rhs_contracting_idx = ContractingDimensionIndex(*dot, 1);
+  TF_ASSIGN_OR_RETURN(const int64_t rhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 1));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_contracting_dimensions(),
       *new_dim_numbers.mutable_rhs_contracting_dimensions(),
@@ -286,7 +287,7 @@ absl::Status MakeDotComputationSplitKBatch(
     }
     CHECK_EQ(current->user_count(), 1);
     current = current->users()[0];
-    if (!IsDistributiveOverAddition(*current)) {
+    if (!legacy_triton::IsDistributiveOverAddition(*current)) {
       return Cancelled("Operation non-distributive over addition after dot.");
     }
   } while (true);

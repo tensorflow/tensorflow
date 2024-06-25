@@ -18,12 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "absl/strings/str_cat.h"
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

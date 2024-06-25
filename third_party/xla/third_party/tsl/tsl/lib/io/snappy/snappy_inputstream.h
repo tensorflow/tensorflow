@@ -46,19 +46,19 @@ class SnappyInputStream : public InputStreamInterface {
   // ABORTED:      If inflate() fails, we return the error code with the
   //               error message in `z_stream_->msg`.
   // others:       If reading from stream failed.
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
 #if defined(TF_CORD_SUPPORT)
-  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
   int64_t Tell() const override;
 
-  Status Reset() override;
+  absl::Status Reset() override;
 
  private:
   // Decompress the next chunk of data and place the data into the cache.
-  Status Inflate();
+  absl::Status Inflate();
 
   // Attempt to read `bytes_to_read` from the decompressed data cache. Returns
   // the actual number of bytes read.

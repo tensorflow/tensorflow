@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tsl/lib/core/bitmap.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <string>
+
+#include "absl/numeric/bits.h"
 
 namespace tsl {
 namespace core {
@@ -34,41 +39,7 @@ void Bitmap::Reset(size_t n) {
 
 // Return 1+index of the first set bit in w; return 0 if w == 0.
 static size_t FindFirstSet(uint32_t w) {
-  // TODO(jeff,sanjay): If this becomes a performance issue, we could
-  // use the __builtin_ffs(w) routine on GCC, or the ffs(w) routine on
-  // some other platforms.
-
-  // clang-format off
-  static uint8_t kLowestBitSet[256] = {
-    /*  0*/ 0,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 16*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 32*/ 6,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 48*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 64*/ 7,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 80*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /* 96*/ 6,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*112*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*128*/ 8,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*144*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*160*/ 6,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*176*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*192*/ 7,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*208*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*224*/ 6,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-    /*240*/ 5,  1,  2,  1,  3,  1,  2,  1,  4,  1,  2,  1,  3,  1,  2,  1,
-  };
-  // clang-format on
-  if (w & 0xff) {
-    return kLowestBitSet[w & 0xff];
-  } else if ((w >> 8) & 0xff) {
-    return kLowestBitSet[(w >> 8) & 0xff] + 8;
-  } else if ((w >> 16) & 0xff) {
-    return kLowestBitSet[(w >> 16) & 0xff] + 16;
-  } else if ((w >> 24) & 0xff) {
-    return kLowestBitSet[(w >> 24) & 0xff] + 24;
-  } else {
-    return 0;
-  }
+  return w == 0 ? 0 : absl::countr_zero(w) + 1;
 }
 
 size_t Bitmap::FirstUnset(size_t start) const {

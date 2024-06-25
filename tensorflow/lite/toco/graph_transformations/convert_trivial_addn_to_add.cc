@@ -27,7 +27,7 @@ namespace toco {
   *modified = false;
   auto addn_it = model->operators.begin() + op_index;
   if (addn_it->get()->type != OperatorType::kAddN) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   AddNOperator* addn_op = static_cast<AddNOperator*>(addn_it->get());
   CHECK_GE(addn_op->inputs.size(), 2);
@@ -35,7 +35,7 @@ namespace toco {
 
   // We only reduce AddN with N=2 to a regular Add.
   if (addn_op->inputs.size() != 2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Copy inputs & outputs to regular Add.
@@ -48,7 +48,7 @@ namespace toco {
   model->operators.emplace(addn_it, add_op);
   DeleteOpAndArrays(model, addn_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

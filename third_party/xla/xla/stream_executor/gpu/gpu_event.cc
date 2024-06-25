@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_event.h"
 
+#include <cstdint>
+
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -27,7 +31,7 @@ namespace gpu {
 GpuEvent::GpuEvent(GpuExecutor* parent)
     : parent_(parent), gpu_event_(nullptr) {}
 
-GpuEvent::~GpuEvent() {}
+GpuEvent::~GpuEvent() { Destroy().IgnoreError(); }
 
 absl::Status GpuEvent::Init() {
   return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,
@@ -44,6 +48,16 @@ absl::Status GpuEvent::Record(GpuStream* stream) {
 }
 
 GpuEventHandle GpuEvent::gpu_event() { return gpu_event_; }
+
+absl::Status GpuEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
+  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(),
+                                   absl::bit_cast<GpuStreamHandle>(stream),
+                                   gpu_event_)) {
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError("Error waiting for event on external stream");
+  }
+}
 
 }  // namespace gpu
 }  // namespace stream_executor

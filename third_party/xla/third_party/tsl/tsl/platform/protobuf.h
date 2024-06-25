@@ -90,7 +90,7 @@ inline std::string ProtobufStringToString(const absl::Cord& s) {
   return std::string(s);
 }
 inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
-  dest->CopyFrom(*src);
+  *dest = *src;
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
@@ -125,6 +125,12 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
 
   tstring* target_;
 };
+
+std::string LegacyUnredactedDebugString(const tsl::protobuf::Message& message);
+std::string LegacyUnredactedDebugString(
+    const tsl::protobuf::MessageLite& message);
+std::string LegacyUnredactedShortDebugString(
+    const tsl::protobuf::Message& message);
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_PROTOBUF_H_

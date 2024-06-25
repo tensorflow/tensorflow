@@ -52,7 +52,7 @@ using tensorflow::shape_inference::ShapeHandle;
 
 // Only non-static shape or type with subtype can be refined.
 static bool CanBeRefined(Type type) {
-  auto shape_type = type.dyn_cast<ShapedType>();
+  auto shape_type = mlir::dyn_cast<ShapedType>(type);
   if (!shape_type) return false;
 
   // Returns whether type with subtypes can be further refined.
@@ -60,8 +60,8 @@ static bool CanBeRefined(Type type) {
     return tws.GetSubtypes().empty() ||
            llvm::any_of(tws.GetSubtypes(), CanBeRefined);
   };
-  auto type_with_subtype = shape_type.getElementType()
-                               .dyn_cast<tf_type::TensorFlowTypeWithSubtype>();
+  auto type_with_subtype = mlir::dyn_cast<tf_type::TensorFlowTypeWithSubtype>(
+      shape_type.getElementType());
   if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
 
   return !shape_type.hasStaticShape();
@@ -85,7 +85,7 @@ class ShapeInference : public impl::ShapeInferenceBase<ShapeInference> {
 
   // Get the tensor value if possible, return nullptr otherwise.
   DenseElementsAttr GetTensorValue(Value result) {
-    OpResult op_result = result.dyn_cast<OpResult>();
+    OpResult op_result = mlir::dyn_cast<OpResult>(result);
     if (op_result) {
       auto it = cached_tensor_values_.find(op_result);
       if (it != cached_tensor_values_.end()) return it->second;
@@ -99,7 +99,7 @@ class ShapeInference : public impl::ShapeInferenceBase<ShapeInference> {
 void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   // Only op with static shape is able to construct the tensor value.
   if (llvm::all_of(op->getResults().drop_back(), [this](Value value) {
-        auto shape = value.getType().cast<ShapedType>();
+        auto shape = mlir::cast<ShapedType>(value.getType());
         /// NOMUTANTS -- shape.hasStaticShape is a cheaper operation than
         /// GetTensorValue
         return (!shape.hasStaticShape() || GetTensorValue(value) != nullptr);
@@ -117,9 +117,10 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;
   } else if (op_name == "Rank") {
-    ShapedType operand_shape = op->getOperand(0).getType().cast<ShapedType>();
+    ShapedType operand_shape =
+        mlir::cast<ShapedType>(op->getOperand(0).getType());
     if (!operand_shape.hasRank()) return;
-    ShapedType return_shape = op->getResultTypes()[0].cast<ShapedType>();
+    ShapedType return_shape = mlir::cast<ShapedType>(op->getResultTypes()[0]);
     DenseElementsAttr tensor_value;
     if (return_shape.getElementType().isInteger(32)) {
       tensor_value = DenseElementsAttr::get(
@@ -130,9 +131,10 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
     }
     cached_tensor_values_[op->getResult(0)] = tensor_value;
   } else if (op_name == "Size") {
-    ShapedType operand_shape = op->getOperand(0).getType().cast<ShapedType>();
+    ShapedType operand_shape =
+        mlir::cast<ShapedType>(op->getOperand(0).getType());
     if (!operand_shape.hasStaticShape()) return;
-    ShapedType return_shape = op->getResultTypes()[0].cast<ShapedType>();
+    ShapedType return_shape = mlir::cast<ShapedType>(op->getResultTypes()[0]);
     DenseElementsAttr tensor_value;
     if (return_shape.getElementType().isInteger(32)) {
       tensor_value =
@@ -147,13 +149,14 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   } else if (op_name == "Shape" || op_name == "ShapeN") {
     for (OpOperand &operand : op->getOpOperands()) {
       Type operand_type = operand.get().getType();
-      if (operand_type.isa<ControlType>()) break;
+      if (mlir::isa<ControlType>(operand_type)) break;
 
-      auto operand_shape = operand_type.cast<ShapedType>();
+      auto operand_shape = mlir::cast<ShapedType>(operand_type);
       if (!operand_shape.hasStaticShape()) continue;
 
       int idx = operand.getOperandNumber();
-      ShapedType return_shape = op->getResultTypes()[idx].cast<ShapedType>();
+      ShapedType return_shape =
+          mlir::cast<ShapedType>(op->getResultTypes()[idx]);
       DenseElementsAttr tensor_value;
       if (return_shape.getElementType().isInteger(32)) {
         tensor_value = DenseElementsAttr::get<int>(
@@ -182,7 +185,7 @@ void ShapeInference::runOnOperation() {
 
   auto op_result_as_shape_fn = [this](InferenceContext &ic,
                                       OpResult op_result) -> ShapeHandle {
-    auto rt = op_result.getType().dyn_cast<RankedTensorType>();
+    auto rt = mlir::dyn_cast<RankedTensorType>(op_result.getType());
     // NOMUTANTS -- TODO(chiahungduan): Review this condition to see if shape
     // with known rank but unknown dimension is acceptable.
     if (!rt || rt.getRank() != 1 || !rt.hasStaticShape()) return {};
@@ -199,7 +202,8 @@ void ShapeInference::runOnOperation() {
 
   auto infer_and_update_shapes = [&](Operation *op) -> bool {
     auto result_element_type_fn = [&](int idx) -> Type {
-      return op->getResult(idx).getType().cast<ShapedType>().getElementType();
+      return mlir::cast<ShapedType>(op->getResult(idx).getType())
+          .getElementType();
     };
 
     SmallVector<ShapedTypeComponents> results;
@@ -223,7 +227,7 @@ void ShapeInference::runOnOperation() {
       }
 
       Type refined_type = tf_type::GetCastCompatibleType(
-          op_result.getType().cast<ShapedType>(), inferred_type);
+          mlir::cast<ShapedType>(op_result.getType()), inferred_type);
 
       // Certain attributes like _output_shapes may have incorrect shape
       // information. When it's incompatible, use the result of shape inference

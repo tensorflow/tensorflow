@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "FinalizeTPUEmbeddingV2"
+  in_arg {
+    name: "common_config"
+    description: <<END
+A string-encoded common configuration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.
+END
+  }
+  in_arg {
+    name: "memory_config"
+    description: <<END
+A string-encoded memory config proto containing metadata about
+the memory allocations reserved for TPUEmbedding.
+END
+  }
+  out_arg {
+    name: "embedding_partitions"
+    description: <<END
+A string-encoded embedding partitions proto describing how embedding tables are
+partitioned along their feature and ID.
+END
+  }
+  out_arg {
+    name: "hbm_buffers_config"
+    description: <<END
+A string-encoded HBM buffers config proto specifies where HBM buffers are
+located.
+END
+  }
+  summary: "An op that finalizes the TPUEmbedding configuration."
+}

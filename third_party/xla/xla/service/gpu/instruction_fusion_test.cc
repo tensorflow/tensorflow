@@ -980,5 +980,27 @@ ENTRY main {
   EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
 }
 
+TEST_F(InstructionFusionTest, DoNotFuseInsideReducer) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+scalar_add_computation {
+  scalar_rhs = f32[] parameter(1)
+  scalar_lhs = f32[] parameter(0)
+  add.1 = f32[] add(scalar_lhs, scalar_rhs)
+  ROOT add.2 = f32[] add(add.1, scalar_rhs)
+}
+
+ENTRY main {
+  param_0 = f16[64,96] parameter(0)
+  constant_2 = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(param_0, constant_2), dimensions={1}, to_apply=scalar_add_computation
+})")
+                    .value();
+
+  EXPECT_FALSE(duplicating_instruction_fusion_.Run(module.get()).value());
+  SCOPED_TRACE(module->ToString());
+}
+
 }  // namespace gpu
 }  // namespace xla

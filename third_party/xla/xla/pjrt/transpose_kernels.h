@@ -55,7 +55,7 @@ namespace xla {
 // and row 2 and row 3 together:
 //
 // row 0: w0 x0 w1 x1
-// row 1: w2 x2 x3 x3
+// row 1: w2 x2 w3 x3
 // row 2: y0 z0 y1 z1
 // row 3: y2 z2 y3 z3
 //
@@ -88,8 +88,8 @@ namespace xla {
 // row 1 but they are not in the right order. We need to shuffle them once to
 // get them in the right order:
 //
-// row 0: w0 x0 y0 z0 w1 x1 y1 z1
-// row 1: w1 x1 y1 z1 w2 x2 y2 z2
+// row 0: w0 x0 y0 z0 w2 x2 y2 z2
+// row 1: w1 x1 y1 z1 w3 x3 y3 z3
 //
 // Now, we can extract two rows of 4 elements from row 0 and two rows of 4
 // elements from row 1 to store into memory.

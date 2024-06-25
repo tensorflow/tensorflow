@@ -175,8 +175,8 @@ class FunctionTest(xla_test.XLATestCase):
       func = polymorphic_function.function(fn2, jit_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         func(inputs)
 
   def testUnsupportedOps(self):
@@ -189,8 +189,8 @@ class FunctionTest(xla_test.XLATestCase):
       xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         xla_func(constant_op.constant([3.1, 3.2]))
 
   def testCollectiveReduceChannelId(self):
@@ -500,8 +500,8 @@ class FunctionTest(xla_test.XLATestCase):
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       c = C()
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):

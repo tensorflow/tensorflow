@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -59,17 +60,8 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op);
 // quantization parameters are annotated by the QuantizeOp/DequantizeOp pairs.
 // Each matched pattern are rewritten by its quantized alternatives.
 //
-// The concrete pattern, extends from this base pattern, can specify whether it
-// allows hybrid quantization. If it is allowed, for operand/result that is not
-// adjacent to dequantize/quantize op, it remains as float. For operand/result
-// that is adjacent to dequantize/quantize, it is quantized. Hybrid quantization
-// can be used to generate both weight-only quantization and dynamic range
-// quantization. The condition for allowing hybrid quantization or not for an op
-// can be specified in the below function:
-//
-//    static bool AllowHybridQuantization(Operation& op)
-//
-// This is a templatized `OpRewritePattern<RootOpT>`.
+// Quantization method is determined by the `_quantization_method` attributes
+// attached to each quantizable units.
 //
 // Template constraints are imposed as follows:
 //
@@ -147,7 +139,7 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
         return failure();
       }
 
-      if (GetStableHloQuantScaleSpec(candidate_op)
+      if (GetStableHloQuantConstraints(candidate_op)
               ->has_same_scale_requirement &&
           !IsConnectedWithQuantizedCompsiteFunction(candidate_op)) {
         return failure();
@@ -158,18 +150,22 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
         return failure();
       }
 
+      const bool weight_only_quantizable =
+          IsWeightOnlyQuantizableOp(*candidate_op);
+
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
       inputs.reserve(candidate_op->getNumOperands());
       for (auto operand : candidate_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (mlir::isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type =
+            mlir::cast<TensorType>(operand.getType()).getElementType();
         if (auto dq_op =
                 dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
           inputs.push_back(dq_op.getOperand());
@@ -177,8 +173,7 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
           // If the operand is an integer tensor, then it doesn't require the
           // DequantizeOp in the pattern.
           inputs.push_back(operand);
-        } else if (static_cast<const ConcreteT*>(this)->AllowHybridQuantization(
-                       *candidate_op)) {
+        } else if (weight_only_quantizable) {
           inputs.push_back(operand);
         } else {
           return failure();
@@ -196,13 +191,13 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
         Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
         // results.
-        if (result_type.isa<NoneType>()) {
+        if (mlir::isa<NoneType>(result_type)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result_type);
           continue;
         }
         Type result_ele_type =
-            result.getType().cast<TensorType>().getElementType();
+            mlir::cast<TensorType>(result.getType()).getElementType();
         // If the user is the QuantizeOp, it must be the only user.
         if (result.hasOneUse() && isa<QuantizeOpT>(*result.user_begin())) {
           auto user = cast<QuantizeOpT>(*result.user_begin());
@@ -214,8 +209,7 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcreteT*>(this)->AllowHybridQuantization(
-                       *candidate_op)) {
+        } else if (weight_only_quantizable) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
@@ -249,23 +243,15 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
   }
 };
 
-// Gemm Style Op: glossary/gemm.
-void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns,
-                                    bool enable_per_channel_quantized_weight);
+// Populates common patterns that are usually compute heavy or memory bound.
+void PopulateCommonQuantizationPatterns(
+    MLIRContext& ctx, RewritePatternSet& patterns,
+    bool enable_per_channel_quantized_weight);
 
-// Populates pattern for hybrid quantization.
-void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
+// Populates conversion patterns for all quantizable ops, including
+// ops that are not compute-heavy and data movement ops.
+void PopulateAllQuantizablePatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns);
-
-// Populates pattern for quantization of ops with regions such as
-// stablehlo.reduce_window op.
-void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
-                                         RewritePatternSet& patterns);
-
-// Populates conversion patterns for unary data movement ops.
-void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
-                                        RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 

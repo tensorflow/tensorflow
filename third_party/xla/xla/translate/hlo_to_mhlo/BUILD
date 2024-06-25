@@ -1,6 +1,6 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -31,11 +31,11 @@ cc_library(
     srcs = ["custom_call_importer.cc"],
     hdrs = ["custom_call_importer.h"],
     deps = [
-        "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
@@ -71,21 +71,23 @@ cc_library(
         ":custom_call_importer",
         ":hlo_utils",
         ":location_importer",
+        ":module_config_importer",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:protobuf_util",
         "//xla:shape_layout",
         "//xla:shape_util",
-        "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -94,6 +96,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
@@ -107,9 +110,9 @@ cc_library(
     hdrs = ["hlo_to_mlir_hlo.h"],
     deps = [
         ":hlo_module_importer",
-        "//xla:status",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -164,16 +167,26 @@ cc_library(
 )
 
 cc_library(
+    name = "module_config_importer",
+    srcs = ["module_config_importer.cc"],
+    hdrs = ["module_config_importer.h"],
+    deps = [
+        "//xla/service:hlo_module_config",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "translate",
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
     deps = [
         ":hlo_to_mlir_hlo",
-        "//xla:status",
         "//xla/mlir_hlo",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
     ],

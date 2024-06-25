@@ -165,6 +165,10 @@ class SubgraphBuilder {
   // 1 output.
   void BuildIfSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph with a single StableHLO Composite op.
+  void BuildCompositeSubgraph(Subgraph* subgraph,
+                              const Subgraph* decomposition);
+
   // Build a subgraph which triggers the reallocation of an inplace output
   // tensor whose corresponding input has not been consumed yet. This tests that
   // the input pointer has be updated.

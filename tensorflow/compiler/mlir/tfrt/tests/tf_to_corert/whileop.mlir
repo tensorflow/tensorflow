@@ -19,7 +19,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_test_remove_unused_results
   // CHECK:       [[pred:%.*]] = tfrt_fallback_async.predicate
   // CHECK-NEXT:  tfrt.while [[pred]] @"[[while_func_prefix:.*]]/tfrt_body_1"
-  // CHECK-SAME:  (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
+  // CHECK-SAME:  (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   // CHECK-NOT:   func.call
   func.func @while_test_remove_unused_results(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
     %0:2 = "tf.While"(%arg0, %arg1) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)

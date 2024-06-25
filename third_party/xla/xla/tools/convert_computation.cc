@@ -23,8 +23,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"

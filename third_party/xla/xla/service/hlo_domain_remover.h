@@ -37,8 +37,8 @@ class HloDomainRemover : public HloModulePass {
   // function is tasked at applying attribute normalization on the instructions
   // within such domain.
   HloDomainRemover(absl::string_view kind,
-                   std::function<Status(const DomainMetadata::Domain&,
-                                        const DomainMetadata* metadata)>
+                   std::function<absl::Status(const DomainMetadata::Domain&,
+                                              const DomainMetadata* metadata)>
                        normalizer)
       : kind_(kind), normalizer_(std::move(normalizer)) {}
 
@@ -46,11 +46,11 @@ class HloDomainRemover : public HloModulePass {
 
   // Remove domains of a given kind which are used as users of a specific
   // instruction.
-  static StatusOr<int64_t> RemoveExitDomains(HloInstruction* instruction,
-                                             absl::string_view domain_kind);
+  static absl::StatusOr<int64_t> RemoveExitDomains(
+      HloInstruction* instruction, absl::string_view domain_kind);
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -58,8 +58,8 @@ class HloDomainRemover : public HloModulePass {
   class RunContext;
 
   std::string kind_;
-  std::function<Status(const DomainMetadata::Domain&,
-                       const DomainMetadata* metadata)>
+  std::function<absl::Status(const DomainMetadata::Domain&,
+                             const DomainMetadata* metadata)>
       normalizer_;
 };
 

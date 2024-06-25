@@ -37,9 +37,9 @@ namespace {
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 bool IsResourceTensor(Value value) {
-  const auto tensor_type = value.getType().dyn_cast<TensorType>();
+  const auto tensor_type = mlir::dyn_cast<TensorType>(value.getType());
   return tensor_type &&
-         tensor_type.getElementType().isa<mlir::TF::ResourceType>();
+         mlir::isa<mlir::TF::ResourceType>(tensor_type.getElementType());
 }
 
 // The default criterion for operations being considered as causing or being

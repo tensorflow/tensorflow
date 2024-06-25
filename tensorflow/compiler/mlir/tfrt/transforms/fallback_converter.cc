@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
@@ -31,7 +32,7 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
   addConversion([](tfrt::fallback::TFTensorType type) { return type; });
   addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
-    if (type.getElementType().isa<mlir::TF::TensorFlowRefType>()) {
+    if (mlir::isa<mlir::TF::TensorFlowRefType>(type.getElementType())) {
       return std::nullopt;
     }
 
@@ -46,9 +47,9 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
 mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
     mlir::Location loc, llvm::StringRef device, mlir::Value value,
     mlir::ConversionPatternRewriter &rewriter) {
-  if (value.getType().isa<tfrt::fallback::TFTensorType>()) return value;
+  if (mlir::isa<tfrt::fallback::TFTensorType>(value.getType())) return value;
 
-  if (!value.getType().isa<tfrt::corert::TensorHandleType>()) return {};
+  if (!mlir::isa<tfrt::corert::TensorHandleType>(value.getType())) return {};
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
 
@@ -82,9 +83,9 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
 mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
     mlir::Location loc, mlir::Value value,
     mlir::ConversionPatternRewriter &rewriter) {
-  if (value.getType().isa<tfrt::corert::TensorHandleType>()) return value;
+  if (mlir::isa<tfrt::corert::TensorHandleType>(value.getType())) return value;
 
-  if (!value.getType().isa<tfrt::fallback::TFTensorType>()) return {};
+  if (!mlir::isa<tfrt::fallback::TFTensorType>(value.getType())) return {};
 
   // Use CPU device by default if no device is specified.
   llvm::StringRef device = GetDefaultCpuDeviceName();
@@ -134,7 +135,7 @@ mlir::LogicalResult ConvertFallbackOperands(
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter) {
   for (auto operand : operands) {
-    if (!operand.getType().isa<tfrt::fallback::TFTensorType>()) {
+    if (!mlir::isa<tfrt::fallback::TFTensorType>(operand.getType())) {
       auto new_operand = ConvertCoreRTTensorHandleToFallbackTensor(
           op->getLoc(), device, operand, rewriter);
       if (!new_operand)

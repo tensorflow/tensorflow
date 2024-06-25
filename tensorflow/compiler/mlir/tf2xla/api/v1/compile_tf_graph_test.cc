@@ -76,7 +76,7 @@ MlirToHloArgs CreateTestMlirToHloArgs(const char* module_str = kMlirModuleStr) {
 
 class CompileTFGraphTest : public ::testing::Test {
  public:
-  tsl::StatusOr<XlaCompilationResult> CompileWithComputation(
+  absl::StatusOr<XlaCompilationResult> CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
     XlaCompilationResult compilation_result;
@@ -99,7 +99,7 @@ class CompileTFGraphTest : public ::testing::Test {
 
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
 
-    tsl::Status compilation_status =
+    absl::Status compilation_status =
         tensorflow::tf2xla::v1::CompileTensorflowGraphToHlo(
             computation, metadata_proto, use_tuple_args,
             shape_determination_fns, arg_shapes, &arg_core_mapping,

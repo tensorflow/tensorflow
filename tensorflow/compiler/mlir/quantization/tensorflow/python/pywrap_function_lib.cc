@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
@@ -53,35 +54,36 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
  public:
   using PyFunctionLibrary::PyFunctionLibrary;
 
-  void SaveExportedModel(const absl::string_view dst_saved_model_path,
-                         const ExportedModel& exported_model,
-                         const absl::string_view src_saved_model_path,
-                         const std::unordered_set<std::string>& tags,
-                         const absl::flat_hash_map<std::string, SignatureDef>&
-                             signature_def_map) const override {
-    PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, save_exported_model,
-                           dst_saved_model_path, exported_model,
-                           src_saved_model_path, tags, signature_def_map);
+  std::optional<bool> SaveExportedModel(
+      const absl::string_view dst_saved_model_path,
+      const ExportedModel& exported_model,
+      const absl::string_view src_saved_model_path,
+      const std::unordered_set<std::string>& tags,
+      const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map)
+      const override {
+    PYBIND11_OVERRIDE_PURE(std::optional<bool>, PyFunctionLibrary,
+                           save_exported_model, dst_saved_model_path,
+                           exported_model, src_saved_model_path, tags,
+                           signature_def_map);
   }
 
-  void RunCalibration(
+  std::optional<bool> RunCalibration(
       const absl::string_view saved_model_path,
       const std::vector<std::string>& signature_keys,
       const std::unordered_set<std::string>& tags,
-      const CalibrationOptions& calibration_options,
       const bool force_graph_mode_calibration,
       const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
           representative_dataset_file_map) const override {
-    PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, run_calibration,
-                           saved_model_path, signature_keys, tags,
-                           calibration_options, force_graph_mode_calibration,
+    PYBIND11_OVERRIDE_PURE(std::optional<bool>, PyFunctionLibrary,
+                           run_calibration, saved_model_path, signature_keys,
+                           tags, force_graph_mode_calibration,
                            representative_dataset_file_map);
   }
 
-  MinMaxValue GetCalibrationMinMaxValue(
+  std::optional<MinMaxValue> GetCalibrationMinMaxValue(
       const CalibrationStatistics& calibration_statistics,
       const CalibrationOptions& calibration_options) const override {
-    PYBIND11_OVERRIDE_PURE(MinMaxValue, PyFunctionLibrary,
+    PYBIND11_OVERRIDE_PURE(std::optional<MinMaxValue>, PyFunctionLibrary,
                            get_calibration_min_max_value,
                            calibration_statistics, calibration_options);
   }
@@ -100,8 +102,7 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
            py::arg("serialized_signature_def_map"))
       .def("run_calibration", &PyFunctionLibrary::RunCalibration,
            py::arg("saved_model_path"), py::arg("signature_keys"),
-           py::arg("tags"), py::arg("calibration_options_serialized"),
-           py::arg("force_graph_mode_calibration"),
+           py::arg("tags"), py::arg("force_graph_mode_calibration"),
            py::arg("representative_dataset_file_map_serialized"))
       .def("get_calibration_min_max_value",
            &PyFunctionLibrary::GetCalibrationMinMaxValue,

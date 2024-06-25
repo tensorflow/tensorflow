@@ -73,9 +73,6 @@ def CreateTFCastToInt32Op : NativeCodeCall<
 def CreateInt32ConstOrCast : NativeCodeCall<
   "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
 
-def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
-
 // Creates an int32 constant op from an integer attribute $0.
 def CreateInt32ConstOpFromIntAttr
   : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>($0.cast<IntegerAttr>().getInt())}))">;
@@ -350,7 +347,7 @@ def LegalizeGather: Pat<
   (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
      ConstantAttr<I32Attr, "0">)>;
 
-def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
+def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices, $bad_indices_policy),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
@@ -580,7 +577,17 @@ def LegalizeMatrixSetDiag : Pat<
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
-  (TF_ScatterNdOp $indices, $updates, $shape),
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "">),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeScatterNdDefaultBadindicesPolicy : Pat<
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "DEFAULT">),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeScatterNdIgnoreBadIndices : Pat<
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "IGNORE">),
   (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
     (CreateTFCastToInt32Op $shape))>;
 

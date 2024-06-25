@@ -37,5 +37,27 @@ class TestingTest(test.TestCase):
     self.assertIn({'shapes': [3, None], 'has_bias': False}, combinations)
 
 
+class FileSizeTestCase(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+
+    self.path_a = self.create_tempdir('dir_a').full_path
+    self.create_tempfile(file_path='dir_a/w.txt', content='abcd')
+
+    self.path_b = self.create_tempdir('dir_b').full_path
+    self.create_tempfile(file_path='dir_b/x.txt', content='1234')
+    self.create_tempfile(file_path='dir_b/y.txt', content='56')
+    self.create_tempfile(file_path='dir_b/z.txt', content='78')
+
+  def test_get_dir_size(self):
+    self.assertEqual(testing.get_dir_size(self.path_a), 4)
+    self.assertEqual(testing.get_dir_size(self.path_b), 8)
+
+  def test_get_size_ratio(self):
+    self.assertEqual(testing.get_size_ratio(self.path_a, self.path_b), 0.5)
+    self.assertEqual(testing.get_size_ratio(self.path_b, self.path_a), 2.0)
+
+
 if __name__ == '__main__':
   test.main()

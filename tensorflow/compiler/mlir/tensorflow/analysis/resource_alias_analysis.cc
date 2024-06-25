@@ -20,29 +20,36 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace TF {
@@ -74,7 +81,7 @@ class BacktrackAnalysisInfo {
   // the result cannot be backtracked to a region argument, returns
   // std::nullopt.
   std::optional<int> GetArg(int result_index) const {
-    if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
+    if (auto arg = mlir::dyn_cast<BlockArgument>(GetValue(result_index)))
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
     return std::nullopt;
   }
@@ -191,7 +198,7 @@ BacktrackAnalysis::BacktrackAnalysis(
 // possible.
 Value BacktrackAnalysis::BacktrackValue(Value value) {
   while (Operation* op = value.getDefiningOp()) {
-    int res_index = value.cast<OpResult>().getResultNumber();
+    int res_index = mlir::cast<OpResult>(value).getResultNumber();
     if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {
       value = graph.GetFetch().getOperand(res_index);
     } else if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {

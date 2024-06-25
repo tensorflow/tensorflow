@@ -70,7 +70,7 @@ func.func @or_fold() -> (tensor<i1>, tensor<i1>) {
 // CHECK-LABEL: func @zero_ext
 func.func @zero_ext(%arg0: tensor<0xi1>) -> tensor<i32> {
   %0 = mhlo.constant dense<false> : tensor<i1>
-  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i1>) -> tensor<0xi1>
+  %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i1>) -> tensor<0xi1>
   %2 = mhlo.compare  NE, %arg0, %1,  UNSIGNED : (tensor<0xi1>, tensor<0xi1>) -> tensor<0xi1>
   %3 = mhlo.convert %2 : (tensor<0xi1>) -> tensor<0xi32>
   %4 = mhlo.constant dense<0> : tensor<i32>

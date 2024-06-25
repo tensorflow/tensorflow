@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -89,18 +90,18 @@ static void IncrementCounterFor(tensorflow::monitoring::Counter<1>* counter,
 }
 
 bool HasBounds(RankedTensorType type) {
-  auto encoding =
-      type.getEncoding().dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+      type.getEncoding());
   return (encoding && !encoding.getBounds().empty());
 }
 
 bool HasStaticShapeOrBounded(Value val) {
   auto type = val.getType();
-  if (type.isa<UnrankedTensorType>()) {
+  if (mlir::isa<UnrankedTensorType>(type)) {
     return false;
   }
-  if (type.isa<RankedTensorType>()) {
-    auto ranked_tensor = type.dyn_cast<RankedTensorType>();
+  if (mlir::isa<RankedTensorType>(type)) {
+    auto ranked_tensor = mlir::dyn_cast<RankedTensorType>(type);
     if (ranked_tensor.hasStaticShape()) {
       return true;
     }

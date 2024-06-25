@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 
@@ -93,7 +93,10 @@ TEST_F(GpuP2PPipelinerTest,
         _xla_send_recv_pipeline="0",
         _xla_send_recv_validation="{{1,7}}"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }, control-predecessors={send.0}
     recv-data = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)
@@ -102,7 +105,10 @@ TEST_F(GpuP2PPipelinerTest,
     r = u32[2] broadcast(c1), dimensions={}
     s = u32[2] add(r, recv-data)
 
-    send-done.0 = token[] send-done(send.0), channel_id=1
+    send-done.0 = token[] send-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     ROOT result = (u32[], u32[2]) tuple(new_count, s)
   }
 

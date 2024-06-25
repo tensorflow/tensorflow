@@ -107,11 +107,12 @@ bool IsConstOrQConstInt(Operation* op) {
 
   if (auto arith_const_op = dyn_cast_or_null<arith::ConstantOp>(op)) {
     // arith ConstOp path.
-    auto type = arith_const_op.getType().cast<ShapedType>().getElementType();
+    auto type =
+        mlir::cast<ShapedType>(arith_const_op.getType()).getElementType();
     if (!type.isInteger(32) && !type.isInteger(64)) return false;
   } else if (auto const_op = dyn_cast_or_null<TFL::ConstOp>(op)) {
     // ConstOp path.
-    auto type = const_op.getType().cast<ShapedType>().getElementType();
+    auto type = mlir::cast<ShapedType>(const_op.getType()).getElementType();
     if (!type.isInteger(32) && !type.isInteger(64)) return false;
   } else {
     // QConstOp path.

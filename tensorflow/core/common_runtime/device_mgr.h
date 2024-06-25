@@ -65,7 +65,7 @@ class DeviceMgr {
 
   // Clears given containers of all devices if 'container' is
   // non-empty. Otherwise, clears default containers of all devices.
-  virtual void ClearContainers(gtl::ArraySlice<string> containers) const = 0;
+  virtual void ClearContainers(absl::Span<const string> containers) const = 0;
 
   virtual int NumDeviceType(const string& type) const = 0;
 
@@ -102,7 +102,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   string DeviceMappingString() const override;
   Status LookupDevice(StringPiece name, Device** device) const override;
   bool ContainsDevice(int64_t device_incarnation) const override;
-  void ClearContainers(gtl::ArraySlice<string> containers) const override;
+  void ClearContainers(absl::Span<const string> containers) const override;
   int NumDeviceType(const string& type) const override;
   int NumDevices() const override;
   Device* HostCPU() const override;

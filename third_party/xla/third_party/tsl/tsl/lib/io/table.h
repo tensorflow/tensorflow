@@ -43,8 +43,8 @@ class Table {
   // to NULL and returns a non-ok status.  Does not take ownership of
   // "*file", but the client must ensure that "file" remains live
   // for the duration of the returned table's lifetime.
-  static Status Open(const Options& options, tsl::RandomAccessFile* file,
-                     uint64 file_size, Table** table);
+  static absl::Status Open(const Options& options, tsl::RandomAccessFile* file,
+                           uint64 file_size, Table** table);
 
   ~Table();
 
@@ -71,9 +71,10 @@ class Table {
   // Calls (*handle_result)(arg, ...) with the entry found after a call
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
-  Status InternalGet(const StringPiece& key, void* arg,
-                     void (*handle_result)(void* arg, const StringPiece& k,
-                                           const StringPiece& v));
+  absl::Status InternalGet(const StringPiece& key, void* arg,
+                           void (*handle_result)(void* arg,
+                                                 const StringPiece& k,
+                                                 const StringPiece& v));
 
   // No copying allowed
   Table(const Table&);

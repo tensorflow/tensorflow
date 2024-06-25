@@ -23,12 +23,12 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<ProgramShape> XlaComputation::GetProgramShape() const {
+absl::StatusOr<ProgramShape> XlaComputation::GetProgramShape() const {
   TF_RET_CHECK(proto_.has_host_program_shape());
   return ProgramShape(proto_.host_program_shape());
 }
 
-StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {
+absl::StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {
   if (IsNull()) {
     return InvalidArgument("Computation is invalid.");
   }

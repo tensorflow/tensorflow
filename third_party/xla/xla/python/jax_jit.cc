@@ -38,6 +38,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,10 +47,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
+#include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/py_values.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
@@ -61,7 +67,7 @@ namespace jax {
 namespace nb = nanobind;
 
 // TODO(phawkins): Add support for Tracers.
-// TODO(jblespiau): Use absl Status.
+// TODO(jblespiau): Use absl absl::Status.
 
 namespace {
 
@@ -138,12 +144,59 @@ bool FetchMemoriesFlag() {
       *global_state.enable_memories);
 }
 
-std::string CallSignature::DebugString() const {
+std::string ArgumentSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
     out->append(nb::cast<std::string_view>(nb::str(o)));
   };
   auto treedef_formatter = [](std::string* out, const xla::PyTreeDef& d) {
     out->append(d.ToString());
+  };
+  return absl::StrFormat(
+      "static args (positional + keyword): [%s], "
+      "static arg keyword names: [%s], "
+      "dynamic arg signatures (positional + keyword): [%s]"
+      "dynamic arg shardings: [%s]",
+      absl::StrJoin(static_args, ",", py_object_formatter),
+      absl::StrJoin(static_arg_names, ",", py_object_formatter),
+      absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
+      absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter));
+}
+
+bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
+  if (dynamic_arg_treedefs != other.dynamic_arg_treedefs) {
+    return false;
+  }
+  auto object_ptr_equality = [](nb::handle a, nb::handle b) {
+    return a.ptr() == b.ptr();
+  };
+  if (!absl::c_equal(dynamic_arg_names, other.dynamic_arg_names,
+                     object_ptr_equality)) {
+    return false;
+  }
+  if (!absl::c_equal(static_arg_names, other.static_arg_names,
+                     object_ptr_equality)) {
+    return false;
+  }
+  return absl::c_equal(
+      static_args, other.static_args,
+      [](const nb::object& a, const nb::object& b) {
+        try {
+          return a.type().ptr() == b.type().ptr() && a.equal(b);
+        } catch (const nb::python_error& e) {
+          throw std::invalid_argument(absl::StrCat(
+              "static arguments should be comparable using __eq__."
+              "The following error was raised when comparing two objects of "
+              "types ",
+              nb::cast<std::string_view>(nb::str(a.type())), " and ",
+              nb::cast<std::string_view>(nb::str(b.type())),
+              ". The error was:\n", e.what()));
+        }
+      });
+}
+
+std::string CallSignature::DebugString() const {
+  auto py_object_formatter = [](std::string* out, const nb::object& o) {
+    out->append(nb::cast<std::string_view>(nb::str(o)));
   };
   auto signature_formatter = [](std::string* out,
                                 const xla::PyArgSignature& s) {
@@ -153,25 +206,20 @@ std::string CallSignature::DebugString() const {
     out->append(o ? "true" : "false");
   };
   return absl::StrFormat(
-      "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
+      "arg signature: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
       "dynamic arg shardings: %s\n"
       "committed args: %s\n"
-      "dynamic arg keyword names: %s\n"
-      "dynamic arg treedefs: %s\n"
       "device: %s\n"
       "default_device: %s\n"
       "jax_enable_x64: %d\n"
       "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
       "thread_local_extra_jit_context: %s\n",
-      absl::StrJoin(static_args, ",", py_object_formatter),
-      absl::StrJoin(static_arg_names, ",", py_object_formatter),
+      arg_signature.DebugString(),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
       absl::StrJoin(committed_args, ",", bool_formatter),
-      absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
-      absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
       device != nullptr ? device->DebugString() : "nullptr",
       OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
       OptionalDebugString(global_extra_jit_context),
@@ -179,14 +227,7 @@ std::string CallSignature::DebugString() const {
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
-  if (dynamic_arg_treedefs != other.dynamic_arg_treedefs) {
-    return false;
-  }
-  auto object_ptr_equality = [](nb::handle a, nb::handle b) {
-    return a.ptr() == b.ptr();
-  };
-  if (!absl::c_equal(dynamic_arg_names, other.dynamic_arg_names,
-                     object_ptr_equality)) {
+  if (arg_signature != other.arg_signature) {
     return false;
   }
   if (dynamic_arg_signatures != other.dynamic_arg_signatures) {
@@ -201,10 +242,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
   if (jax_enable_memories != other.jax_enable_memories) {
     return false;
   }
-  if (!absl::c_equal(static_arg_names, other.static_arg_names,
-                     object_ptr_equality)) {
-    return false;
-  }
   if (committed_args != other.committed_args) {
     return false;
   }
@@ -212,21 +249,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
       // `==` on py:objects is the Python `is`. We need equal.
       absl::c_equal(dynamic_arg_shardings, other.dynamic_arg_shardings,
                     ShardingEqual) &&
-      absl::c_equal(
-          static_args, other.static_args,
-          [this](const nb::object& a, const nb::object& b) {
-            try {
-              return a.type().ptr() == b.type().ptr() && a.equal(b);
-            } catch (const nb::python_error& e) {
-              throw std::invalid_argument(absl::StrCat(
-                  "static arguments should be comparable using __eq__."
-                  "The following error was raised during a call to '",
-                  function_name, "' when comparing two objects of types ",
-                  nb::cast<std::string_view>(nb::str(a.type())), " and ",
-                  nb::cast<std::string_view>(nb::str(b.type())),
-                  ". The error was:\n", e.what()));
-            }
-          }) &&
       (global_extra_jit_context.has_value() ==
        other.global_extra_jit_context.has_value()) &&
       (!global_extra_jit_context.has_value() ||
@@ -243,41 +265,40 @@ bool CallSignature::operator==(const CallSignature& other) const {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-absl::Status ParseArguments(absl::Span<PyObject* const> positional_args,
-                            absl::Span<PyObject* const> keyword_args,
-                            nb::handle kwnames,
-                            absl::Span<int const> static_argnums,
-                            absl::Span<nb::str const> static_argnames,
-                            xla::PyTreeRegistry* pytree_registry,
-                            ParsedArgumentsAsBuffers& arguments) {
+absl::Status ParseArguments(
+    absl::Span<PyObject* const> positional_args,
+    absl::Span<PyObject* const> keyword_args, nb::handle kwnames,
+    absl::Span<int const> static_argnums,
+    absl::Span<nb::str const> static_argnames,
+    xla::PyTreeRegistry* pytree_registry, ArgumentSignature& signature,
+    absl::InlinedVector<nanobind::object, 2>& flat_dynamic_args) {
   tsl::profiler::TraceMe traceme("ParseArguments");
 
-  arguments.flat_dynamic_args.reserve(positional_args.size() +
-                                      keyword_args.size());
+  flat_dynamic_args.reserve(positional_args.size() + keyword_args.size());
   if (static_argnums.empty()) {
-    arguments.signature.dynamic_arg_treedefs.reserve(positional_args.size());
+    signature.dynamic_arg_treedefs.reserve(positional_args.size());
 
     // Positional arguments.
     for (int i = 0; i < positional_args.size(); ++i) {
-      arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
-      xla::PyTreeDef& pytree_def =
-          arguments.signature.dynamic_arg_treedefs.back();
-      pytree_def.Flatten(nb::handle(positional_args[i]),
-                         arguments.flat_dynamic_args);
+      signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
+      xla::PyTreeDef& pytree_def = signature.dynamic_arg_treedefs.back();
+      pytree_def.Flatten(nb::handle(positional_args[i]), flat_dynamic_args);
     }
   } else {
-    arguments.signature.dynamic_arg_treedefs.reserve(positional_args.size());
+    signature.dynamic_arg_treedefs.reserve(positional_args.size());
 
     // Positional arguments.
+    int num_positional_args = positional_args.size();
     for (int i = 0; i < positional_args.size(); ++i) {
-      if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
-          static_argnums.end()) {
-        arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
-        xla::PyTreeDef& pytree_def =
-            arguments.signature.dynamic_arg_treedefs.back();
-        pytree_def.Flatten(positional_args[i], arguments.flat_dynamic_args);
+      if (std::find_if(static_argnums.begin(), static_argnums.end(),
+                       [i, num_positional_args](int t) {
+                         return t >= 0 ? i == t : i == t + num_positional_args;
+                       }) == static_argnums.end()) {
+        signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
+        xla::PyTreeDef& pytree_def = signature.dynamic_arg_treedefs.back();
+        pytree_def.Flatten(positional_args[i], flat_dynamic_args);
       } else {
-        arguments.signature.static_args.emplace_back(
+        signature.static_args.emplace_back(
             nb::borrow<nb::object>(positional_args[i]));
       }
     }
@@ -313,21 +334,20 @@ absl::Status ParseArguments(absl::Span<PyObject* const> positional_args,
       return false;
     };
 
-    arguments.signature.dynamic_arg_names.reserve(keyword_args.size());
+    signature.dynamic_arg_names.reserve(keyword_args.size());
     for (int i = 0; i < keyword_args.size(); ++i) {
       if (kwarg_is_static(kwargs[i].first)) {
-        arguments.signature.static_arg_names.push_back(
+        signature.static_arg_names.push_back(
             nb::steal<nb::object>(kwargs[i].first));
-        arguments.signature.static_args.push_back(
+        signature.static_args.push_back(
             nb::borrow<nb::object>(kwargs[i].second));
       } else {
-        arguments.signature.dynamic_arg_names.push_back(
+        signature.dynamic_arg_names.push_back(
             nb::steal<nb::object>(kwargs[i].first));
-        arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
-        xla::PyTreeDef& pytree_def =
-            arguments.signature.dynamic_arg_treedefs.back();
+        signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
+        xla::PyTreeDef& pytree_def = signature.dynamic_arg_treedefs.back();
         pytree_def.Flatten(nb::handle(kwargs[i].second.ptr()),
-                           arguments.flat_dynamic_args);
+                           flat_dynamic_args);
       }
     }
   }
@@ -387,6 +407,66 @@ void BuildJaxjitSubmodule(nb::module_& m) {
              xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
 
   jitlib.def("_is_float0", &xla::IsFloat0);
+
+  nb::class_<ArgumentSignature> argument_signature(jitlib, "ArgumentSignature");
+  argument_signature.def_ro("static_args", &ArgumentSignature::static_args)
+      .def_ro("static_arg_names", &ArgumentSignature::static_arg_names)
+      .def_ro("dynamic_arg_names", &ArgumentSignature::dynamic_arg_names)
+      .def_ro("dynamic_arg_treedefs", &ArgumentSignature::dynamic_arg_treedefs)
+      .def("__repr__", &ArgumentSignature::DebugString)
+      .def("__str__", &ArgumentSignature::DebugString)
+      .def("__hash__",
+           [](const ArgumentSignature& s) { return absl::HashOf(s); })
+      .def("__eq__", [](const ArgumentSignature& a,
+                        const ArgumentSignature& b) { return a == b; })
+      .def("__ne__", [](const ArgumentSignature& a,
+                        const ArgumentSignature& b) { return a != b; });
+
+  jitlib.def(
+      "parse_arguments",
+      [](nb::sequence positional_args, nb::sequence keyword_args,
+         nb::tuple kwnames, absl::Span<int const> static_argnums,
+         absl::Span<nb::str const> static_argnames,
+         xla::PyTreeRegistry* pytree_registry) {
+        ArgumentSignature signature;
+        absl::InlinedVector<nanobind::object, 2> flat_dynamic_args;
+        nb::object positional_args_seq = nb::steal(PySequence_Fast(
+            positional_args.ptr(), "positional_args must be a list or tuple"));
+        if (!positional_args_seq.ptr()) {
+          throw nb::python_error();
+        }
+        nb::object keyword_args_seq = nb::steal(PySequence_Fast(
+            keyword_args.ptr(), "keyword_args must be a list or tuple"));
+        if (!keyword_args_seq.ptr()) {
+          throw nb::python_error();
+        }
+        absl::Span<PyObject* const> positional_args_span =
+            absl::MakeSpan(PySequence_Fast_ITEMS(positional_args_seq.ptr()),
+                           PySequence_Fast_GET_SIZE(positional_args_seq.ptr()));
+        absl::Span<PyObject* const> keyword_args_span =
+            absl::MakeSpan(PySequence_Fast_ITEMS(keyword_args_seq.ptr()),
+                           PySequence_Fast_GET_SIZE(keyword_args_seq.ptr()));
+        xla::ThrowIfError(ParseArguments(
+            positional_args_span, keyword_args_span, kwnames, static_argnums,
+            static_argnames, pytree_registry, signature, flat_dynamic_args));
+        return std::make_pair(std::move(signature),
+                              std::move(flat_dynamic_args));
+      },
+      nb::arg("positional_args"), nb::arg("keyword_args"), nb::arg("kwnames"),
+      nb::arg("static_argnums"), nb::arg("static_argnames"),
+      nb::arg("pytree_registry"),
+      R"doc(Parses the arguments to a function as jax.jit would.
+
+Returns a ArgumentSignature and the flattened dynamic arguments.
+
+Args:
+  positional_args: The positional arguments.
+  keyword_args: The keyword arguments.
+  kwnames: The keyword names.
+  static_argnums: The static argument numbers.
+  static_argnames: The static argument names.
+  pytree_registry: The pytree registry.
+)doc");
 }
 
 }  // namespace jax

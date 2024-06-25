@@ -39,7 +39,7 @@ namespace tensorflow {
 class ScopedAllocatorOpTest : public OpsTestBase {
  protected:
   void MakeOp(const TensorShape& shape,
-              const gtl::ArraySlice<TensorShape> shapes, DataType dtype,
+              const absl::Span<const TensorShape> shapes, DataType dtype,
               const string& name, int32_t id, int32_t expected_call_count) {
     TF_EXPECT_OK(NodeDefBuilder("scoped_allocator_op", "_ScopedAllocator")
                      .Attr("T", dtype)
@@ -87,7 +87,7 @@ void PrepOp(DataType dtype, int32_t id,
             Tensor** backing_tensor, Allocator* allocator,
             ScopedAllocatorMgr* sam, const string& op_name,
             std::vector<Tensor>* tensors,
-            gtl::InlinedVector<TensorValue, 4>* inputs,
+            absl::InlinedVector<TensorValue, 4>* inputs,
             const DataTypeVector& input_types) {
   ScopedAllocatorMgr::PopulateFields(id, fields_shapes, dtype, fields);
   // We don't simply allocate a tensor with shape as backing_tensor_shape,

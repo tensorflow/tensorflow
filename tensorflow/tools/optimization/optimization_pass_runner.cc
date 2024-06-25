@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -89,18 +90,18 @@ Status FindPassWithName(absl::string_view name,
 
   return *result == nullptr
              ? errors::Internal("Could not find pass with name ", name)
-             : OkStatus();
+             : absl::OkStatus();
 }
 }  // namespace
 
 Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
                                    GraphDef input, GraphDef* result) {
-  auto session_options = absl::make_unique<SessionOptions>();
+  auto session_options = std::make_unique<SessionOptions>();
   session_options->config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_global_jit_level(jit_level_);
   FunctionDefLibrary flib;
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
 
   GraphOptimizationPassOptions options;
   options.session_options = session_options.get();
@@ -128,13 +129,13 @@ Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
   TF_RETURN_IF_ERROR(pass->Run(options));
 
   options.graph->get()->ToGraphDef(result);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OptimizationPassRunner::SetJitLevel(
     OptimizerOptions::GlobalJitLevel jit_level) {
   jit_level_ = jit_level;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
@@ -148,6 +149,6 @@ Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
         absl::StrCat(type)));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tensorflow

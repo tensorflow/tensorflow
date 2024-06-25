@@ -38,10 +38,10 @@ using tensorflow::NewProfileSessionResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
 
-inline Status FromGrpcStatus(const ::grpc::Status& s) {
-  return s.ok() ? OkStatus()
-                : Status(static_cast<absl::StatusCode>(s.error_code()),
-                         s.error_message());
+inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
+  return s.ok() ? absl::OkStatus()
+                : absl::Status(static_cast<absl::StatusCode>(s.error_code()),
+                               s.error_message());
 }
 
 template <typename T>
@@ -61,35 +61,37 @@ std::unique_ptr<typename T::Stub> CreateStub(
 
 }  // namespace
 
-Status ProfileGrpc(const std::string& service_address,
-                   const ProfileRequest& request, ProfileResponse* response) {
+absl::Status ProfileGrpc(const std::string& service_address,
+                         const ProfileRequest& request,
+                         ProfileResponse* response) {
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, response)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NewSessionGrpc(const std::string& service_address,
-                      const NewProfileSessionRequest& request,
-                      NewProfileSessionResponse* response) {
+absl::Status NewSessionGrpc(const std::string& service_address,
+                            const NewProfileSessionRequest& request,
+                            NewProfileSessionResponse* response) {
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfileAnalysis::Stub> stub =
       CreateStub<tensorflow::grpc::ProfileAnalysis>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->NewSession(&context, request, response)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MonitorGrpc(const std::string& service_address,
-                   const MonitorRequest& request, MonitorResponse* response) {
+absl::Status MonitorGrpc(const std::string& service_address,
+                         const MonitorRequest& request,
+                         MonitorResponse* response) {
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Monitor(&context, request, response)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ std::unique_ptr<RemoteProfilerSession> RemoteProfilerSession::Create(
@@ -113,7 +115,7 @@ RemoteProfilerSession::RemoteProfilerSession(
 }
 
 RemoteProfilerSession::~RemoteProfilerSession() {
-  Status dummy;
+  absl::Status dummy;
   WaitForCompletion(dummy);
   grpc_context_.TryCancel();
 }
@@ -131,7 +133,7 @@ void RemoteProfilerSession::ProfileAsync() {
 }
 
 std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
-    Status& out_status) {
+    absl::Status& out_status) {
   if (!response_) {
     out_status = errors::FailedPrecondition(
         "WaitForCompletion must only be called once.");

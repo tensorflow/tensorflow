@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -142,10 +143,12 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 
     // Only allow string -> int64 and int64 -> string mappings due to kernel
     // capability.
-    if (!((key_dtype.isa<TF::StringType>() && value_dtype.isa<IntegerType>() &&
-           value_dtype.cast<IntegerType>().getWidth() == 64) ||
-          (value_dtype.isa<TF::StringType>() && key_dtype.isa<IntegerType>() &&
-           key_dtype.cast<IntegerType>().getWidth() == 64))) {
+    if (!((mlir::isa<TF::StringType>(key_dtype) &&
+           mlir::isa<IntegerType>(value_dtype) &&
+           mlir::cast<IntegerType>(value_dtype).getWidth() == 64) ||
+          (mlir::isa<TF::StringType>(value_dtype) &&
+           mlir::isa<IntegerType>(key_dtype) &&
+           mlir::cast<IntegerType>(key_dtype).getWidth() == 64))) {
       return false;
     }
 

@@ -407,5 +407,12 @@ bool ResolveTestPrefixes(tsl::StringPiece path, string& resolved_path) {
   }
 }
 
+[[maybe_unused]] std::string& AppendDotExeIfWindows(std::string& path) {
+#ifdef PLATFORM_WINDOWS
+  path.append(".exe");
+#endif  // PLATFORM_WINDOWS
+  return path;
+}
+
 }  // namespace io
 }  // namespace tsl

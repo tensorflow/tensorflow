@@ -20,6 +20,8 @@ libnccl2=2.19.3-1+cuda12.3
 libcudnn8-dev=8.9.6.50-1+cuda12.2
 libcudnn8=8.9.6.50-1+cuda12.2
 # TensorRT: See https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#maclearn-net-repo-install-rpm
+libnvinfer-headers-dev=8.6.1.6-1+cuda12.0
+libnvinfer-headers-plugin-dev=8.6.1.6-1+cuda12.0
 libnvinfer-plugin8=8.6.1.6-1+cuda12.0
 libnvinfer8=8.6.1.6-1+cuda12.0
 libnvinfer-dev=8.6.1.6-1+cuda12.0
@@ -57,8 +59,8 @@ libtool
 libzmq3-dev
 mlocate
 moreutils
-openjdk-11-jdk
-openjdk-11-jre-headless
+openjdk-21-jdk
+openjdk-21-jre-headless
 pkg-config
 python3-dev
 python3-setuptools

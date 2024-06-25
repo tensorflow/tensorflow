@@ -19,10 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/pjrt/pjrt_common.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -36,7 +40,7 @@ using ::testing::Return;
 // Internal state of a client for sharding tests.
 struct ShardingTestClientState {
   // Mapping from a device ID to the mock device object.
-  absl::flat_hash_map<int, std::unique_ptr<Device>> device_map;
+  absl::flat_hash_map<DeviceId, std::unique_ptr<Device>> device_map;
   // Raw pointers to mock devices.
   std::vector<Device*> devices;
 };
@@ -53,19 +57,19 @@ std::shared_ptr<MockClient> MakeShardingTestClient(
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
-    ON_CALL(*device, global_device_id)
-        .WillByDefault(Return(PjRtGlobalDeviceId(i + 10)));
+    ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(true));
+    ON_CALL(*device, DebugString)
+        .WillByDefault(Return(absl::StrCat("device(", i + 10, ")")));
     state->devices.push_back(device.get());
-    state->device_map.insert({i + 10, std::move(device)});
+    state->device_map.insert({DeviceId(i + 10), std::move(device)});
   }
   for (int i = num_addressable_devices; i < num_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
-    ON_CALL(*device, global_device_id)
-        .WillByDefault(Return(PjRtGlobalDeviceId(i + 10)));
+    ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(false));
     state->devices.push_back(device.get());
-    state->device_map.insert({i + 10, std::move(device)});
+    state->device_map.insert({DeviceId(i + 10), std::move(device)});
   }
 
   auto client = std::make_shared<MockClient>();
@@ -73,10 +77,10 @@ std::shared_ptr<MockClient> MakeShardingTestClient(
       .WillByDefault(
           [state]() -> absl::Span<Device* const> { return state->devices; });
   ON_CALL(*client, LookupDevice)
-      .WillByDefault([state](int device_id) -> absl::StatusOr<Device*> {
+      .WillByDefault([state](DeviceId device_id) -> absl::StatusOr<Device*> {
         auto it = state->device_map.find(device_id);
         if (it == state->device_map.end()) {
-          return InvalidArgument("Unexpected device id: %d", device_id);
+          return InvalidArgument("Unexpected device id: %d", device_id.value());
         }
         return it->second.get();
       });

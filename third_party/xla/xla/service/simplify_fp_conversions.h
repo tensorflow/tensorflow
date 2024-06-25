@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_SIMPLIFY_FP_CONVERSIONS_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

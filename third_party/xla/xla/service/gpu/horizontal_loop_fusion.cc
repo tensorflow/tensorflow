@@ -321,7 +321,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // the fused instructions to have the same number/type of outputs and also the
   // same output shape. We did a sort here so the fusion candidates is
   // populating a continuous span.
-  std::sort(
+  std::stable_sort(
       fusible_instrs_.begin(), fusible_instrs_.end(),
       [&](const HloInstruction* a, const HloInstruction* b) {
         if (GetUniqueOutputTypeOfFusible(*a) !=
@@ -729,7 +729,7 @@ absl::StatusOr<bool> GpuHorizontalLoopFusion::Run(
                       RunOnComputation(module->entry_computation()));
 
   if (changed) {
-    // Correctly set element_size_in_bits for any int4 added slice and
+    // Correctly set element_size_in_bits for any sub-byte added slice and
     // concatenate instructions
     TF_ASSIGN_OR_RETURN(
         [[maybe_unused]] bool unused,

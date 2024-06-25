@@ -29,6 +29,9 @@ REGISTER_OP_NO_GRADIENT("OnesLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
 REGISTER_OP_NO_GRADIENT("StopGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxArgsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsPerChannelGradient");
 
 Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

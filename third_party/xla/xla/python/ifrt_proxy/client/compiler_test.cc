@@ -160,8 +160,8 @@ TEST_F(CompilerTest, Compile) {
   std::vector<MockDevice> devices(2);
 
   MockClient client;
-  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](int id) {
-    return &devices[id];
+  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
+    return &devices[id.value()];
   }));
 
   Compiler compiler(&client, rpc_helper_);

@@ -143,7 +143,7 @@ Status PartitionFunctionGraph(
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph) {
   // Skip transfer op insertion if the graph nodes are not assigned to multiple
   // devices.

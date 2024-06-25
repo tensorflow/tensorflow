@@ -19,92 +19,103 @@ limitations under the License.
 #ifndef XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 #define XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/shape_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_common.h"
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 namespace interpreter {
 
-using Args = absl::Span<const DeviceMemoryBase>;
-
-class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
+// A HostStream that is used for the interpreter.
+class InterpreterStream : public host::HostStream {
  public:
-  XlaInterpreterExecutor() = default;
-
-  absl::Status Init(int device_ordinal) override {
-    device_ordinal_ = device_ordinal;
-    return absl::OkStatus();
+  explicit InterpreterStream(StreamExecutor *executor)
+      : host::HostStream(executor) {}
+  absl::Status WaitFor(Stream *stream) override {
+    return host::HostStream::WaitFor(stream);
   }
+  absl::Status WaitFor(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  absl::Status RecordEvent(Event *event) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                      uint64_t size) override {
+    void *src_mem = const_cast<void *>(gpu_src.opaque());
+    EnqueueTask(
+        [this, host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+    return BlockUntilDone();
+  }
+
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                      uint64_t size) override {
+    void *dst_mem = gpu_dst->opaque();
+    EnqueueTask(
+        [this, dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+    return BlockUntilDone();
+  }
+};
+
+class XlaInterpreterExecutor : public StreamExecutorCommon {
+ public:
+  XlaInterpreterExecutor(int device_ordinal, Platform *platform)
+      : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
+
+  absl::Status Init() override { return absl::OkStatus(); }
 
   int device_ordinal() const override { return device_ordinal_; };
   absl::Status GetKernel(const MultiKernelLoaderSpec &spec,
                          Kernel *kernel) override {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
   absl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
                       const BlockDim &block_dims, const Kernel &kernel,
                       const KernelArgs &args) override {
-    return tsl::errors::Unimplemented("Not Implemented");
+    return absl::UnimplementedError("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
-  void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
+    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
+  }
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);
   }
-  bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
-  bool HostMemoryUnregister(void *mem) override { return true; }
 
-  absl::Status Memcpy(Stream *stream, void *host_dst,
-                      const DeviceMemoryBase &dev_src, uint64_t size) override;
-  absl::Status Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                      const void *host_src, uint64_t size) override;
-  bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
-                            const DeviceMemoryBase &host_src,
-                            uint64_t size) override {
-    return false;
-  }
-
-  absl::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64_t size) override {
-    return tsl::errors::Internal("Interpreter can not memzero");
-  }
   absl::Status Memset(Stream *stream, DeviceMemoryBase *location,
                       uint8_t pattern, uint64_t size) override {
-    return tsl::errors::Internal("Interpreter can not memset");
-  }
-  absl::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32_t pattern, uint64_t size) override {
-    return tsl::errors::Internal("Interpreter can not memset");
+    return absl::InternalError("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   absl::Status SynchronousMemZero(DeviceMemoryBase *location,
                                   uint64_t size) override {
-    return tsl::errors::Internal("Interpreter can not memzero");
-  }
-
-  absl::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64_t size) override {
-    return tsl::errors::Internal("Interpreter can not memset");
+    return absl::InternalError("Interpreter can not memzero");
   }
 
   absl::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
@@ -112,36 +123,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   absl::Status SynchronousMemcpy(void *host_dst,
                                  const DeviceMemoryBase &dev_src,
                                  uint64_t size) override;
-  absl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
-                                               const DeviceMemoryBase &pop_src,
-                                               uint64_t size) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, ""};
-  }
 
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status AllocateEvent(Event *event) override { return absl::OkStatus(); }
-
-  absl::Status DeallocateEvent(Event *event) override {
-    return absl::OkStatus();
-  }
-
-  absl::Status RecordEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
-  }
-
-  absl::Status WaitForEvent(Stream *stream, Event *event) override {
-    return absl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
-  }
-
-  Event::Status PollForEventStatus(Event *event) override {
-    return Event::Status::kError;
-  }
-
-  bool AllocateStream(Stream *stream) override { return true; }
   void DeallocateStream(Stream *stream) override {}
-  bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
   absl::Status BlockHostUntilDone(Stream *stream) override;
 
@@ -157,33 +143,25 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  absl::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor *other) override {
     return absl::OkStatus();
   }
 
-  bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
-    return true;
+  bool CanEnablePeerAccessTo(StreamExecutor *other) override { return true; }
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    return std::make_unique<Event>();
   }
 
-  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
-    return nullptr;
-  }
-
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
-      override {
-    return std::make_unique<host::HostStream>();
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override {
+    return std::make_unique<InterpreterStream>(this);
   }
 
  private:
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
-
-  DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
-
-  absl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
-      const xla::Shape &shape);
 };
 
 }  // namespace interpreter

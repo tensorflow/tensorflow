@@ -45,6 +45,20 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 
+// Options used to create a batch resource.
+struct BatchResourceOptions {
+  int32_t num_batch_threads;
+  int32_t max_batch_size;
+  int32_t batch_timeout_micros;
+  int32_t max_enqueued_batches;
+  std::vector<int32_t> allowed_batch_sizes;
+  int32_t low_priority_max_batch_size;
+  int32_t low_priority_batch_timeout_micros;
+  int32_t low_priority_max_enqueued_batches;
+  std::vector<int32_t> low_priority_allowed_batch_sizes;
+  MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+};
+
 // Base class for resource that encapsulating the state and logic for batching
 // tensors.
 class BatchResourceBase : public ResourceBase {
@@ -202,7 +216,8 @@ class BatchResourceBase : public ResourceBase {
       int32_t low_priority_max_batch_size,
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
-      const std::vector<int32>& low_priority_allowed_batch_sizes);
+      const std::vector<int32>& low_priority_allowed_batch_sizes,
+      MixedPriorityBatchingPolicy mixed_priority_batching_policy);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -250,7 +265,7 @@ class BatchResourceBase : public ResourceBase {
   //   2) the input size from this task;
   //   3) the padding amount.
   static void SplitBatchCostsAndRecordMetrics(
-      const std::string& model_name,
+      const std::string& model_name, const std::string& op_name,
       const std::vector<std::unique_ptr<CostMeasurement>>&
           batch_cost_measurements,
       int64_t processed_size, BatchT& batch);
@@ -266,21 +281,46 @@ class BatchResourceBase : public ResourceBase {
   // Assumes the batch is non-empty.
   static Status ValidateBatch(const BatchT& batch);
 
+  // Returns a boolean indicating whether a batch is formed from low priority
+  // tasks only or not.
+  bool IsLowPriorityBatch(const BatchT& batch) const;
+
   // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
   // or equal to 'batch_size'. If 'allowed_batch_sizes_' is empty, simply
   // returns 'batch_size'.
-  int RoundToLowestAllowedBatchSize(int batch_size) const;
+  int RoundToLowestAllowedBatchSize(int batch_size,
+                                    bool is_low_priority_batch = false) const;
 
-  Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
-                            std::vector<Tensor>* concatenated_tensors) const;
+  // Helper function to propagate the status to the task's context and call the
+  // done callback on the task.
+  void CleanUpFunctionHelper(BatchTask& task, const Status& status) const;
 
-  Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
-                            BatchT* batch) const;
+  // Concatenates the input tensors of the tasks from the batch and the
+  // unbatched task vector. When padding is enabled in the batcher queue, they
+  // are padded with garbage value up to the nearest allowed batch size.
+  Status ConcatInputTensors(
+      const BatchT& batch,
+      const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
+      OpKernelContext* context,
+      std::vector<Tensor>* concatenated_tensors) const;
 
-  void ProcessFuncBatch(std::unique_ptr<BatchT> batch) const;
+  Status SplitOutputTensors(
+      const std::vector<Tensor>& combined_outputs, BatchT* batch,
+      std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const;
+
+  void ProcessFuncBatch(
+      std::unique_ptr<BatchT> batch,
+      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks = {}) const;
 
   // Processes a batch of one or more BatchTask entries.
   void ProcessBatch(std::unique_ptr<BatchT> batch) const;
+
+  // Callback function that wraps the Process*Batch functions above. The caller
+  // of the callback must guarantee that the unique pointers passed as argument
+  // are not null.
+  void ProcessBatchCallBack(
+      std::unique_ptr<Batch<BatchTask>> batch,
+      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks);
 
   // Emits an index tensor, which the Unbatch op will use to un-concatenate
   // the tensor and attribute the pieces to the right batch keys. The index

@@ -70,7 +70,7 @@ Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
                                            const std::vector<Output>& inputs,
                                            Output* output) {
     *output = ToOutput(while_ctx->cond_output());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Body function that adds one to input.
@@ -88,7 +88,7 @@ Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
                                     while_ctx->frame_name(), &outputs,
                                     /* create_while_ctx */ false));
   *count = outputs[0];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a loop that executes `loop_count` times. The returned output is the
@@ -126,7 +126,7 @@ Status AddBackPropLoopCounter(WhileContext* while_ctx, const Output& loop_count,
   TF_RETURN_IF_ERROR(BuildWhileLoop(
       scope, {loop_count}, cond_fn, body_fn, frame_name, &outputs,
       /* create_while_ctx */ false, backprop_execution_pred));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates the main backprop loop that computes the gradient of the loop
@@ -155,7 +155,7 @@ Status AddWhileGradientLoop(WhileContext* while_ctx,
                                    const std::vector<Output>& inputs,
                                    Output* output) {
     *output = backprop_execution_pred;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Body function that builds while body gradient subgraph.
@@ -173,7 +173,7 @@ Status AddWhileGradientLoop(WhileContext* while_ctx,
   TF_RETURN_IF_ERROR(BuildWhileLoop(scope, grad_inputs, cond_fn, body_fn,
                                     frame_name, grad_outputs,
                                     /* create_while_ctx */ false));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

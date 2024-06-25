@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 
@@ -115,8 +115,8 @@ Status ExecuteNodeArgs::Init(
       // component function. So we wait until the remote input is ready before
       // serializing it.
       bool wait_until_ready = SkipRemoteHandleWaitReady() ? false : is_function;
-      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          h, wait_until_ready, handle, device, device->name());
+      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(h, wait_until_ready,
+                                                           handle, device);
     };
   }
 #endif  // !IS_MOBILE_PLATFORM

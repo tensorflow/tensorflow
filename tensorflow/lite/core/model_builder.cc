@@ -17,12 +17,18 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "flatbuffers/base.h"  // from @flatbuffers
 #include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -56,6 +62,20 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
   return allocation;
 }
 
+// Loads a model from `fd`. If `mmap_file` is true then use mmap,
+// otherwise make a copy of the model in a buffer.
+std::unique_ptr<Allocation> GetAllocationFromFile(
+    int fd, ErrorReporter* error_reporter) {
+  std::unique_ptr<Allocation> allocation;
+  if (MMAPAllocation::IsSupported()) {
+    allocation = std::make_unique<MMAPAllocation>(fd, error_reporter);
+  } else {
+    allocation = std::make_unique<FileCopyAllocation>(
+        absl::StrCat("/proc/self/fd/", fd).c_str(), error_reporter);
+  }
+  return allocation;
+}
+
 namespace impl {
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
@@ -77,6 +97,32 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
   std::unique_ptr<FlatBufferModel> model = VerifyAndBuildFromAllocation(
       GetAllocationFromFile(filename, error_reporter), extra_verifier,
       error_reporter);
+#if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+#else
+  return ByteConvertModel(std::move(model), error_reporter);
+#endif
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFileDescriptor(
+    int fd, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+  std::unique_ptr<FlatBufferModel> model = BuildFromAllocation(
+      GetAllocationFromFile(fd, error_reporter), error_reporter);
+#if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+#else
+  return ByteConvertModel(std::move(model), error_reporter);
+#endif
+}
+
+std::unique_ptr<FlatBufferModel>
+FlatBufferModel::VerifyAndBuildFromFileDescriptor(
+    int fd, TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+  std::unique_ptr<FlatBufferModel> model =
+      VerifyAndBuildFromAllocation(GetAllocationFromFile(fd, error_reporter),
+                                   extra_verifier, error_reporter);
 #if FLATBUFFERS_LITTLEENDIAN == 1
   return model;
 #else
@@ -276,23 +322,27 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
     return nullptr;
   }
 
-  // Only run validator on models less than 2GB
-  if (allocation->bytes() < flatbuffer_size_max) {
+  {
+    // Flatbuffers can only be smaller than 2GB. The file format appends some
+    // data after the actual flabuffer. We truncate the allocation size to 2GB
+    // so that the verifier doesn't early exit on us.
+    size_t allocation_size =
+        std::min(allocation->bytes(),
+                 static_cast<size_t>(FLATBUFFERS_MAX_BUFFER_SIZE - 1));
     flatbuffers::Verifier base_verifier(
-        reinterpret_cast<const uint8_t*>(allocation->base()),
-        allocation->bytes());
+        reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size);
     if (!VerifyModelBuffer(base_verifier)) {
       TF_LITE_REPORT_ERROR(error_reporter,
                            "The model is not a valid Flatbuffer buffer");
       return nullptr;
     }
-  }
 
-  if (extra_verifier &&
-      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
-                              allocation->bytes(), error_reporter)) {
-    // The verifier will have already logged an appropriate error message.
-    return nullptr;
+    if (extra_verifier &&
+        !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
+                                allocation_size, error_reporter)) {
+      // The verifier will have already logged an appropriate error message.
+      return nullptr;
+    }
   }
 
   return BuildFromAllocation(std::move(allocation), error_reporter);

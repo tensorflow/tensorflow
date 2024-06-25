@@ -193,7 +193,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
       new RandomAccessInputStream(file_reader.get()));
   ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
                      input_options);
-  Status read_status = in.ReadNBytes(data.size(), &result);
+  absl::Status read_status = in.ReadNBytes(data.size(), &result);
   CHECK_EQ(read_status.code(), error::DATA_LOSS);
   CHECK(absl::StrContains(read_status.message(), "inflate() failed"));
 }

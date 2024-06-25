@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/framework/device_id_manager.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_manager.h"
 
 namespace tensorflow {
 

@@ -44,6 +44,10 @@ absl::StatusOr<tfrt::BefBuffer> DeserializeBEFBuffer(
 absl::Status SerializeMLRTBytecode(const mlrt::bc::Buffer &byteCode,
                                    const std::string &filepath);
 
+// Deserializes byte code from the given filepath into a MLRTBytecodeBuffer.
+absl::StatusOr<mlrt::bc::Buffer> DeserializeMlrtBytecodeBuffer(
+    const std::string &filepath);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

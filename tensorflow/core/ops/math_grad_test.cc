@@ -225,7 +225,7 @@ class MathGradTest : public ::testing::Test {
     *di = outputs[1];
   }
 
-  Tensor ReduceSum(const Tensor& x, gtl::ArraySlice<int32> axes) {
+  Tensor ReduceSum(const Tensor& x, absl::Span<const int32> axes) {
     int num_axes = axes.length();
     Tensor y(DT_INT32, TensorShape({num_axes}));
     for (size_t i = 0; i < axes.size(); ++i) {

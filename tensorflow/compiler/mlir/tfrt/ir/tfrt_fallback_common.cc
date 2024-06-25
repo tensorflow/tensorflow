@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace tfrt {
 namespace fallback_common {
@@ -31,8 +32,8 @@ void GetExecuteOpAttrsCommon(
 
   mlir::Builder builder(context);
   for (auto iter : op_attr_array) {
-    auto key_value = iter.cast<mlir::ArrayAttr>().getValue();
-    llvm::StringRef key = key_value[0].cast<mlir::StringAttr>().getValue();
+    auto key_value = mlir::cast<mlir::ArrayAttr>(iter).getValue();
+    llvm::StringRef key = mlir::cast<mlir::StringAttr>(key_value[0]).getValue();
     mlir::Attribute value = key_value[1];
     op_attrs->push_back({key, value});
   }

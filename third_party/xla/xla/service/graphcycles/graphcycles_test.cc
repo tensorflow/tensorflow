@@ -17,11 +17,13 @@ limitations under the License.
 
 #include "xla/service/graphcycles/graphcycles.h"
 
+#include <cstdint>
 #include <optional>
 #include <random>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/random/random.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -510,7 +512,7 @@ TEST_F(GraphCyclesTest, CanContractEdge) {
 static void BM_StressTest(::testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
-  for (auto s : state) {
+  while (state.KeepRunningBatch(num_nodes)) {
     tensorflow::GraphCycles g;
     int32_t *nodes = new int32_t[num_nodes];
     for (int i = 0; i < num_nodes; i++) {
@@ -532,7 +534,7 @@ BENCHMARK(BM_StressTest)->Range(2048, 1048576);
 static void BM_ContractEdge(::testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
-  for (auto s : state) {
+  while (state.KeepRunningBatch(num_nodes)) {
     state.PauseTiming();
     tensorflow::GraphCycles g;
     std::vector<int32_t> nodes;
@@ -553,3 +555,50 @@ static void BM_ContractEdge(::testing::benchmark::State &state) {
   }
 }
 BENCHMARK(BM_ContractEdge)->Arg(1000)->Arg(10000);
+
+static void BM_IsReachableNonConst(testing::benchmark::State &state) {
+  const int num_nodes = state.range(0);
+
+  tensorflow::GraphCycles g;
+  std::vector<uint32_t> nodes;
+  nodes.reserve(num_nodes);
+  for (int i = 0; i < num_nodes; i++) {
+    nodes.push_back(g.NewNode());
+  }
+
+  // Add forward edges.
+  absl::BitGen bitgen;
+  for (int i = 0; i < num_nodes; i++) {
+    int max = num_nodes - 1 - i;
+    if (max == 0) break;
+    constexpr int branch_factor = 2;
+    for (int b = 0; b < branch_factor; b++) {
+      int j = i + 1 + absl::Uniform(bitgen, 0, max);
+      CHECK_LT(j, num_nodes);
+      CHECK(g.InsertEdge(nodes[i], nodes[j]));
+    }
+  }
+
+  auto get_random_node = [&]() {
+    return nodes[absl::Uniform(bitgen, 0, num_nodes)];
+  };
+
+  uint32_t src, dst;
+  int i = 0;
+  for (auto s : state) {
+    if (i % 256 == 0) {
+      src = get_random_node();
+      dst = get_random_node();
+    }
+    bool reachable = g.IsReachableNonConst(src, dst);
+    benchmark::DoNotOptimize(reachable);
+    i++;
+  }
+}
+BENCHMARK(BM_IsReachableNonConst)
+    ->Arg(10)
+    ->Arg(50)
+    ->Arg(100)
+    ->Arg(200)
+    ->Arg(1000)
+    ->Arg(30000);

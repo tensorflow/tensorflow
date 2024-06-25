@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/backends/profiler/cpu/metadata_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/xla_debug_info_manager.h"
-#include "xla/status.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -42,23 +42,23 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
  public:
   MetadataCollector() = default;
 
-  Status Start() override {
+  absl::Status Start() override {
     if (!trace_active_) {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Stop() override {
+  absl::Status Stop() override {
     if (trace_active_) {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CollectData(tsl::profiler::XSpace* space) override {
+  absl::Status CollectData(tsl::profiler::XSpace* space) override {
     if (!debug_info_.empty()) {
       tsl::profiler::XPlane* plane =
           tsl::profiler::FindOrAddMutablePlaneWithName(
@@ -70,7 +70,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       }
       debug_info_.clear();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

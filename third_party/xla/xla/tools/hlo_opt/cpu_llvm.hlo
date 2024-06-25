@@ -1,0 +1,19 @@
+// RUN: hlo-opt %s --platform=cpu --stage=llvm-before-optimizations --split-input-file | FileCheck --check-prefixes=CHECK %s
+
+HloModule m
+
+add {
+ a = s8[] parameter(0)
+ b = s8[] parameter(1)
+ ROOT out = s8[] add(a, b)
+}
+
+// CHECK: i8
+ENTRY e {
+ p1 = s8[1048576] parameter(0)
+ i = s8[] constant(0)
+ ROOT out = s8[] reduce(p1, i), dimensions={0}, to_apply=add
+}
+
+
+

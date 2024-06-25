@@ -168,8 +168,9 @@ class HloDfsReachabilityBenchmark {
 };
 
 void BM_HloDfsReachabilityBuild(benchmark::State& state) {
-  HloDfsReachabilityBenchmark bm(state.range(0), state.name());
-  for (auto s : state) {
+  int num_nodes = state.range(0);
+  HloDfsReachabilityBenchmark bm(num_nodes, state.name());
+  while (state.KeepRunningBatch(num_nodes)) {
     benchmark::DoNotOptimize(bm.Build());
   }
 }

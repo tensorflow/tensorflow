@@ -750,6 +750,36 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
       op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  func {
+    p0 = f32[200,200]{1,0} parameter(0)
+    p1 = f32[200,200]{1,0} parameter(1)
+    p2 = s32[72]{0} parameter(2)
+    bitcast0 = f32[200,200]{0,1} bitcast(p1)
+    bitcast1 = s32[72,1]{1,0} bitcast(p2)
+    gather = f32[72,1,200]{0,2,1} gather(bitcast0, bitcast1), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,200}
+    bitcast2 = f32[200,72]{1,0} bitcast(gather)
+    constant0 = s32[] constant(128)
+    constant1 = s32[] constant(0)
+    ROOT dynamic-update-slice = f32[200,200]{1,0} dynamic-update-slice(p0, bitcast2, constant1, constant0)
+  }
+  ENTRY entry_computation {
+    p0 = f32[200,200]{1,0} parameter(0)
+    p1 = f32[200,200]{1,0} parameter(1)
+    p2 = s32[72]{0} parameter(2)
+    add = f32[200,200]{1,0} add(p0, p1)
+    ROOT fusion = f32[200,200]{1,0} fusion(p0, add, p2), kind=kLoop, calls=func
+  })")
+                    .value();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* add = root->mutable_operand(1);
+  FusionDecision fusion_decision =
+      InstructionFusion::ShouldFuseInPlaceOp(add, root);
+  EXPECT_FALSE(fusion_decision.CanFuse());
+}
+
 class FusionDecisionTest : public HloTestBase {};
 
 TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {

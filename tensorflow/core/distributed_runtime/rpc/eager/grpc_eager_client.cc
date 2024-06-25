@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "grpcpp/generic/generic_stub.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 namespace eager {

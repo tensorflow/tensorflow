@@ -1251,6 +1251,102 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias64) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
 }
 
+class HybridTransposeConvOpModel
+    : public BaseTransposeConvBiasOpModel<float, int8_t> {
+ public:
+  using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
+
+  void SetFilter(std::initializer_list<float> f) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, f);
+  }
+
+  void SetBias(std::initializer_list<float> b) { PopulateTensor(bias_, b); }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+};
+
+TEST_P(TransposeConvOpTest, SimpleTestHybridInt8) {
+  const std::initializer_list<float> filter_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  const std::initializer_list<int8_t> const_filter_data = {14, 28, 42,  56, 71,
+                                                           85, 99, 113, 127};
+  HybridTransposeConvOpModel model(
+      /*registration=*/GetRegistration(), /*output_shape_data=*/{1, 4, 4, 1},
+      /*filter=*/
+      {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
+      /*filter_data=*/const_filter_data,
+      /*input=*/{TensorType_FLOAT32, {1, 4, 4, 1}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*padding=*/Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      /*fused_activation=*/ActivationFunctionType_NONE,
+      /*test_type=*/GetTestType(),
+      /*version=*/3,
+      /*bias_type=*/TensorType_FLOAT32);
+  model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  if (GetTestType() == TestType::kDynamic) {
+    model.SetFilter(filter_data);
+  }
+
+  model.SetBias({1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  // The values are taken from float model "SimpleTest".
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                     {30, 63, 84, 76, 100, 193, 238, 199, 208,
+                                      373, 417.5, 331, 263.7, 447, 486, 366.5},
+                                     0.19)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_P(TransposeConvOpTest, SimpleTestHybridInt8MultiChannel) {
+  const std::initializer_list<float> filter_data = {
+      1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6, 8, 10, 12, 14, 16, 18};
+  const std::initializer_list<int8_t> const_filter_data = {
+      7,  22, 37, 52, 67, 82, 97, 112, 127,
+      14, 28, 42, 56, 71, 85, 99, 113, 127};
+  HybridTransposeConvOpModel model(
+      /*registration=*/GetRegistration(), /*output_shape_data=*/{1, 5, 5, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       {2, 3, 3, 1},
+       0,
+       0,
+       0,
+       0,
+       true,
+       {17.0 / 127, 18.0 / 127},
+       {0, 0},
+       0},
+      /*filter_data=*/const_filter_data,
+      /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*padding=*/Padding_VALID, /*stride_w=*/2, /*stride_h=*/2,
+      /*fused_activation=*/ActivationFunctionType_NONE,
+      /*test_type=*/GetTestType(),
+      /*version=*/3,
+      /*bias_type=*/TensorType_FLOAT32);
+
+  model.SetInput({1, 2, 3, 4});
+  if (GetTestType() == TestType::kDynamic) {
+    model.SetFilter(filter_data);
+  }
+  model.SetBias({3, 4});
+
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  // The values are taken from float model "MultiChannelBiasTest".
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {4,    6,  6,    8,    10, 14,  9,   12, 13,   16, 10, 12,   12,
+           14,   28, 32,   21,   24, 25,  28,  19, 24,   27, 32, 64.5, 76,
+           44.5, 52, 56.5, 63.5, 24, 28,  30,  34, 63.5, 72, 39, 44,   47,
+           52,   42, 46,   48,   52, 106, 114, 63, 68,   71, 76},
+          0.26)));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TransposeConvOpTest, TransposeConvOpTest,
     ::testing::Combine(

@@ -1,5 +1,13 @@
 # Integrate image classifiers
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 Image classification is a common use of machine learning to identify what an
 image represents. For example, we might want to know what type of animal appears
 in a given picture. The task of predicting what an image represents is called

@@ -71,7 +71,7 @@ Before sending your pull requests, make sure you do the following:
 
 In a graphical form, the entire lifetime of a PR looks like
 
-![image](https://user-images.githubusercontent.com/323199/229561784-0a2f5509-b731-493f-ad88-bad487688c8d.png)
+![image](https://github.com/tensorflow/tensorflow/assets/52792999/3eea4ca5-daa0-4570-b0b5-2a2b03a724a3)
 
 ### Contributor License Agreements
 

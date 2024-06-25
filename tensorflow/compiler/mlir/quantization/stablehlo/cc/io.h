@@ -16,9 +16,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_IO_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 
 namespace stablehlo::quantization::io {
 
@@ -40,6 +44,29 @@ absl::StatusOr<std::string> CreateTmpDir(tsl::Env* env);
 // status if failed. The file system used will be the default environment
 // returned by `tsl::Env::Default`.
 absl::StatusOr<std::string> CreateTmpDir();
+
+// Convenience function for writing string `data` to file without the need to
+// pass `tsl::Env` instance. Internally it uses the default `tsl::Env::Default`.
+absl::Status WriteStringToFile(absl::string_view file_path,
+                               absl::string_view data);
+
+// Convenience function for reading string data from file at `file_path` without
+// the need to pass `tsl::Env` instance. Internally it uses the default
+// `tsl::Env::Default`. Returns an OK status with string data containing file
+// contents. Returns non-ok status upon error, e.g. file doesn't exist.
+absl::StatusOr<std::string> ReadFileToString(absl::string_view file_path);
+
+// Lists all files and directories under the given directory.
+absl::StatusOr<std::vector<std::string>> ListDirectory(
+    absl::string_view directory);
+
+template <class MessageT>
+absl::StatusOr<MessageT> ReadBinaryProto(const std::string& binary_file_path) {
+  MessageT message;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), binary_file_path, &message));
+  return message;
+}
 
 }  // namespace stablehlo::quantization::io
 

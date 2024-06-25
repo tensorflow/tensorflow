@@ -105,7 +105,7 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   if (dims == 1) return strings::StrCat("[", flat, "]");
 
   // Compute strides
-  gtl::InlinedVector<int64_t, 32> strides(dims);
+  absl::InlinedVector<int64_t, 32UL> strides(dims);
   strides.back() = 1;
   for (int i = dims - 2; i >= 0; i--) {
     strides[i] = strides[i + 1] * shape.dim_size(i + 1);

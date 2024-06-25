@@ -71,7 +71,7 @@ bool IsIllegalType(Type type) {
 // If input is not TF qint types, returns the original type.
 Type ToLegalType(Type type) {
   if (IsTFQintType(type)) return GetIntTypeFromTFQint(type);
-  if (auto shaped = type.dyn_cast<ShapedType>()) {
+  if (auto shaped = mlir::dyn_cast<ShapedType>(type)) {
     Type elem = shaped.getElementType();
     if (IsTFQintType(elem)) return shaped.clone(ToLegalType(elem));
   }
@@ -289,7 +289,7 @@ class TFConstOpQuantToIntPattern : public OpConversionPattern<TF::ConstOp> {
     }
     auto dense_attr_or = GetDenseAttrFromTensorProtoAttr(
         tensor_proto_attr.getValue(),
-        ToLegalType(op.getOutput().getType()).dyn_cast<TensorType>());
+        mlir::dyn_cast<TensorType>(ToLegalType(op.getOutput().getType())));
     if (failed(dense_attr_or)) {
       op->emitError("failed to get DenseElementAttr.");
       return failure();

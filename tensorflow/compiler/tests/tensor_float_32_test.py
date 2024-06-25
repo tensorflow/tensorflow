@@ -48,7 +48,17 @@ class TensorFloat32Test(xla_test.XLATestCase):
         self.assertAllClose(out, f32_out, rtol=1e-5, atol=1e-5)
       else:
         f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
-        self.assertAllClose(out, f64_out, rtol=1e-5, atol=1e-5)
+        # This test compares the F32 output of the model with the F64 output.
+        # oneDNN algorithms may loose some precision due to significant accumulations
+        # for large inputs. Therefore, we need to adjust the tolerance accordingly
+        # in these cases.
+        rtol_val, atol_val = (
+            (3e-4, 1e-5)
+            if test_util.IsCPUTargetAvailable('x86')
+            and test_util.IsBuiltWithXLA()
+            else (1e-5, 1e-5)
+        )
+        self.assertAllClose(out, f64_out, rtol=rtol_val, atol=atol_val)
 
       # Test with TF32 enabled. Recompile fn because enabling TF32 does not
       # reset function cache.

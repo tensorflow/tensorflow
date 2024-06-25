@@ -390,7 +390,7 @@ TEST(Tensor_Variant, Simple) {
   }
   {
     LOG(INFO) << "AsTensor";
-    gtl::ArraySlice<Variant> values(t.flat<Variant>().data(), t.NumElements());
+    absl::Span<const Variant> values(t.flat<Variant>().data(), t.NumElements());
     Tensor t2 = test::AsTensor(values, t.shape());
     ExpectEqual<Variant>(t, t2);
   }
@@ -573,9 +573,9 @@ class TensorReshapeTest : public ::testing::Test {
   }
 
   template <typename T>
-  using ReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>);
+  using ReshapeFunc = T (Tensor::*)(absl::Span<const int64_t>);
   template <typename T>
-  using ConstReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>) const;
+  using ConstReshapeFunc = T (Tensor::*)(absl::Span<const int64_t>) const;
 
   template <typename T, ReshapeFunc<T> Func>
   void TestReshape(std::initializer_list<int64_t> sizes) {

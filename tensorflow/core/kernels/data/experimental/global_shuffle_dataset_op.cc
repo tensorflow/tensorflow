@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/kernels/random_index_shuffle.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -47,12 +50,15 @@ namespace {
 
 constexpr int32_t kIndexShuffleRounds = 8;
 
+constexpr const char kDatasetType[] = "GlobalShuffle";
 constexpr const char kElementCount[] = "element_count";
 constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 constexpr const char kSeed[] = "seed";
 constexpr const char kSeed2[] = "seed2";
+constexpr const char kSeed3[] = "seed3";
 constexpr const char kSeedGenerator[] = "SeedGenerator";
+constexpr const char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 
 class GlobalShuffleDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -105,7 +111,7 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
   }
 
   std::string DebugString() const override {
-    return name_utils::DatasetDebugString(kGlobalShuffleDataset);
+    return name_utils::DatasetDebugString(kDatasetType);
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -154,6 +160,10 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
         output);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
  private:
   class Iterator;
 
@@ -179,9 +189,19 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   absl::Status Initialize(IteratorContext* ctx) override
       ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
+    if (ctx->cancellation_manager()->IsCancelled()) {
+      return absl::CancelledError(
+          "ctx->cancellation_manager()->IsCancelled() is true. Would not "
+          "execute `seed_generator_` to prevent incorrect results when "
+          "restoring.");
+    }
     int64_t seed4;
     seed_generator_->GenerateSeeds(&seed_, &seed2_);
     seed_generator_->GenerateSeeds(&seed3_, &seed4);
+
+    // Snapshots `num_random_samples()` so that
+    // we know how to recover the seed later.
+    num_random_samples_ = seed_generator_->num_random_samples();
     TF_RETURN_IF_ERROR(
         dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
     return absl::OkStatus();
@@ -210,9 +230,10 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](size_t element_position) -> size_t {
+            max_index](size_t element_position) -> absl::StatusOr<size_t> {
       if (parent_index_mapper != nullptr) {
-        element_position = parent_index_mapper(element_position);
+        TF_ASSIGN_OR_RETURN(element_position,
+                            parent_index_mapper(element_position));
       }
       // This could happen if the source dataset generates more elements than
       // needed by the intermediate transformations. For example, when shuffling
@@ -238,6 +259,12 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     absl::MutexLock l(&mu_);
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(prefix(), kElementCount, element_count_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEpochNumRandomSamples,
+                                           num_random_samples_));
+
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed, seed_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed2, seed2_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed3, seed3_));
     return absl::OkStatus();
   }
 
@@ -250,8 +277,25 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kElementCount, &element_count_));
     }
+
+    // Restoring the seed_generator is necessary when
+    // combine this op with `.repeat()`.
+    // This is similar to how shuffle dataset recovers the seed generator -
+    // `tensorflow::data::ShuffleDatasetOpBase::ShuffleDatasetBase::Iterator::RestoreInternal`.
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kEpochNumRandomSamples,
+                                          &num_random_samples_));
+    seed_generator_->set_num_random_samples(num_random_samples_);
+    seed_generator_->Reset();
+
+    // Required to recover seeds because `Initialize` is always called
+    // before `RestoreInternal.
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed, &seed_));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed2, &seed2_));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed3, &seed3_));
+
     IteratorContext::Params params(ctx);
     params.restored_element_count = element_count_;
+    params.index_mapper = GetIndexMapper(ctx->index_mapper());
     IteratorContext ctx_copy(params);
     TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
     ctx->MergeCheckpoint(ctx_copy.checkpoint());
@@ -269,6 +313,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
 
   std::unique_ptr<IteratorBase> input_impl_ ABSL_GUARDED_BY(mu_);
   int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t num_random_samples_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 GlobalShuffleDatasetOp::GlobalShuffleDatasetOp(OpKernelConstruction* ctx)
@@ -288,7 +333,9 @@ void GlobalShuffleDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "compatible with random access. Got: ",
                   input->RandomIndexingCompatible().ToString())));
 
-  int64_t cardinality = input->Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64_t cardinality = input->Cardinality(std::move(options));
   OP_REQUIRES(ctx, cardinality > 0,
               absl::InvalidArgumentError(absl::StrCat(
                   "`global_shuffle` requires the input dataset to have a "
@@ -340,8 +387,7 @@ std::unique_ptr<IteratorBase>
 GlobalShuffleDatasetOp::Dataset::MakeIteratorInternal(
     const std::string& prefix) const {
   return std::make_unique<GlobalShuffleDatasetOp::Dataset::Iterator>(
-      Iterator::Params{
-          this, name_utils::IteratorPrefix(kGlobalShuffleDataset, prefix)},
+      Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)},
       seed_generator_->get());
 }
 

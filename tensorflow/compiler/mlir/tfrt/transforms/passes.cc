@@ -117,6 +117,11 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // Merge non-side-effecting tf.If ops if their operands are the same.
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
 
+  // Lower bound on the number of batch threads in `tf.BatchFunction`.
+  pm.addPass(tfrt_compiler::CreateReconfigBatchOpPass(
+      {.min_num_batch_threads = options.min_num_batch_threads,
+       .min_max_enqueued_batches = options.min_max_enqueued_batches}));
+
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name
   pm.addPass(

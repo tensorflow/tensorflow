@@ -613,19 +613,19 @@ int64_t HloSharding::RequiredLeaves(const Shape& shape) {
   return (leaf_count == 0) ? 1 : leaf_count;
 }
 
-Status HloSharding::CheckLeafCount(const Shape& shape) const {
+absl::Status HloSharding::CheckLeafCount(const Shape& shape) const {
   int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
   if (leaf_count == 0 && tuple_elements_.size() == 1) {
     // Allow (but don't require) empty tuples to have a single sharding
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RET_CHECK(leaf_count == tuple_elements_.size())
       << "Shape " << ShapeUtil::HumanString(shape) << " has " << leaf_count
       << " leaf nodes while this sharding has " << tuple_elements_.size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
+absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     const Shape& shape) const {
   if (IsTuple()) {
     ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
@@ -640,7 +640,8 @@ StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
   }
 }
 
-StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
+absl::StatusOr<HloSharding> HloSharding::GetTupleSharding(
+    const Shape& shape) const {
   if (IsTuple()) {
     TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
@@ -682,8 +683,8 @@ int64_t HloSharding::GetUniqueDevice() const {
   return *device;
 }
 
-Status HloSharding::ValidateTuple(const Shape& shape,
-                                  std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::ValidateTuple(
+    const Shape& shape, std::optional<int64_t> num_devices) const {
   if (!shape.IsTuple()) {
     return tsl::errors::InvalidArgument(
         "Sharding is tuple-shaped but validation shape is not.");
@@ -691,14 +692,14 @@ Status HloSharding::ValidateTuple(const Shape& shape,
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
   if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
     // Empty tuples are allowed to not have sharding
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Now we've validated the number of tuple elements, it's safe to request a
   // shape tree.
   ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
   for (const auto& index_to_sharding : shape_tree.leaves()) {
-    Status status = index_to_sharding.second.ValidateNonTuple(
+    absl::Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
       tsl::errors::AppendToMessage(
@@ -708,16 +709,16 @@ Status HloSharding::ValidateTuple(const Shape& shape,
       return status;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloSharding::Validate(const Shape& shape,
-                             std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::Validate(const Shape& shape,
+                                   std::optional<int64_t> num_devices) const {
   if (shape.IsToken()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status status = IsTuple() ? ValidateTuple(shape, num_devices)
-                            : ValidateNonTuple(shape, num_devices);
+  absl::Status status = IsTuple() ? ValidateTuple(shape, num_devices)
+                                  : ValidateNonTuple(shape, num_devices);
   if (!status.ok()) {
     tsl::errors::AppendToMessage(
         &status, StrCat("Note: While validating sharding ", ToString(),
@@ -726,14 +727,14 @@ Status HloSharding::Validate(const Shape& shape,
   return status;
 }
 
-Status HloSharding::ValidateNonTuple(const Shape& shape,
-                                     std::optional<int64_t> num_devices) const {
+absl::Status HloSharding::ValidateNonTuple(
+    const Shape& shape, std::optional<int64_t> num_devices) const {
   if (shape.IsTuple()) {
     return absl::InvalidArgumentError(
         "Validation shape is a tuple but sharding is not.");
   }
   if (replicated_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // All tile assignments must be less than the number of available devices and
@@ -741,7 +742,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   bool all_devices_seen;
   if (!tile_assignment_.iota_) {
     absl::flat_hash_set<int64_t> seen_devices;
-    Status status = tile_assignment_.array().EachStatus(
+    absl::Status status = tile_assignment_.array().EachStatus(
         [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
                                       int32_t device) {
           if (num_devices.has_value() && device >= *num_devices) {
@@ -753,7 +754,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
                 "device ", device, " is not unique in tile assignment"));
           }
           seen_devices.insert(device);
-          return OkStatus();
+          return absl::OkStatus();
         });
     TF_RETURN_IF_ERROR(status);
     all_devices_seen =
@@ -764,7 +765,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   }
 
   if (IsTileMaximal() || IsManual() || IsUnknown()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The tile assignment tensor must have the same rank as the tiled data rank.
@@ -789,10 +790,10 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         "sharding was intended, use HloSharding::Replicated(). If a device "
         "placement was intended, use HloSharding::AssignDevice()");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-/*static*/ StatusOr<HloSharding> HloSharding::FromProto(
+/*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
   std::vector<OpMetadata> metadata(proto.metadata().begin(),
                                    proto.metadata().end());
@@ -846,7 +847,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
 
   auto product_no_overflow =
-      [](absl::Span<const int64_t> dims) -> StatusOr<int64_t> {
+      [](absl::Span<const int64_t> dims) -> absl::StatusOr<int64_t> {
     int64_t product_of_dimensions = 1;
     bool any_overflow = false;
     for (auto dimension : dims) {

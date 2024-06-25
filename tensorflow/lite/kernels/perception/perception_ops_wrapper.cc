@@ -15,6 +15,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 PYBIND11_MODULE(pywrap_perception_ops, m) {
   m.doc() = R"pbdoc(

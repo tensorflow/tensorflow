@@ -8,6 +8,15 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -45,15 +54,6 @@ load(
     "cc_binary",
     "cc_library",
 )
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -949,8 +949,8 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
-        "@local_tsl//tsl/framework:device_type",
         "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/framework:device_type",
     ],
 )
 
@@ -1301,21 +1301,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "vmodule_test",
-    srcs = ["vmodule_test.cc"],
-    tags = ["optonly"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
     ],
 )
 

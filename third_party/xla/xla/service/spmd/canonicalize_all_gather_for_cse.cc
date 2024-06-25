@@ -81,7 +81,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloInstruction* new_ag =
         comp->AddInstruction(HloInstruction::CreateAllGather(
             new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
-            ag->replica_groups(), ag->constrain_layout(), new_channel_id,
+            ag->device_list(), ag->constrain_layout(), new_channel_id,
             ag->use_global_device_ids()));
     ag->SetupDerivedInstruction(new_ag);
     HloInstruction* new_formatting = comp->AddInstruction(

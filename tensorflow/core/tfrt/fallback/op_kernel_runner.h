@@ -41,7 +41,7 @@ namespace tfrt_stub {
 
 class OpKernelRunner {
  public:
-  static StatusOr<OpKernelRunner> Create(
+  static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name,
       absl::string_view device_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
@@ -50,7 +50,7 @@ class OpKernelRunner {
           process_function_library_runtime);
 
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
-  static StatusOr<OpKernelRunner> Create(
+  static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::DeviceMgr& device_manager,
@@ -61,7 +61,7 @@ class OpKernelRunner {
                   process_function_library_runtime);
   }
 
-  static StatusOr<OpKernelRunner> Create(
+  static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
@@ -69,7 +69,7 @@ class OpKernelRunner {
       tensorflow::Device* device);
 
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
-  static StatusOr<OpKernelRunner> Create(
+  static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
@@ -130,8 +130,8 @@ class OpKernelRunner {
     tensorflow::FunctionLibraryRuntime* function_library_runtime = nullptr;
     tensorflow::ResourceMgr* resource_manager = nullptr;
     bool is_async = false;
-    gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs;
-    gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs;
+    absl::InlinedVector<AllocatorAttributes, 4UL> input_alloc_attrs;
+    absl::InlinedVector<AllocatorAttributes, 1UL> output_alloc_attrs;
   };
   std::unique_ptr<Info> info_;
 };
@@ -141,7 +141,7 @@ struct OpKernelRunState {
   std::vector<const tensorflow::TensorBuffer*> tensor_buffers;
   std::vector<tensorflow::TensorValue> input_tf_tensor_values;
   OpKernelContext::Params params;
-  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
+  absl::InlinedVector<tensorflow::Tensor, 4UL> input_tf_tensors;
 
   OpKernelRunState() = default;
   OpKernelRunState(absl::Span<const tensorflow::TensorValue> tensor_values,

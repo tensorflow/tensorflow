@@ -1,6 +1,8 @@
-# RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
+# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
+# RUN: xla-translate -hlo-to-mlir-hlo -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 # CHECK-LABEL: module @main attributes {
+# FLATTEN-CHECK-LABEL: module @main attributes {
 hlo_module       {
   name: "main"
   entry_computation_name: "main.5"
@@ -202,10 +204,11 @@ hlo_module       {
   }
   id: 5
   entry_computation_id: 5
-# CHECK-SAME: mhlo.cross_program_prefetches = [#mhlo.cross_program_prefetch<parameter = 1, indices = [0], offset = 0>]
+# CHECK-SAME: mhlo.cross_program_prefetches = [#mhlo.cross_program_prefetch<parameter = 1, indices = [1], offset = 0>]
+# FLATTEN-CHECK-SAME: mhlo.cross_program_prefetches = [#mhlo.cross_program_prefetch<parameter = 2, indices = [], offset = 0>]
   cross_program_prefetches {
     parameter: 1
-    index: 0
+    index: 1
   }
 # CHECK-SAME: mhlo.frontend_attributes = {attr_name = "attr_value"}
   frontend_attributes {

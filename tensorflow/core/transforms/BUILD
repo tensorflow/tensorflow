@@ -90,7 +90,6 @@ cc_library(
         ":PDLLUtilsIncGen",
         ":utils",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -105,6 +104,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

@@ -18,11 +18,15 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -31,7 +35,7 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class WhileUtilTest : public HloTestBase {
  protected:
-  StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
       HloComputation** entry_computation, HloInstruction** param0,
       HloInstruction** param1, HloInstruction** param2) {
     const char* const hlo_string = R"(

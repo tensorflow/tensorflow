@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"

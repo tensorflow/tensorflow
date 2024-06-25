@@ -44,7 +44,7 @@ Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
 
   // Note that if shape is unknown rank, shape.dim_sizes() will be empty, and
   // shape.dims() will be -1.
-  gtl::InlinedVector<int64_t, 4> dim_sizes = shape.dim_sizes();
+  absl::InlinedVector<int64_t, 4UL> dim_sizes = shape.dim_sizes();
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrShape(
       "shape", reinterpret_cast<const int64_t*>(dim_sizes.data()),
       shape.dims()));

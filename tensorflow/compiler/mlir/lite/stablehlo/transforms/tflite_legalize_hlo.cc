@@ -66,7 +66,7 @@ class ConvertReduceOpToTFLiteArgmax
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return value.isNegative() && value.isInfinity();
     } else if (element_type.isInteger(1)) {
@@ -90,7 +90,7 @@ class ConvertReduceOpToTFLiteArgmin
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return !value.isNegative() && value.isInfinity();
     } else if (element_type.isInteger(1)) {

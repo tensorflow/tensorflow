@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -77,7 +80,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
   }
   if (!s.ok()) {
     LOG(WARNING) << "Failed to read MetaGraphDef from " << filename << ": "
-                 << s.ToString();
+                 << s;
     // Attempt to process the next item on the list
     bad_inputs_ += 1;
     return NextItem(item);

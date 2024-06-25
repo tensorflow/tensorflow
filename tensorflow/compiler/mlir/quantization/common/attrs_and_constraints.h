@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -40,10 +42,23 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
-// TODO: b/238829558 - Populate quantization config based on the
-// QuantizationOptions proto.
-// TODO: b/263449239 - Put the OpSet aliases separately within each file
-using OpSet = tensorflow::quantization::OpSet;
+// Name of the string attribute attached to `XlaCallModuleOp`, which is the
+// textproto representation of `Method`.
+inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
+
+// Permutation from the NHWC tensor format to NCHW. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
+
+// Permutation from the NCHW tensor format to NHWC. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNchwToNhwcPermutation = {0, 2, 3, 1};
+
+// Permutation from the OIHW (== (output features, input features, height,
+// width)) tensor format to HWIO. This is commonly used to transpose convolution
+// weights represented as OIHW format to HWIO, which is more desirable for
+// certain downstream optimization passes (e.g. XLA).
+inline constexpr std::array<int64_t, 4> kOihwToHwioPermutation = {2, 3, 1, 0};
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
@@ -54,7 +69,7 @@ bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 // Whether `value` has known rank of `rank`. Returns false when it is not a
 // `ShapedType` or its rank is unknown.
 inline bool HasRankOf(Value value, const int64_t rank) {
-  auto shaped_type = value.getType().dyn_cast_or_null<ShapedType>();
+  auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(value.getType());
   return shaped_type && shaped_type.hasRank() && shaped_type.getRank() == rank;
 }
 
@@ -168,6 +183,15 @@ FailureOr<int32_t> CastI64ToI32(int64_t value);
 FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
     ArrayRef<int64_t> int64_array);
 
+// Returns the first operation with the given type in the function.
+template <typename OpType>
+OpType FindOperationOfType(func::FuncOp function) {
+  for (auto op : function.getBody().getOps<OpType>()) {
+    return op;
+  }
+  return nullptr;
+}
+
 // Returns the first user of the given operation, optionally of the given
 // type if provided. If there is no user or user of type, return nullptr.
 template <typename T = Operation*>
@@ -180,10 +204,22 @@ Operation* FindUserOfType(Operation* op) {
   return nullptr;
 }
 
+// Returns the first user of the given operation, optionally of the given
+// type if provided. If there is no user or user of type, return nullptr.
+template <typename T = Operation*>
+Operation* FindOperandOfType(Operation* op) {
+  for (Value operand_value : op->getOperands()) {
+    if (isa<T>(operand_value.getDefiningOp())) {
+      return operand_value.getDefiningOp();
+    }
+  }
+  return nullptr;
+}
+
 // Returns the function attribute for the given call op which is lifted for
 // quantization.
 inline FlatSymbolRefAttr GetFuncAttr(TF::PartitionedCallOp call_op) {
-  return call_op.getFAttr().template dyn_cast<FlatSymbolRefAttr>();
+  return mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
 }
 
 inline FlatSymbolRefAttr GetFuncAttr(TF::XlaCallModuleOp call_op) {
@@ -206,10 +242,18 @@ inline bool HasQuantizableTrait(Operation* op) {
 // is quantized.
 bool IsHybridQuantizedOp(Operation* op);
 
+// Returns whether a given `stablehlo.dot_general` can be legalizable to
+// `tfl.fully_connected`.
+absl::StatusOr<bool> IsDotGeneralFullyConnected(
+    ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
 // Returns the quantization dimension for a given `stablehlo.dot_general` op,
 // or `std::nullopt` if the given op is not per-channel quantizable.
 std::optional<int64_t> GetDotGeneralQuantizationDim(
     ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
+// Checks if a `StringRef` contains 'conv' or 'dot_general'.
+bool ContainsConvOrDot(StringRef str);
 
 }  // namespace mlir::quant
 

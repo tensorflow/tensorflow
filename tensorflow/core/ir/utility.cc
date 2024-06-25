@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -47,35 +48,36 @@ BlockArgument GetLoopRegionDataOf(BlockArgument ctl) {
 }
 
 Value LookupControlDependency(Value data) {
-  assert(!data.getType().isa<ControlType>() && "expected a data type");
+  assert(!mlir::isa<ControlType>(data.getType()) && "expected a data type");
   // If the value is defined by an op, then the last result is the control
   // dependency.
   Value control_dep;
-  if (auto result = data.dyn_cast<OpResult>()) {
+  if (auto result = mlir::dyn_cast<OpResult>(data)) {
     control_dep = *std::prev(result.getOwner()->result_end());
   } else {
-    auto arg = data.cast<BlockArgument>();
+    auto arg = mlir::cast<BlockArgument>(data);
     control_dep = cast<ControlArgumentInterface>(arg.getOwner()->getParentOp())
                       .getControlTokenOf(arg);
   }
-  assert(control_dep.getType().isa<ControlType>() && "expected a control type");
+  assert(mlir::isa<ControlType>(control_dep.getType()) &&
+         "expected a control type");
   return control_dep;
 }
 
 std::optional<Value> LookupDataValue(Value ctl) {
-  assert(ctl.getType().isa<ControlType>() && "expected a control type");
+  assert(mlir::isa<ControlType>(ctl.getType()) && "expected a control type");
   // If the value is defined by an op, then return the first result.
   Value data;
-  if (auto result = ctl.dyn_cast<OpResult>()) {
+  if (auto result = mlir::dyn_cast<OpResult>(ctl)) {
     // If the op only has a control result, then there is no data value.
     if (result.getOwner()->getNumResults() == 1) return {};
     data = *result.getOwner()->result_begin();
   } else {
-    auto arg = ctl.cast<BlockArgument>();
+    auto arg = mlir::cast<BlockArgument>(ctl);
     data = cast<ControlArgumentInterface>(arg.getOwner()->getParentOp())
                .getDataValueOf(arg);
   }
-  assert(!data.getType().isa<ControlType>() && "expected a data type");
+  assert(!mlir::isa<ControlType>(data.getType()) && "expected a data type");
   return data;
 }
 

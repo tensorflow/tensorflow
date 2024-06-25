@@ -14,25 +14,29 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/compiler.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -50,7 +54,8 @@ class IfrtIrExecutableImplTest
 
 TEST_F(IfrtIrExecutableImplTest, CallXla) {
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
@@ -97,13 +102,15 @@ module {
 TEST_F(IfrtIrExecutableImplTest, Reshard) {
   std::string source = R"(
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2xi32>, 1 to [0] on 1, [0]>)
-      -> !ifrt.array<tensor<2xi32>, 1 to [0] on 1, [1]>
+  func.func @main(%arg0: !ifrt.array<tensor<2xi32>,
+                                     #ifrt.sharding_param<1 to [0] on 1>, [0]>)
+      -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
       attributes {ifrt.function} {
     %0 = "ifrt.Reshard"(%arg0)
-        : (!ifrt.array<tensor<2xi32>, 1 to [0] on 1, [0]>)
-        -> !ifrt.array<tensor<2xi32>, 1 to [0] on 1, [1]>
-    return %0 : !ifrt.array<tensor<2xi32>, 1 to [0] on 1, [1]>
+        : (!ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>)
+        -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
+    return %0 : !ifrt.array<tensor<2xi32>,
+                            #ifrt.sharding_param<1 to [0] on 1>, [1]>
   }
 }
   )";
@@ -137,7 +144,8 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroInput) {
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module {
   func.func @main() -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @one() on devices [0,1] : () -> !array
@@ -172,7 +180,8 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroOutput) {
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module {
   func.func @main(%arg0: !array) attributes {ifrt.function} {
     %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1] : (!array) -> ()
@@ -214,7 +223,8 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, BufferDonation) {
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
@@ -288,18 +298,19 @@ module {
     exec_build_options.set_use_spmd_partitioning(true);
     xla::DeviceAssignment device_assignment(1, 2);
     for (auto [logical, device_id] : llvm::enumerate(GetDeviceIds(devices))) {
-      device_assignment(0, logical) = device_id;
+      device_assignment(0, logical) = device_id.value();
     }
     exec_build_options.set_device_assignment(device_assignment);
   }
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> child_exec,
       client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::XlaProgram>(*mhlo_module),
+          std::make_unique<xla::ifrt::HloProgram>(*mhlo_module),
           std::make_unique<XlaCompileOptions>(std::move(xla_options))));
 
   std::string source = R"(
-!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.CallLoadedExecutable @add_one(%arg0)
@@ -313,7 +324,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
   auto options = std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
-  options->loaded_exec_binding["add_one"] = child_exec.get();
+  options->loaded_exec_binding["add_one"] = std::move(child_exec);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
@@ -54,7 +55,7 @@ llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module) {
 LogicalResult GetCallees(SymbolUserOpInterface op, SymbolTable &symtab,
                          llvm::SmallVector<func::FuncOp> &callees) {
   for (auto attr : op->getAttrs()) {
-    auto sym = attr.getValue().dyn_cast<SymbolRefAttr>();
+    auto sym = mlir::dyn_cast<SymbolRefAttr>(attr.getValue());
     if (!sym) continue;
     auto callee = symtab.lookup<func::FuncOp>(sym.getRootReference());
     if (!callee) {

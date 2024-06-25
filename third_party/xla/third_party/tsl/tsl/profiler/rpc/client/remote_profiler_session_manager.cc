@@ -38,7 +38,7 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 /*static*/ std::unique_ptr<RemoteProfilerSessionManager>
 RemoteProfilerSessionManager::Create(
     const RemoteProfilerSessionManagerOptions& options,
-    const ProfileRequest& request, Status& out_status,
+    const ProfileRequest& request, absl::Status& out_status,
     AddressResolver resolver) {
   VLOG(1) << "Creating a RemoteProfilerSessionManager.";
   auto session_manager = absl::WrapUnique(
@@ -65,7 +65,7 @@ RemoteProfilerSessionManager::~RemoteProfilerSessionManager() {
   VLOG(2) << "Destroying RemoteProfilerSessionManager.";
 }
 
-Status RemoteProfilerSessionManager::Init() {
+absl::Status RemoteProfilerSessionManager::Init() {
   mutex_lock lock(mutex_);
   VLOG(1) << "SessionManager initializing.";
 
@@ -97,7 +97,7 @@ Status RemoteProfilerSessionManager::Init() {
   }
 
   LOG(INFO) << "Issued Profile gRPC to " << clients_.size() << " clients";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<RemoteProfilerSessionManager::Response>

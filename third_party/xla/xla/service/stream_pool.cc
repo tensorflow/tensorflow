@@ -22,8 +22,7 @@ limitations under the License.
 
 namespace xla {
 
-StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
-                                         se::StreamPriority priority) {
+StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream;
 
   {
@@ -51,7 +50,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
 
   if (!stream) {
     // Create a new stream.
-    stream = executor->CreateStream(priority).value();
+    stream = executor_->CreateStream(priority).value();
     VLOG(1) << absl::StrFormat("Created new stream (%p) with priority = %s",
                                stream.get(),
                                se::StreamPriorityToString(priority));

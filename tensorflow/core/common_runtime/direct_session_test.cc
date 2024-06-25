@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/protobuf.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -67,9 +68,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-CallableOptions MakeCallableOptions(gtl::ArraySlice<string> feeds,
-                                    gtl::ArraySlice<string> fetches,
-                                    gtl::ArraySlice<string> targets) {
+CallableOptions MakeCallableOptions(absl::Span<const string> feeds,
+                                    absl::Span<const string> fetches,
+                                    absl::Span<const string> targets) {
   CallableOptions ret;
   for (const string& feed : feeds) {
     ret.add_feed(feed);
@@ -1165,7 +1166,8 @@ class SessionMetadataReaderOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     if (ctx->session_metadata() != nullptr) {
-      out_tensor->scalar<tstring>()() = ctx->session_metadata()->DebugString();
+      out_tensor->scalar<tstring>()() =
+          tsl::LegacyUnredactedDebugString(*ctx->session_metadata());
     } else {
       out_tensor->scalar<tstring>()() = "";
     }
@@ -1442,7 +1444,7 @@ TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
   std::vector<Node*> nodes;
   nodes.reserve(1024);
 
-  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+  auto make_expensive_noop = [&g](absl::Span<Node* const> control_deps) {
     Node* ret;
     auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
     for (Node* control_dep : control_deps) {
@@ -2848,7 +2850,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
             {{"group_size", 2},
              {"group_key", 1},
              {"instance_key", instance_key},
-             {"subdiv_offsets", gtl::ArraySlice<int32>({0})},
+             {"subdiv_offsets", absl::Span<const int32>({0})},
              {"merge_op", "Add"},
              {"final_op", "Div"},
              {"T", DT_FLOAT}},

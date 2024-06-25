@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
@@ -43,7 +44,7 @@ Type convertInteger(IntegerType intType) {
 }
 
 Type convertShapedType(ShapedType shapedType) {
-  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+  if (auto intType = mlir::dyn_cast<IntegerType>(shapedType.getElementType()))
     return shapedType.clone(convertInteger(intType));
   return shapedType;
 }
@@ -76,7 +77,7 @@ std::optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
 std::optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
                                     ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
-  if (inputs.front().getType().isa<ShapedType>()) {
+  if (mlir::isa<ShapedType>(inputs.front().getType())) {
     return std::nullopt;
   }
   return builder
@@ -160,7 +161,7 @@ bool HloToStablehloTypeConverter::isSourceDialect(Dialect& dialect) {
 
 Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
     Attribute attr) {
-  if (auto hloAttr = attr.dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
+  if (auto hloAttr = mlir::dyn_cast_or_null<mhlo::TypeExtensionsAttr>(attr)) {
     return stablehlo::TypeExtensionsAttr::get(hloAttr.getContext(),
                                               hloAttr.getBounds());
   }
@@ -185,7 +186,7 @@ bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {
 Attribute StablehloToHloTypeConverter::convertSourceDialectEncoding(
     Attribute attr) {
   if (auto stablehloAttr =
-          attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+          mlir::dyn_cast_or_null<stablehlo::TypeExtensionsAttr>(attr)) {
     return mhlo::TypeExtensionsAttr::get(stablehloAttr.getContext(),
                                          stablehloAttr.getBounds());
   }

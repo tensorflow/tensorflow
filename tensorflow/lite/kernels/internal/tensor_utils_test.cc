@@ -2185,7 +2185,13 @@ BENCHMARK(BM_DotprodBatchOneMultiply)
     ->Args({640, 2048, 8, 8})
     ->Args({2048, 2048, 1, 1})
     ->Args({2048, 2048, 1, 8})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({4096, 4096, 8, 1})
+    ->Args({4096, 4096, 1, 8})
+    ->Args({8192, 8192, 8, 1})
+    ->Args({8192, 8192, 1, 8})
+    ->Args({16384, 16384, 8, 1})
+    ->Args({16384, 16384, 1, 8});
 
 void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   const int rows = state.range(0);
@@ -2242,7 +2248,14 @@ BENCHMARK(BM_DotprodBatchFourMultiply)
     ->Args({2048, 2048, 4, 1})
     ->Args({2048, 2048, 4, 8})
     ->Args({2048, 2048, 5, 1})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({2048, 2048, 64, 1})
+    ->Args({2048, 2048, 1024, 1})
+    ->Args({4096, 4096, 1024, 1})
+    ->Args({8192, 8192, 1024, 1})
+    ->Args({8192, 8192, 1024, 8})
+    ->Args({16384, 16384, 1024, 1})
+    ->Args({16384, 8192, 1024, 1});
 
 void BM_DotprodSparseMultiply(benchmark::State& state) {
   const int rows = state.range(0);

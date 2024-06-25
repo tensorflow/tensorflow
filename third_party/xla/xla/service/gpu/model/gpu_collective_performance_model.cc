@@ -242,9 +242,9 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
 
   // Since channels are pipelined together, compute time will only occur as in a
   // single channel.
-  absl::Duration compute_time_per_channel =
-      ComputeTime(gpu_device_info,
-                  cost_analysis->flop_count(instr) / num_channels, num_threads);
+  absl::Duration compute_time_per_channel = ComputeTime(
+      gpu_device_info, cost_analysis->flop_count(instr) / num_channels,
+      /*num_blocks=*/num_channels, /*num_threads_per_block=*/num_threads);
   total_time += compute_time_per_channel;
 
   uint32_t supported_p2p = CheckIfNvlinkSupportsP2P();
@@ -268,7 +268,7 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
                            num_channels * per_channel_ring_ll128_Bw);
   double actual_bandwidth = bus_bandwidth * cost_analysis->ScalingRatio(instr);
 
-  absl::Duration communication_time = absl::Microseconds(
+  absl::Duration communication_time = absl::Milliseconds(
       cost_analysis->bytes_accessed(instr) / (1e6 * actual_bandwidth));
   total_time += communication_time;
   return total_time;

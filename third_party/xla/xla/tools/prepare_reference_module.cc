@@ -18,11 +18,11 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/despecializer.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
@@ -33,8 +33,8 @@ namespace xla {
 absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    const std::function<Status(const HloModule&, HloRunnerInterface*,
-                               HloModule*)>& module_modifier_hook) {
+    const std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                                     HloModule*)>& module_modifier_hook) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   // The combination of fast math and optimizations leads to unsound code
   // transformations (see third_party/tensorflow/compiler/xla/xla.proto for

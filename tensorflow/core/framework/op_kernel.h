@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -582,7 +584,7 @@ class OpKernelContext {
     int64_t start_time_usecs = 0;
 
     // The deadline for the session to complete by. Empty if unspecified.
-    absl::optional<absl::Time> deadline;
+    std::optional<absl::Time> deadline;
 
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
@@ -690,7 +692,7 @@ class OpKernelContext {
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
 
-    absl::optional<ManagedStackTrace> stack_trace = {};
+    std::optional<ManagedStackTrace> stack_trace = {};
 
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
@@ -715,7 +717,7 @@ class OpKernelContext {
 
   // The deadline for the session to complete by. Empty if unspecified in
   // RunOptions.
-  absl::optional<absl::Time> deadline() const { return params_->deadline; }
+  std::optional<absl::Time> deadline() const { return params_->deadline; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -904,11 +906,11 @@ class OpKernelContext {
   // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
   // -1.
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<int> candidate_input_indices, int output_index,
+      absl::Span<const int> candidate_input_indices, int output_index,
       const TensorShape& output_shape, Tensor** output,
       int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<StringPiece> candidate_input_names,
+      absl::Span<const StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
@@ -916,12 +918,12 @@ class OpKernelContext {
   // If none of the given inputs can be forwarded, calls
   // allocate_temp() to allocate a new temporary buffer.
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, const AllocatorAttributes& allocator_attr,
       Tensor* out_temp) TF_MUST_USE_RESULT;
 
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, Tensor* out_temp) TF_MUST_USE_RESULT {
     return forward_input_or_allocate_temp(candidate_input_indices, type, shape,
                                           AllocatorAttributes(), out_temp);
@@ -1066,8 +1068,8 @@ class OpKernelContext {
     return params_->output_attr_array[index];
   }
 
-  gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
-    gtl::InlinedVector<WrappedAllocator, 4> retrieved;
+  absl::InlinedVector<WrappedAllocator, 4UL> ConsumeWrappedAllocators() {
+    absl::InlinedVector<WrappedAllocator, 4UL> retrieved;
     if (tracking_state_) {
       mutex_lock lock(tracking_state_->mu);
       retrieved.swap(tracking_state_->wrapped_allocators);
@@ -1297,7 +1299,7 @@ class OpKernelContext {
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
   Params* params_;                  // not owned
-  gtl::InlinedVector<TensorValue, 4> outputs_;
+  absl::InlinedVector<TensorValue, 4UL> outputs_;
 
   // Keep track of calls to ScopedAllocator.
   // TODO(ayushd): change to absl::flat_hash_set.
@@ -1308,16 +1310,17 @@ class OpKernelContext {
   // recorded.
   struct TrackingState {
     mutable mutex mu;
-    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
+    absl::InlinedVector<WrappedAllocator, 4UL> wrapped_allocators
         TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
     int64_t temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
     int64_t persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
-    gtl::InlinedVector<std::pair<const void*, int64_t>, 2>
+    absl::InlinedVector<std::pair<const void*, int64_t>, 2UL>
         temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64_t, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
+    absl::InlinedVector<int64_t, 2UL> persistent_alloc_ids
+        TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 
@@ -1556,7 +1559,7 @@ class OpKernelRegistrar {
                     OpKernel* (*create_fn)(OpKernelConstruction*))
       TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name,
-                 absl::make_unique<PtrOpKernelFactory>(create_fn));
+                 std::make_unique<PtrOpKernelFactory>(create_fn));
   }
 
  private:

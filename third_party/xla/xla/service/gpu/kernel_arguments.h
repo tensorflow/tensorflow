@@ -70,16 +70,17 @@ class KernelArguments {
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const HloInstruction* non_fusion_hlo,
-      absl::Span<const HloInstruction* const> needed_operands);
+      absl::Span<const HloInstruction* const> needed_operands,
+      bool dedup = true);
 
   const std::vector<KernelArgument>& args() const { return args_; }
 
  private:
-  explicit KernelArguments(std::vector<KernelArgument> args)
-      : args_(ProcessArguments(std::move(args))) {}
+  explicit KernelArguments(std::vector<KernelArgument> args, bool dedup = true)
+      : args_(ProcessArguments(std::move(args), dedup)) {}
 
   static std::vector<KernelArgument> ProcessArguments(
-      std::vector<KernelArgument> kernel_arguments);
+      std::vector<KernelArgument> kernel_arguments, bool dedup);
 
   std::vector<KernelArgument> args_;
 };

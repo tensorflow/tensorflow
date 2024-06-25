@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/manifest_checking_test.h"
@@ -198,11 +198,11 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
       const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
-  Status ComputeAndCompareLiteralWithStatus(
+  absl::Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_layout = nullptr);
-  Status ComputeAndCompareLiteralWithStatus(
+  absl::Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       absl::Span<GlobalData* const> arguments, ErrorSpec error,
       const Shape* shape_with_layout = nullptr);
@@ -422,13 +422,13 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   ExecutionOptions execution_options_;
 
  private:
-  Status ComputeAndCompareLiteralWithAllOutputLayouts(
+  absl::Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,
                                const std::string& error_message)>&
           verify_output);
-  Status ComputeAndCompareLiteralWithAllInputLayouts(
+  absl::Status ComputeAndCompareLiteralWithAllInputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,

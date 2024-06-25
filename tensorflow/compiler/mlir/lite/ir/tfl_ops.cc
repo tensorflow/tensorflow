@@ -86,25 +86,13 @@ namespace {
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser& parser,
                                             OperationState& result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
-  Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
-  SMLoc loc = parser.getCurrentLocation();
   if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(ops) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(ops, fnType.getInputs(), loc, result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
+    if (parser.parseOperandList(ops) || parser.parseRParen()) return failure();
+    return parser.parseGenericOperationAfterOpName(result, ops);
   }
+  Type type;
   return failure(parser.parseOperandList(ops) ||
                  parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
@@ -578,6 +566,14 @@ inline bool IsBF16ShapedType(Type t) {
   return false;
 }
 
+// Returns true if it is a shaped type of FloatType elements.
+inline bool IsFloatShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isa<FloatType>();
+  }
+  return false;
+}
+
 // Returns new shape with rank 'new_dims' with padded ones on the
 // left if needed.
 inline std::vector<int64_t> GetPaddedShape(ArrayRef<int64_t> old_shape,
@@ -1038,9 +1034,9 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange ranges,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  CustomTfOpAdaptor op(operands, attr, {}, ranges);
+  CustomTfOpAdaptor op(operands, attr, properties, regions);
 
   if (op.getRegions().empty()) return success();
   auto* real_op = &op.getBody().front().front();
@@ -1383,9 +1379,9 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attr);
+  Conv2DOpAdaptor op(operands, attr, properties);
 
   const Value input = op.getInput();
   const Value filter = op.getFilter();
@@ -2064,9 +2060,9 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  ReshapeOpAdaptor op(operands, attr);
+  ReshapeOpAdaptor op(operands, attr, properties);
   const Value input = op.getInput();
   const Value shape = op.getShape();
 
@@ -2441,9 +2437,9 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  UnpackOpAdaptor op(operands, attributes);
+  UnpackOpAdaptor op(operands, attributes, properties);
   // TODO(jpienaar): Refactor verify
   if (failed(op.verify(loc.has_value() ? *loc : UnknownLoc::get(context))))
     return failure();
@@ -2802,7 +2798,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
@@ -3067,6 +3063,50 @@ OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
 
   auto compute = [](APFloat value) -> APFloat { return value * value; };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat()) {
+    APFloat lhs_value = lhs.getSplatValue<APFloat>();
+    lhs_value.changeSign();
+    if (lhs_value.isLargest()) return getRhs();
+  }
+  if (rhs && rhs.isSplat()) {
+    APFloat rhs_value = rhs.getSplatValue<APFloat>();
+    rhs_value.changeSign();
+    if (rhs_value.isLargest()) return getLhs();
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// MinimumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat() && lhs.getSplatValue<APFloat>().isLargest())
+    return getRhs();
+  if (rhs && rhs.isSplat() && rhs.getSplatValue<APFloat>().isLargest())
+    return getLhs();
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

@@ -285,15 +285,22 @@ follow [step 1](#step-1-install-cmake-tool) to
 [step 3](#step-3-create-cmake-build-directory) first. After that, run the
 following commands.
 
+### Linux / MacOS
 ```sh
 cmake ../tensorflow_src/tensorflow/lite/c
 cmake --build . -j
 ```
 
-This command generates the following shared library in the current directory.
+### Windows
+```sh
+cmake ../tensorflow_src/tensorflow/lite/c
+cmake --build . -j --config Release
+```
 
-**Note:** On Windows system, you can find the `tensorflowlite_c.dll` under
-`debug` directory.
+### Compiled Library
+
+The above command generates the following shared library in the current
+directory.
 
 Platform | Library name
 -------- | ---------------------------

@@ -34,12 +34,6 @@ class StreamTest : public ::testing::Test {
   }
 };
 
-TEST_F(StreamTest, NoInitNotOk) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
-  Stream stream(executor.get());
-  EXPECT_FALSE(stream.ok());
-}
-
 TEST_F(StreamTest, InitOk) {
   std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());

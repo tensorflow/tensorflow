@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -146,11 +146,13 @@ class PjRtArray final
     return sharding_;
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<Status> CopyToHostBuffer(
+  Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
@@ -158,12 +160,12 @@ class PjRtArray final
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) override;
 
-  Future<Status> GetReadyFuture() const override;
+  Future<> GetReadyFuture() const override;
 
   std::shared_ptr<PjRtBuffer> GetPjRtBuffer(ArrayCopySemantics semantics,
                                             int index) const;
 
-  Future<Status> Delete() override;
+  Future<> Delete() override;
   bool IsDeleted() const override;
 
   std::string DebugString() const override;

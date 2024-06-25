@@ -26,15 +26,15 @@ namespace profiler {
 // Converts multiple XSpaces to dcn collective stats.
 // Stores the dcn collective stats as files in the same directory
 // as the xspace files.
-StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
+absl::StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
     const SessionSnapshot& session_snapshot);
 
 // Returns whether there are dcn collective stats in the profile.
-StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
+absl::StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
     const SessionSnapshot& session_snapshot);
 
 // Gets DcnSlackAnalysis proto for a host.
-StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
+absl::StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
     const SessionSnapshot& session_snapshot, std::string hostname);
 
 }  // namespace profiler

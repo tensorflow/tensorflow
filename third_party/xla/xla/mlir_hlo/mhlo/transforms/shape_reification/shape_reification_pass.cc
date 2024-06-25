@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -52,7 +53,8 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
                                             reifications))) {
       return failure();
     }
-    Value shape = reifications[op.getArg().cast<OpResult>().getResultNumber()];
+    Value shape =
+        reifications[mlir::cast<OpResult>(op.getArg()).getResultNumber()];
 
     // Insert cast, if needed.
     if (shape.getType() != op.getType()) {

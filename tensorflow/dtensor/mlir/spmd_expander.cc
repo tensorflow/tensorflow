@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
@@ -177,7 +178,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   global_output_shapes.reserve(op->getNumResults());
   for (auto output_value : op->getResults()) {
     auto maybe_ranked =
-        output_value.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(output_value.getType());
     // Do not extract global shape if the shape isn't statically known.
     //
     // This is a bit subtle and relies on the check of static shape of output

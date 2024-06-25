@@ -38,6 +38,13 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const HloInstruction& hlo);
 
+// Extracts HLO instructions into a new HLO module replacing all operands
+// with parameter instructions even if the result of one instruction is used
+// as a parameter to another. Combines results of all operations into the
+// tuple and adds this tuple as a root instruction of the new module.
+std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+    const std::vector<HloInstruction*>& instructions);
+
 // Extracts producer and consumer HLO instruction into a new HLO module
 // replacing its operands with parameter instructions.
 std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(

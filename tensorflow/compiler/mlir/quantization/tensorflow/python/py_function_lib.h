@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_PY_FUNCTION_LIB_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_PY_FUNCTION_LIB_H_
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -46,10 +47,12 @@ class PyFunctionLibrary {
   // `add_meta_graph_and_variables` function, which is internally used to add a
   // `MetaGraphDef` to save to the SavedModel.
   //
+  // Returns `true` if successful. Returns `std::nullopt` otherwise.
+  //
   // If the function signature changes, likely its corresponding .pyi type
   // hinting and definition should also change.
-  // LINT.IfChange
-  virtual void SaveExportedModel(
+  // LINT.IfChange(save_exported_model)
+  virtual std::optional<bool> SaveExportedModel(
       absl::string_view dst_saved_model_path,
       const ExportedModel& exported_model,
       absl::string_view src_saved_model_path,
@@ -70,18 +73,15 @@ class PyFunctionLibrary {
   // of type `RepresentativeDatasetOrMapping`, which is used to run the
   // calibration.
   //
-  // Returns the updated exported model where the collected calibration
-  // statistics are added to `CustomAggregator` nodes at the `min` and `max`
-  // attributes.
+  // Returns `true` if successful. Returns `std::nullopt` otherwise.
   //
   // If the function signature changes, likely its corresponding .pyi type
   // hinting and definition should also change.
   // LINT.IfChange(run_calibration)
-  virtual void RunCalibration(
+  virtual std::optional<bool> RunCalibration(
       absl::string_view saved_model_path,
       const std::vector<std::string>& signature_keys,
       const std::unordered_set<std::string>& tags,
-      const ::stablehlo::quantization::CalibrationOptions& calibration_options,
       bool force_graph_mode_calibration,
       const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
           representative_dataset_file_map) const = 0;
@@ -93,14 +93,16 @@ class PyFunctionLibrary {
   // Retrieves min and max value from `calibration_statistics`, based on the
   // calibration method specified by `calibration_options`.
   //
+  // Returns `std::nullopt` if unsuccessful.
+  //
   // If the function signature changes, likely its corresponding .pyi type
   // hinting and definition should also change.
   // LINT.IfChange(get_calibration_min_max_value)
-  virtual stablehlo::quantization::MinMaxValue GetCalibrationMinMaxValue(
-      const tensorflow::calibrator::CalibrationStatistics&
-          calibration_statistics,
-      const ::stablehlo::quantization::CalibrationOptions& calibration_options)
-      const = 0;
+  virtual std::optional<stablehlo::quantization::MinMaxValue>
+  GetCalibrationMinMaxValue(const tensorflow::calibrator::CalibrationStatistics&
+                                calibration_statistics,
+                            const ::stablehlo::quantization::CalibrationOptions&
+                                calibration_options) const = 0;
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:get_calibration_min_max_value,
   //     py_function_lib.py:get_calibration_min_max_value,

@@ -97,7 +97,6 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_program_shape(data, StaticProgramShape());
       set_static_data_hlo_profile_printer_data(
           data, StaticHloProfilePrinterData());
-      set_static_data_use_xla_runtime(data, false);
 
       return data;
     }();

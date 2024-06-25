@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
-#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
-
 #include <memory>
+
+#define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 
 namespace tflite {
 namespace python {
@@ -37,6 +38,9 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
     case kTfLiteFloat32:
       return NPY_FLOAT32;
     case kTfLiteFloat16:
+      return NPY_FLOAT16;
+    case kTfLiteBFloat16:
+      // TODO(b/329491949): NPY_BFLOAT16 currently doesn't exist
       return NPY_FLOAT16;
     case kTfLiteFloat64:
       return NPY_FLOAT64;

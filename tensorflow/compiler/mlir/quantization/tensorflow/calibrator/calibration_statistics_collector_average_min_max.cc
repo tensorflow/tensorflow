@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_average_min_max.h"
 
-#include <algorithm>
-#include <limits>
+#include <cstdint>
 #include <optional>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 
 namespace tensorflow {
@@ -30,21 +30,13 @@ void CalibrationStatisticsCollectorAverageMinMax::ClearData() {
 }
 
 void CalibrationStatisticsCollectorAverageMinMax::Collect(
-    const float *data, const unsigned int N) {
-  float input_min = std::numeric_limits<float>::max(),
-        input_max = std::numeric_limits<float>::lowest();
+    const float min, const float max, absl::Span<const int64_t> histogram) {
+  const float current_min_sum = average_min_max_statistics_.min_sum();
+  const float current_max_sum = average_min_max_statistics_.max_sum();
+  const int current_num_samples = average_min_max_statistics_.num_samples();
 
-  for (int i = 0; i < N; ++i) {
-    input_min = std::min(input_min, data[i]);
-    input_max = std::max(input_max, data[i]);
-  }
-
-  float current_min_sum = average_min_max_statistics_.min_sum();
-  float current_max_sum = average_min_max_statistics_.max_sum();
-  int current_num_samples = average_min_max_statistics_.num_samples();
-
-  average_min_max_statistics_.set_min_sum(current_min_sum + input_min);
-  average_min_max_statistics_.set_max_sum(current_max_sum + input_max);
+  average_min_max_statistics_.set_min_sum(current_min_sum + min);
+  average_min_max_statistics_.set_max_sum(current_max_sum + max);
   average_min_max_statistics_.set_num_samples(current_num_samples + 1);
 }
 

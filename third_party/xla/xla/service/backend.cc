@@ -24,12 +24,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -114,9 +115,9 @@ absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
     se::StreamExecutor* executor, se::StreamPriority priority) {
   absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
-  return stream_pools_.at(executor)->BorrowStream(executor, priority);
+  return stream_pools_.at(executor)->BorrowStream(priority);
 }
 
 absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
@@ -124,13 +125,12 @@ absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
   absl::MutexLock l(&mu_);
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
 
   std::vector<StreamPool::Ptr> ptrs;
   for (int i = 0; i < num_streams; i++) {
-    StreamPool::Ptr ptr =
-        stream_pools_.at(executor)->BorrowStream(executor, priority);
+    StreamPool::Ptr ptr = stream_pools_.at(executor)->BorrowStream(priority);
     ptrs.push_back(std::move(ptr));
   }
   return ptrs;
@@ -212,7 +212,7 @@ absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
           executor_b->GetDeviceDescription().name());
 }
 
-Status Backend::ResetDevices() {
+absl::Status Backend::ResetDevices() {
   return transfer_manager_->ResetDevices(stream_executors_);
 }
 

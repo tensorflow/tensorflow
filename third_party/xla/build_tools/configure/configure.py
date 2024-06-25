@@ -69,27 +69,32 @@ def _find_executable(executable: str) -> Optional[str]:
   return None
 
 
-def _find_executable_or_die(executable: str) -> str:
+def _find_executable_or_die(
+    executable_name: str, executable_path: Optional[str] = None
+) -> str:
   """Finds executable and resolves symlinks or raises RuntimeError.
 
   Resolving symlinks is sometimes necessary for finding system headers.
 
   Args:
-    executable: The name of the executable that we want to find.
+    executable_name: The name of the executable that we want to find.
+    executable_path: If not None, the path to the executable.
 
   Returns:
-    The path to the executable we are looking for.
+    The path to the executable we are looking for, after symlinks are resolved.
   Raises:
     RuntimeError: if path to the executable cannot be found.
   """
-  resolved_path_to_exe = _find_executable(executable)
+  if executable_path:
+    return str(pathlib.Path(executable_path).resolve(strict=True))
+  resolved_path_to_exe = _find_executable(executable_name)
   if resolved_path_to_exe is None:
     raise RuntimeError(
-        f"Could not find executable `{executable}`! "
+        f"Could not find executable `{executable_name}`! "
         "Please change your $PATH or pass the path directly like"
-        f"`--{executable}_path=path/to/executable."
+        f"`--{executable_name}_path=path/to/executable."
     )
-  logging.info("Found path to %s at %s", executable, resolved_path_to_exe)
+  logging.info("Found path to %s at %s", executable_name, resolved_path_to_exe)
 
   return resolved_path_to_exe
 
@@ -183,6 +188,7 @@ class Backend(ArgparseableEnum):
   CPU = enum.auto()
   CUDA = enum.auto()
   ROCM = enum.auto()
+  SYCL = enum.auto()
 
 
 class HostCompiler(ArgparseableEnum):
@@ -235,7 +241,7 @@ class DiscoverablePathsAndVersions:
       self.ld_library_path = os.environ.get("LD_LIBRARY_PATH", None)
 
     if config.host_compiler == HostCompiler.CLANG:
-      self.clang_path = self.clang_path or _find_executable_or_die("clang")
+      self.clang_path = _find_executable_or_die("clang", self.clang_path)
       self.clang_major_version = (
           self.clang_major_version or _get_clang_major_version(self.clang_path)
       )
@@ -246,11 +252,11 @@ class DiscoverablePathsAndVersions:
       # directly.
       self.lld_path = self.lld_path or shutil.which("ld.lld")
     elif config.host_compiler == HostCompiler.GCC:
-      self.gcc_path = self.gcc_path or _find_executable_or_die("gcc")
+      self.gcc_path = _find_executable_or_die("gcc", self.gcc_path)
 
     if config.backend == Backend.CUDA:
       if config.cuda_compiler == CudaCompiler.CLANG:
-        self.clang_path = self.clang_path or _find_executable_or_die("clang")
+        self.clang_path = _find_executable_or_die("clang", self.clang_path)
 
       if not self.cuda_compute_capabilities:
         self.cuda_compute_capabilities = _get_cuda_compute_capabilities_or_die()
@@ -402,6 +408,8 @@ class XLAConfigOptions:
         rc.append("build --config nonccl")
     elif self.backend == Backend.ROCM:
       pass
+    elif self.backend == Backend.SYCL:
+      rc.append("build --config sycl")
 
     # Lines that are added for every backend
     if dpav.ld_library_path:

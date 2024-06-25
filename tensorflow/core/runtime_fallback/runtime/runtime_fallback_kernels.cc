@@ -257,7 +257,7 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
   tensorflow::Tensor t;
   TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
   *result = tensorflow::TensorInterface(std::move(t));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Handle attributes.
@@ -476,7 +476,7 @@ Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
   TF_RETURN_IF_ERROR(eager_op->Execute(
       absl::MakeSpan(result_tensor_handles.data(), num_retvals), &num_retvals));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static bool ShouldAddHostContextAttr(const char* op_name) {
@@ -835,10 +835,9 @@ void CoreRTTensorHandleToFallbackTensorInternal(
 void CoreRTTensorHandleToFallbackTensor(
     RemainingArguments args, RemainingResults results, StringAttr device,
     const tfrt::ExecutionContext& exec_ctx) {
-  tensorflow::profiler::TraceMe trace_me(
-      "corert_tensorhandle_to_fallback_tensor");
+  tsl::profiler::TraceMe trace_me("corert_tensorhandle_to_fallback_tensor");
   trace_me.AppendMetadata([request_id = exec_ctx.request_ctx()->id()]() {
-    return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
+    return tsl::profiler::TraceMeEncode({{"id", request_id}});
   });
 
   CoreRTTensorHandleToFallbackTensorInternal(args.values(), results.values(),
@@ -876,10 +875,9 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
 void FallbackTensorToCoreRTTensorHandle(
     RemainingArguments args, RemainingResults results, StringAttr device,
     const tfrt::ExecutionContext& exec_ctx) {
-  tensorflow::profiler::TraceMe trace_me(
-      "fallback_tensor_to_corert_tensorhandle");
+  tsl::profiler::TraceMe trace_me("fallback_tensor_to_corert_tensorhandle");
   trace_me.AppendMetadata([request_id = exec_ctx.request_ctx()->id()]() {
-    return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
+    return tsl::profiler::TraceMeEncode({{"id", request_id}});
   });
 
   FallbackTensorToCoreRTTensorHandleInternal(args.values(), results.values(),

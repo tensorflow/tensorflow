@@ -3044,5 +3044,69 @@ TEST_F(RemapperControlDependencyPatternMatcher, BF16) {
   RunTest<DT_BFLOAT16>();
 }
 
+class XlaCpuJitDisableFusionTest : public RemapperTest {
+ protected:
+  void SetUp() override {
+    setenv("TF_XLA_FLAGS", "--tf_xla_cpu_global_jit", /*overwrite=*/1);
+  }
+
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto lhs_shape = ops::Placeholder::Shape({8, 32});
+    auto rhs_shape = ops::Placeholder::Shape({32, 64});
+    auto bias_shape = ops::Placeholder::Shape({64});
+
+    auto lhs = Placeholder(s.WithOpName("lhs"), DTYPE, lhs_shape);
+    auto rhs = Placeholder(s.WithOpName("rhs"), DTYPE, rhs_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+
+    auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);
+
+    auto lhs_t = GenerateTensorWithSetRandom<DTYPE>({8, 32});
+    auto rhs_t = GenerateTensorWithSetRandom<DTYPE>({32, 64});
+    auto bias_t = GenerateTensorWithSetRandom<DTYPE>({64});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    const string device = "/device:CPU:0";
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device(device);
+    }
+
+    Remapper optimizer(RewriterConfig::ON, RewriterConfig::NO_CONVERSION_ON_CPU,
+                       /*xla_clustering_on=*/true);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    // Fusion should not take place on CPU when tf_xla_cpu_global_jit in ON.
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "bias_add") {
+        EXPECT_EQ(node.op(), "BiasAdd");
+        found++;
+      } else if (node.name() == "matmul") {
+        EXPECT_EQ(node.op(), "MatMul");
+        found++;
+      }
+    }
+    EXPECT_EQ(2, found);
+  }
+};
+
+#if !(DNNL_AARCH64_USE_ACL || GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+TEST_F(XlaCpuJitDisableFusionTest, MatMulWithBias) { RunTest<DT_FLOAT>(); }
+#endif  // !(DNNL_AARCH64_USE_ACL || GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+
 }  // namespace grappler
 }  // namespace tensorflow

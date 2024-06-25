@@ -54,11 +54,10 @@ class TensorWithData {
     using StorageT = typename Storage<storage_type>::Type;
     using ExpressedT = typename Storage<expressed_type>::Type;
 
-    Tensor tensor{QuantizedTensorType{
+    Tensor tensor{QuantizedPerTensorTensorType{
         .shape = std::move(shape),
-        .element_type =
-            QuantizedTensorElementType::PerTensor<storage_type, expressed_type>(
-                scale, zero_point)}};
+        .element_type = QuantizedElementTypePerTensor(storage_type, zero_point,
+                                                      expressed_type, scale)}};
 
     const ExpressedT scale_inv = ExpressedT(1.0) / scale;
     std::vector<StorageT> quantized_data;

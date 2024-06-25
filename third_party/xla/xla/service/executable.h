@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -95,7 +96,7 @@ class ExecutionInput {
     return host_shape_ != nullptr ? *host_shape_ : shape();
   }
 
-  Status SetDynamicShape(Shape dynamic_shape);
+  absl::Status SetDynamicShape(Shape dynamic_shape);
 
   absl::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
       se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
@@ -405,6 +406,12 @@ class Executable {
   // the program has finished since XRT doesn't support async deallocation.
   void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                  ExecutionOutput& result);
+
+  // Returns the allocations resulting from buffer assignment, or an empty span
+  // if unimplemented.
+  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+    return {};
+  }
 
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to

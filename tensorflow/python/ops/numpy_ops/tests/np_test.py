@@ -62,7 +62,7 @@ number_dtypes = float_dtypes + complex_dtypes + int_dtypes
 all_dtypes = number_dtypes + bool_dtypes
 
 
-python_scalar_dtypes = [tnp.bool_, tnp.int_, tnp.float_, tnp.complex_]
+python_scalar_dtypes = [tnp.bool_, tnp.int_, tnp.float64, tnp.complex128]
 # pylint: disable=unnecessary-lambda,g-long-lambda,expression-not-assigned
 
 def _valid_dtypes_for_shape(shape, dtypes):
@@ -434,7 +434,7 @@ def _promote_like_lnp(fun, inexact=False):
     if inexact and not any(
         tnp.issubdtype(tnp.result_type(x).as_numpy_dtype, tnp.inexact)
         for x in flat_args):
-      dtype = tnp.result_type(tnp.float_, *flat_args)
+      dtype = tnp.result_type(tnp.float64, *flat_args)
     else:
       dtype = tnp.result_type(*flat_args)
     dtype = dtype.as_numpy_dtype
@@ -479,7 +479,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def _GetArgsMaker(self, rng, shapes, dtypes, onp_arrays=True):
     def f():
-      out = [rng(shape, dtype or tnp.float_)
+      out = [rng(shape, dtype or tnp.float64)
              for shape, dtype in zip(shapes, dtypes)]
       return out if onp_arrays else [tnp.asarray(a) for a in out]
     return f
@@ -1775,14 +1775,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
        "arg": arg, "ndmin": ndmin, "dtype": dtype}
       for i, (arg, dtype) in enumerate([
           ([True, False, True], tnp.bool_),
-          (3., tnp.float_),
+          (3., tnp.float64),
           ([1, 2, 3], tnp.int_),
-          ([1., 2., 3.], tnp.float_),
+          ([1., 2., 3.], tnp.float64),
           ([[1, 2], [3, 4], [5, 6]], tnp.int_),
-          ([[1, 2.], [3, 4], [5, 6]], tnp.float_),
-          ([[1., 2j], [3., 4.], [5., 6.]], tnp.complex_),
-          ([[3, onp.array(2, dtype=tnp.float_), 1],
-           onp.arange(3., dtype=tnp.float_)], tnp.float_),  # pylint: disable=bad-continuation
+          ([[1, 2.], [3, 4], [5, 6]], tnp.float64),
+          ([[1., 2j], [3., 4.], [5., 6.]], tnp.complex128),
+          ([[3, onp.array(2, dtype=tnp.float64), 1],
+           onp.arange(3., dtype=tnp.float64)], tnp.float64),  # pylint: disable=bad-continuation
       ])
       for ndmin in [None, onp.ndim(arg), onp.ndim(arg) + 1, onp.ndim(arg) + 2]))
   def testArray(self, arg, ndmin, dtype):
@@ -2055,14 +2055,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def testOnpMean(self):
     # from https://github.com/google/jax/issues/125
-    x = tnp.add(tnp.eye(3, dtype=tnp.float_), 0.)
+    x = tnp.add(tnp.eye(3, dtype=tnp.float64), 0.)
     ans = onp.mean(x)
     self.assertAllClose(ans, onp.array(1./3), check_dtypes=False)
 
   @jtu.disable
   def testArangeOnFloats(self):
     # from https://github.com/google/jax/issues/145
-    expected = onp.arange(0.0, 1.0, 0.1, dtype=tnp.float_)
+    expected = onp.arange(0.0, 1.0, 0.1, dtype=tnp.float64)
     ans = tnp.arange(0.0, 1.0, 0.1)
     self.assertAllClose(expected, ans, check_dtypes=True)
 
@@ -2431,8 +2431,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_op={}_dtype={}".format(op, pytype.__name__),
        "pytype": pytype, "dtype": dtype, "op": op}
-      for pytype, dtype in [(int, tnp.int_), (float, tnp.float_),
-                            (bool, tnp.bool_), (complex, tnp.complex_)]
+      for pytype, dtype in [(int, tnp.int_), (float, tnp.float64),
+                            (bool, tnp.bool_), (complex, tnp.complex128)]
       for op in ["atleast_1d", "atleast_2d", "atleast_3d"]))
   def testAtLeastNdLiterals(self, pytype, dtype, op):
     # Fixes: https://github.com/google/jax/issues/634
@@ -2470,7 +2470,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
         onp.arange(2, 13, dtype=int),
         check_dtypes=True)
     self.assertAllClose(tnp.arange(0, 1, -0.5),
-                        onp.arange(0, 1, -0.5, dtype=tnp.float_),
+                        onp.arange(0, 1, -0.5, dtype=tnp.float64),
                         check_dtypes=True)
 
     self.assertRaises(TypeError, lambda: tnp.arange())

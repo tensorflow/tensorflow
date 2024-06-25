@@ -33,9 +33,9 @@ def dict_add(*dictionaries):
 
 def select_os_specific(L, M, W):
     return select({
-        "@local_tsl//tsl:linux_x86_64": L,
-        "@local_tsl//tsl:macos": M,
-        "@local_tsl//tsl:windows": W,
+        "@local_xla//xla/tsl:linux_x86_64": L,
+        "@local_xla//xla/tsl:macos": M,
+        "@local_xla//xla/tsl:windows": W,
         "//conditions:default": L,
     })
 

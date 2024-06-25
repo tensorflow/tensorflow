@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -57,6 +58,36 @@ TEST(CastOpModel, CastInt4ToFloatLarge) {
   for (int i = 0; i < input.size(); ++i) {
     EXPECT_EQ(m.ExtractVector<float>(m.output())[i], input[i]);
   }
+}
+
+TEST(CastOpModel, CastFloatToUint8Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_UINT8, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<uint8_t>::max(),
+                                std::numeric_limits<uint8_t>::min()}));
+}
+
+TEST(CastOpModel, CastFloatToInt16Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT16, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<int16_t>::max(),
+                                std::numeric_limits<int16_t>::min()}));
+}
+
+TEST(CastOpModel, CastFloatToInt32Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT32, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({std::numeric_limits<int32_t>::max(),
+                                std::numeric_limits<int32_t>::min()}));
 }
 
 TEST(CastOpModel, CastInt16ToFloat) {

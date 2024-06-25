@@ -1633,8 +1633,6 @@ def TFL_EluOp: TFL_Op<"elu", [
 
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
     [Pure,
-     PredOpTrait<"value and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 1>>,
      TFL_OperandHasRank<0, 1>,
      TFL_OperandHasRankAtLeast<1, 2>,
      DynamicRangeQuantizedOpInterface,
@@ -2269,6 +2267,8 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
     TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$max
   );
 
+  let hasFolder = 1;
+
   let builders = [TFL_BroadcastableBinaryBuilder];
 
   let hasOptions = 0;
@@ -2527,6 +2527,8 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   let results = (outs
     TFL_TensorOf<[F32, TFL_Int32Or64, QI8, QUI8, QI16]>:$min
   );
+
+  let hasFolder = 1;
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -3926,10 +3928,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -4048,7 +4050,7 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   let arguments = (ins
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
     TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
-    TFL_I32Tensor:$start_indices
+    TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (

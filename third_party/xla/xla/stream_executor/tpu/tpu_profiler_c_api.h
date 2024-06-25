@@ -61,7 +61,7 @@ TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
                                                uint8_t* buffer,
                                                size_t* size_in_bytes);
 
-// Status helpers to create TFStatus for Profiler.
+// absl::Status helpers to create TFStatus for Profiler.
 TF_Status* TpuStatus_New();
 void TpuStatus_Free(TF_Status* status);
 const char* TpuStatus_Message(TF_Status* status);

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -70,21 +71,21 @@ bool TFIntListIsAllOnes(Attribute attr);
 // Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".
 inline bool TFTypeIsFloat32Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF32();
 }
 
 // Returns true iff the given value is a bf16 tensor.
 inline bool TFTypeIsBFloat16Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isBF16();
 }
 
 // Returns true iff the given value is a f16 tensor.
 inline bool TFTypeIsHalfTensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF16();
 }

@@ -104,6 +104,10 @@ struct GraphExecutionOptions {
   // This option is experimental.
   bool enable_mlrt = false;
 
+  // If true, the IFRT will be used instead of the TPU Runner.
+  // This option is experimental.
+  bool use_ifrt = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 
@@ -136,6 +140,10 @@ struct GraphExecutionRunOptions {
 
   std::function<void(absl::flat_hash_map<std::string, tensorflow::Tensor>)>
       streamed_output_callback;
+
+  // The optional name for debugging purposes. If empty, the runtime will pick a
+  // name e.g. the joined string of input names and output names.
+  std::string name;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

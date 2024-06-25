@@ -15,11 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 
+#include "absl/base/macros.h"
 #include "tsl/profiler/lib/profiler_session.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 
-using tsl::ProfilerSession;  // NOLINT
+using ProfilerSession ABSL_DEPRECATE_AND_INLINE() =
+    tsl::ProfilerSession;  // NOLINT
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_

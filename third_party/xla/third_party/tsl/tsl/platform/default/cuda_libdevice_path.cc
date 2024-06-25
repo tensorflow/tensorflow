@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
@@ -44,15 +45,14 @@ std::vector<std::string> CandidateCudaRoots() {
   Dl_info info;
 
   if (dladdr(&__FUNCTION__, &info)) {
-    auto lib = std::vector<char>{info.dli_fname,
-                                 info.dli_fname + strlen(info.dli_fname)};
-    auto dir = dirname(lib.data());
+    auto lib = std::string(info.dli_fname);
+    auto dir = io::Dirname(lib);
 
     // TF lib binaries are located in both the package's root dir and within a
     // 'python' subdirectory (for pywrap libs). So we check two possible paths
     // relative to the current binary for the wheel-based nvcc package.
-    for (auto path : {"/../nvidia/cuda_nvcc", "/../../nvidia/cuda_nvcc"})
-      roots.emplace_back(std::string(dir) + path);
+    for (auto path : {"../nvidia/cuda_nvcc", "../../nvidia/cuda_nvcc"})
+      roots.emplace_back(io::JoinPath(dir, path));
   }
 #endif  // defined(PLATFORM_POSIX) && !defined(__APPLE__)
 

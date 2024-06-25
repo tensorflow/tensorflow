@@ -42,7 +42,6 @@ struct UnsupportedGpuFeature {};
 
 #if TENSORFLOW_USE_ROCM
 
-using GpuContextHandle = hipCtx_t;
 using GpuStreamHandle = hipStream_t;
 using GpuEventHandle = hipEvent_t;
 using GpuFunctionHandle = hipFunction_t;
@@ -52,7 +51,6 @@ using GpuDevicePtr = hipDeviceptr_t;
 using GpuDeviceAttribute = hipDeviceAttribute_t;
 using GpuDeviceProperty = hipDeviceProp_t;
 using GpuModuleHandle = hipModule_t;
-using GpuStatus = hipError_t;
 using GpuFuncCachePreference = hipFuncCache_t;
 using GpuSharedMemConfig = hipSharedMemConfig;
 using GpuComplexType = hipComplex;
@@ -64,7 +62,6 @@ using GpuGraphNodeHandle = hipGraphNode_t;
 using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
-using GpuContextHandle = CUcontext;
 using GpuStreamHandle = CUstream;
 using GpuEventHandle = CUevent;
 using GpuFunctionHandle = CUfunction;
@@ -74,7 +71,6 @@ using GpuDevicePtr = CUdeviceptr;
 using GpuDeviceAttribute = CUdevice_attribute;
 using GpuDeviceProperty = CUdevprop;
 using GpuModuleHandle = CUmodule;
-using GpuStatus = CUresult;
 using GpuFuncCachePreference = CUfunc_cache;
 using GpuSharedMemConfig = CUsharedconfig;
 using GpuComplexType = cuComplex;

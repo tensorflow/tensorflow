@@ -395,7 +395,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
 
 TEST(CrossTrainerCacheTest, Errors) {
   auto elements = std::make_unique<ElementOrErrorDataset<std::string>>(
-      std::vector<StatusOr<std::string>>{
+      std::vector<absl::StatusOr<std::string>>{
           std::string("First element"),
           errors::Cancelled("Cancelled"),
           std::string("Second element"),

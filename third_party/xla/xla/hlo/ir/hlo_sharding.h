@@ -148,7 +148,7 @@ class HloSharding {
   static HloSharding Single(const Shape& shape, const HloSharding& sharding);
 
   // Create a new sharding from a protobuf OpSharding.
-  static StatusOr<HloSharding> FromProto(const OpSharding& proto);
+  static absl::StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
   // Checks whether device is a reserved device number. A reserved device number
   // has usually a special meaning, with dedicated handling logic.
@@ -164,8 +164,8 @@ class HloSharding {
   std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
-  Status Validate(const Shape& shape,
-                  std::optional<int64_t> num_devices = {}) const;
+  absl::Status Validate(const Shape& shape,
+                        std::optional<int64_t> num_devices = {}) const;
 
   // Returns true if the sharding has tuple type.
   bool IsTuple() const { return tuple_; }
@@ -337,7 +337,7 @@ class HloSharding {
   // tuple, if IsTuple, or a ShapeTree with a single element containing this
   // sharding. Only the leaf elements are populated. This creates a new
   // ShapeTree object so is not cheap.
-  StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
+  absl::StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
     return AsShapeTree(shape).value();
   }
@@ -349,7 +349,7 @@ class HloSharding {
   // If the current sharding is a tuple sharding, return itself as result.
   // Otherwise returns a tuple sharding for the input shape, with all the leaves
   // having this object sharding.
-  StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
+  absl::StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
 
   // If the shape is tuple and the current sharding is not a tuple, attempt to
   // construct a sharding that is compatible with the shape by replicating the
@@ -629,15 +629,15 @@ class HloSharding {
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the tuple shape passes as argument.
-  Status CheckLeafCount(const Shape& shape) const;
+  absl::Status CheckLeafCount(const Shape& shape) const;
 
   // Internal helper to validate a tuple sharding.
-  Status ValidateTuple(const Shape& shape,
-                       std::optional<int64_t> num_devices) const;
+  absl::Status ValidateTuple(const Shape& shape,
+                             std::optional<int64_t> num_devices) const;
 
   // Internal helper to validate a non-tuple (leaf) sharding.
-  Status ValidateNonTuple(const Shape& shape,
-                          std::optional<int64_t> num_devices) const;
+  absl::Status ValidateNonTuple(const Shape& shape,
+                                std::optional<int64_t> num_devices) const;
 
   // This field is only used if replicated_ is false. If maximal_ is true, then
   // the field contains a rank 1 array with a single element, which is the

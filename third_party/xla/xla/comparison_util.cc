@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -163,7 +163,7 @@ absl::string_view ComparisonOrderToString(Comparison::Order order) {
   }
 }
 
-StatusOr<Comparison::Direction> StringToComparisonDirection(
+absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction) {
   static auto* map =
       new absl::flat_hash_map<std::string, Comparison::Direction>({
@@ -181,7 +181,8 @@ StatusOr<Comparison::Direction> StringToComparisonDirection(
   return it->second;
 }
 
-StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order) {
+absl::StatusOr<Comparison::Order> StringToComparisonOrder(
+    absl::string_view order) {
   static auto* map = new absl::flat_hash_map<std::string, Comparison::Order>({
       {"TOTALORDER", Comparison::Order::kTotal},
       {"PARTIALORDER", Comparison::Order::kPartial},
@@ -193,7 +194,7 @@ StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order) {
   return it->second;
 }
 
-StatusOr<Comparison::Type> StringToComparisonType(
+absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison) {
   static auto* map = new absl::flat_hash_map<std::string, Comparison::Type>({
       {"FLOAT", Comparison::Type::kFloat},

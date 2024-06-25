@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
@@ -403,7 +404,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange input_types(custom_call->getOperandTypes());
         if (custom_call_has_token_input_output) {
           if (input_types.empty() ||
-              !input_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(input_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to take !stablehlo.token as the first argument, but "
@@ -422,7 +423,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange result_types(custom_call->getResultTypes());
         if (custom_call_has_token_input_output) {
           if (result_types.empty() ||
-              !result_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(result_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to return !stablehlo.token as the first result, but "

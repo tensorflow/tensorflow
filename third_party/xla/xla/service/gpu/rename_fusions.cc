@@ -56,8 +56,7 @@ std::string MakeFusionHeroNames(const HloInstruction* instruction) {
   absl::btree_set<absl::string_view> heroes;
 
   for (auto root : fusion_adaptor->GetRoots()) {
-    heroes.insert(HloOpcodeString(
-        FindNonTrivialHero(root.instruction(), *fusion_adaptor).opcode()));
+    heroes.insert(HloOpcodeString(FindNonTrivialHero(root).opcode()));
   }
   return absl::StrReplaceAll(absl::StrJoin(heroes, "_"), {{"-", "_"}});
 }

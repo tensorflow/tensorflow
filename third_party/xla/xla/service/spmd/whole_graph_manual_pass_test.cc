@@ -45,11 +45,12 @@ class WholeGraphManualPassTest : public HloTestBase {
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
-  Status RunPassOnModule(HloModule* module, int64_t distance_threshold = 100) {
+  absl::Status RunPassOnModule(HloModule* module,
+                               int64_t distance_threshold = 100) {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<WholeGraphManualPass>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -109,7 +110,7 @@ HloModule module
    val.0 = f32[2] get-tuple-element(p_body), index=0
    val.1 = f32[2] get-tuple-element(p_body), index=1
    t = token[] after-all()
-   p = s32[] partition-id()
+   p = u32[] partition-id()
    ag = f32[8] all-gather(val.1), dimensions={0}, replica_groups={{0,1,2,3}}, use_global_device_ids=true, channel_id=1
    s = (f32[8], s32[], token[]) send(ag, t), channel_id=2
    sd = token[] send-done(s), channel_id=2

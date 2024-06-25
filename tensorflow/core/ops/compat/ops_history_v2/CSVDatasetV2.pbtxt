@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CSVDatasetV2"
   input_arg {
     name: "filenames"

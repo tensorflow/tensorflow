@@ -30,22 +30,20 @@ namespace toco {
   *modified = false;
   const auto slice_it = model->operators.begin() + op_index;
   auto* slice_op = slice_it->get();
-  if (slice_op->type != OperatorType::kSlice) return ::tensorflow::OkStatus();
+  if (slice_op->type != OperatorType::kSlice) return absl::OkStatus();
 
   auto* op = static_cast<SliceOperator*>(slice_op);
-  if (!op->begin.empty()) return ::tensorflow::OkStatus();
+  if (!op->begin.empty()) return absl::OkStatus();
 
   CHECK_EQ(op->inputs.size(), 3);
-  if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::OkStatus();
-  if (!IsConstantParameterArray(*model, op->inputs[2]))
-    return ::tensorflow::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[1])) return absl::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[2])) return absl::OkStatus();
 
   const auto& begin_array = model->GetArray(op->inputs[1]);
-  if (!begin_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!begin_array.has_shape()) return absl::OkStatus();
 
   const auto& size_array = model->GetArray(op->inputs[2]);
-  if (!size_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!size_array.has_shape()) return absl::OkStatus();
 
   op->begin = begin_array.GetBuffer<ArrayDataType::kInt32>().data;
   op->size = size_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -53,6 +51,6 @@ namespace toco {
   // TODO(dkalenichenko): Delete the extra inputs?
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace toco

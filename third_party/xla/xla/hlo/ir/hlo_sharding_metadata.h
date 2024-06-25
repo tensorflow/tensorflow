@@ -58,7 +58,7 @@ class ShardingMetadata : public DomainMetadata {
 
   static absl::string_view KindName() { return "sharding"; }
 
-  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
+  static absl::StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);
 
   // Apply the specified domain metadata onto the specified domain. If no
@@ -67,8 +67,8 @@ class ShardingMetadata : public DomainMetadata {
   // be the original one. Policy wise, HLO passes are allowed to create new
   // unassigned instructions, but if they do create assigned ones, they have to
   // conform to the ones around.
-  static Status NormalizeShardingDomain(const DomainMetadata::Domain& domain,
-                                        const DomainMetadata* metadata);
+  static absl::Status NormalizeShardingDomain(
+      const DomainMetadata::Domain& domain, const DomainMetadata* metadata);
 
  private:
   std::shared_ptr<const HloSharding> sharding_;

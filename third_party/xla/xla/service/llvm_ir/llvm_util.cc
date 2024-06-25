@@ -26,6 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -67,8 +69,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/byte_order.h"
@@ -76,6 +76,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -214,6 +215,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
+    case S2:
+    case U2:
+      return llvm::Type::getIntNTy(module->getContext(), 2);
     case S4:
     case U4:
       return llvm::Type::getIntNTy(module->getContext(), 4);
@@ -332,9 +336,12 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   std::vector<char> packed_data;
-  if (primitive_util::Is4BitType(literal.shape().element_type())) {
-    packed_data.resize((size_bytes + 1) / 2);
-    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
+    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
+    int elements_per_byte = 8 / bit_width;
+    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
+    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
+             absl::MakeSpan(packed_data));
     data = packed_data.data();
     size_bytes = packed_data.size();
   }
@@ -705,15 +712,15 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const std::string& directory_name,
-                                         const std::string& file_name,
-                                         const std::string& text) {
+static absl::Status CreateAndWriteStringToFile(
+    const std::string& directory_name, const std::string& file_name,
+    const std::string& text) {
   std::unique_ptr<tsl::WritableFile> f;
   TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
   TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,
@@ -722,6 +729,10 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
+                           hlo_module.name(), hlo_module.unique_id());
+  });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.

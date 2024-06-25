@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -35,7 +35,8 @@ class MemorySpaceAssignmentRepacker {
   // Repack the AllocationBlocks provided in the parameter. Returns true if
   // allocations have been modified and false if not. Returns a non-ok status if
   // there was an error.
-  virtual StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) = 0;
+  virtual absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) = 0;
 
  protected:
   int64_t max_size_;

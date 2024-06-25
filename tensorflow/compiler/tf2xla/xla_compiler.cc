@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -78,10 +79,17 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kSingleOpComponent[] = "TF2XLA_XLA_COMPILER_COMPILE_SINGLE_OP";
+constexpr char kCompileFunctionComponent[] =
+    "TF2XLA_XLA_COMPILER_COMPILE_FUNCTION";
 
 // Checks that arguments `args` match types `types`.
 Status CheckSignature(const DataTypeVector& types,
@@ -752,71 +760,28 @@ Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
     absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
-  const std::vector<DataType>& result_dtypes =
-      single_op_compile_argument.output_dtypes;
   const NodeDef& node_def = single_op_compile_argument.node_def;
   TF_ASSIGN_OR_RETURN(
       auto graph,
       CreateSingleOpGraph(node_def, args,
                           single_op_compile_argument.output_dtypes));
 
-  auto compile_with_old_bridge = [&]() {
-    *result = {};
-    Status status = ADD_SOURCE_LOCATION(CompileGraph(
-        compile_options, node_def.name(), std::move(graph), args, result));
-    if (status.ok()) {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileSingleOpXlaBuilderSuccess);
-    } else {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileSingleOpXlaBuilderFailure);
-    }
-    return status;
-  };
-
-  const ConfigProto* config = &(single_op_compile_argument.config_proto);
-  auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? std::optional<ConfigProto>(*config) : std::nullopt);
-  if (bridge_rollout ==
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-      node_def.op() == "VarIsInitializedOp" ||
-      (bridge_rollout !=
-           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-       options_.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-    return compile_with_old_bridge();
-  }
-
-  GraphDebugInfo debug_info;
-  std::vector<std::string> control_rets;
-  if (result_dtypes.empty()) {
-    control_rets.push_back(node_def.name());
-  }
-
-  bool mlir_enabled = (bridge_rollout ==
-                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-  VLOG(1) << "Attempting MLIR bridge."
-          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-  auto mlir_result = CompileGraphToXlaHlo(
-      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-      options_.device_type.type_string(), compile_options.use_tuple_arg,
-      /*analyse_graph=*/!mlir_enabled, *options_.flib_def, debug_info,
-      options_.shape_determination_fns, result);
-
-  if (mlir_result.ok() || mlir_enabled) {
+  *result = {};
+  Status status = ADD_SOURCE_LOCATION(CompileGraph(
+      compile_options, node_def.name(), std::move(graph), args, result));
+  if (status.ok()) {
     tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
         tensorflow::metrics::Phase2XlaCompilerMetric::
-            kCompileSingleOpMlirSuccess);
-    return mlir_result;
+            kCompileSingleOpXlaBuilderSuccess);
+  } else {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileSingleOpXlaBuilderFailure);
+    tsl::error_logging::Log(mlir::TF::kBridgeComponent, kSingleOpComponent,
+                            status.ToString())
+        .IgnoreError();
   }
-  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-      tensorflow::metrics::Phase2XlaCompilerMetric::
-          kCompileSingleOpMlirFailure);
-  VLOG(1) << "Failed second phase of the MLIR bridge. Will "
-             "retry with the old bridge. MLIR bridge compilation status: "
-          << mlir_result;
-  return compile_with_old_bridge();
+  return status;
 }
 
 Status XlaCompiler::CompileFunction(
@@ -824,7 +789,7 @@ Status XlaCompiler::CompileFunction(
     const NameAttrList& fn_name_attrs,
     absl::Span<const XlaCompiler::Argument> args,
     XlaCompiler::CompilationResult* result) {
-  const string function_id =
+  string function_id =
       Canonicalize(fn_name_attrs.name(), AttrSlice(&fn_name_attrs.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
@@ -907,49 +872,25 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 
-  auto state = ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-  if (options.is_entry_computation) {
-    state = GetMlirBridgeRolloutState(config_proto);
+  VLOG(1) << "CompileFunction with XlaBuilder";
+  auto status =
+      CompileGraph(options, function_id, std::move(graph), args, result);
+  if (!status.ok()) {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileFunctionXlaBuilderFailure);
+    ::tsl::errors::AppendToMessage(
+        &status, "tf2xla conversion failed while converting ",
+        std::move(function_id),
+        ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
+        "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
+        "functions.");
+    tsl::error_logging::Log(mlir::TF::kBridgeComponent,
+                            kCompileFunctionComponent, status.ToString())
+        .IgnoreError();
+    return status;
   }
 
-  if (state == ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
-    GraphDebugInfo debug_info;
-    VLOG(1) << "Using the MLIR bridge to compile the function.";
-    std::vector<std::string> valid_control_rets =
-        GetValidControlRets(fbody->control_ret_nodes, *graph);
-    auto mlir_result = CompileGraphToXlaHlo(
-        std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
-        valid_control_rets, options_.device_type.type_string(),
-        options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
-        debug_info, options_.shape_determination_fns, result);
-    if (mlir_result.ok()) {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileFunctionMlirSuccess);
-      VLOG(1) << "MLIR bridge was successfull";
-    } else {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileFunctionMlirFailure);
-      VLOG(1) << "MLIR failed, no fallback";
-      return mlir_result;
-    }
-  } else {
-    VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
-    auto status =
-        CompileGraph(options, function_id, std::move(graph), args, result);
-    if (!status.ok()) {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileFunctionXlaBuilderFailure);
-      ::tsl::errors::AppendToMessage(
-          &status, "tf2xla conversion failed while converting ", function_id,
-          ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
-          "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
-          "functions.");
-      return status;
-    }
-  }
   tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
       tensorflow::metrics::Phase2XlaCompilerMetric::
           kCompileFunctionXlaBuilderSuccess);
@@ -969,7 +910,7 @@ Status XlaCompiler::XLAShapeForArgument(
     case XlaCompiler::Argument::kParameter: {
       if (is_entry_computation) {
         TensorShape shape;
-        if (absl::holds_alternative<TensorShape>(arg.shape)) {
+        if (std::holds_alternative<TensorShape>(arg.shape)) {
           shape = std::get<TensorShape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(
@@ -987,16 +928,17 @@ Status XlaCompiler::XLAShapeForArgument(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
         // If the arg is dynamic then we update the shape to reflect that. The
-        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
-        // dimension.
-        if (arg.value_dynamism.has_value()) {
-          auto dynamism = arg.value_dynamism.value().vec<bool>();
-          for (int i = 0; i < dynamism.size(); ++i) {
-            xla_shape->set_dynamic_dimension(i, dynamism(i));
+        // layout etc above lose it by forcing a swap to TensorShape.
+        if (std::holds_alternative<xla::Shape>(arg.shape) &&
+            std::get<xla::Shape>(arg.shape).is_dynamic()) {
+          xla::Shape dynamic_shape = std::get<xla::Shape>(arg.shape);
+          for (int i = 0; i < xla_shape->dimensions_size(); ++i) {
+            xla_shape->set_dynamic_dimension(
+                i, dynamic_shape.is_dynamic_dimension(i));
           }
         }
       } else {
-        if (absl::holds_alternative<xla::Shape>(arg.shape)) {
+        if (std::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
         } else {
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(

@@ -34,13 +34,13 @@ struct StridedSliceShapeSpec {
   // index in the begin_tensor. If
   // output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up
   // in sparse_mapping.
-  gtl::InlinedVector<int64_t, 4> output_to_sparse_mapping;
+  absl::InlinedVector<int64_t, 4UL> output_to_sparse_mapping;
   // output_to_processing_mapping is similar to output_to_sparse_mapping, but
   // for processing shape.
-  gtl::InlinedVector<int64_t, 4> output_to_processing_mapping;
+  absl::InlinedVector<int64_t, 4UL> output_to_processing_mapping;
   // processing_to_sparse_mapping[i] represents input_shape[i]'s corresponding
   // dim index in the begin_tensor.
-  gtl::InlinedVector<int64_t, 4> processing_to_sparse_mapping;
+  absl::InlinedVector<int64_t, 4UL> processing_to_sparse_mapping;
 };
 
 // Runs validation on the strided slice op parameters.
@@ -71,8 +71,9 @@ Status ValidateStridedSliceOp(
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
-    gtl::InlinedVector<int64_t, 4>* strides,
+    absl::InlinedVector<int64_t, 4UL>* begin,
+    absl::InlinedVector<int64_t, 4UL>* end,
+    absl::InlinedVector<int64_t, 4UL>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Same as above, but the outputs are TensorShape, not PartialTensorShape
@@ -83,8 +84,9 @@ Status ValidateStridedSliceOp(
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
     bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
-    gtl::InlinedVector<int64_t, 4>* strides,
+    absl::InlinedVector<int64_t, 4UL>* begin,
+    absl::InlinedVector<int64_t, 4UL>* end,
+    absl::InlinedVector<int64_t, 4UL>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Simple class for determining if it is possible to broadcast a tensor to a
@@ -98,7 +100,7 @@ Status ValidateStridedSliceOp(
 //   with correct dimensions in the full (unsliced) destination tensor.
 class StridedSliceAssignBCast {
  public:
-  using Vec = gtl::InlinedVector<int64_t, 4>;
+  using Vec = absl::InlinedVector<int64_t, 4UL>;
 
   StridedSliceAssignBCast(const Vec& input_shape, const Vec& output_shape);
 

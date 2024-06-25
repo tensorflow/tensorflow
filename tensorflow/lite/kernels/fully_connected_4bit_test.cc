@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/fully_connected.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -105,7 +106,7 @@ TEST(Hybrid4BitFullyConnectedOpTest, SimpleTestHybridInt4) {
   FullyConnected4BitOpModel m(
       units, batches,
       /*input=*/{TensorType_FLOAT32, {batches, cols}},
-      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 7.0, 1.0},
+      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 0.0, 1.0},
       /*output=*/{TensorType_FLOAT32, {units, batches}},
       {
           -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
@@ -148,7 +149,7 @@ TEST(Hybrid4BitFullyConnectedOpTest, TestHybridInt4AllZeroBatch) {
   FullyConnected4BitOpModel m(
       units, batches,
       /*input=*/{TensorType_FLOAT32, {batches, cols}},
-      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 7.0, 1.0},
+      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 0.0, 1.0},
       /*output=*/{TensorType_FLOAT32, {units, batches}},
       {
           -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
@@ -211,7 +212,7 @@ TEST_P(Hybrid4BitFullyConnectedVsReferenceOpTests, TestHybridInt4) {
   FullyConnected4BitOpModel test(
       units, batches,
       /*input=*/{TensorType_FLOAT32, {batches, cols}},
-      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 7.0, 1.0},
+      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 0.0, 1.0},
       /*output=*/{TensorType_FLOAT32, {units, batches}}, weight_data,
       ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
       ActivationFunctionType_RELU);
@@ -222,7 +223,7 @@ TEST_P(Hybrid4BitFullyConnectedVsReferenceOpTests, TestHybridInt4) {
   FullyConnected4BitOpModel expected(
       units, batches,
       /*input=*/{TensorType_FLOAT32, {batches, cols}},
-      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 7.0, 1.0},
+      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 0.0, 1.0},
       /*output=*/{TensorType_FLOAT32, {units, batches}}, weight_data,
       ops::builtin::Register_FULLY_CONNECTED_REF(),
       ActivationFunctionType_RELU);

@@ -47,7 +47,6 @@ ENTRY main {
 // CHECK:       loop1.loop_body:                                  ; preds = %[[VAL_12]]
 // CHECK:         %[[VAL_19:.*]] = add nuw nsw i32 %[[VAL_15]], 4
 // CHECK:         store i32 %[[VAL_19]], ptr{{.*}} %[[VAL_3]], align 4
-// CHECK:         %[[VAL_20:.*]] = icmp eq i32 %[[VAL_15]], %thread.id.1
 // CHECK:         store i32 %thread.id.2, ptr{{.*}} %[[VAL_2]], align 4
 // CHECK:         br label %[[VAL_21:.*]]
 // CHECK:       loop2.loop_header:                                ; preds = %[[VAL_22:.*]], %[[VAL_18]]
@@ -57,7 +56,6 @@ ENTRY main {
 // CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_21]]
 // CHECK:         %[[VAL_25:.*]] = add nuw nsw i32 %[[VAL_23]], 32
 // CHECK:         store i32 %[[VAL_25]], ptr{{.*}} %[[VAL_2]], align 4
-// CHECK:         %[[VAL_26:.*]] = icmp eq i32 %[[VAL_23]], %thread.id.2
 // CHECK:         %[[VAL_27:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_28:.*]] = add i32 %tile_origin.1, %[[VAL_15]]
 // CHECK:         %[[VAL_29:.*]] = add i32 %tile_origin.2, %[[VAL_23]]
@@ -81,7 +79,6 @@ ENTRY main {
 // CHECK:       loop1.loop_body5:                                 ; preds = %[[VAL_35]]
 // CHECK:         %[[VAL_41:.*]] = add nuw nsw i32 %[[VAL_37]], 4
 // CHECK:         store i32 %[[VAL_41]], ptr{{.*}} %[[VAL_1]], align 4
-// CHECK:         %[[VAL_42:.*]] = icmp eq i32 %[[VAL_37]], %thread.id.1
 // CHECK:         store i32 %thread.id.2, ptr{{.*}} %[[VAL_0]], align 4
 // CHECK:         br label %[[VAL_43:.*]]
 // CHECK:       loop2.loop_header10:                              ; preds = %[[VAL_44:.*]], %[[VAL_40]]
@@ -91,7 +88,6 @@ ENTRY main {
 // CHECK:       loop2.loop_body11:                                ; preds = %[[VAL_43]]
 // CHECK:         %[[VAL_47:.*]] = add nuw nsw i32 %[[VAL_45]], 32
 // CHECK:         store i32 %[[VAL_47]], ptr{{.*}} %[[VAL_0]], align 4
-// CHECK:         %[[VAL_48:.*]] = icmp eq i32 %[[VAL_45]], %thread.id.2
 // CHECK:         %[[VAL_49:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_50:.*]] = add i32 %tile_origin.2, %[[VAL_37]]
 // CHECK:         %[[VAL_51:.*]] = add i32 %tile_origin.1, %[[VAL_45]]

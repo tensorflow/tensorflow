@@ -31,7 +31,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
       return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (const auto& arg_def : op_def.input_arg())
@@ -39,11 +39,11 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   for (const auto& arg_def : op_def.output_arg())
     TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
-StatusOr<tensorflow::NodeDef> BuildNodeDef(
+absl::StatusOr<tensorflow::NodeDef> BuildNodeDef(
     const tensorflow::OpDef& op_def, absl::string_view node_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder) {
   tensorflow::NodeDef node_def;
@@ -78,12 +78,12 @@ tensorflow::Status CreateOpKernel(
   tensorflow::OpKernel* k = nullptr;
   TF_RETURN_IF_ERROR(flr->CreateKernel(props, &k));
   result->reset(k);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<OpKernelRunner> OpKernelRunner::Create(
+absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view node_name,
     absl::string_view device_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
@@ -106,7 +106,7 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
                 process_function_library_runtime, device);
 }
 
-StatusOr<OpKernelRunner> OpKernelRunner::Create(
+absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view node_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::ProcessFunctionLibraryRuntime&

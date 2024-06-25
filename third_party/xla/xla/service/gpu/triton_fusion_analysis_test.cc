@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gemm_fusion.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -113,6 +112,57 @@ ENTRY e {
       *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, /*slice_start=*/0,
                             /*slice_limit=*/3, ElementsAre(3))));
+}
+
+TEST_F(TritonDotAnalysisTest, DoNotRemoveTrivialDimensionForDot) {
+  const std::string hlo_text = R"(
+HloModule t, is_scheduled=true
+
+triton_dot {
+  param_0.1 = f32[137,115]{1,0} parameter(0)
+  param_1.1 = f32[1,115]{1,0} parameter(1)
+  ROOT dot = f32[137,1]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[137,115]{1,0} parameter(0)
+  p1 = f32[1,115]{1,0} parameter(1)
+  ROOT custom-call = f32[137,1]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":2,
+                         "num_ctas":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/137, /*slice_start=*/0,
+                            /*slice_limit=*/137, ElementsAre(137))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/1, /*slice_start=*/0,
+                            /*slice_limit=*/1, ElementsAre(1))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
 }
 
 TEST_F(TritonDotAnalysisTest, Merge) {
@@ -623,6 +673,62 @@ ENTRY e {
   (void)analysis;
 }
 
+TEST_F(TritonDotAnalysisTest, DynamicSliceIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm {
+  dot_lhs = f32[2,18]{1,0} parameter(0)
+  dynamic_slice_input = f32[96,2]{1,0} parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  dynamic_slice = f32[64,2]{1,0} dynamic-slice(dynamic_slice_input,
+                                               start_index0, start_index1),
+                  dynamic_slice_sizes={64,2}
+  ROOT dot = f32[18,64]{1,0} dot(dot_lhs, dynamic_slice),
+             lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,18]{1,0} parameter(0)
+  dynamic_slice_input = f32[96,2]{1,0} parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  ROOT triton_gemm_d = f32[18,64]{1,0} fusion(dot_lhs, dynamic_slice_input,
+                                              start_index0, start_index1),
+      kind=kCustom,
+      calls=triton_gemm,
+      backend_config={"kind":"__triton_gemm"}
+}
+)"));
+
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+              ElementsAre(FieldsAre(/*stride=*/18, /*count=*/2,
+                                    /*slice_start=*/0, /*sliced_count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/18,
+                                    /*slice_start=*/0, /*sliced_count=*/18,
+                                    /*subfragments=*/ElementsAre(18))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/96,
+                                    /*slice_start=*/0, /*sliced_count=*/96,
+                                    /*subfragments=*/ElementsAre(96))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*slice_start=*/0, /*sliced_count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
+}
+
 TEST_F(TritonDotAnalysisTest, SparseDot) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -652,311 +758,82 @@ ENTRY main {
               ::testing::SizeIs(1));
 }
 
-using TritonSoftmaxAnalysisTest = HloTestBase;
-
-TEST_F(TritonSoftmaxAnalysisTest, DegenerateBatchDimensionIsSupported) {
+TEST_F(TritonDotAnalysisTest, QueryScopeAlwaysWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-max {
-  p1 = f32[] parameter(1)
-  p0 = f32[] parameter(0)
-  ROOT m = f32[] maximum(p0, p1)
-}
-
-triton_softmax_computation {
-  p0 = f32[1,97]{1,0} parameter(0)
-  bitcast = f32[97]{0} bitcast(p0)
-  constant = f32[] constant(-inf)
-  reduce = f32[] reduce(bitcast, constant), dimensions={0}, to_apply=max
-  broadcast = f32[1,97]{1,0} broadcast(reduce), dimensions={}
-  ROOT subtract = f32[1,97]{1,0} subtract(p0, broadcast)
+triton_gemm_r {
+  Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
+  bitcast.6 = s8[30,8,21,913]{2,1,3,0} bitcast(Arg_0.1)
+  copy.7 = s8[30,8,21,913]{3,2,1,0} copy(bitcast.6)
+  bitcast.8 = s8[5040,913]{1,0} bitcast(copy.7)
+  convert.9 = bf16[5040,913]{1,0} convert(bitcast.8)
+  bitcast.32 = bf16[58,913]{1,0} parameter(1)
+  dot.33 = bf16[5040,58]{1,0} dot(convert.9, bitcast.32),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast.34 = bf16[30,8,21,58]{3,2,1,0} bitcast(dot.33)
+  copy.35 = bf16[30,8,21,58]{2,1,3,0} copy(bitcast.34)
+  ROOT bitcast.41 = bf16[30,1,58,8,21]{4,3,2,1,0} bitcast(copy.35)
 }
 
 ENTRY e {
-  p0 = f32[1,97]{1,0} parameter(0)
-  ROOT r = f32[1,97]{1,0} fusion(p0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"kind":"__triton_softmax"}
+  Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[58,913]{1,0} parameter(1)
+  ROOT r = bf16[30,1,58,8,21]{4,3,2,1,0} fusion(Arg_0.1, Arg_1.2), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm"}
 })"));
-  const HloComputation* computation =
+  const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*computation));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                                 computation->root_instruction(), 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
-                                    /*slice_start=*/0, /*slice_limit=*/97,
-                                    /*subfragments=*/ElementsAre(97))));
-  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                              computation->root_instruction(), 1),
-            nullptr);
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  for (const auto& hlo : dot_computation->instructions()) {
+    if (hlo->opcode() != HloOpcode::kDot) {
+      EXPECT_TRUE(analysis.QueryInstructionScope(*hlo).has_value());
+    }
+  }
 }
 
-TEST_F(TritonSoftmaxAnalysisTest, BroadcastIntoBatchDimensionIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-c {
-  p1 = f32[127]{0} parameter(0)
-  ROOT b = f32[125,127]{1,0} broadcast(p1), dimensions={1}
-}
-
-ENTRY e {
-  p0 = f32[127]{0} parameter(0)
-  ROOT t = f32[125,127]{1,0} fusion(p0), kind=kCustom, calls=c
-})"));
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*computation));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                                 computation->root_instruction(), 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
-                                    /*slice_start=*/0, /*slice_limit=*/127,
-                                    /*subfragments=*/ElementsAre(127))));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                                 computation->root_instruction(), 1),
-              ElementsAre(FieldsAre(/*stride=*/127, /*count=*/125,
-                                    /*slice_start=*/0, /*slice_limit=*/125,
-                                    /*subfragments=*/ElementsAre(125))));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                                 computation->parameter_instruction(0), 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/127,
-                                    /*slice_start=*/0, /*slice_limit=*/127,
-                                    /*subfragments=*/ElementsAre(127))));
-  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                              computation->parameter_instruction(0), 1),
-            nullptr);
-}
-
-TEST_F(TritonSoftmaxAnalysisTest, ReduceOfNonRowDimensionIsNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule t
-add {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_0 = f32[8,4,127]{2,1,0} parameter(0)
-  constant = f32[] constant(0)
-  ROOT reduce = f32[4,127]{1,0} reduce(param_0, constant), dimensions={0}, to_apply=add
-}
-
-ENTRY main {
-  param_0 = f32[8,4,127]{2,1,0} parameter(0)
-  ROOT fusion = f32[4,127]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"kind":"__triton_softmax"}
-})"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  const auto analysis = TritonFusionAnalysis::Execute(*computation);
-  EXPECT_FALSE(analysis.ok());
-}
-
-TEST_F(TritonSoftmaxAnalysisTest, PadWithinTritonSoftmaxIsNotSupported) {
+TEST_F(TritonDotAnalysisTest, PadWithTrivialDimension) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule t
 
-add {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_1 = f32[4,127]{1,0} parameter(0)
-  constant_0 = f32[] constant(0)
-  reduce = f32[4]{0} reduce(param_1,  constant_0), dimensions={1}, to_apply=add
-  broadcast = f32[4,127]{1,0} broadcast(reduce), dimensions={0}
-  ROOT pad = f32[8,127]{1,0} pad(broadcast, constant_0), padding=0_4x0_0
-}
-
-ENTRY main {
-  param_0 = f32[4,127]{1,0} parameter(0)
-  ROOT fusion = f32[8,127]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"kind":"__triton_softmax"}
-})"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  const auto analysis = TritonFusionAnalysis::Execute(*computation);
-  EXPECT_FALSE(analysis.ok());
-}
-
-TEST_F(TritonSoftmaxAnalysisTest,
-       BitcastWhichSplitsBatchAndReduceDimensionsIsNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-add {
- p0 = f32[] parameter(0)
- p1 = f32[] parameter(1)
- ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_0 = f32[8,16129]{1,0} parameter(0)
-  bitcast = f32[8,127,127]{2,1,0} bitcast(param_0)
+triton_gemm_dot {
+  parameter_0 = f32[1001,1]{1,0} parameter(0)
   constant = f32[] constant(0)
-  reduce = f32[8,127]{1,0} reduce(bitcast, f32[] constant), dimensions={2}, to_apply=add
-  ROOT broadcast = f32[8,127,127]{2,1,0} broadcast(reduce), dimensions={0,1}
-}
-
-ENTRY main {
-  param_1 = f32[8,16129]{1,0} parameter(0)
-  ROOT fusion = f32[8,127,127]{2,1,0} fusion(param_1), kind=kCustom,
-   calls=triton_softmax_computation,
-   backend_config={"kind":"__triton_softmax"}
+  pad = f32[1004,1]{1,0} pad(parameter_0, constant), padding=0_3x0_0
+  bitcast = f32[4,251,1]{2,1,0} bitcast(pad)
+  parameter_1 = f32[4,251,2048]{2,1,0} parameter(1)
+  ROOT dot = f32[4,1,2048]{2,1,0} dot(bitcast, parameter_1),
+    lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0},
+    rhs_contracting_dims={1}
 })"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  const auto analysis = TritonFusionAnalysis::Execute(*computation);
-  EXPECT_FALSE(analysis.ok());
-}
-
-TEST_F(TritonSoftmaxAnalysisTest,
-       BitcastWhichSplitsReduceDimensionIsSupported) {
-  // Clone of BitcastWhichSplitsBatchAndReduceDimensionsIsNotSupported,
-  // But in this case the split dimension can be fully tiled as a reduce dim.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-add {
- p0 = f32[] parameter(0)
- p1 = f32[] parameter(1)
- ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_0 = f32[1,8,127,128]{3,2,1,0} parameter(0)
-  intermediate_bitcast = f32[8,127,2,64]{3,2,1,0} bitcast(param_0)
-  bitcast = f32[8,127,128]{2,1,0} bitcast(intermediate_bitcast)
-  constant = f32[] constant(0)
-  reduce = f32[8,127]{1,0} reduce(bitcast, constant), dimensions={2}, to_apply=add
-  ROOT broadcast = f32[8,127,128]{2,1 ,0} broadcast(reduce), dimensions={0,1}
-}
-
-ENTRY main {
-  param_1 = f32[1,8,127,128]{3,2,1,0} parameter(0)
-  ROOT fusion = f32[8,127,128]{2,1,0} fusion(param_1), kind=kCustom,
-   calls=triton_softmax_computation,
-   backend_config={"kind":"__triton_softmax"}
-})"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*computation));
-}
-
-TEST_F(TritonSoftmaxAnalysisTest,
-       BitcastWhichDoesNotAffectReduceDimIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-add {
- p0 = f32[] parameter(0)
- p1 = f32[] parameter(1)
- ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_0 = f32[1,2,4,127,128]{4,3,2,1,0} parameter(0)
-  bitcast = f32[8,127,128]{2,1,0} bitcast(param_0)
-  constant = f32[] constant(0)
-  reduce = f32[8,127]{1,0} reduce(bitcast, constant), dimensions={2}, to_apply=add
-  ROOT broadcast = f32[8,127,128]{2,1,0} broadcast(reduce), dimensions={0,1}
-}
-
-ENTRY main {
-  param_1 = f32[1,2,4,127,128]{4,3,2,1,0} parameter(0)
-  ROOT fusion =  f32[8,127,128]{2,1,0} fusion(param_1), kind=kCustom,
-   calls=triton_softmax_computation,
-   backend_config={"kind":"__triton_softmax"}
-})"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*computation));
-}
-
-TEST_F(TritonSoftmaxAnalysisTest, SliceWithinTritonSoftmaxIsNotSupported) {
-  // Slices cannot yet be tiled into triton softmax (b/316637896) because they
-  // cannot be emitted.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule t
-
-add {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT add = f32[] add(p0, p1)
-}
-
-triton_softmax_computation {
-  param_0 = f32[27,260]{1,0} parameter(0)
-  slice = f32[4,127]{1,0} slice(param_0), slice={[7:27:5], [6:260:2]}
-  constant_0 = f32[] constant(0)
-  reduce = f32[4]{0} reduce(slice,  constant_0), dimensions={1}, to_apply=add
-  ROOT broadcast = f32[4,127]{1,0} broadcast(reduce), dimensions={0}
-}
-
-ENTRY main {
-  param_0 = f32[27,260]{1,0} parameter(0)
-  ROOT fusion = f32[4,127]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"kind":"__triton_softmax"}
-})"));
-
-  const HloComputation* computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  const auto analysis = TritonFusionAnalysis::Execute(*computation);
-  EXPECT_FALSE(analysis.ok());
-}
-
-TEST_F(TritonSoftmaxAnalysisTest, ProducerConsumerFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule t
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-producer_computation {
-  parameter_0 = f32[125] parameter(0)
-  ROOT broadcast = f32[125,127] broadcast(parameter_0), dimensions={0}
-}
-
-triton_softmax_computation {
-  parameter_0 = f32[125,127] parameter(0)
-  multiply_0 = f32[125,127] multiply(parameter_0, parameter_0)
-  constant_0 = f32[] constant(0)
-  reduce_0 = f32[125] reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
-  broadcast_4 = f32[125,127] broadcast(reduce_0), dimensions={0}
-  ROOT multiply = f32[125,127] multiply(multiply_0, broadcast_4)
-}
-
-ENTRY main {
-  param_0 = f32[125] parameter(0)
-  param_1 = f32[125,127] parameter(1)
-  producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
-  ROOT triton_softmax = f32[125,127] fusion(producer_fusion), kind=kCustom,
-      calls=triton_softmax_computation,
-      backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
-})"));
-
-  auto consumer = module->entry_computation()->root_instruction();
-  auto producer = consumer->operand(0);
-
-  EXPECT_TRUE(
-      TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
-          .ok());
+  const HloComputation* dot_computation = *module->computations().begin();
+  TF_ASSERT_OK_AND_ASSIGN(
+      TritonFusionAnalysis analysis,
+      TritonFusionAnalysis::Execute(*dot_computation, /*split_k=*/4));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, /*dimension=*/1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1001, /*slice_start=*/0,
+                            /*slice_limit=*/1001, ElementsAre(1001))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, /*dimension=*/2),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1, /*slice_start=*/0,
+                            /*slice_limit=*/1, ElementsAre(1))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, /*dimension=*/1),
+      ElementsAre(FieldsAre(/*stride=*/2048, /*count=*/1004, /*slice_start=*/0,
+                            /*slice_limit=*/1004, ElementsAre(251, 4))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, /*dimension=*/2),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2048, /*slice_start=*/0,
+                            /*slice_limit=*/2048, ElementsAre(2048))));
 }
 
 }  // namespace

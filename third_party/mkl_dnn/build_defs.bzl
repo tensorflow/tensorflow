@@ -17,7 +17,7 @@ def if_mkldnn_openmp(if_true, if_false = []):
 
     """
     return select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": if_true,
+        "@local_tsl//third_party/mkl_dnn:build_with_mkldnn_openmp": if_true,
         "//conditions:default": if_false,
     })
 
@@ -29,6 +29,6 @@ def if_mkldnn_aarch64_acl(if_true, if_false = []):
 
 def if_mkldnn_aarch64_acl_openmp(if_true, if_false = []):
     return select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_aarch64_openmp": if_true,
+        "@local_tsl//third_party/mkl_dnn:build_with_mkl_aarch64_openmp": if_true,
         "//conditions:default": if_false,
     })

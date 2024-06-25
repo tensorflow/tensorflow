@@ -448,9 +448,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelInterleaveConsume",
-                                       {{"element_id", result->id}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("ParallelInterleaveConsume",
+                                            {{"element_id", result->id}});
       });
       if (result->status.ok()) {
         *out_tensors = std::move(result->return_values);
@@ -1082,9 +1082,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // Process until the results queue is full or we reach end of input.
       while (true) {
         auto result = std::make_shared<Result>(ctx);
-        profiler::TraceMe traceme([&] {
-          result->id = profiler::TraceMe::NewActivityId();
-          return profiler::TraceMeEncode(
+        tsl::profiler::TraceMe traceme([&] {
+          result->id = tsl::profiler::TraceMe::NewActivityId();
+          return tsl::profiler::TraceMeEncode(
               "ParallelInterleaveProduce",
               {{"input_element_id", input_element_id},
                {"element_id", result->id}});
@@ -1124,8 +1124,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         NotifyElementUpdate(element);
         return;
       }
-      profiler::TraceMe traceme([input_element_id = element.id] {
-        return profiler::TraceMeEncode(
+      tsl::profiler::TraceMe traceme([input_element_id = element.id] {
+        return tsl::profiler::TraceMeEncode(
             "ParallelInterleaveInitializeInput",
             {{"input_element_id", input_element_id}});
       });

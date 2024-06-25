@@ -95,20 +95,20 @@ class StringSink : public WritableFile {
 
   const string& contents() const { return contents_; }
 
-  Status Close() override { return OkStatus(); }
-  Status Flush() override { return OkStatus(); }
-  Status Name(StringPiece* result) const override {
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Name(StringPiece* result) const override {
     return errors::Unimplemented("StringSink does not support Name()");
   }
-  Status Sync() override { return OkStatus(); }
-  Status Tell(int64_t* pos) override {
+  absl::Status Sync() override { return absl::OkStatus(); }
+  absl::Status Tell(int64_t* pos) override {
     *pos = contents_.size();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Append(StringPiece data) override {
+  absl::Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -124,12 +124,12 @@ class StringSource : public RandomAccessFile {
 
   uint64 Size() const { return contents_.size(); }
 
-  Status Name(StringPiece* result) const override {
+  absl::Status Name(StringPiece* result) const override {
     return errors::Unimplemented("StringSource does not support Name()");
   }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override {
+  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                    char* scratch) const override {
     if (offset > contents_.size()) {
       return errors::InvalidArgument("invalid Read offset");
     }
@@ -139,7 +139,7 @@ class StringSource : public RandomAccessFile {
     memcpy(scratch, &contents_[offset], n);
     *result = StringPiece(scratch, n);
     bytes_read_ += n;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   uint64 BytesRead() const { return bytes_read_; }
@@ -172,12 +172,13 @@ class Constructor {
       keys->push_back(it->first);
     }
     data_.clear();
-    Status s = FinishImpl(options, *kvmap);
+    absl::Status s = FinishImpl(options, *kvmap);
     ASSERT_TRUE(s.ok()) << s.ToString();
   }
 
   // Construct the data structure from the data in "data"
-  virtual Status FinishImpl(const Options& options, const KVMap& data) = 0;
+  virtual absl::Status FinishImpl(const Options& options,
+                                  const KVMap& data) = 0;
 
   virtual Iterator* NewIterator() const = 0;
 
@@ -191,7 +192,7 @@ class BlockConstructor : public Constructor {
  public:
   BlockConstructor() : block_(nullptr) {}
   ~BlockConstructor() override { delete block_; }
-  Status FinishImpl(const Options& options, const KVMap& data) override {
+  absl::Status FinishImpl(const Options& options, const KVMap& data) override {
     delete block_;
     block_ = nullptr;
     BlockBuilder builder(&options);
@@ -206,7 +207,7 @@ class BlockConstructor : public Constructor {
     contents.cacheable = false;
     contents.heap_allocated = false;
     block_ = new Block(contents);
-    return OkStatus();
+    return absl::OkStatus();
   }
   Iterator* NewIterator() const override { return block_->NewIterator(); }
 
@@ -219,7 +220,7 @@ class TableConstructor : public Constructor {
  public:
   TableConstructor() : source_(nullptr), table_(nullptr) {}
   ~TableConstructor() override { Reset(); }
-  Status FinishImpl(const Options& options, const KVMap& data) override {
+  absl::Status FinishImpl(const Options& options, const KVMap& data) override {
     Reset();
     StringSink sink;
     TableBuilder builder(options, &sink);
@@ -228,7 +229,7 @@ class TableConstructor : public Constructor {
       builder.Add(it->first, it->second);
       TF_CHECK_OK(builder.status());
     }
-    Status s = builder.Finish();
+    absl::Status s = builder.Finish();
     TF_CHECK_OK(s) << s.ToString();
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());

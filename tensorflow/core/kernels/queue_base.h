@@ -135,7 +135,7 @@ class QueueBase : public QueueInterface {
   ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static string ShapeListString(const absl::Span<const TensorShape>& shapes);
   Status MatchesNodeDefOp(const NodeDef& node_def, const string& op) const;
   Status MatchesNodeDefCapacity(const NodeDef& node_def,
                                 int32_t capacity) const;

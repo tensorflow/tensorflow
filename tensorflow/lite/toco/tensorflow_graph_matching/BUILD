@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,6 +18,7 @@ cc_library(
     hdrs = [
         "cluster_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite/toco:toco_port",
     ],
@@ -30,6 +32,7 @@ cc_library(
     hdrs = [
         "cluster.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":cluster_utils",
         "//tensorflow/core:protos_all_cc",
@@ -46,6 +49,7 @@ cc_library(
     hdrs = [
         "resolve_svdf.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
@@ -81,6 +85,7 @@ cc_library(
     hdrs = [
         "resolve_cluster.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",

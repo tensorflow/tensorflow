@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,15 +45,19 @@ bool HloDfsReachability::IsReachable(const HloInstruction* from,
 
   // Note that the DFS goes from the "uses" root towards the "defs", i.e. from
   // `to` node to `from` node, so the node indices are decreasing.
-  if (target_node_idx > dfs_root_idx) {
+  if (dfs_root_idx < target_node_idx) {
     return false;
   }
 
-  // We use LLVM support library here because it has stack-allocated maps (in
-  // contrast to absl) which significantly improves performance by avoiding heap
-  // allocations when instructions are reachable via a short chain.
-  llvm::SmallDenseSet<size_t, 8> visited_idxs{dfs_root_idx};
+  // We use LLVM support library here because it has stack-allocated bit vector
+  // which significantly improves performance by avoiding heap allocations when
+  // instructions are reachable via a short chain.
   llvm::SmallVector<const HloInstruction*> stack{to};
+
+  // We will visit instructions in the [target_node_idx, dfs_root_idx] range, so
+  // we can construct a smaller bit vector.
+  llvm::BitVector visited_idxs(1 + (dfs_root_idx - target_node_idx));
+  visited_idxs.set(dfs_root_idx - target_node_idx);
 
   auto check_and_enqueue = [&](const HloInstruction* instr) {
     if (instr == from) {
@@ -63,9 +67,11 @@ bool HloDfsReachability::IsReachable(const HloInstruction* from,
     if (instr_idx < target_node_idx) {
       return false;
     }
-    if (auto [_, inserted] = visited_idxs.insert(instr_idx); !inserted) {
+    size_t visited_idx = instr_idx - target_node_idx;
+    if (visited_idxs.test(visited_idx)) {
       return false;
     }
+    visited_idxs.set(visited_idx);
     stack.push_back(instr);
     return false;
   };
@@ -90,10 +96,11 @@ std::unique_ptr<HloDfsReachability> HloDfsReachability::Build(
     const HloComputation* computation) {
   auto res = std::make_unique<HloDfsReachability>();
 
-  HloComputation::ChannelDependencies channel_dependencies =
-      computation->ComputeChannelDependencies();
+  // For instruction reachability we do not care about correct order of
+  // collective operations as we only care about use-def chains.
+  HloComputation::ChannelDependencies empty_channel_dependencies;
   std::vector<HloInstruction*> instructions =
-      computation->MakeInstructionPostOrder(channel_dependencies);
+      computation->MakeInstructionPostOrder(empty_channel_dependencies);
 
   res->instruction_to_idx_.reserve(instructions.size());
   for (size_t i = 0; i < instructions.size(); ++i) {

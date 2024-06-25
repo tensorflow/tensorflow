@@ -24,10 +24,11 @@ limitations under the License.
 
 namespace tsl {
 // Set the attribute of "tf_status" from the attributes of "status".
-void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
+void Set_TF_Status_from_Status(TF_Status* tf_status,
+                               const absl::Status& status);
 
 // Returns a "status" from "tf_status".
-Status StatusFromTF_Status(const TF_Status* tf_status);
+absl::Status StatusFromTF_Status(const TF_Status* tf_status);
 }  // namespace tsl
 
 namespace tensorflow {

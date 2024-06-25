@@ -113,7 +113,7 @@ void UpdateLayoutForSkippedOps(
   llvm::SmallVector<mlir::Value, 4> skipped_values;
   TraceUseToNextTFOp(&operand, func_to_caller, &skipped_values);
   for (const mlir::Value& skipped_value : skipped_values)
-    if ((!skipped_value.isa<mlir::OpResult>() ||
+    if ((!mlir::isa<mlir::OpResult>(skipped_value) ||
          !mlir::isa<mlir::TF::DTensorLayout, mlir::tf_device::ClusterOp>(
              skipped_value.getDefiningOp())) &&
         layouts.find(skipped_value) == layouts.end())
@@ -724,7 +724,7 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     // resource type elements.
     mlir::Type value_type = GetSubtypeOrSelf(merged_layout.first);
 
-    if (auto type = value_type.dyn_cast<mlir::TensorType>()) {
+    if (auto type = mlir::dyn_cast<mlir::TensorType>(value_type)) {
       auto layout_op = builder.create<mlir::TF::DTensorLayout>(
           merged_layout.first.getLoc(), merged_layout.first, layout_attr,
           mlir::TF::ShapeAttr::get(builder.getContext(), type));
@@ -810,7 +810,7 @@ void GetOperationsNeedingUpdate(
         if (!mlir::isa<mlir::TF::CopyToMeshOp>(use->getOwner()))
           operations.insert(use->getOwner());
     // If this is an OpResult, also add the op that produces it.
-    if (value.isa<mlir::OpResult>() &&
+    if (mlir::isa<mlir::OpResult>(value) &&
         !mlir::isa<mlir::TF::CopyToMeshOp>(value.getDefiningOp()))
       operations.insert(value.getDefiningOp());
   }
@@ -933,7 +933,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
   // Print an operand, this could be both the OpResult or a BlockArgument.
   // We also print the layout if it exists and the type.
   void printOperand(mlir::Value value, llvm::raw_ostream& os) override {
-    if (auto result = value.dyn_cast<mlir::OpResult>()) {
+    if (auto result = mlir::dyn_cast<mlir::OpResult>(value)) {
       // If DTensorLayout ops are already in the module, we need to skip them
       // since we aren't printing them out.
       if (mlir::isa<mlir::TF::DTensorLayout>(result.getDefiningOp())) {
@@ -946,7 +946,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
       os << "%" << location_[result.getDefiningOp()];
       if (result.getDefiningOp()->getNumResults() > 1)
         os << ":" << result.getResultNumber();
-    } else if (auto argument = value.dyn_cast<mlir::BlockArgument>()) {
+    } else if (auto argument = mlir::dyn_cast<mlir::BlockArgument>(value)) {
       if (arguments_.find(argument) == arguments_.end())
         arguments_[argument] = next_argument_++;
       os << "%arg" << arguments_[argument];
@@ -1203,7 +1203,7 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
           mlir::cast<mlir::TF::DTensorLayout>(input_layout_op).getLayout();
 
       // Inputs to Yield should also be a DTensorLayout op.
-      if (!yield_op->getOperand(i).isa<mlir::OpResult>() ||
+      if (!mlir::isa<mlir::OpResult>(yield_op->getOperand(i)) ||
           !mlir::isa<mlir::TF::DTensorLayout>(
               yield_op->getOperand(i).getDefiningOp()))
         return yield_op->emitOpError()
@@ -1220,12 +1220,12 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
 
       // Insert the first Relayout op (in the loop body).
       builder.setInsertionPointAfter(output_layout_op);
-      if (!yield_op->getOperand(i).getType().isa<mlir::TensorType>())
+      if (!mlir::isa<mlir::TensorType>(yield_op->getOperand(i).getType()))
         return yield_op->emitOpError()
                << "operand " << i << " does not have TensorType";
       mlir::TF::ShapeAttr global_shape = mlir::TF::ShapeAttr::get(
           builder.getContext(),
-          yield_op->getOperand(i).getType().cast<mlir::TensorType>());
+          mlir::cast<mlir::TensorType>(yield_op->getOperand(i).getType()));
       mlir::TF::RelayoutOp first_relayout =
           builder.create<mlir::TF::RelayoutOp>(
               op.getLoc(), yield_op->getOperand(i).getType(),

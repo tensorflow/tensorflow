@@ -51,7 +51,7 @@ namespace toco {
   if (add_op == nullptr || add_op->type != OperatorType::kAdd ||
       add_op->inputs.size() != 2 ||
       add_op->fused_activation_function != FusedActivationFunctionType::kNone) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* relu_input_op = GetOpWithOutput(*model, add_op->inputs[0]);
@@ -59,14 +59,14 @@ namespace toco {
       relu_input_op->inputs.size() != 1 ||
       relu_input_op->fused_activation_function !=
           FusedActivationFunctionType::kNone) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
   if (mul_op == nullptr || mul_op->type != OperatorType::kMul ||
       mul_op->inputs.size() != 2 ||
       mul_op->fused_activation_function != FusedActivationFunctionType::kNone) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto neg_alpha_tensor_name = mul_op->inputs[0];
@@ -75,7 +75,7 @@ namespace toco {
 
   if (relu_neg_input_op == nullptr ||
       relu_neg_input_op->inputs.size() != 1) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const Operator* final_input_op;
@@ -92,13 +92,13 @@ namespace toco {
         relu_neg_input_op->type != OperatorType::kRelu ||
         relu_neg_input_op->fused_activation_function !=
             FusedActivationFunctionType::kNone) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     final_input_op = neg_input_op;
   }
 
   if (relu_input_op->inputs[0] != final_input_op->inputs[0]) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto input_tensor_name = relu_input_op->inputs[0];
@@ -125,7 +125,7 @@ namespace toco {
   DeleteArrayIfUnusedOutsideOfOp(mul_op->inputs[1], mul_op, model);
   DeleteOpAndArrays(model, add_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

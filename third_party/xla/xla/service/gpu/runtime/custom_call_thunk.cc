@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,10 +31,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
-#include "xla/service/gpu/thunk.h"
-#include "xla/service/service_executable_run_options.h"
-#include "xla/status.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -58,7 +60,8 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
       call_target_(std::move(call_target)),
       opaque_(opaque) {}
 
-CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
+CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
+                                 XLA_FFI_Handler_Bundle bundle,
                                  std::vector<std::optional<Slice>> operands,
                                  std::vector<std::optional<Slice>> results,
                                  AttributesMap attributes,
@@ -66,7 +69,7 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
     : Thunk(Thunk::kCustomCall, thunk_info),
       operands_(std::move(operands)),
       results_(std::move(results)),
-      handler_(std::move(handler)),
+      bundle_(bundle),
       attributes_(std::move(attributes)),
       called_computation_(called_computation) {}
 
@@ -107,26 +110,41 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 #endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
+absl::Status CustomCallThunk::ExecuteFfiHandler(
+    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+    int32_t device_ordinal, se::Stream* stream,
+    se::DeviceMemoryAllocator* allocator,
+    const ffi::ExecutionContext* execution_context,
+    const BufferAllocations* buffer_allocations) {
+  if (handler == nullptr) {
+    return absl::InternalError("FFI execute handler is not set");
+  }
+
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
   CallFrameBuilder builder;
 
-  for (auto& slices : {operands_, results_}) {
-    for (const std::optional<Slice>& slice : slices) {
-      // TODO(ezhulenev): Add a token argument type to XLA:FFI.
-      if (!slice.has_value()) {
-        return Internal("FFI handlers do not support tokens (yet)!");
-      }
+  for (auto& operand : operands_) {
+    if (!operand.has_value())
+      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!operand->slice.allocation())
+      return Internal("custom call argument missing buffer allocation");
 
-      if (!slice->slice.allocation())
-        return Internal("custom call input missing buffer allocation");
+    builder.AddBufferArg(buffer_allocations->GetDeviceAddress(operand->slice),
+                         operand->shape.element_type(),
+                         operand->shape.dimensions());
+  }
 
-      builder.AddBufferArg(
-          params.buffer_allocations->GetDeviceAddress(slice->slice),
-          slice->shape.element_type(), slice->shape.dimensions());
-    }
+  for (auto& result : results_) {
+    if (!result.has_value())
+      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!result->slice.allocation())
+      return Internal("custom call result missing buffer allocation");
+
+    builder.AddBufferRet(buffer_allocations->GetDeviceAddress(result->slice),
+                         result->shape.element_type(),
+                         result->shape.dimensions());
   }
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -135,18 +153,40 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler
-  // execution context, as apparently it's not easily accessible from Thunk.
-  ExecutableRunOptions run_options;
-  run_options.set_stream(params.stream);
-  ServiceExecutableRunOptions service_run_options(run_options);
+  CallOptions options = {device_ordinal, stream, allocator, called_computation_,
+                         execution_context};
+  return Call(bundle_->execute, call_frame, options, stage);
+}
 
-  CallOptions options = {&service_run_options, called_computation_};
-  return Call(handler_, call_frame, options);
+absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
+                                      ResourceRequests& resource_requests) {
+  if (bundle_ && bundle_->prepare) {
+    return absl::InternalError("FFI prepare stage is not yet supported");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
+  if (!bundle_ || !bundle_->initialize) {
+    return absl::OkStatus();
+  }
+
+  return ExecuteFfiHandler(
+      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
+      params.buffer_allocations->device_ordinal(), params.stream,
+      params.buffer_allocations->memory_allocator(),
+      params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return handler_ ? ExecuteFfiHandler(params) : ExecuteCustomCall(params);
+  if (bundle_.has_value()) {
+    return ExecuteFfiHandler(
+        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
+        params.buffer_allocations->device_ordinal(), params.stream,
+        params.buffer_allocations->memory_allocator(),
+        params.ffi_execution_context, params.buffer_allocations);
+  }
+  return ExecuteCustomCall(params);
 }
 
 }  // namespace gpu

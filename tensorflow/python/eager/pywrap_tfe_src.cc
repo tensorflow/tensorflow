@@ -152,8 +152,7 @@ typedef std::function<PyObject*(PyObject*, const std::vector<int64_t>&)>
     PyBackwardFunction;
 
 using AttrToInputsMap =
-    tensorflow::gtl::FlatMap<string,
-                             tensorflow::gtl::InlinedVector<InputInfo, 4>>;
+    tensorflow::gtl::FlatMap<string, absl::InlinedVector<InputInfo, 4UL>>;
 
 tensorflow::gtl::FlatMap<string, AttrToInputsMap*>* GetAllAttrToInputsMaps() {
   static auto* all_attr_to_input_maps =
@@ -913,8 +912,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_ExecuteCancelable",
+                                  tsl::profiler::TraceMeLevel::kInfo);
 
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
 
@@ -1120,7 +1119,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
 int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
-  const char* msg = tsl::NullTerminatedMessage(status);
+  const char* msg = absl::StatusMessageAsCStr(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
@@ -1332,7 +1331,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* AggregateGradients(
-      tensorflow::gtl::ArraySlice<PyObject*> gradient_tensors) const final {
+      absl::Span<PyObject* const> gradient_tensors) const final {
     PyObject* list = PyList_New(gradient_tensors.size());
     for (int i = 0; i < gradient_tensors.size(); ++i) {
       // Note: stealing a reference to the gradient tensors.
@@ -1406,7 +1405,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   tensorflow::Status CallBackwardFunction(
       const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<int64_t>& unneeded_gradients,
-      tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
+      absl::Span<PyObject* const> output_gradients,
       absl::Span<PyObject*> result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
@@ -3680,8 +3679,8 @@ bool RunCallbacks(
 }  // namespace
 
 PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_FastPathExecute_C",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
   if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
@@ -3899,7 +3898,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       const string& attr_name = input_arg.type_list_attr();
       Py_ssize_t len = PySequence_Fast_GET_SIZE(fast_input.get());
       PyObject** fast_input_array = PySequence_Fast_ITEMS(fast_input.get());
-      tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
+      absl::InlinedVector<TF_DataType, 4UL> attr_value(len);
       PyObject* py_attr_value = nullptr;
       if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
@@ -3973,7 +3972,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
   int num_retvals = num_outputs;
 
-  tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals(num_retvals);
+  absl::InlinedVector<TFE_TensorHandle*, 2UL> retvals(num_retvals);
 
   Py_BEGIN_ALLOW_THREADS;
   TFE_Execute(op, retvals.data(), &num_retvals, status);

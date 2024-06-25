@@ -34,9 +34,12 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -49,6 +52,21 @@ limitations under the License.
 
 namespace tensorflow {
 namespace serving {
+
+const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
+    "low_priority_padding_with_max_batch_size";
+const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
+    "low_priority_padding_with_next_allowed_batch_size";
+const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
+
+enum class MixedPriorityBatchingPolicy {
+  kLowPriorityPaddingWithMaxBatchSize,
+  kLowPriorityPaddingWithNextAllowedBatchSize,
+  kPriorityIsolation
+};
+
+absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
+    absl::string_view attr_value);
 
 // The abstract superclass for a unit of work to be done as part of a batch.
 //
@@ -87,8 +105,16 @@ class TaskQueue {
  public:
   TaskQueue() = default;
 
-  // Appends a task to the end of the queue.
-  void AddTask(std::unique_ptr<TaskType> task);
+  struct TaskWrapper {
+    std::unique_ptr<TaskType> task;
+    uint64 start_time_micros;
+
+    TaskWrapper(std::unique_ptr<TaskType> task, uint64 start_time_micros)
+        : task(std::move(task)), start_time_micros(start_time_micros) {}
+  };
+
+  // Appends a task to the end of the queue with the given start time.
+  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
 
   // Removes a task from the front of the queue, i.e., the oldest task in the
   // queue.
@@ -98,6 +124,10 @@ class TaskQueue {
   // the sum of sizes of the removed tasks don't exceed the 'size' given as the
   // argument.
   std::vector<std::unique_ptr<TaskType>> RemoveTask(int size);
+
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  std::optional<uint64> EarliestTaskStartTime() const;
 
   // Returns true iff the queue contains 0 tasks.
   bool empty() const;
@@ -112,7 +142,7 @@ class TaskQueue {
   mutable mutex mu_;
 
   // Tasks in the queue.
-  std::deque<std::unique_ptr<TaskType>> tasks_ TF_GUARDED_BY(mu_);
+  std::deque<TaskWrapper> tasks_ TF_GUARDED_BY(mu_);
 
   // The sum of the sizes of the tasks in 'tasks_'.
   int size_ TF_GUARDED_BY(mu_) = 0;
@@ -126,11 +156,12 @@ class TaskQueue {
 };
 
 template <typename TaskType>
-void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task) {
+void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
+                                  uint64 start_time_micros) {
   {
     mutex_lock l(mu_);
     size_ += task->size();
-    tasks_.emplace_back(std::move(task));
+    tasks_.emplace_back(std::move(task), start_time_micros);
     empty_.store(false);
   }
 }
@@ -142,7 +173,7 @@ std::unique_ptr<TaskType> TaskQueue<TaskType>::RemoveTask() {
     if (tasks_.empty()) {
       return nullptr;
     }
-    std::unique_ptr<TaskType> task = std::move(tasks_.front());
+    std::unique_ptr<TaskType> task = std::move(tasks_.front().task);
     size_ -= task->size();
     tasks_.pop_front();
     if (tasks_.empty()) {
@@ -164,10 +195,10 @@ std::vector<std::unique_ptr<TaskType>> TaskQueue<TaskType>::RemoveTask(
     int size_lower_bound = size_ - size;
     std::vector<std::unique_ptr<TaskType>> remove_tasks;
     while (!tasks_.empty() &&
-           size_ - static_cast<int>(tasks_.front()->size()) >=
+           size_ - static_cast<int>(tasks_.front().task->size()) >=
                size_lower_bound) {
-      size_ -= static_cast<int>(tasks_.front()->size());
-      remove_tasks.push_back(std::move(tasks_.front()));
+      size_ -= static_cast<int>(tasks_.front().task->size());
+      remove_tasks.push_back(std::move(tasks_.front().task));
       tasks_.pop_front();
       if (tasks_.empty()) {
         empty_.store(true);
@@ -182,6 +213,19 @@ bool TaskQueue<TaskType>::empty() const {
   {
     mutex_lock l(mu_);
     return empty_.load();
+  }
+}
+
+template <typename TaskType>
+std::optional<uint64> TaskQueue<TaskType>::EarliestTaskStartTime() const {
+  {
+    mutex_lock l(mu_);
+
+    if (tasks_.empty()) {
+      return std::nullopt;
+    }
+
+    return tasks_.front().start_time_micros;
   }
 }
 
@@ -409,7 +453,7 @@ bool Batch<TaskType>::empty() const TF_NO_THREAD_SAFETY_ANALYSIS {
   // TODO(b/160249203): Remove tracer after evaluating a change to reduce
   // lock contention and cpu usage (which is observed in profiler and
   // very data-driven).
-  tensorflow::profiler::TraceMe tracer("BatchTask::empty");
+  tsl::profiler::TraceMe tracer("BatchTask::empty");
   return empty_.load();
 }
 

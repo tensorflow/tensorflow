@@ -166,8 +166,9 @@ class InstructionFusion : public HloModulePass {
                                             const HloInstruction* consumer);
 
  protected:
-  // Returns a list of computations on which Fusion is performed.
-  virtual std::vector<HloComputation*> GetFusionComputations(
+  // Returns a list of computations that are not fusion computations. These
+  // computations contain instructions which are candidates for fusions.
+  virtual std::vector<HloComputation*> GetNonFusionComputations(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

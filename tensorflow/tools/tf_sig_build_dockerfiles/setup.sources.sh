@@ -44,10 +44,10 @@ cat >/etc/apt/sources.list.d/custom.list <<SOURCES
 deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64 /
 
 # More Python versions: Deadsnakes
-deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
-deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
+deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
+deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
 
 # LLVM/Clang repository
-deb http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
-deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
+deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main
+deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main
 SOURCES

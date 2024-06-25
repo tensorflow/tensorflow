@@ -1,0 +1,35 @@
+f1 {
+  p0 = f16[720,720,720]{2,1,0} parameter(0)
+  p1 = s8[720,720,720]{2,1,0} parameter(1)
+  c = f16[720,720,720]{2,1,0} convert(p1)
+  ROOT d1 = f16[720,720,720]{2,1,0} dot(p0, c),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+f2 {
+  p0 = s8[720,720,720]{2,1,0} parameter(0)
+  c0 = f32[720,720,720]{2,1,0} convert(p0)
+  p1 = f16[720,720,720]{2,1,0} parameter(1)
+  c1 = f32[720,720,720]{2,1,0} convert(p1)
+  ROOT %dot.1 = f32[720,720,720]{2,1,0} dot(c0, c1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+fa {
+  p1 = f16[720,720,720]{2,1,0} parameter(1)
+  c = f32[720,720,720]{2,1,0} convert(p1)
+  p0 = f32[720,720,720]{2,1,0} parameter(0)
+  ROOT %add.1.1 = f32[720,720,720]{2,1,0} add(c, p0)
+}
+
+ENTRY e {
+  p1 = s8[720,720,720]{2,1,0} parameter(1)
+  p0 = f16[720,720,720]{2,1,0} parameter(0)
+  f1r = f16[720,720,720]{2,1,0} fusion(p0, p1), kind=kCustom, calls=f1,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  f2r = f32[720,720,720]{2,1,0} fusion(p1, p0), kind=kCustom, calls=f2,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  ROOT _ = f32[720,720,720]{2,1,0} fusion(f2r, f1r), kind=kLoop, calls=fa
+}

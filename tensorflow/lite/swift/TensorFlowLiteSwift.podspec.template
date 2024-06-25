@@ -25,18 +25,26 @@ Pod::Spec.new do |s|
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
 
   s.default_subspec = 'Core'
 
+  # The privacy manifest shared by other subspecs.
+  s.subspec 'Privacy' do |ss|
+    ss.resource_bundles = {
+      s.module_name => swift_dir + 'PrivacyInfo.xcprivacy'
+    }
+  end
+
   s.subspec 'Core' do |core|
     core.dependency 'TensorFlowLiteC', "#{s.version}"
+    core.dependency "#{s.name}/Privacy", "#{s.version}"
     core.source_files = swift_dir + 'Sources/*.swift'
     core.exclude_files = swift_dir + 'Sources/{CoreML,Metal}Delegate.swift'
 
@@ -55,12 +63,14 @@ Pod::Spec.new do |s|
     coreml.source_files = swift_dir + 'Sources/CoreMLDelegate.swift'
     coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
     coreml.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
+    coreml.dependency "#{s.name}/Privacy", "#{s.version}"
   end
 
   s.subspec 'Metal' do |metal|
     metal.source_files = swift_dir + 'Sources/MetalDelegate.swift'
     metal.dependency 'TensorFlowLiteC/Metal', "#{s.version}"
     metal.dependency 'TensorFlowLiteSwift/Core', "#{s.version}"
+    metal.dependency "#{s.name}/Privacy", "#{s.version}"
 
     metal.test_spec 'Tests' do |ts|
       ts.source_files = swift_dir + 'Tests/{Interpreter,MetalDelegate}Tests.swift'

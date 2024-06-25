@@ -21,10 +21,12 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/model.h"      // Legacy.
 #include "tensorflow/lite/error_reporter.h"  // Legacy.
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 

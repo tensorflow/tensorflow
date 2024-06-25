@@ -112,7 +112,7 @@ class ConvertFakeQuantOpToQuantOps {
 
     Value input = tf_op.getInputs();
     int quant_dim = -1;
-    auto input_type = input.getType().template cast<ShapedType>();
+    auto input_type = mlir::cast<ShapedType>(input.getType());
     if (PerAxis) {
       if (!input_type.hasRank()) {
         tf_op.emitError("The input should have known rank for per-channel op.");

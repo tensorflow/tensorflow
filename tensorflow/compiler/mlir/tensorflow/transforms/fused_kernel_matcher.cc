@@ -332,9 +332,9 @@ class FuseMatMulBiasAdd
     }
     // FusedMatMul kernel does not support grad_a/grad_b attrs
     if ((matmul->hasAttr("grad_a") &&
-         matmul->getAttr("grad_a").cast<BoolAttr>().getValue()) ||
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_a")).getValue()) ||
         (matmul->hasAttr("grad_b") &&
-         matmul->getAttr("grad_b").cast<BoolAttr>().getValue())) {
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_b")).getValue())) {
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "FusedMatMul kernel does not support grad_a/grad_b attrs";
       });

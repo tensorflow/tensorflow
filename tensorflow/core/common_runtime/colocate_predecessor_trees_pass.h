@@ -18,9 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
-// Colocate a tree of unplaced constants with its placed root. Identify a
-// dangling tree of ops whose root op is assigned but rest of ops are not
-// assigned. Then it should colocate the rest of the ops with the root op.
+// TODO(b/344910755): Use the marker in Fill op to find the identity op. This
+// makes the heuristic more straightforward.
+// Colocate a tree of unplaced nodes with its placed Identity node. Identify a
+// dangling tree of ops whose Identify nodes are assigned but rest of ops are
+// not assigned. Then it should colocate the rest of the ops.
 //
 // For example, the graph before pass is:
 //
@@ -40,6 +42,12 @@ limitations under the License.
 //   }
 //   node {
 //     name: "id0"
+//     op: "Identity"
+//     input: "fill0"
+//     device: "/job:worker/replica:0/task:2/device:CPU:0"
+//   }
+//   node {
+//     name: "id1"
 //     op: "Identity"
 //     input: "fill0"
 //     device: "/job:worker/replica:0/task:2/device:CPU:0"
@@ -99,13 +107,27 @@ limitations under the License.
 //       }
 //     }
 //   }
+//   node {
+//     name: "id1"
+//     op: "Identity"
+//     input: "fill0"
+//     device: "/job:worker/replica:0/task:2/device:CPU:0"
+//     attr {
+//       key: "_class"
+//       value {
+//         list {
+//           s: "loc:@id0"
+//         }
+//       }
+//     }
+//   }
 
 namespace tensorflow {
 
-// This pass can place each tree of unassigned nodes with its root, when the
-// root is already assigned to a device. Placement is instructed here with the
-// colocation class attribute _class. This is a good heuristic because it
-// reduces number of cut edges and tends to load balance.
+// This pass can place each tree of unassigned nodes with its Identity nodes,
+// when the Identity nodes are already assigned to a device. Placement is
+// instructed here with the colocation class attribute _class. This is a good
+// heuristic because it reduces number of cut edges and tends to load balance.
 class ColocatePredecessorTreesPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;

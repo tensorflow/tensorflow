@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_REFINE_POLYMORPHIC_SHAPES_H_
 
 #include "absl/status/status.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,8 +24,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
@@ -148,11 +149,11 @@ absl::StatusOr<riegeli::RecordReader<riegeli::FdReader<>>> GetRiegeliReader(
 // Read the last chunk, which contains metadata necessary for reading the
 // remaining chunks.
 absl::StatusOr<::tensorflow::proto_splitter::ChunkMetadata> GetChunkMetadata(
-    riegeli::RecordReader<riegeli::FdReader<>>& reader);
+    riegeli::RecordReaderBase& reader);
 
 // Use the `reader` to read in the chunk specified by `chunk_info`.
 absl::StatusOr<std::string> ReadChunk(
-    riegeli::RecordReader<riegeli::FdReader<>>& reader,
+    riegeli::RecordReaderBase& reader,
     const ::tensorflow::proto_splitter::ChunkInfo& chunk_info);
 
 // Returns true if prefix can only be found as a .pb file, and false if a .cpb

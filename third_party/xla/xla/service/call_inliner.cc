@@ -16,14 +16,26 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_domain_isolator.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -43,7 +55,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   // Resolves the operands to the HLO instruction in the inlined (caller) graph,
   // and clones the HLO instruction into that graph with the new operands.
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
@@ -63,21 +75,21 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Does not create new nodes for the parameter; rather, notes the mapping from
   // the subcomputation parameter node to the call operands in the caller
   // computation.
-  Status HandleParameter(HloInstruction* parameter) override {
+  absl::Status HandleParameter(HloInstruction* parameter) override {
     TF_RETURN_IF_ERROR(NoteMapping(
         parameter, call_->mutable_operand(parameter->parameter_number())));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Wires the consumers of the call to instead point at the newly created root,
   // replacing the call operation in the caller computation.
-  Status FinishVisit(HloInstruction* root) override {
+  absl::Status FinishVisit(HloInstruction* root) override {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
@@ -107,13 +119,13 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   //
   // Returns an error status if the subcomputation_hlo is mapped more than
   // once.
-  Status NoteMapping(HloInstruction* subcomputation_hlo,
-                     HloInstruction* new_hlo) {
+  absl::Status NoteMapping(HloInstruction* subcomputation_hlo,
+                           HloInstruction* new_hlo) {
     auto result = subcomputation_hlo_to_new_hlo_.insert(
         std::make_pair(subcomputation_hlo, new_hlo));
     TF_RET_CHECK(result.second)
         << "A mapping for the subcomputation HLO is already present.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   HloInstruction* call_;
@@ -136,6 +148,11 @@ CallInliner::Inline(HloInstruction* call) {
   return visitor.ConsumeInstructionMap();
 }
 
+bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
+  return instruction->opcode() == HloOpcode::kCall &&
+         !instruction->parent()->IsAsyncComputation();
+}
+
 absl::StatusOr<bool> CallInliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -144,10 +161,10 @@ absl::StatusOr<bool> CallInliner::Run(
   // we'll always inline kCalls into their callers in the appropriate order.
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node)
-                                                -> Status {
+                                                -> absl::Status {
     if (!HloInstruction::IsThreadIncluded(
             node.computation()->execution_thread(), execution_threads)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(1) << "Visiting node: " << node.ToString();
     for (HloInstruction* instruction :
@@ -156,8 +173,7 @@ absl::StatusOr<bool> CallInliner::Run(
       // used for parallel device computation.
       // TODO(b/229887502): update the inliner to ignore only parallel
       // device type async call instead of all.
-      if (instruction->opcode() == HloOpcode::kCall &&
-          !instruction->parent()->IsAsyncComputation()) {
+      if (IsInlineableCallOp(instruction)) {
         const auto& callees = instruction->called_computations();
         TF_RET_CHECK(callees.size() == 1);
         if (!single_call_site_ || call_graph->GetNode(instruction->to_apply())
@@ -176,13 +192,13 @@ absl::StatusOr<bool> CallInliner::Run(
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
     // This can result then in problems if within the called computation, there
     // were send/recv instructions, which the module group verifier will flag as
-    // error findingthe same channel ID used for multiple send/recv
+    // error finding the same channel ID used for multiple send/recv
     // instructions.
     TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }

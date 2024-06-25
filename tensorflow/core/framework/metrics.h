@@ -340,13 +340,15 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the
-// tf_metadata.tf_mlir_bridge_first_phase_count metric.
-// device_type: tpu, cpu, gpu, etc.
+// tf_metadata.tf_mlir_bridge_first_phase_v2_count metric.
+// bridge_type: replicated, nonreplicated, etc.
 // bridge_version: v1 compat, v2, etc.
+// device_type: tpu, cpu, gpu, etc.
 // fallback_enabled: true if fallback will happen, false if not
 // result: outcome of bridge (success, failure, disabled, invalid_graph, etc.)
-void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& bridge_type,
                                          const std::string& bridge_version,
+                                         const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result);
 

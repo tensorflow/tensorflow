@@ -104,6 +104,7 @@ message GemmBackendConfig {
 
   optional bool grad_x = 16;
   optional bool grad_y = 17;
+  bool damax_output = 18;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -151,7 +152,16 @@ message CustomFusionConfig {
 
 message CuDnnFusionConfig {
   int64 plan_id = 1;
-  optional string serialized_graph = 2;
+}
+
+// Block-level parameters for a fusion.
+message BlockLevelFusionConfig {
+  // The output tile sizes of the associated instruction. The length of this
+  // field is expected to be the rank of the output shape.
+  repeated int64 output_tile_sizes = 1;
+
+  // The number of warps to use for the kernel.
+  int64 num_warps = 2;
 }
 
 message FusionBackendConfig {
@@ -169,6 +179,10 @@ message FusionBackendConfig {
   // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
+
+  // Only valid when kind == "__triton" for now. Code generation of such
+  // fusions will fail if this field is not set.
+  BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
   CustomFusionConfig custom_fusion_config = 4;
@@ -229,6 +243,16 @@ message CudnnfMHABackendConfig {
 
   // Is causal mask
   bool is_causal_mask = 21;
+
+  // mask type
+  enum MaskType {
+    NO_MASK = 0;
+    PADDING = 1;
+    CAUSAL = 2;
+    PADDING_CAUSAL = 3;
+    ALIBI = 4;
+  }
+  MaskType mask_type = 22;
 }
 
 // Generic backend config for XLA:GPU
@@ -260,4 +284,16 @@ message GpuBackendConfig {
 
     CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
   }
+
+  // This attribute instructs the latency-hiding scheduler to
+  // schedule this particular instruction to the earliest position.
+  // Note that setting this to true will make this instruction scheduled
+  // at the very beginning of the parent computation before
+  // every other nodes.
+  // An example use case would be deciding to schedule between collective
+  // or an async compute. LHS might put either one at the first place
+  // depending on the cost, but it'd be more beneficial if the collective
+  // is always scheduled first as it's not SM-heavy.
+  // In this case we can use this flag to enforce the ordering.
+  bool force_earliest_schedule = 10;
 }

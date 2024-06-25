@@ -15,6 +15,12 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_HLO_CONSTANT_SPLITTER_H_
 #define XLA_HLO_TRANSFORMS_HLO_CONSTANT_SPLITTER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -32,8 +38,12 @@ namespace xla {
 // this pass.
 class HloConstantSplitter : public HloModulePass {
  public:
-  explicit HloConstantSplitter(bool split_expressions = false)
-      : split_expressions_(split_expressions) {}
+  explicit HloConstantSplitter(
+      bool split_expressions = false,
+      absl::FunctionRef<bool(const HloInstruction*)> extra_constraints =
+          [](const HloInstruction* instruction) { return true; })
+      : split_expressions_(split_expressions),
+        extra_constraints_(extra_constraints) {}
   absl::string_view name() const override { return "hlo-constant-splitter"; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -42,6 +52,7 @@ class HloConstantSplitter : public HloModulePass {
 
  private:
   bool split_expressions_;
+  absl::FunctionRef<bool(const HloInstruction*)> extra_constraints_;
 };
 
 }  // namespace xla

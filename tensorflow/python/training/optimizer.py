@@ -169,7 +169,30 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
             "Cannot use a constraint function on a sparse variable.")
       return optimizer._resource_apply_sparse_duplicate_indices(
           g.values, self._v, g.indices)
-    update_op = optimizer._resource_apply_dense(g, self._v)
+
+    if context.xla_sharding_for_resource_variables_enabled():
+      # For each slot variable that is annotated with an XLA sharding, we read
+      # the variable and assign the value to itself. This is done to trigger the
+      # creation of an XlaShardingOp when a ReadVariableOp is created upon the
+      # call to `slot_var.read_value()`. This is needed to ensure that slot
+      # variables with XLA sharding are sharded correctly. Please see
+      # b/307541427 for more details.
+      assign_ops = []
+      for variable_dict in optimizer._slots.values():
+        for slot_var in variable_dict.values():
+          if (
+              isinstance(slot_var, resource_variable_ops.BaseResourceVariable)
+              and slot_var._get_xla_sharding() is not None
+          ):
+            assign_ops.append(slot_var.assign(slot_var.read_value()))
+
+      # The assign_ops created above are added as a control dependency for the
+      # update op to make sure these appear before the update_op.
+      with ops.control_dependencies(assign_ops):
+        update_op = optimizer._resource_apply_dense(g, self._v)
+    else:
+      update_op = optimizer._resource_apply_dense(g, self._v)
+
     if self._v.constraint is not None:
       with ops.control_dependencies([update_op]):
         return self._v.assign(self._v.constraint(self._v))

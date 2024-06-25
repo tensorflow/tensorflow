@@ -778,11 +778,11 @@ Status GraphExecutionState::OptimizeGraph(
         node_names.insert(node->name());
       }
     }
-    for (const auto& feed : item.feed) {
+    for (auto& feed : item.feed) {
       SafeTensorId tensor_id = ParseTensorName(feed.first);
       if (node_names.find(tensor_id.node()) == node_names.end()) {
         return errors::InvalidArgument("Invalid feed, no such node in graph: ",
-                                       feed.first);
+                                       std::move(feed.first));
       }
     }
     for (const auto& fetch : item.fetch) {

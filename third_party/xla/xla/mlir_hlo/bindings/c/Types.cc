@@ -14,11 +14,12 @@ limitations under the License.
 
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/Support/LLVM.h"
 
 MlirType mlirMhloTokenTypeGet(MlirContext ctx) {
   return wrap(mlir::mhlo::TokenType::get(unwrap(ctx)));
 }
 
 bool mlirMhloTypeIsAToken(MlirType type) {
-  return unwrap(type).isa<mlir::mhlo::TokenType>();
+  return mlir::isa<mlir::mhlo::TokenType>(unwrap(type));
 }

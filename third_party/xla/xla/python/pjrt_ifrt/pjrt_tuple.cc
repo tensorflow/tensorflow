@@ -24,7 +24,8 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -34,8 +35,8 @@ namespace ifrt {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }
 
-Future<Status> PjRtTuple::GetReadyFuture() const {
-  std::vector<Future<Status>> futures;
+Future<> PjRtTuple::GetReadyFuture() const {
+  std::vector<Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->GetReadyFuture());
@@ -43,14 +44,14 @@ Future<Status> PjRtTuple::GetReadyFuture() const {
   return JoinFutures(absl::MakeSpan(futures));
 }
 
-Future<Status> PjRtTuple::Delete() {
+Future<> PjRtTuple::Delete() {
   {
     absl::MutexLock lock(&mu_);
     if (!is_deleted_.HasBeenNotified()) {
       is_deleted_.Notify();
     }
   }
-  std::vector<Future<Status>> futures;
+  std::vector<Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->Delete());
@@ -80,7 +81,7 @@ std::string PjRtTuple::DebugString() const {
 }
 int PjRtTuple::Arity() { return values_.size(); }
 
-Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
+absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
   if (values_out.size() != values_.size()) {
     return InvalidArgument(
         "Wrong number of output values for "
@@ -88,7 +89,7 @@ Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
         values_out.size(), values_.size());
   }
   absl::c_copy(values_, values_out.begin());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 char PjRtTuple::ID = 0;

@@ -16,11 +16,15 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/shaped_buffer.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"

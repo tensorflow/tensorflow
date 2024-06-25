@@ -124,9 +124,8 @@ def variable_axis_size_partitioner(
       raise ValueError(f"shape is not a TensorShape: {shape}")
     if not shape.is_fully_defined():
       raise ValueError(f"shape is not fully defined: {shape}")
-    if not isinstance(dtype, dtypes.DType):
-      raise ValueError(f"dtype is not a DType: {dtype}")
 
+    dtype = dtypes.as_dtype(dtype)
     if dtype.base_dtype == dtypes.string:
       element_size = bytes_per_string_element
     else:
@@ -201,6 +200,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
       raise ValueError(
           f"Cannot partition variable along axis {axis} when shape is "
           f"only {shape}")
+    dtype = dtypes.as_dtype(dtype)
     if dtype.base_dtype == dtypes.string:
       bytes_per_element = bytes_per_string_element
     else:

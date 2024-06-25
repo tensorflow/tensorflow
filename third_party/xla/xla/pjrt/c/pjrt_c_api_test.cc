@@ -389,7 +389,7 @@ TEST_F(PjrtCApiTest, CompileXlaComputation) {
   xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
   xla::DeviceAssignmentProto proto;
-  ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
+  device_assignment.Serialize(&proto);
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
   args.compile_options = options_str.c_str();
@@ -459,7 +459,7 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
   xla::DeviceAssignmentProto proto;
-  ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
+  device_assignment.Serialize(&proto);
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
   args.compile_options = options_str.c_str();
@@ -559,7 +559,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
   }
 
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
-  xla::PjRtFuture<absl::Status> event_;
+  xla::PjRtFuture<> event_;
 };
 
 TEST_F(PjrtCApiBufferTest, IsDeleted) {
@@ -645,7 +645,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<absl::Status> transfer_to_host =
+  xla::PjRtFuture<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
 

@@ -249,7 +249,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
-    ASSERT_EQ(OkStatus(), TF_TensorToTensor(dst, &output)) << line;
+    ASSERT_EQ(absl::OkStatus(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;

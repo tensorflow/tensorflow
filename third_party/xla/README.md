@@ -28,7 +28,7 @@ and then see the [developer guide](docs/developer_guide.md).
 
 ## Contacts
 
-*   For questions, contact Thea Lamkin - thealamkin at google.com.
+*   For questions, contact the maintainers - maintainers at openxla.org
 
 ## Resources
 

@@ -533,6 +533,10 @@ class UnicodeEncodeOp : public OpKernel {
     const auto input_splits_flat = input_splits.flat<SPLITS_TYPE>();
 
     OP_REQUIRES(
+        context, input_tensor.dims() == 1 && input_splits.dims() == 1,
+        absl::InvalidArgumentError(
+            "Both the input_tensor and input_splits should be of rank 1. "));
+    OP_REQUIRES(
         context, input_splits.NumElements() > 0,
         errors::InvalidArgument("Input_splits should contain elements, but "
                                 "given input_values has 0 elements"));

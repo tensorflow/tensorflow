@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 
 namespace tflite {
@@ -53,6 +54,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 7xx series
+      {"750", AdrenoGpu::kAdreno750},
       {"740", AdrenoGpu::kAdreno740},
       {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
@@ -230,7 +232,8 @@ bool AdrenoInfo::IsAdreno6xx() const {
 
 bool AdrenoInfo::IsAdreno7xx() const {
   return adreno_gpu == AdrenoGpu::kAdreno730 ||
-         adreno_gpu == AdrenoGpu::kAdreno740;
+         adreno_gpu == AdrenoGpu::kAdreno740 ||
+         adreno_gpu == AdrenoGpu::kAdreno750;
 }
 
 bool AdrenoInfo::IsBetterThan(AdrenoGpu gpu) const {
@@ -301,6 +304,8 @@ int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
     // Adreno 7xx series
+    case AdrenoGpu::kAdreno750:
+      return 6;
     case AdrenoGpu::kAdreno740:
       return 6;
     case AdrenoGpu::kAdreno730:
@@ -975,6 +980,17 @@ bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
     }
   }
   return false;
+}
+
+absl::Status GpuInfo::GetMinSubGroupSize(int& min_sub_group_size) const {
+  auto begin = supported_subgroup_sizes.begin();
+  auto end = supported_subgroup_sizes.end();
+  auto min = std::min_element(begin, end);
+  if (min == end) {
+    return absl::InternalError("No supported subgroup sizes");
+  }
+  min_sub_group_size = *min;
+  return absl::OkStatus();
 }
 
 bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {

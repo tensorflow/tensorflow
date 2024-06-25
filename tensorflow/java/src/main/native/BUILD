@@ -2,14 +2,14 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Java API using the TensorFlow C library.
 
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
+
 package(default_visibility = [
     "//tensorflow/java:__pkg__",
     "//tensorflow/tools/android/inference_interface:__pkg__",
 ])
 
 licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
 
 tf_cuda_library(
     name = "native",

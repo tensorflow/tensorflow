@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -114,7 +114,7 @@ class HloReplicationAnalysis {
         support_partial_replication_(support_partial_replication) {}
 
   // Computes hlo_replication_.
-  Status ComputeHloReplication();
+  absl::Status ComputeHloReplication();
 
   // A helper function to recursively compute hlo_replication on a computation.
   // Returns whether hlo_replication_ is changed.

@@ -57,6 +57,15 @@ Status FunctionDefToBodyHelper(
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
     std::unique_ptr<FunctionBody>* fbody);
 
+// Removes all stateless nodes that do not contribute to a return
+// value from the function body. Unlike `RemoveDeadNodes()`, which is
+// triggered by `OptimizerOptions.do_function_inlining`, this pass
+// ignores the SINK node, from which (by definition) all nodes are
+// reverse reachable, and preserves all nodes that are reachable from
+// control output nodes.
+void PruneFunctionBody(const FunctionDef& fdef, Graph* g,
+                       absl::Span<Node*> additional_root_nodes = {});
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_DEF_UTILS_H_

@@ -39,13 +39,13 @@ class RemoteProfilerSessionManager {
   struct Response {
     std::string service_address;
     std::unique_ptr<tensorflow::ProfileResponse> profile_response;
-    Status status;
+    absl::Status status;
   };
   // Instantiates a collection of RemoteProfilerSessions starts profiling on
   // each of them immediately. Assumes that options have already been validated.
   static std::unique_ptr<RemoteProfilerSessionManager> Create(
       const tensorflow::RemoteProfilerSessionManagerOptions& options,
-      const tensorflow::ProfileRequest& request, Status& out_status,
+      const tensorflow::ProfileRequest& request, absl::Status& out_status,
       AddressResolver resolver = nullptr);
 
   // Awaits for responses from remote profiler sessions and returns them as a
@@ -65,7 +65,7 @@ class RemoteProfilerSessionManager {
       tensorflow::ProfileRequest request, AddressResolver resolver);
 
   // Initialization of all client contexts.
-  Status Init();
+  absl::Status Init();
 
   mutex mutex_;
   // Remote profiler session options.

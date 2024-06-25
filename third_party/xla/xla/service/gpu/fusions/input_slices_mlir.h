@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/status.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -33,7 +37,8 @@ class MlirInputSlicesFusion : public MlirFusionEmitterBase {
  public:
   explicit MlirInputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        unroll_factor_(analysis.input_output_info().has_4_bit_output ? 2 : 1) {}
+        unroll_factor_(CeilOfRatio(
+            8, analysis.input_output_info().smallest_output_dtype_bits)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
@@ -52,6 +57,10 @@ class MlirInputSlicesFusion : public MlirFusionEmitterBase {
       const mlir_converter::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
+
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

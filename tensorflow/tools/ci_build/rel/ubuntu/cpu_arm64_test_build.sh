@@ -113,9 +113,6 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
 sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
-# Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
-export SETUPTOOLS_USE_DISTUTILS=stdlib
-
 # Local variables
 WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/whl"
 sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d ${WHL_DIR}

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ApplyPowerSign"
   input_arg {
     name: "var"

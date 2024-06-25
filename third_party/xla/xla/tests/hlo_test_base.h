@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/manifest_checking_test.h"
@@ -100,7 +101,7 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
-  // returns false as the StatusOr value.
+  // returns false as the absl::StatusOr value.
   //
   // These three overloads all do the same thing.  The && overload lets you do
   // `RunHloPass(MyPass(), module)` all in one line.  The reason for the
@@ -120,7 +121,7 @@ class HloTestBase : public ManifestCheckingTest {
   // Runs the hlo_pass with the provided module group and returns the result.
   // This method runs the input HLO module group pass for a `HloModuleGroup` and
   // it also verifies the module group remains unchanged when hlo_pass returns
-  // false as the StatusOr value.
+  // false as the absl::StatusOr value.
   static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
                                          HloModuleGroup* module_group);
 
@@ -272,7 +273,8 @@ class HloTestBase : public ManifestCheckingTest {
   // Executes an hlo module with fake inputs and compares the results.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
@@ -290,7 +292,8 @@ class HloTestBase : public ManifestCheckingTest {
   // or loaded from a file.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
   [[nodiscard]] ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
@@ -413,6 +416,7 @@ class HloTestBase : public ManifestCheckingTest {
 
   bool verifier_layout_sensitive_;
   bool allow_mixed_precision_in_hlo_verifier_;
+  HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
@@ -429,9 +433,12 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetTestPlatform();
 
  private:
+  // Creates or retrieves the allocator.
+  se::DeviceMemoryAllocator* GetAllocator();
   // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on

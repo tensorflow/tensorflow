@@ -47,10 +47,12 @@ constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 constexpr char kXPlanePb[] = "xplane.pb";
 
-Status DumpToolData(absl::string_view run_dir, absl::string_view host,
-                    const tensorflow::ProfileToolData& tool, std::ostream* os) {
+absl::Status DumpToolData(absl::string_view run_dir, absl::string_view host,
+                          const tensorflow::ProfileToolData& tool,
+                          std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
-  if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return OkStatus();
+  if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix))
+    return absl::OkStatus();
   std::string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
   std::string path =
       ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
@@ -58,11 +60,11 @@ Status DumpToolData(absl::string_view run_dir, absl::string_view host,
   if (os) {
     *os << "Dumped tool data for " << tool.name() << " to " << path << '\n';
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status WriteGzippedDataToFile(const std::string& filepath,
-                              const std::string& data) {
+absl::Status WriteGzippedDataToFile(const std::string& filepath,
+                                    const std::string& data) {
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filepath, &file));
   io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
@@ -72,17 +74,17 @@ Status WriteGzippedDataToFile(const std::string& filepath,
   TF_RETURN_IF_ERROR(buffer.Append(data));
   TF_RETURN_IF_ERROR(buffer.Close());
   TF_RETURN_IF_ERROR(file->Close());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetOrCreateRunDir(const std::string& repository_root,
-                         const std::string& run, std::string* run_dir,
-                         std::ostream* os) {
+absl::Status GetOrCreateRunDir(const std::string& repository_root,
+                               const std::string& run, std::string* run_dir,
+                               std::ostream* os) {
   // Creates a directory to <repository_root>/<run>/.
   *run_dir = ProfilerJoinPath(repository_root, run);
   *os << "Creating directory: " << *run_dir << '\n';
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*run_dir));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -92,11 +94,11 @@ std::string GetTensorBoardProfilePluginDir(const std::string& logdir) {
   return ProfilerJoinPath(logdir, kPluginName, kProfileName);
 }
 
-Status SaveProfile(const std::string& repository_root, const std::string& run,
-                   const std::string& host,
-                   const tensorflow::ProfileResponse& response,
-                   std::ostream* os) {
-  if (response.tool_data().empty()) return OkStatus();
+absl::Status SaveProfile(const std::string& repository_root,
+                         const std::string& run, const std::string& host,
+                         const tensorflow::ProfileResponse& response,
+                         std::ostream* os) {
+  if (response.tool_data().empty()) return absl::OkStatus();
   std::string run_dir;
   TF_RETURN_IF_ERROR(GetOrCreateRunDir(repository_root, run, &run_dir, os));
   // Windows file names do not support colons.
@@ -104,16 +106,17 @@ Status SaveProfile(const std::string& repository_root, const std::string& run,
   for (const auto& tool_data : response.tool_data()) {
     TF_RETURN_IF_ERROR(DumpToolData(run_dir, hostname, tool_data, os));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SaveGzippedToolData(const std::string& repository_root,
-                           const std::string& run, const std::string& host,
-                           const std::string& tool_name,
-                           const std::string& data) {
+absl::Status SaveGzippedToolData(const std::string& repository_root,
+                                 const std::string& run,
+                                 const std::string& host,
+                                 const std::string& tool_name,
+                                 const std::string& data) {
   std::string run_dir;
   std::stringstream ss;
-  Status status = GetOrCreateRunDir(repository_root, run, &run_dir, &ss);
+  absl::Status status = GetOrCreateRunDir(repository_root, run, &run_dir, &ss);
   LOG(INFO) << ss.str();
   TF_RETURN_IF_ERROR(status);
   std::string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
@@ -121,7 +124,7 @@ Status SaveGzippedToolData(const std::string& repository_root,
       ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool_name));
   TF_RETURN_IF_ERROR(WriteGzippedDataToFile(path, data));
   LOG(INFO) << "Dumped gzipped tool data for " << tool_name << " to " << path;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string GetCurrentTimeStampAsString() {
@@ -129,9 +132,9 @@ std::string GetCurrentTimeStampAsString() {
                           absl::LocalTimeZone());
 }
 
-Status SaveXSpace(const std::string& repository_root, const std::string& run,
-                  const std::string& host,
-                  const tensorflow::profiler::XSpace& xspace) {
+absl::Status SaveXSpace(const std::string& repository_root,
+                        const std::string& run, const std::string& host,
+                        const tensorflow::profiler::XSpace& xspace) {
   std::string log_dir = ProfilerJoinPath(repository_root, run);
   VLOG(1) << "Creating " << log_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));

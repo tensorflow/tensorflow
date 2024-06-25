@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
@@ -68,7 +69,7 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
 
   const int num_non_default_dilations =
       llvm::count_if(conv_op.getDilations(), [](mlir::Attribute dilation) {
-        return dilation.cast<mlir::IntegerAttr>().getInt() != 1;
+        return mlir::cast<mlir::IntegerAttr>(dilation).getInt() != 1;
       });
   if (num_non_default_dilations > 0)
     return errors::InvalidArgument(
@@ -78,21 +79,21 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
   // TODO(b/208700444): support convolution with strides greater than 1.
   const int num_non_default_strides =
       llvm::count_if(conv_op.getStrides(), [](mlir::Attribute stride) {
-        return stride.cast<mlir::IntegerAttr>().getInt() != 1;
+        return mlir::cast<mlir::IntegerAttr>(stride).getInt() != 1;
       });
   if (num_non_default_strides > 0)
     return errors::InvalidArgument(
         "Only stride 1 is supported for convolution with spatial partitions.");
 
   mlir::Value input = conv_op.getInput();
-  auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
+  auto input_type = mlir::dyn_cast<mlir::RankedTensorType>(input.getType());
   if (!input_type || !input_type.hasStaticShape())
     return errors::InvalidArgument(
         "Input must have static shapes for convolution with spatial "
         "partitions.");
 
   mlir::Value filter = conv_op.getFilter();
-  auto filter_type = filter.getType().dyn_cast<mlir::RankedTensorType>();
+  auto filter_type = mlir::dyn_cast<mlir::RankedTensorType>(filter.getType());
   if (!filter_type || !filter_type.hasStaticShape())
     return errors::InvalidArgument(
         "Filter must have static shapes for convolution with spatial "
@@ -114,7 +115,7 @@ mlir::Value PadInputOnUnshardedDim(mlir::OpBuilder& builder,
                                    mlir::Value input_tensor, int curr_input_dim,
                                    int64_t curr_filter_dim_size) {
   auto input_tensor_type =
-      input_tensor.getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(input_tensor.getType());
   auto input_tensor_shape = input_tensor_type.getShape();
 
   const size_t paddings_flat_length = input_tensor_type.getRank() * 2;
@@ -171,7 +172,7 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
   const auto output_num_shards = output_layout.num_shards();
 
   auto filter_type =
-      conv_op.getFilter().getType().template dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(conv_op.getFilter().getType());
   auto filter_shape = filter_type.getShape();
 
   int begin_input_dim = -1, end_input_dim = -1;
@@ -194,9 +195,8 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
        ++curr_input_dim) {
     int curr_filter_dim = curr_input_dim - begin_input_dim;
 
-    auto input_type = conv_op.getInput()
-                          .getType()
-                          .template dyn_cast<mlir::RankedTensorType>();
+    auto input_type =
+        mlir::dyn_cast<mlir::RankedTensorType>(conv_op.getInput().getType());
     auto input_shape = input_type.getShape();
 
     if (input_sharding_spec[curr_input_dim] == Layout::kUnshardedDim) {
@@ -410,7 +410,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropInputTensor(
   // HandleConvBackpropInput which expects there to be a layout here.
   mlir::TF::ShapeAttr global_input_shape_shape = mlir::TF::ShapeAttr::get(
       builder.getContext(),
-      global_input_shape.getType().cast<mlir::TensorType>());
+      mlir::cast<mlir::TensorType>(global_input_shape.getType()));
   mlir::TF::DTensorLayout global_input_shape_with_layout =
       builder.create<mlir::TF::DTensorLayout>(
           conv_op->getLoc(), global_input_shape,
@@ -536,7 +536,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropFilterTensor(
   // HandleConvBackpropInput which expects there to be a layout here.
   mlir::TF::ShapeAttr global_filter_shape_shape = mlir::TF::ShapeAttr::get(
       builder.getContext(),
-      global_filter_shape_const.getType().cast<mlir::TensorType>());
+      mlir::cast<mlir::TensorType>(global_filter_shape_const.getType()));
   mlir::TF::DTensorLayout global_filter_shape_with_layout =
       builder.create<mlir::TF::DTensorLayout>(
           conv_op->getLoc(), global_filter_shape_const,

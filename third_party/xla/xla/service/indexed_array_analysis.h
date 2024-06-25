@@ -253,7 +253,7 @@ class IndexedArrayAnalysis {
  private:
   // Helper function that ensures that every HLO instruction that is
   // transitively used by `root` has an entry in `cache_`.
-  Status TraverseAndPopulateCache(const HloInstruction* root);
+  absl::Status TraverseAndPopulateCache(const HloInstruction* root);
 
   // Creates an Array instance for `instr` under the assumption that all
   // operations of `instr` are present in `cache_`.
@@ -370,7 +370,9 @@ class IndexedArrayAnalysis {
 // unconditionally add to the regular HLO pass pipeline.
 class IndexedArrayAnalysisPrinterPass : public HloModulePass {
  public:
-  absl::string_view name() const override;
+  absl::string_view name() const override {
+    return "indexed-array-analysis-printer-pass";
+  }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,

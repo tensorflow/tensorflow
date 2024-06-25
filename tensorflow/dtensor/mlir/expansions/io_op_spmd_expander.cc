@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -99,7 +100,7 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
       mlir::Value zero_scalar,
       CreateZeroScalarConst(
           builder, location,
-          device_id.getType().cast<mlir::TensorType>().getElementType()));
+          mlir::cast<mlir::TensorType>(device_id.getType()).getElementType()));
 
   mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
       location, device_id, zero_scalar,

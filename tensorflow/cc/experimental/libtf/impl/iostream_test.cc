@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
 #include "tensorflow/cc/experimental/libtf/impl/tensor_spec.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tf {

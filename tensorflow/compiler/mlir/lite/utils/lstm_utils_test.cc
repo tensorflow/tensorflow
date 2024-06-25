@@ -134,22 +134,18 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   auto transpose_op = fused_lstm_func_.getBody().front().begin();
   transpose_op++;
-  EXPECT_EQ(
-      transpose_op->getOperand(0).getType().cast<RankedTensorType>().getDimSize(
-          0),
-      3);
-  EXPECT_EQ(
-      transpose_op->getOperand(0).getType().cast<RankedTensorType>().getDimSize(
-          1),
-      12);
-  EXPECT_EQ(
-      transpose_op->getResult(0).getType().cast<RankedTensorType>().getDimSize(
-          0),
-      12);
-  EXPECT_EQ(
-      transpose_op->getResult(0).getType().cast<RankedTensorType>().getDimSize(
-          1),
-      3);
+  EXPECT_EQ(mlir::cast<RankedTensorType>(transpose_op->getOperand(0).getType())
+                .getDimSize(0),
+            3);
+  EXPECT_EQ(mlir::cast<RankedTensorType>(transpose_op->getOperand(0).getType())
+                .getDimSize(1),
+            12);
+  EXPECT_EQ(mlir::cast<RankedTensorType>(transpose_op->getResult(0).getType())
+                .getDimSize(0),
+            12);
+  EXPECT_EQ(mlir::cast<RankedTensorType>(transpose_op->getResult(0).getType())
+                .getDimSize(1),
+            3);
 
   auto it = fused_lstm_func_.getBody().back().rbegin();
   EXPECT_EQ(it->getName().getStringRef(),
@@ -161,33 +157,31 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = false, so input2input is not None.
-  EXPECT_FALSE(it->getOperand(1).getType().isa<NoneType>());
+  EXPECT_FALSE(mlir::isa<NoneType>(it->getOperand(1).getType()));
   // input layer norm is None
-  EXPECT_TRUE(it->getOperand(20).getType().isa<NoneType>());
+  EXPECT_TRUE(mlir::isa<NoneType>(it->getOperand(20).getType()));
   // proj_bias is F32
-  EXPECT_TRUE(it->getOperand(17)
-                  .getType()
-                  .cast<RankedTensorType>()
+  EXPECT_TRUE(mlir::cast<RankedTensorType>(it->getOperand(17).getType())
                   .getElementType()
                   .isF32());
 
   // output gate bias is 0 since it is out of bounds of the bias tensor, so
   // we set its value as a const tensor of specified size and value 0.
-  EXPECT_TRUE(mlir::cast<mlir::arith::ConstantOp>(
-                  it->getOpOperand(15).get().getDefiningOp())
-                  .getValue()
-                  .cast<ElementsAttr>()
-                  .getValues<FloatAttr>()[0]
-                  .getValue()
-                  .isExactlyValue(0.0f));
+  EXPECT_TRUE(
+      mlir::cast<ElementsAttr>(mlir::cast<mlir::arith::ConstantOp>(
+                                   it->getOpOperand(15).get().getDefiningOp())
+                                   .getValue())
+          .getValues<FloatAttr>()[0]
+          .getValue()
+          .isExactlyValue(0.0f));
 
   EXPECT_EQ(fused_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getFunctionType().getResults();
   SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamic};
-  EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
+  EXPECT_EQ(mlir::cast<RankedTensorType>(output_types[0]).getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {
-    EXPECT_EQ(output_types[0].cast<RankedTensorType>().getDimSize(i),
+    EXPECT_EQ(mlir::cast<RankedTensorType>(output_types[0]).getDimSize(i),
               output_shape[i]);
   }
 }
@@ -215,7 +209,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = true, so input2input is None.
-  EXPECT_TRUE(it->getOperand(1).getType().isa<NoneType>());
+  EXPECT_TRUE(mlir::isa<NoneType>(it->getOperand(1).getType()));
 }
 
 TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
@@ -242,23 +236,25 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   EXPECT_EQ(it->getNumOperands(), 24);
   EXPECT_EQ(it->getNumResults(), 1);
   // cifg = false, so input2input is not None.
-  EXPECT_FALSE(it->getOperand(1).getType().isa<NoneType>());
+  EXPECT_FALSE(mlir::isa<NoneType>(it->getOperand(1).getType()));
 
   // input layer norm
-  EXPECT_FALSE(it->getOperand(20).getType().isa<NoneType>());
+  EXPECT_FALSE(mlir::isa<NoneType>(it->getOperand(20).getType()));
+  EXPECT_EQ(mlir::cast<RankedTensorType>(it->getOperand(20).getType())
+                .getShape()
+                .size(),
+            1);
   EXPECT_EQ(
-      it->getOperand(20).getType().cast<RankedTensorType>().getShape().size(),
-      1);
-  EXPECT_EQ(it->getOperand(20).getType().cast<RankedTensorType>().getDimSize(0),
-            3);
+      mlir::cast<RankedTensorType>(it->getOperand(20).getType()).getDimSize(0),
+      3);
 
   EXPECT_EQ(fused_ln_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_ln_lstm_func_.getFunctionType().getResults();
   SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamic};
-  EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
+  EXPECT_EQ(mlir::cast<RankedTensorType>(output_types[0]).getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {
-    EXPECT_EQ(output_types[0].cast<RankedTensorType>().getDimSize(i),
+    EXPECT_EQ(mlir::cast<RankedTensorType>(output_types[0]).getDimSize(i),
               output_shape[i]);
   }
 }

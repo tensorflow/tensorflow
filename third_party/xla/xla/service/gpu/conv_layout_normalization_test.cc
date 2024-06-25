@@ -16,38 +16,14 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class ConvolutionLayoutNormalizationTest : public HloTestBase {
- public:
-  ConvolutionLayoutNormalizationTest()
-      : HloTestBase(GetTestPlatform(), GetTestPlatform(),
-                    /*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/true, {}) {}
-
-  // Run and compare HLO output with and without layouts normalized.
-  void RunAndCompareWithLayoutsNormalized(const char* hlo) {
-    EXPECT_TRUE(
-        RunAndCompare(hlo, ErrorSpec{1e-3, 1e-3}, [&](HloModule* module) {
-          DebugOptions opts = module->config().debug_options();
-
-          // We are setting it to false, as the test runner will have it `true`
-          // due to the method below.
-          opts.set_xla_gpu_normalize_layouts(false);
-          module->mutable_config().set_debug_options(opts);
-        }));
-  }
-
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions opts = HloTestBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_normalize_layouts(true);
-    return opts;
-  }
-};
+using ConvolutionLayoutNormalizationTest = HloTestBase;
 
 TEST_F(ConvolutionLayoutNormalizationTest, BackwardInput) {
   const char* hlo = R"(
@@ -66,8 +42,6 @@ HloModule TestModule
 }
 )";
 
-  RunAndCompareWithLayoutsNormalized(hlo);
-
   MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[1,136,23]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=bf0_oi0->bf0, custom_call_target="__cudnn$convBackwardInput"
   )");
@@ -84,7 +58,6 @@ ENTRY %TestComputation {
 }
 )";
 
-  RunAndCompareWithLayoutsNormalized(hlo);
   MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[2,128,1,378]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
   )");
@@ -107,8 +80,6 @@ ENTRY TestComputation {
   ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
 }
 )";
-
-  RunAndCompareWithLayoutsNormalized(hlo);
 
   MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[8,32,4,5,5]{4,3,2,1,0}, u8[0]{0}) custom-call([[bitcast_8_0:%[^ ]+]], [[fusion_1:%[^ ]+]], [[bias_2:%[^ ]+]]), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=bf012_oi012->bf012, custom_call_target="__cudnn$convBiasActivationForward"

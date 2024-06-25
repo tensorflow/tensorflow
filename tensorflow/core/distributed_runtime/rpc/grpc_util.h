@@ -22,11 +22,11 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/impl/codegen/proto_utils.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tsl/distributed_runtime/rpc/grpc_util.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

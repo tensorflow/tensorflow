@@ -99,7 +99,8 @@ void RingGatherer::Run(StatusCallback done) {
   // We are running in a blockable thread and the callback can't block so
   // just wait here on the copy.
   {
-    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("MemCpyAsync",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     Notification note;
     Status status;
     Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
@@ -144,8 +145,8 @@ bool RingGatherer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
-    profiler::TraceMe activity("WaitForQueuedEvents",
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("WaitForQueuedEvents",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -166,7 +167,7 @@ bool RingGatherer::RunAsyncParts() {
 
   // Loop until all RingFields have advanced to completion.
   {
-    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("Loop", tsl::profiler::TraceMeLevel::kInfo);
     while (field_done_count < rfv_.size()) {
       VLOG(4) << FieldState();
       // Wait for a RingField to appear in the ready_queue.

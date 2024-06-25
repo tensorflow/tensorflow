@@ -38,7 +38,7 @@ table Environment {
   model_type:ModelType;
 
   // Model identification hash.
-  model_hash:int64;
+  model_hash:uint64;
 
 }
 

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "OneHot"
   input_arg {
     name: "indices"

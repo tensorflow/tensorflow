@@ -280,8 +280,9 @@ class ClientAndServer {
     auto req = std::make_unique<IfrtRequest>();
     req->mutable_request_metadata()->set_op_id(op_id);
     TF_RETURN_IF_ERROR(client_session_->Enqueue(
-        std::move(req),
-        [q](GrpcClientSession::Response resp) { q->Push(resp.status()); }));
+        std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
+          q->Push(resp.status());
+        }));
 
     return q;
   }

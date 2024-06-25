@@ -47,7 +47,7 @@ class ProfilerSessionWrapper {
   tensorflow::Status ExportToTensorBoard();
 
  private:
-  std::unique_ptr<tensorflow::ProfilerSession> session_;
+  std::unique_ptr<tsl::ProfilerSession> session_;
   tensorflow::string logdir_;
 };
 

@@ -26,7 +26,6 @@
   * `PYTHON_BIN_PATH`: The python binary path
 """
 
-load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 load(
     "@bazel_tools//tools/cpp:lib_cc_configure.bzl",
     "escape_string",
@@ -38,6 +37,7 @@ load(
     "find_vc_path",
     "setup_vc_env_vars",
 )
+load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 load(
     "//third_party/remote_config:common.bzl",
     "config_repo_label",

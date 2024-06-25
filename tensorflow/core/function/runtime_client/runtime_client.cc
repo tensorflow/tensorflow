@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -123,7 +124,8 @@ Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   GraphExportConfig config;
   FunctionDef fdef;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(fop_proper, config, &fdef),
+      tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(fop_proper, config,
+                                                          &fdef),
       "creating function ", fname);
   return CreateFunction(fdef);
 }

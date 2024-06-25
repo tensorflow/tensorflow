@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -79,11 +79,11 @@ class HloPassPipeline : public HloPassInterface {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> RunOnModuleGroup(
+  absl::StatusOr<bool> RunOnModuleGroup(
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -114,18 +114,19 @@ class HloPassPipeline : public HloPassInterface {
   // `execution_threads`. Empty `execution_threads` means all execution threads
   // are included. HloT can be either HloModule or HloModuleGroup.
   template <typename HloT>
-  Status RunInvariantCheckers(HloT* hlo, absl::string_view after_pass_name) {
+  absl::Status RunInvariantCheckers(HloT* hlo,
+                                    absl::string_view after_pass_name) {
     return RunInvariantCheckers(hlo, after_pass_name, /*execution_threads=*/{});
   }
   template <typename HloT>
-  Status RunInvariantCheckers(
+  absl::Status RunInvariantCheckers(
       HloT* hlo, absl::string_view after_pass_name,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Helper which runs the given pass on the given HLO. HloT can be either
   // HloModule or HloModuleGroup.
   template <typename HloT>
-  StatusOr<bool> RunPassesInternal(
+  absl::StatusOr<bool> RunPassesInternal(
       HloT* hlo, const DebugOptions& debug_options,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -134,14 +135,14 @@ class HloPassPipeline : public HloPassInterface {
   // empty thread list means all `execution_threads` are considered. These
   // helpers enable templating of the core of the pipeline logic by providing
   // HloModule and HloModuleGroup specific methods with the same name.
-  static StatusOr<bool> RunHelper(
+  static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
     return changed;
   }
-  static StatusOr<bool> RunHelper(
+  static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(

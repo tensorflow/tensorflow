@@ -92,7 +92,7 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::GetArrayFor(
   return FindOrDie(cache_, instr);
 }
 
-Status IndexedArrayAnalysis::TraverseAndPopulateCache(
+absl::Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     const HloInstruction* root) {
   // Depth first search over the DAG, invoking ComputeArrayFor in post order.
   // The HLO instructions already in the cache are considered leaves.
@@ -134,7 +134,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
@@ -1144,10 +1144,6 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
   }
 
   return nullptr;
-}
-
-absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
-  return "indexed-array-analysis-printer-pass";
 }
 
 absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(

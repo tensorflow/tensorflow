@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/determinism.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/determinism.h"
 using tsl::OpDeterminismRequired;
 
 namespace stream_executor {
@@ -75,7 +75,7 @@ RocBlasType_t<T> *complex_cast(DeviceMemory<T> *a) {
   return reinterpret_cast<RocBlasType_t<T> *>(GpuMemoryMutable(a));
 }
 
-static string ToString(rocblas_status status) {
+static std::string ToString(rocblas_status status) {
 #define XVAL(x) \
   case x:       \
     return #x
@@ -222,6 +222,26 @@ rocblas_side ROCMBlasSide(blas::Side side) {
   }
 }
 
+int DtypeSize(blas::DataType type) {
+  switch (type) {
+    case blas::DataType::kHalf:
+    case blas::DataType::kBF16:
+      return 2;
+    case blas::DataType::kFloat:
+      return 4;
+    case blas::DataType::kDouble:
+      return 8;
+    case blas::DataType::kInt8:
+      return 1;
+    case blas::DataType::kComplexFloat:
+      return 8;
+    case blas::DataType::kComplexDouble:
+      return 16;
+    default:
+      return 0;
+  }
+}
+
 absl::StatusOr<rocblas_datatype> AsRocBlasType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kHalf:
@@ -343,6 +363,14 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                  << ": " << ToString(ret);
     }
   }
+#if TF_ROCM_VERSION >= 60000
+  if (auto *workspace = GetWorkspace(); workspace != nullptr &&
+                                        workspace->opaque() != nullptr &&
+                                        workspace->size() > 0) {
+    (void)wrap::rocblas_set_workspace(blas_, workspace->opaque(),
+                                      workspace->size());
+  }
+#endif
 
   ret = rocblas_func(blas_, std::forward<Args>(args)...);
   if (ret != rocblas_status_success) {
@@ -432,6 +460,15 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float,
  *    and ex functions expect the same type as the compute type (i.e. floats.)
  *
  **/
+using GemmCallTrace = StreamExecutor::GemmCallTrace;
+
+// Log the GEMM operation if the logging mode is enabled.
+void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
+                              blas::CallContext context, uint64_t size1,
+                              uint64_t size2) {
+  auto status =
+      parent_->RecordApiTrace(GemmCallTrace{op, (int)context, size1, size2});
+}
 
 absl::Status ROCMBlas::DoBlasGemm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
@@ -439,6 +476,9 @@ absl::Status ROCMBlas::DoBlasGemm(
     const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,
     const void *beta, DeviceMemoryBase *c, int ldc,
     const NumericOptions &numeric_options, blas::CallContext context) {
+  MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
+                 m * k * DtypeSize(dtype), n * k * DtypeSize(dtype));
+
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
@@ -530,7 +570,10 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -539,6 +582,8 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
                                   numeric_options, context));
 
   } else {
+    MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
+                   m * k * DtypeSize(type_a), n * k * DtypeSize(type_a));
     CheckPreconditions(transa, transb, m, n, k, type_a, lda, ldb);
     TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
     TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
@@ -586,7 +631,10 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -595,6 +643,8 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         ldb, stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
         context));
   } else {
+    MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
+                   b.size());
     VLOG(1) << absl::StreamFormat(
         "doing rocBLAS GEMM strided batched with Algorithm: at=%d bt=%d m=%u "
         "n=%u "
@@ -650,22 +700,25 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   auto blas_lambda = [this, out_algorithms](auto handle, auto &&blas_func,
                                             auto &&...rest) {
     rocblas_int num_sols = 0;
-
+    // If get_solutions call fails, we still can use the default (fallback)
+    // algorithm which is available for almost all number types.
     if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
                              nullptr, &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
+        ret == rocblas_status_success) {
+      solutions_.resize(num_sols);
+      if (ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
+                          solutions_.data(), &num_sols);
+          ret != rocblas_status_success) {
+        num_sols = 0;
+      }
     }
-    solutions_.resize(num_sols);
-    if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
-                             solutions_.data(), &num_sols);
-        ret != rocblas_status_success) {
-      return ret;
-    }
-    out_algorithms->resize(num_sols);
+    out_algorithms->resize(num_sols + 1);
+    (*out_algorithms)[0] = blas::kDefaultAlgorithm;
     for (rocblas_int i = 0; i < num_sols; i++) {
-      (*out_algorithms)[i] = solutions_[i];
+      (*out_algorithms)[i + 1] = solutions_[i];
     }
+    // Sort the list solutions by IDs
+    std::sort(out_algorithms->begin() + 1, out_algorithms->end());
     return rocblas_status_success;
   };
 
@@ -690,7 +743,6 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   ASSIGN_OR_FALSE(auto roc_comp_type, AsRocBlasComputeType(c->compute_type));
 
   if (c->batch_size == 1) {
-    // TODO: we should possibly use GemmFloat16Flags(type_a, context) here..
     return DoBlasInternalFailureOK(
         NameWrap{blas_lambda}, stream, true,
         wrap::rocblas_gemm_ex_get_solutions, ROCMBlasTranspose(a.transpose),
@@ -1023,6 +1075,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
     const NumericOptions &numeric_options, ScratchAllocator *scratch_allocator,
     blas::CallContext context) {
+  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a.size(),
+                 b.size());
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
   absl::Status status;
@@ -1057,6 +1111,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     const NumericOptions &numeric_options, ScratchAllocator *scratch_allocator,
     blas::CallContext context) {
+  MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(),
+                 b_array.size());
   const Eigen::bfloat16 alpha_bf16(alpha);
   const Eigen::bfloat16 beta_bf16(beta);
 
@@ -1078,6 +1134,8 @@ bool ROCMBlas::DoBlasGemmBatched(
       DeviceMemorySlice<T> c_array, int ldc, int batch_count,                  \
       const NumericOptions &numeric_options,                                   \
       ScratchAllocator *scratch_allocator, blas::CallContext context) {        \
+    MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
+                   b_array.size());                                            \
     absl::Status status = DoBlasGemmBatchedInternal(                           \
         Fun, stream, transa, transb, m, n, k, alpha, a_array, lda, b_array,    \
         ldb, beta, c_array, ldc, batch_count, scratch_allocator);              \
@@ -1144,6 +1202,8 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, stride_a,
       stride_b, stride_c, batch_count);
+  MaybeLogGemmOp(GemmCallTrace::GemmType::kStridedBatched, context, a.size(),
+                 b.size());
 
   absl::Status status;
   auto call_gemm = [&](auto func, auto type) {
@@ -1198,7 +1258,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
   }
 }
 
-absl::Status ROCMBlas::GetVersion(string *version) {
+absl::Status ROCMBlas::GetVersion(std::string *version) {
 #if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
@@ -1231,8 +1291,7 @@ void initialize_rocblas() {
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
-                [](internal::StreamExecutorInterface *parent)
-                    -> blas::BlasSupport * {
+                [](StreamExecutor *parent) -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
                       dynamic_cast<gpu::GpuExecutor *>(parent);
                   if (rocm_executor == nullptr) {

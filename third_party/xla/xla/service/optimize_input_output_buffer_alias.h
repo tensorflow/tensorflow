@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -73,10 +74,13 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -93,14 +97,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
+using absl::Status;
+using absl::StatusOr;
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
@@ -115,8 +118,6 @@ using mlir::Value;
 using mlir::func::FuncOp;
 using tflite::OperatorT;
 using tflite::TensorT;
-using xla::Status;
-using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
@@ -519,7 +520,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -532,7 +533,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
     int32_t comparator_idx = opts->comparator_subgraph_index;
@@ -545,7 +546,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("comparator", comparator_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -566,7 +567,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
     op_state.addAttribute("body", body_attr);
     op_state.addAttribute("cond", cond_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
     uint32_t subgraph_idx = opts->update_computation_subgraph_index;
@@ -580,10 +581,10 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   // skip if not supported
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddOpIntermediatesForLstm(
@@ -612,7 +613,7 @@ Status AddOpIntermediatesForLstm(
       op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(krzysd) Handle function calls
@@ -747,7 +748,7 @@ StatusOr<Operation*> ConvertOp(
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
   if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    auto status = ::tensorflow::OkStatus();
+    auto status = absl::OkStatus();
 
     std::vector<uint8_t> custom_options;
 
@@ -770,6 +771,20 @@ StatusOr<Operation*> ConvertOp(
     mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
     mlir::BuiltinOptions2ToAttributes(op.builtin_options_2, builder, attrs);
   }
+
+  if (builtin_code == tflite::BuiltinOperator_STABLEHLO_COMPOSITE) {
+    auto composite_options = op.builtin_options_2.AsStableHLOCompositeOptions();
+    std::string decomposition = "";
+    if (composite_options->decomposition_subgraph_index > -1) {
+      decomposition =
+          func_names.at(composite_options->decomposition_subgraph_index);
+    }
+
+    attrs.emplace_back(builder.getNamedAttr(
+        "decomposition",
+        mlir::vhlo::StringV1Attr::get(builder.getContext(), decomposition)));
+  }
+
   op_state.addAttributes(attrs);
 
   // Handle the conversion from subgraph index to functions for If and While. We
@@ -1616,6 +1631,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   if (!disable_vhlo_to_stablehlo) {
     mlir::PassManager pass_manager(module.getContext());
     pass_manager.addPass(mlir::odml::createLegalizeVhloToStablehloPass());
+    pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
     auto result = pass_manager.run(module);
     if (failed(result)) {
       return nullptr;

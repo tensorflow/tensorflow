@@ -77,7 +77,7 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 QueueRunner::~QueueRunner() {
@@ -118,7 +118,7 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
       return status_;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status QueueRunner::StartAndCollectCostGraph(Session* session, int wait_for_ms,
@@ -212,7 +212,7 @@ Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
   }
   mutex_lock l(*cg_mu_);
   cost_graph->MergeFrom(*cost_graph_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {

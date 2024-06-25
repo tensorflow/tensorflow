@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
@@ -32,6 +33,28 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+struct EdgeReshardingCost {
+  double communication_cost = 0;
+  double memory_cost = 0;
+
+  EdgeReshardingCost() : communication_cost(0), memory_cost(0) {}
+
+  EdgeReshardingCost(double communication_cost_, double memory_cost_)
+      : communication_cost(communication_cost_), memory_cost(memory_cost_) {}
+
+  EdgeReshardingCost operator+(const EdgeReshardingCost& other) const {
+    return EdgeReshardingCost(other.communication_cost + communication_cost,
+                              other.memory_cost + memory_cost);
+  }
+
+  std::string ToString() const {
+    return absl::StrCat("{communication_cost=", communication_cost,
+                        ", memory_cost=", memory_cost, "}");
+  }
+};
+
+using EdgeReshardingCostMatrix = Matrix<EdgeReshardingCost>;
+
 // A graph data structure to simplify the edge cost graph. It merges nodes and
 // performs path compression.
 class CostGraph {
@@ -39,20 +62,14 @@ class CostGraph {
   CostGraph(const StrategyGroups& strategy_groups,
             const AssociativeDotPairs& associative_dot_pairs);
 
-  Matrix CreateEdgeCommunicationCost(NodeIdx src_idx, NodeIdx dst_idx,
-                                     size_t in_node_idx,
-                                     StrategyGroup* strategy_group,
-                                     bool zero_cost = false);
+  EdgeReshardingCostMatrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx,
+                                          size_t in_node_idx,
+                                          StrategyGroup* strategy_group,
+                                          bool zero_cost = false);
 
-  Matrix CreateEdgeMemoryCost(NodeIdx src_idx, NodeIdx dst_idx,
-                              size_t in_node_idx, StrategyGroup* strategy_group,
-                              bool zero_cost = false);
+  EdgeReshardingCostMatrix GetEdgeCost(NodeIdx i, NodeIdx j);
 
-  Matrix GetEdgeCommunicationCost(NodeIdx i, NodeIdx j);
-
-  Matrix GetEdgeMemoryCost(NodeIdx i, NodeIdx j);
-
-  void AddEdgeCost(NodeIdx i, NodeIdx j, Matrix& cost, Matrix& memory_cost);
+  void AddEdgeCost(NodeIdx i, NodeIdx j, EdgeReshardingCostMatrix& cost);
 
   void RemoveEdge(NodeIdx i, NodeIdx j);
 
@@ -90,8 +107,8 @@ class CostGraph {
   std::vector<StableHashSet<int>> adjacency_;
   // The cost matrix between two nodes.
 
-  StableHashMap<std::pair<NodeIdx, NodeIdx>, Matrix> edge_communication_costs_;
-  StableHashMap<std::pair<NodeIdx, NodeIdx>, Matrix> edge_memory_costs_;
+  StableHashMap<std::pair<NodeIdx, NodeIdx>, EdgeReshardingCostMatrix>
+      edge_costs_;
   // The extra node costs introduced by merging nodes.
   std::vector<std::vector<double>> extra_node_costs_;
   // The reindexing vector of the node.

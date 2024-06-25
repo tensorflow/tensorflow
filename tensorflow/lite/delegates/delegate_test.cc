@@ -24,13 +24,14 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -447,8 +448,9 @@ struct OpaqueTestDelegate {
     delegate_state->delegate_prepared = true;
 
     TfLiteRegistration registration{};
-    registration.registration_external = TfLiteRegistrationExternalCreate(
-        kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1);
+    registration.registration_external = TfLiteOperatorCreateWithData(
+        kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1,
+        /*user_data=*/nullptr);
 
     registration.prepare = [](TfLiteContext* context,
                               TfLiteNode* node) -> TfLiteStatus {
@@ -1130,12 +1132,12 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
-TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
-  auto registration = TfLiteRegistrationExternalCreate(
-      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
-  TfLiteRegistrationExternalSetPrepare(
+TfLiteOperator* CreateTfLiteOperator() {
+  auto* registration = TfLiteOperatorCreateWithData(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1, /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepareWithData(
       registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         // If tensors are resized, the runtime should propagate shapes
         // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
@@ -1186,7 +1188,7 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
       TfLiteIntArray* execution_plan;
       TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
       return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_context, CreateTfLiteOperator(), execution_plan,
           opaque_delegate);
     };
     delegate_external_.flags = kTfLiteDelegateFlagsNone;

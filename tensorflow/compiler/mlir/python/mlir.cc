@@ -66,7 +66,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
-#include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -92,7 +91,6 @@ static void RegisterPasses() {
     mlir::registerTensorFlowPasses();
     mlir::TFDevice::registerTensorFlowDevicePasses();
     mlir::mhlo::registerAllMhloPasses();
-    mlir::lmhlo::registerAllLmhloPasses();
     // These are in compiler/mlir/xla and not part of the above MHLO
     // passes.
     mlir::mhlo::registerTfXlaPasses();

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -65,14 +65,73 @@ struct CostAnalysisOptions {
   float async_copy_bandwidth_scaling_factor = 1.0;
 };
 
-// A wrapper class around HloCostAnalysis with additional knowledge about the
+// An interface for getting basic HLO costs.
+class BaseCosts {
+ public:
+  virtual ~BaseCosts() = default;
+
+  // The size of shape in bytes
+  virtual int64_t GetShapeSize(const Shape& shape) = 0;
+
+  // The number of operand and output bytes accessed by instruction.
+  virtual float BytesAccessed(const HloInstruction& instruction) = 0;
+
+  // The number of bytes accessed by instruction, for operand operand_num, at
+  // shape_index.
+  virtual float OperandBytesAccessed(const HloInstruction& instruction,
+                                     int64_t operand_num,
+                                     const ShapeIndex& shape_index) = 0;
+
+  // The number of bytes accessed by instruction, in its output, at shape_index.
+  virtual float OutputBytesAccessed(const HloInstruction& instruction,
+                                    const ShapeIndex& shape_index) = 0;
+
+  // The bandwidth of copies to/from alternate memory.
+  virtual float BytesPerSecond() = 0;
+
+  // The compute cost of instruction. The compute cost assumes 0 memory transer
+  // is required.
+  virtual float ComputeSeconds(const HloInstruction& instruction) = 0;
+
+ protected:
+  BaseCosts() = default;
+};
+
+// An implementation of BaseCosts based on HloCostAnalysis.
+class HloCostAnalysisCosts : public BaseCosts {
+ public:
+  explicit HloCostAnalysisCosts(const HloCostAnalysis& hlo_cost_analysis);
+
+  ~HloCostAnalysisCosts() override = default;
+
+  int64_t GetShapeSize(const Shape& shape) override;
+  float BytesAccessed(const HloInstruction& instruction) override;
+  float OperandBytesAccessed(const HloInstruction& instruction,
+                             int64_t operand_num,
+                             const ShapeIndex& shape_index) override;
+  float OutputBytesAccessed(const HloInstruction& instruction,
+                            const ShapeIndex& shape_index) override;
+  float BytesPerSecond() override;
+  float ComputeSeconds(const HloInstruction& instruction) override;
+
+ private:
+  HloCostAnalysisCosts() = default;
+
+  const HloCostAnalysis& hlo_cost_analysis_;
+};
+
+// A wrapper class around BaseCosts with additional knowledge about the
 // bandwidths of different memory spaces.
 class CostAnalysis {
  public:
   // An optional Cache object may be provided to some of the methods below to
   // speed up the lookup.
   struct Cache {
+    // TODO(hanruobing): This map assumes the nested while loops have the same
+    // hard-coded trip count. We plan to replace it with a more accurate
+    // estimation provided by 'while_nest_trip_count'.
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
+    absl::flat_hash_map<const HloComputation*, float> computation_trip_count;
     absl::flat_hash_map<HloPosition, float> memory_boundedness;
   };
 
@@ -84,13 +143,11 @@ class CostAnalysis {
 
   virtual ~CostAnalysis() = default;
 
-  static StatusOr<std::unique_ptr<CostAnalysis>> Create(
-      const HloCostAnalysis& cost_analysis, const CostAnalysisOptions& options,
+  static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
+      BaseCosts& base_costs, const CostAnalysisOptions& options,
       const HloModule& module);
 
-  const HloCostAnalysis& hlo_cost_analysis() const {
-    return hlo_cost_analysis_;
-  }
+  BaseCosts& base_costs() const { return base_costs_; }
 
   // Returns a heuristic value that captures how much putting this tensor to the
   // alternate memory would help if the op is memory bound, or otherwise how far
@@ -208,24 +265,30 @@ class CostAnalysis {
   // means the instruction is not in a while loop.
   int CalculateComputationNestLevel(const HloInstruction* instruction,
                                     bool while_only) const;
+
+  // Returns the number of times the instruction will be executed.
+  // For instructions in nested loops, this is the product of the number of
+  // trip counts of outer loops.
+  float CalculateNestTripCount(const HloInstruction* instruction,
+                               Cache* cache = nullptr) const;
+
   float GetWhileNestMultiplier(int while_nest_level) const;
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  protected:
-  CostAnalysis(const HloCostAnalysis& hlo_cost_analysis,
-               const CostAnalysisOptions& options,
+  CostAnalysis(BaseCosts& base_costs, const CostAnalysisOptions& options,
                std::unique_ptr<HloAliasAnalysis> alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
                std::unique_ptr<CallGraph> call_graph)
-      : hlo_cost_analysis_(hlo_cost_analysis),
+      : base_costs_(base_costs),
         options_(options),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
  private:
-  const HloCostAnalysis& hlo_cost_analysis_;
+  BaseCosts& base_costs_;
   const CostAnalysisOptions options_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;

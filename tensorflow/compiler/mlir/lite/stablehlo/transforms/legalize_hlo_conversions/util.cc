@@ -203,7 +203,7 @@ Value InsertTranspose(Value value, int batch_dim, int feature_dim,
                       int default_batch_dim, int default_feature_dim,
                       int default_spatial_dim_start, int num_spatial_dims,
                       ConversionPatternRewriter& rewriter) {
-  auto type = value.getType().cast<RankedTensorType>();
+  auto type = mlir::cast<RankedTensorType>(value.getType());
   DenseIntElementsAttr permutation;
   const int spatial_dim_start = spatial_dimensions.front();
   if (!NeedsReformatTypeAndPermutation(
@@ -224,7 +224,7 @@ Value InsertTranspose(Value value, int batch_dim, int feature_dim,
 
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   IntegerType new_ele_type = rewriter.getIntegerType(32);
-  if (auto shaped_type = val.getType().dyn_cast<RankedTensorType>()) {
+  if (auto shaped_type = mlir::dyn_cast<RankedTensorType>(val.getType())) {
     ShapedType new_type =
         RankedTensorType::get(shaped_type.getShape(), new_ele_type);
     return rewriter.create<TFL::CastOp>(loc, new_type, val);

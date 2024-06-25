@@ -1,5 +1,6 @@
 """Generate custom flex delegate library."""
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -22,7 +23,6 @@ load(
     "tflite_jni_linkopts",
 )
 load("//tensorflow/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def generate_flex_kernel_header(
         name,

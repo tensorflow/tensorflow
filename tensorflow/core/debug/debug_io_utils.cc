@@ -421,7 +421,7 @@ Status DebugIO::PublishDebugMetadata(
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string> debug_urls,
+                                   const absl::Span<const string> debug_urls,
                                    const bool gated_grpc,
                                    const int64_t step_id) {
   int32_t num_failed_urls = 0;
@@ -496,7 +496,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string> debug_urls) {
+                                   const absl::Span<const string> debug_urls) {
   return PublishDebugTensor(debug_node_key, tensor, wall_time_us, debug_urls,
                             false);
 }

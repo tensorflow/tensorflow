@@ -17,15 +17,16 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace tensorflow {
 
 mlir::Location GetLocationWithoutOpType(mlir::Location loc) {
-  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
     auto locations = fused_loc.getLocations();
     if (!locations.empty()) {
       // Skip locations for propagating op_type metadata.
-      if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
+      if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(locations[0])) {
         if (name_loc.getName().strref().ends_with(":")) {
           if (locations.size() == 2)
             return locations[1];

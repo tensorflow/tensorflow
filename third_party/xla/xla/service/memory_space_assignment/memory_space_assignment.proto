@@ -135,6 +135,10 @@ message HloPositionMatcher {
   // If output of an instruction is a tuple and indexing into the
   // tuple is required.
   optional TupleShapeIndex tuple_index = 3;
+  // Filters instructions with output size in bytes greater or equal to a value.
+  optional int64 size_gte = 4;
+  // Filters instructions with output size in bytes less or equal to a value.
+  optional int64 size_lte = 5;
 }
 
 // Options to override preferred prefetch time for an operand.

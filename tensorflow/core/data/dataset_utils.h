@@ -279,25 +279,6 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
-// Constructs and stores the parameters for the CopyBatch function.
-struct CopyBatchParams {
-  Allocator* allocator;
-  std::function<void(std::function<void()>)>* runner;
-  int64 runner_threadpool_size;
-
-  explicit CopyBatchParams(IteratorContext* ctx) {
-    allocator = ctx->allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = ctx->runner_threadpool_size();
-  }
-
-  explicit CopyBatchParams(OpKernelContext* ctx) {
-    allocator = ctx->get_allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
-  }
-};
-
 // Copies the input elements to a batch.
 //
 // The `batch_elements` argument contains the individual elements to copy into a
@@ -305,7 +286,7 @@ struct CopyBatchParams {
 // copy.
 // The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
-Status CopyBatch(CopyBatchParams params,
+Status CopyBatch(AnyContext ctx,
                  std::vector<std::vector<Tensor>>&& batch_elements,
                  bool parallel_copy, std::vector<Tensor>* out_tensors);
 

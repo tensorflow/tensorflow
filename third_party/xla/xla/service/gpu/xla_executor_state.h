@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/gpu/infeed_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 
 // Defines XLA:GPU specific state that will be attached to the GpuExecutor.
 

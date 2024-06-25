@@ -114,15 +114,13 @@ namespace {
 // ShapeIndex in the given operand. Generally, instruction which pass through
 // values transparently without reading the value are not considered to use the
 // value.
-bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
-                        const HloInstruction* user) {
+bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
   switch (user->opcode()) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kCopy:
       // These instructions only access the top-level values of their
       // operand. Non-top-level (nested) values are passed through
       // transparently.
-      CHECK_EQ(operand_number, 0);
       return index.empty();
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
@@ -172,6 +170,19 @@ HloValue::Uses HloValue::ComputeUses() const {
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* const user : position.instruction->users()) {
+#ifndef NDEBUG
+      // If user is in the root positions of this value, it must be a root.
+      if (root_positions.contains(user)) {
+        CHECK(user->IsRoot());
+      }
+#endif  // NDEBUG
+      // Root instructions of computations are considered to be uses whether
+      // or not the root instruction itself actually uses the value.
+      if (!MayUseOperandValue(position.index, user) &&
+          !(user->IsRoot() && root_positions.contains(user))) {
+        continue;
+      }
+
       int i = -1;
       for (const auto& operand : user->operands()) {
         ++i;
@@ -180,28 +191,19 @@ HloValue::Uses HloValue::ComputeUses() const {
           continue;
         }
 
+        uses.emplace_back(user, i, position.index);
 #ifndef NDEBUG
-        // If user is in the root positions of this value, it must be a root.
-        if (root_positions.contains(user)) {
-          CHECK(user->IsRoot());
+        // The new use must not already exist in uses.
+        for (int index = 0; index + 1 < uses.size(); ++index) {
+          DCHECK_NE(uses[index], uses.back());
         }
 #endif  // NDEBUG
-
-        // Root instructions of computations are considered to be uses whether
-        // or not the root instruction itself actually uses the value.
-        if (MayUseOperandValue(i, position.index, user) ||
-            (user->IsRoot() && root_positions.contains(user))) {
-          HloUse new_use{user, i, position.index};
-
-#ifndef NDEBUG
-          // The new use must not already exist in uses.
-          for (const HloUse& use : uses) {
-            DCHECK_NE(use, new_use);
-          }
-#endif  // NDEBUG
-
-          uses.push_back(std::move(new_use));
-        }
+      }
+      // In case of HloOpcode::kGetTupleElement or HloOpcode::kCopy instruction,
+      // ensure that user has at most one operand.
+      if (user->opcode() == HloOpcode::kGetTupleElement ||
+          user->opcode() == HloOpcode::kCopy) {
+        CHECK_LE(i, 0);
       }
     }
   }

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/runtime/memset_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -49,7 +49,7 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
         literal.size_bytes());
     int64_t num_bytes = literal_bytes.size();
 
-    const Shape dest_shape = instr->shape();
+    const Shape& dest_shape = instr->shape();
 
     Thunk::ThunkInfo thunk_info =
         Thunk::ThunkInfo::WithProfileAnnotation(instr);

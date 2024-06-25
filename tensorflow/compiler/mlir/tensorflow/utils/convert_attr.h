@@ -27,12 +27,12 @@ using tsl::StatusOr;
 // Converts non func AttrValue proto into an MLIR attribute. Func attribute is
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
-StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
-                                                       mlir::Builder* builder);
+absl::StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(
+    const AttrValue& value, mlir::Builder* builder);
 
 // Converts all kinds of AttrValue proto into an MLIR attribute.
-StatusOr<mlir::Attribute> ConvertAttributeValue(const AttrValue& value,
-                                                mlir::Builder* builder);
+absl::StatusOr<mlir::Attribute> ConvertAttributeValue(const AttrValue& value,
+                                                      mlir::Builder* builder);
 
 }  // namespace tensorflow
 

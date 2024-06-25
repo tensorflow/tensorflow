@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tsl {
 
-tensorflow::StatusProto StatusToProto(const Status& s) {
+tensorflow::StatusProto StatusToProto(const absl::Status& s) {
   tensorflow::StatusProto status_proto;
   if (s.ok()) {
     return status_proto;
@@ -36,13 +36,13 @@ tensorflow::StatusProto StatusToProto(const Status& s) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status StatusFromProto(const tensorflow::StatusProto& proto,
-                       absl::SourceLocation loc) {
+absl::Status StatusFromProto(const tensorflow::StatusProto& proto,
+                             absl::SourceLocation loc) {
   if (proto.code() == tensorflow::error::OK) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return Status(static_cast<absl::StatusCode>(proto.code()), proto.message(),
-                loc);
+  return absl::Status(static_cast<absl::StatusCode>(proto.code()),
+                      proto.message(), loc);
 }
 #else
 Status StatusFromProto(const tensorflow::StatusProto& proto) {

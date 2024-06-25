@@ -85,23 +85,36 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
     Value operand = op->getOperand(index);
     auto inserted_value = values->insert(operand).second;
     if (inserted_value) continue;
-    // We can only clone the constant op at this point.
-    // Since all ops have been legalized to tflite ops, so we only care about
-    // ConstOp or QConstOp or mlir constant op/
+    // We can only clone the constant op or const->dequantize combo. The latter
+    // case is useful for float16 quantization. Since all ops have been
+    // legalized to tflite ops, so we only care about ConstOp or QConstOp or
+    // mlir constant op.
     Operation* input_op = operand.getDefiningOp();
     if (input_op == nullptr) return failure();
 
     Attribute attr;
-    if (!matchPattern(input_op, m_Constant(&attr))) {
+    if (matchPattern(input_op, m_Constant(&attr))) {
+      // Constant case.
+      builder->setInsertionPoint(op);
+      Operation* duplicated_input_op = builder->clone(*input_op);
+
+      // Rewire the inputs.
+      op->setOperand(index, duplicated_input_op->getResult(0));
+    } else if (auto dq = dyn_cast<DequantizeOp>(input_op);
+               dq && matchPattern(dq.getInput(), m_Constant(&attr))) {
+      // Constant -> Dequantize case.
+      builder->setInsertionPoint(op);
+      Operation* duplicated_input_op =
+          builder->clone(*dq.getInput().getDefiningOp());
+      Operation* duplicated_dq_op = builder->clone(*dq);
+      // Rewire the inputs.
+      duplicated_dq_op->setOperand(0, duplicated_input_op->getResult(0));
+      op->setOperand(index, duplicated_dq_op->getResult(0));
+    } else {
       op->emitError()
           << "We cannot duplicate the value since it's not constant.\n";
       return failure();
     }
-    builder->setInsertionPoint(op);
-    Operation* duplicated_input_op = builder->clone(*input_op);
-
-    // Rewire the inputs.
-    op->setOperand(index, duplicated_input_op->getResult(0));
   }
   return success();
 }

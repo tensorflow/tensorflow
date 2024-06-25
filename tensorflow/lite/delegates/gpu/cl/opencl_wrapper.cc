@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace gpu {
@@ -83,7 +84,8 @@ void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
 #define LoadFunction(function) \
   function =                   \
       reinterpret_cast<PFN_##function>(GetProcAddress(libopencl, #function));
-
+#elif defined(__LINUX_GOOGLE__) && !defined(__aarch64__)
+#define LoadFunction(function) function = ::function;
 #else
 #define LoadFunction(function) \
   function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
@@ -113,23 +115,6 @@ absl::Status LoadOpenCL() {
   }
 #else
   void* libopencl = nullptr;
-#ifdef __ANDROID__
-  // Pixel phone or auto?
-  libopencl =
-      AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
-  if (!libopencl) {
-    libopencl =
-        AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
-  }
-  if (libopencl) {
-    typedef void (*enableOpenCL_t)();
-    enableOpenCL_t enableOpenCL =
-        reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
-    enableOpenCL();
-    LoadOpenCLFunctions(libopencl, true);
-    return absl::OkStatus();
-  }
-#endif
 #ifdef __APPLE__
   static const char* kClLibName =
       "/System/Library/Frameworks/OpenCL.framework/OpenCL";
@@ -138,19 +123,40 @@ absl::Status LoadOpenCL() {
 #endif
 #ifdef __ANDROID__
   libopencl = AndroidDlopenSphalLibrary(kClLibName, RTLD_NOW | RTLD_LOCAL);
+  if (!libopencl) {
+    // Legacy Pixel phone or auto path?
+    libopencl =
+        AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+    if (!libopencl) {
+      libopencl =
+          AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
+    }
+    if (libopencl) {
+      typedef void (*enableOpenCL_t)();
+      enableOpenCL_t enableOpenCL =
+          reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
+      enableOpenCL();
+      LoadOpenCLFunctions(libopencl, true);
+      return absl::OkStatus();
+    }
+  }
 #else
   libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
 #endif
   if (libopencl) {
+    TFLITE_LOG(INFO) << "Loaded OpenCL library with dlopen.";
     LoadOpenCLFunctions(libopencl, false);
     return absl::OkStatus();
   }
+  TFLITE_LOG(INFO) << "Failed to load OpenCL library with dlopen: " << dlerror()
+                   << ". Trying ICD loader.";
   // Check if OpenCL functions are found via OpenCL ICD Loader.
   LoadOpenCLFunctions(libopencl, false);
   if (clGetPlatformIDs != nullptr) {
     cl_uint num_platforms;
     cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
     if (status == CL_SUCCESS && num_platforms != 0) {
+      TFLITE_LOG(INFO) << "Loaded OpenCL library with ICD loader.";
       return absl::OkStatus();
     }
     return absl::UnknownError("OpenCL is not supported.");

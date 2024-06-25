@@ -22,17 +22,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_legalize.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -47,14 +50,15 @@ class HostOffloaderTest : public HloTestBase {
  protected:
   static constexpr int64_t kHostMemorySpaceColor{5};
 
-  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module,
+                                        bool after_layout = false) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
     bool changed = false;
     HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
-                                              /*after_layout=*/false);
+                                              after_layout);
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
     HostOffloader host_offloader(kHostMemorySpaceColor);
@@ -132,15 +136,43 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
-TEST_F(HostOffloaderTest, BasicCopy) {
+TEST_F(HostOffloaderTest, DusFirstOperandIsNotFromABroadcast) {
   const std::string& hlo_string = R"(
 HloModule my_module
 ENTRY main {
-  data_param = f32[2048] parameter(0)
-  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
-  copy_0 = f32[2048] copy(offload_custom_call)
-  copy_1 = f32[2048] copy(copy_0)
-  ROOT load_custom_call = f32[2048] custom-call(copy_1), custom_call_target="MoveToDevice"
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  param_2 = f32[2,2048,2048] parameter(2)
+  constant_s32_0 = s32[] constant(0)
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(param_2, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  const absl::StatusOr<bool> result = RunHostOffloader(module.get());
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HostOffloaderTest, DusDsWithTupleAfterBroadcast) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  tuple = (f32[2,2048,2048]) tuple(broadcast)
+  gte = f32[2,2048,2048] get-tuple-element(tuple), index=0
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(gte, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
 }
 )";
 
@@ -152,24 +184,428 @@ ENTRY main {
   EXPECT_TRUE(changed);
 
   // Look for the following pattern:
-  // param
-  //   |
-  // copy (to host)
-  //   |
-  // copy (to device)
-
+  // "AllocateBuffer"
+  //               |
+  //             tuple
+  //               |
+  //              gte  param_0  _...
+  //               |  /        /
+  //           dynamic-update-slice  _...
+  //                          |     /
+  //                       dynamic-slice
   HloInstruction* param;
-  HloInstruction* copy_to_host;
-  HloInstruction* copy_to_device;
-  ASSERT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Copy(&copy_to_device,
-                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  HloInstruction* allocate_buffer;
+  HloInstruction* tuple;
+  HloInstruction* gte;
+  HloInstruction* dynamic_update_slice;
+  HloInstruction* dynamic_slice;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(
+                  &dynamic_slice,
+                  m::DynamicUpdateSlice(
+                      &dynamic_update_slice,
+                      m::GetTupleElement(
+                          &gte,
+                          m::Tuple(&tuple, m::CustomCall(&allocate_buffer,
+                                                         {"AllocateBuffer"})),
+                          0),
+                      m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()),
+                  m::Op(), m::Op(), m::Op())));
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
-  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
-  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, DusWithoutDs) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+  ROOT load_custom_call = f32[2,2048,2048] custom-call(dynamic_update_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // "AllocateBuffer"  param_0  _...
+  //               |  /        /
+  //           dynamic-update-slice
+  //                          |
+  //                         copy
+  HloInstruction* param;
+  HloInstruction* allocate_buffer;
+  HloInstruction* dynamic_update_slice;
+  HloInstruction* copy;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(
+          &copy, m::DynamicUpdateSlice(
+                     &dynamic_update_slice,
+                     m::CustomCall(&allocate_buffer, {"AllocateBuffer"}),
+                     m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, DusAndNoCopyFromSameCustomCall) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  tuple = (f32[1,2048,2048]) tuple(offload_custom_call)
+  gte = f32[1,2048,2048] get-tuple-element(tuple), index=0
+  load_custom_call_0 = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+  load_custom_call_1 = f32[1,2048,2048] custom-call(gte), custom_call_target="MoveToDevice"
+  ROOT tuple_1 = (f32[1,2048,2048], f32[1,2048,2048]) tuple(load_custom_call_0, load_custom_call_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // "AllocateBuffer"      param_0
+  //               |          /   \_________
+  //               |         /              \
+  //               |        /              copy
+  //               |       /                 |
+  //               |      /     _...       tuple
+  //               |     /     /             |
+  //           dynamic-update-slice  _...   gte
+  //                          |     /        |
+  //                       dynamic-slice   copy
+  //                                   \    /
+  //                                    tuple
+  HloInstruction* param_match_1;
+  HloInstruction* param_match_2;
+  HloInstruction* allocate_buffer;
+  HloInstruction* dynamic_update_slice;
+  HloInstruction* dynamic_slice;
+  HloInstruction* copy_to_host;
+  HloInstruction* tuple_0;
+  HloInstruction* gte;
+  HloInstruction* copy_to_device;
+  HloInstruction* tuple_1;
+
+  const auto dynamic_slice_pattern = m::DynamicSlice(
+      &dynamic_slice,
+      m::DynamicUpdateSlice(&dynamic_update_slice,
+                            m::CustomCall(&allocate_buffer, {"AllocateBuffer"}),
+                            m::Parameter(&param_match_1, 0), m::Op(), m::Op(),
+                            m::Op()),
+      m::Op(), m::Op(), m::Op());
+  const auto copy_pattern = m::Copy(
+      &copy_to_device,
+      m::GetTupleElement(
+          &gte,
+          m::Tuple(&tuple_0,
+                   m::Copy(&copy_to_host, m::Parameter(&param_match_2, 0))),
+          0));
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(&tuple_1, dynamic_slice_pattern, copy_pattern)));
+  EXPECT_EQ(param_match_1, param_match_2);
+  TestShapeHasMemorySpace(param_match_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, BasicAsyncCustomCallWithAliasing) {
+  const std::string& hlo_string = R"(
+HloModule m, input_output_alias={{}: (0, {}, must-alias)},
+             entry_computation_layout={(f32[4096]{0:T(128)S(5)})->f32[4096]{0:T(128)S(5)}}
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[]) custom-call-start(%a),
+                 custom_call_target="Foo",
+                 output_to_operand_aliasing={{}: (0, {})}
+  ROOT %async-done = f32[4096]{0} custom-call-done(%async-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  TestShapeHasMemorySpace(async_done->shape(), kHostMemorySpaceColor);
+}
+
+TEST_F(HostOffloaderTest, ParameterStreamingWithXposeCopyFeedingIntoWhile) {
+  const std::string& hlo_string = R"(
+HloModule jit__prefill_impl, entry_computation_layout={(bf16[2,16,16]{2,1,0:T(8,128)(2,1)S(5)})->bf16[2,16,16]{1,2,0:T(8,128)(2,1)}}
+
+while_condition {
+  condition_param = (s32[], bf16[2,16,16]{1,2,0:T(8,128)(2,1)}, bf16[2,16,16]{1,2,0:T(8,128)(2,1)}) parameter(0)
+  condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=0
+  condition_iteration_count = s32[] constant(16)
+  ROOT condition_result = pred[] compare(condition_current_iteration_index, condition_iteration_count), direction=LT
+}
+
+while_body {
+  input_tuple.0 = (s32[], bf16[2,16,16]{1,2,0:T(8,128)(2,1)}, bf16[2,16,16]{1,2,0:T(8,128)(2,1)}) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  orig_data = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=1
+  custom-call.0 = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} custom-call(orig_data), custom_call_target="MoveToDevice"
+  sum = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=2
+  sum.1 = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} add(custom-call.0, sum)
+
+  constant_1 = s32[] constant(1)
+  /* Increment iteration index */
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple_result.0 = (s32[], bf16[2,16,16]{1,2,0:T(8,128)(2,1)}, bf16[2,16,16]{1,2,0:T(8,128)(2,1)}) tuple(incremented_index.0, custom-call.0, sum.1)
+}
+
+ENTRY main {
+  param.0 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} parameter(0)
+  copy = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} copy(param.0)
+  constant_0 = s32[] constant(0)
+  constant_0.0 = bf16[] constant(0.0)
+  broadcast = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} broadcast(constant_0.0), dimensions={}
+  tuple_for_while = (s32[], bf16[2,16,16]{1,2,0:T(8,128)(2,1)}, bf16[2,16,16]{1,2,0:T(8,128)(2,1)}) tuple(constant_0, copy, broadcast)
+  while = (s32[], bf16[2,16,16]{1,2,0:T(8,128)(2,1)}, bf16[2,16,16]{1,2,0:T(8,128)(2,1)}) while(tuple_for_while), condition=while_condition, body=while_body
+  ROOT gte = bf16[2,16,16]{1,2,0:T(8,128)(2,1)} get-tuple-element(while), index=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/true);
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  VLOG(1) << "module after: " << module->ToString();
+}
+
+TEST_F(HostOffloaderTest, ParameterStreamingFeedingIntoWhile) {
+  const std::string& hlo_string = R"(
+HloModule jit__prefill_impl, entry_computation_layout={(bf16[2,16,16]{2,1,0:T(8,128)(2,1)S(5)})->bf16[2,16,16]{2,1,0:T(8,128)(2,1)}}
+
+while_condition {
+  condition_param = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) parameter(0)
+  condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=0
+  condition_iteration_count = s32[] constant(16)
+  ROOT condition_result = pred[] compare(condition_current_iteration_index, condition_iteration_count), direction=LT
+}
+
+while_body {
+  input_tuple.0 = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  orig_data = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=1
+  custom-call.0 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} custom-call(orig_data), custom_call_target="MoveToDevice"
+  sum = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=2
+  sum.1 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} add(custom-call.0, sum)
+
+  constant_1 = s32[] constant(1)
+  /* Increment iteration index */
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple_result.0 = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) tuple(incremented_index.0, custom-call.0, sum.1)
+}
+
+ENTRY main {
+  param.0 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} parameter(0)
+  constant_0 = s32[] constant(0)
+  constant_0.0 = bf16[] constant(0.0)
+  broadcast = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} broadcast(constant_0.0), dimensions={}
+  tuple_for_while = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) tuple(constant_0, param.0, broadcast)
+  while = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) while(tuple_for_while), condition=while_condition, body=while_body
+  ROOT gte = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(while), index=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/true);
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  VLOG(1) << "module after: " << module->ToString();
+}
+
+TEST_F(HostOffloaderTest, ParameterStreamingInScanLoop) {
+  const std::string& hlo_string = R"(
+HloModule m,
+  entry_computation_layout={(f32[8,2]{0,1:T(2,128)S(5)})->(f32[]{:T(256)}, f32[8,2]{0,1:T(2,128)})},
+  allow_spmd_sharding_propagation_to_output={true,true}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_body {
+  arg_tuple.8 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[8,2]{0,1:T(2,128)}) parameter(0)
+  get-tuple-element.9 = s32[]{:T(256)} get-tuple-element(arg_tuple.8), index=0
+  constant.12 = s32[]{:T(256)} constant(1)
+  add.29 = s32[]{:T(256)} add(get-tuple-element.9, constant.12)
+  get-tuple-element.10 = f32[8,2]{0,1:T(2,128)} get-tuple-element(arg_tuple.8), index=1
+  get-tuple-element.11 = f32[8,2]{0,1:T(2,128)} get-tuple-element(arg_tuple.8), index=2
+  constant.16 = s32[]{:T(256)} constant(0)
+  dynamic-slice.20 = f32[1,2]{0,1:T(2,128)} dynamic-slice(get-tuple-element.11, get-tuple-element.9,  constant.16), dynamic_slice_sizes={1,2}
+  constant.1 = f32[] constant(-0)
+  reduce = f32[2]{0:T(256)} reduce(dynamic-slice.20, constant.1), dimensions={0}, to_apply=add
+  custom-call = f32[2]{0:T(256)} custom-call(reduce), custom_call_target="MoveToDevice"
+  constant.13 = f32[]{:T(256)} constant(1)
+  broadcast.14 = f32[2]{0:T(256)} broadcast(constant.13), dimensions={}
+  add.23 = f32[2]{0:T(256)} add(custom-call, broadcast.14)
+  reshape.24 = f32[1,2]{0,1:T(2,128)} reshape(add.23)
+  dynamic-update-slice.28 = f32[8,2]{0,1:T(2,128)} dynamic-update-slice(get-tuple-element.10, reshape.24, get-tuple-element.9, constant.16)
+  ROOT tuple.30 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[8,2]{0,1:T(2,128)}) tuple(add.29, dynamic-update-slice.28,  get-tuple-element.11)
+}
+
+condition {
+  arg_tuple.32 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[8,2]{0,1:T(2,128)}) parameter(0)
+  get-tuple-element.33 = s32[]{:T(256)} get-tuple-element(arg_tuple.32), index=0
+  constant.36 = s32[]{:T(256)} constant(8)
+  ROOT compare.37 = pred[]{:T(1024)} compare(get-tuple-element.33, constant.36), direction=LT
+}
+
+ENTRY e {
+  constant.3 = f32[]{:T(256)} constant(1)
+  constant.2 = s32[]{:T(256)} constant(0)
+  constant.4 = f32[]{:T(256)} constant(0)
+  broadcast.5 = f32[8,2]{0,1:T(2,128)} broadcast(constant.4), dimensions={}
+  Arg_0.1 = f32[8,2]{0,1:T(2,128)} parameter(0), sharding={replicated}
+  tuple.6 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[8,2]{0,1:T(2,128)}) tuple(constant.2, broadcast.5, Arg_0.1)
+  while.38 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[8,2]{0,1:T(2,128)}) while(tuple.6), condition=condition, body=while_body
+  get-tuple-element.40 = f32[8,2]{0,1:T(2,128)} get-tuple-element(while.38), index=1
+  ROOT tuple.42 = (f32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}) tuple(constant.3, get-tuple-element.40)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/true);
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(HostOffloaderTest, OutputStreamingInScanLoop) {
+  const std::string& hlo_string = R"(
+HloModule m,
+  entry_computation_layout={(f32[4,1]{0,1:T(2,128)})->(f32[]{:T(256)}, f32[8,2]{0,1:T(2,128)S(5)})},
+  allow_spmd_sharding_propagation_to_output={true,true}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_body {
+  param.1 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[4,1]{0,1:T(2,128)}) parameter(0)
+  get-tuple-element.1 = s32[]{:T(256)} get-tuple-element(param.1), index=0
+  constant.9 = s32[]{:T(256)} constant(1)
+  add.1 = s32[]{:T(256)} add(get-tuple-element.1, constant.9)
+  get-tuple-element.2 = f32[8,2]{0,1:T(2,128)} get-tuple-element(param.1), index=1
+  get-tuple-element.3 = f32[4,1]{0,1:T(2,128)} get-tuple-element(param.1), index=2
+  bitcast = f32[1,4,1]{1,2,0:T(2,128)} bitcast(get-tuple-element.3)
+  all-gather.2 = f32[4,4,1]{1,2,0:T(2,128)} all-gather(bitcast), channel_id=2, replica_groups={{0,1,2,3}}, dimensions={0}, use_global_device_ids=true
+  constant.20 = f32[] constant(-0)
+  reduce = f32[4,4]{1,0:T(4,128)} reduce(all-gather.2, constant.20), dimensions={2}, to_apply=add
+  bitcast.1 = f32[2,4,2,1]{1,2,0,3:T(2,128)} bitcast(reduce)
+  copy.1 = f32[2,4,2,1]{1,0,2,3:T(2,128)} copy(bitcast.1)
+  reshape.6 = f32[8,2]{0,1:T(2,128)} reshape(copy.1)
+  constant.10 = s32[]{:T(256)} constant(0)
+  dynamic-slice.0 = f32[1,2]{0,1:T(2,128)} dynamic-slice(reshape.6, get-tuple-element.1, constant.10), dynamic_slice_sizes={1,2}
+  constant.11 = f32[]{:T(256)} constant(1)
+  broadcast.4 = f32[1,2]{0,1:T(2,128)} broadcast(constant.11), dimensions={}
+  add.2 = f32[1,2]{0,1:T(2,128)} add(dynamic-slice.0, broadcast.4)
+  reduce.1 = f32[2]{0:T(256)} reduce(add.2, constant.20), dimensions={0}, to_apply=add
+  custom-call.1 = f32[2]{0:T(256)} custom-call(reduce.1), custom_call_target="MoveToHost"
+  reshape.8 = f32[1,2]{0,1:T(2,128)} reshape(custom-call.1)
+  dynamic-update-slice.0 = f32[8,2]{0,1:T(2,128)} dynamic-update-slice(get-tuple-element.2, reshape.8, get-tuple-element.1, constant.10)
+  ROOT tuple = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[4,1]{0,1:T(2,128)}) tuple(add.1, dynamic-update-slice.0, get-tuple-element.3)
+}
+
+condition {
+  param = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[4,1]{0,1:T(2,128)}) parameter(0)
+  get-tuple-element = s32[]{:T(256)} get-tuple-element(param), index=0
+  constant.8 = s32[]{:T(256)} constant(8)
+  ROOT compare.0 = pred[]{:T(1024)} compare(get-tuple-element, constant.8), direction=LT
+}
+
+ENTRY e {
+  constant.17 = f32[]{:T(256)} constant(1)
+  constant.18 = s32[]{:T(256)} constant(0)
+  constant.19 = f32[]{:T(256)} constant(0)
+  broadcast.6 = f32[8,2]{0,1:T(2,128)} broadcast(constant.19), dimensions={}
+  param.2 = f32[4,1]{0,1:T(2,128)} parameter(0), sharding={devices=[2,2]<=[4]}
+  tuple.1 = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[4,1]{0,1:T(2,128)}) tuple(constant.18, broadcast.6, param.2)
+  while = (s32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}, f32[4,1]{0,1:T(2,128)}) while(tuple.1), condition=condition, body=while_body
+  get-tuple-element.4 = f32[8,2]{0,1:T(2,128)} get-tuple-element(while), index=1
+  ROOT tuple.2 = (f32[]{:T(256)}, f32[8,2]{0,1:T(2,128)}) tuple(constant.17, get-tuple-element.4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/true);
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HostOffloaderTest, BasicNoCopy) {
@@ -206,6 +642,351 @@ ENTRY main {
   TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyThroughTuple) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  other_param = f32[2048] parameter(1)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  tuple = (f32[2048], f32[2048]) tuple(offload_custom_call, other_param)
+  gte_0 = f32[2048] get-tuple-element(tuple), index=0
+  gte_1 = f32[2048] get-tuple-element(tuple), index=1
+  ROOT load_custom_call = f32[2048] custom-call(gte_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |   _
+  //   |  /
+  // tuple
+  //   |
+  //  gte
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* tuple;
+  HloInstruction* gte;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(
+          &copy_to_device,
+          m::GetTupleElement(
+              &gte,
+              m::Tuple(&tuple, m::Copy(&copy_to_host, m::Parameter(&param, 0)),
+                       m::Op()),
+              0))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyThroughNestedTuple) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  other_param_0 = f32[2048] parameter(1)
+  other_param_1 = f32[2048] parameter(2)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  tuple_0 = (f32[2048], f32[2048]) tuple(offload_custom_call, other_param_0)
+  tuple_1 = ((f32[2048], f32[2048]), f32[2048]) tuple(tuple_0, other_param_1)
+  gte_0 = (f32[2048], f32[2048]) get-tuple-element(tuple_1), index=0
+  gte_1 = f32[2048] get-tuple-element(tuple_1), index=1
+  gte_2 = f32[2048] get-tuple-element(gte_0), index=0
+  gte_3 = f32[2048] get-tuple-element(gte_0), index=1
+  ROOT load_custom_call = f32[2048] custom-call(gte_2), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |   _
+  //   |  /
+  // tuple_0
+  //   |   _
+  //   |  /
+  // tuple_1
+  //   |
+  //  gte_0
+  //   |
+  //  gte_1
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* tuple_0;
+  HloInstruction* gte_0;
+  HloInstruction* tuple_1;
+  HloInstruction* gte_1;
+  HloInstruction* copy_to_device;
+  const auto copy_param_pattern =
+      m::Copy(&copy_to_host, m::Parameter(&param, 0));
+  const auto tuple_of_tuple_pattern = m::Tuple(
+      &tuple_1, m::Tuple(&tuple_0, copy_param_pattern, m::Op()), m::Op());
+  const auto gte_of_gte_pattern = m::GetTupleElement(
+      &gte_1, m::GetTupleElement(&gte_0, tuple_of_tuple_pattern, 0), 0);
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(&copy_to_device, gte_of_gte_pattern)));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_0->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(gte_0->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(gte_0->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0, 0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0, 1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyThroughComputation) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+other_computation {
+  ROOT param = f32[2048] parameter(0)
+}
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  call = f32[2048] call(offload_custom_call), to_apply=other_computation
+  ROOT load_custom_call = f32[2048] custom-call(call), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern in the entry computation:
+  // param
+  //   |
+  // copy (to host)
+  //   |             ___
+  //   |            /   \
+  // call===========   param
+  //   |            \___/
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* call;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(
+          &copy_to_device,
+          m::Call(&call, m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(call->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  ASSERT_THAT(call->called_computations(), ::testing::SizeIs(1));
+  HloComputation* called_computation = call->called_computations()[0];
+  HloInstruction* called_computation_param;
+  ASSERT_THAT(called_computation->root_instruction(),
+              GmockMatch(m::Parameter(&called_computation_param, 0)));
+  TestShapeHasMemorySpace(called_computation_param->shape(),
+                          kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyThroughComputationAndTuple) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+other_computation {
+  param_0 = f32[2048] parameter(0)
+  param_1 = f32[2048] parameter(1)
+  ROOT tuple = (f32[2048], f32[2048]) tuple(param_0, param_1)
+}
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  other_param = f32[2048] parameter(1)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  call = (f32[2048], f32[2048]) call(offload_custom_call, other_param), to_apply=other_computation
+  gte_0 = f32[2048] get-tuple-element(call), index=0
+  gte_1 = f32[2048] get-tuple-element(call), index=1
+  ROOT load_custom_call = f32[2048] custom-call(gte_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param0
+  //   |
+  // copy (to host)
+  //   |              __________
+  //   |  _          /      /   \
+  //   | /          /   param0 param1
+  //  call==========         \ /
+  //   |            \       tuple
+  //  gte            \_______/
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* call;
+  HloInstruction* gte;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(
+          &copy_to_device,
+          m::GetTupleElement(
+              &gte,
+              m::Call(&call, m::Copy(&copy_to_host, m::Parameter(&param, 0)),
+                      m::Op())))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(call->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(call->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_THAT(call->called_computations(), ::testing::SizeIs(1));
+  HloComputation* called_computation = call->called_computations()[0];
+  HloInstruction* called_computation_param_0;
+  HloInstruction* called_computation_param_1;
+  HloInstruction* tuple;
+  ASSERT_THAT(
+      called_computation->root_instruction(),
+      GmockMatch(m::Tuple(&tuple, m::Parameter(&called_computation_param_0, 0),
+                          m::Parameter(&called_computation_param_1, 1))));
+  TestShapeHasMemorySpace(called_computation_param_0->shape(),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(called_computation_param_1->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyThroughWhile) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+while_body {
+  ROOT param = f32[2048] parameter(0)
+}
+while_condition {
+  param = f32[2048] parameter(0)
+  constant_0 = s32[] constant(0)
+  constant_1 = s32[] constant(1)
+  ROOT pred_result = pred[] compare(constant_1, constant_0), direction=LT
+}
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  while = f32[2048] while(offload_custom_call), condition=while_condition, body=while_body
+  ROOT load_custom_call = f32[2048] custom-call(while), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //                                     __
+  //                                    /  \
+  // param                             /  param
+  //   |                 <CONDITION>===
+  // copy (to host)     /
+  //   |               /
+  // while=============
+  //   |               \           __
+  // copy (to device)   \         /  \
+  //                     <BODY>===  param
+  //                              \__/
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* while_instr;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy_to_device,
+                  m::While(&while_instr,
+                           m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(while_instr->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  HloComputation* while_condition = while_instr->while_condition();
+  ASSERT_THAT(while_condition->parameter_instructions(), ::testing::SizeIs(1));
+  TestShapeHasMemorySpace(while_condition->parameter_instruction(0)->shape(),
+                          kHostMemorySpaceColor);
+
+  HloInstruction* while_body_param;
+  HloComputation* while_body = while_instr->while_body();
+  ASSERT_THAT(while_body->root_instruction(),
+              GmockMatch(m::Parameter(&while_body_param, 0)));
+  TestShapeHasMemorySpace(while_body_param->shape(), kHostMemorySpaceColor);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
@@ -742,9 +1523,40 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  absl::StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
-  // The pass should return an error.
-  ASSERT_FALSE(statusOrChanged.ok());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // "AllocateBuffer"  param_0  _...
+  //               |  /        /
+  //           dynamic-update-slice
+  //                          |
+  //                        copy     _...
+  //                          |     /
+  //                       dynamic-slice
+  HloInstruction* param;
+  HloInstruction* allocate_buffer;
+  HloInstruction* dynamic_update_slice;
+  HloInstruction* copy;
+  HloInstruction* dynamic_slice;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicSlice(
+          &dynamic_slice,
+          m::Copy(&copy,
+                  m::DynamicUpdateSlice(
+                      &dynamic_update_slice,
+                      m::CustomCall(&allocate_buffer, {"AllocateBuffer"}),
+                      m::Parameter(&param, 0), m::Op(), m::Op(), m::Op())),
+          m::Op(), m::Op(), m::Op())));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
 TEST_F(HostOffloaderTest, LlmActivation) {
@@ -837,7 +1649,8 @@ ENTRY main {
   while_output_1 = f32[96,8,6,2048,2048] get-tuple-element(producing_while), index=1
   while_output_2 = f32[96,8,6,2048,1] get-tuple-element(producing_while), index=2
   tuple_for_consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(constant_s32_0, while_output_1, while_output_2)
-  ROOT consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  ROOT result = s32[] get-tuple-element(consuming_while), index=0
 }
 )";
 
@@ -857,6 +1670,8 @@ ENTRY main {
   //        tuple
   //         |
   //  consuming_while
+  //         |
+  //        gte
   HloInstruction* consuming_while;
   HloInstruction* producing_while_0;
   HloInstruction* producing_while_1;
@@ -864,14 +1679,18 @@ ENTRY main {
     HloInstruction* tuple;
     HloInstruction* gte_0;
     HloInstruction* gte_1;
+    HloInstruction* gte_2;
     ASSERT_THAT(
         module->entry_computation()->root_instruction(),
-        GmockMatch(m::While(
-            &consuming_while,
-            m::Tuple(
-                &tuple, m::Constant(),
-                m::GetTupleElement(&gte_0, m::While(&producing_while_0)),
-                m::GetTupleElement(&gte_1, m::While(&producing_while_1))))));
+        GmockMatch(m::GetTupleElement(
+            &gte_2,
+            m::While(
+                &consuming_while,
+                m::Tuple(
+                    &tuple, m::Constant(),
+                    m::GetTupleElement(&gte_0, m::While(&producing_while_0)),
+                    m::GetTupleElement(&gte_1, m::While(&producing_while_1)))),
+            0)));
     ASSERT_EQ(producing_while_0, producing_while_1);
 
     // Check that the memory spaces were properly set.
@@ -1159,7 +1978,8 @@ ENTRY main {
   while_output_1 = f32[96,8,6,2048,2048] get-tuple-element(producing_while), index=1
   while_output_2 = f32[96,8,6,2048,1] get-tuple-element(producing_while), index=2
   tuple_for_consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(constant_s32_0, while_output_1, while_output_2)
-  ROOT consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  ROOT result = s32[] get-tuple-element(consuming_while), index=0
 }
 )";
 
@@ -1179,6 +1999,8 @@ ENTRY main {
   //        tuple
   //         |
   //  consuming_while
+  //         |
+  //        gte
   HloInstruction* consuming_while;
   HloInstruction* producing_while_0;
   HloInstruction* producing_while_1;
@@ -1186,14 +2008,18 @@ ENTRY main {
     HloInstruction* tuple;
     HloInstruction* gte_0;
     HloInstruction* gte_1;
+    HloInstruction* gte_2;
     ASSERT_THAT(
         module->entry_computation()->root_instruction(),
-        GmockMatch(m::While(
-            &consuming_while,
-            m::Tuple(
-                &tuple, m::Constant(),
-                m::GetTupleElement(&gte_0, m::While(&producing_while_0)),
-                m::GetTupleElement(&gte_1, m::While(&producing_while_1))))));
+        GmockMatch(m::GetTupleElement(
+            &gte_2,
+            m::While(
+                &consuming_while,
+                m::Tuple(
+                    &tuple, m::Constant(),
+                    m::GetTupleElement(&gte_0, m::While(&producing_while_0)),
+                    m::GetTupleElement(&gte_1, m::While(&producing_while_1)))),
+            0)));
     ASSERT_EQ(producing_while_0, producing_while_1);
 
     // Check that the memory spaces were properly set.
@@ -1755,7 +2581,8 @@ ENTRY main {
   while_output_1 = f32[96,8,6,2048,2048] get-tuple-element(producing_while), index=1
   while_output_2 = f32[96,8,6,2048,1] get-tuple-element(producing_while), index=2
   tuple_for_consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(constant_s32_0, while_output_1, while_output_2)
-  ROOT consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  ROOT result = s32[] get-tuple-element(consuming_while), index=0
 }
 )";
 
@@ -1779,7 +2606,7 @@ ENTRY main {
 
 TEST_F(HostOffloaderTest, ParameterStreaming) {
   const std::string& hlo_string = R"(
-HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)S(5)})}
+HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})}
 
 ENTRY main {
   param_0 = s32[2,1]{1,0} parameter(0)
@@ -1850,6 +2677,689 @@ ENTRY main {
                           Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
                           Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, TupleParameterStreaming) {
+  const std::string& hlo_string = R"(
+HloModule ParameterStreaming, entry_computation_layout={((s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)S(5)}))->s32[2,1]{1,0:T(2,128)}}
+
+ENTRY main {
+  param_tuple = (s32[2,1], s32[2,1]) parameter(0)
+  x = get-tuple-element(param_tuple), index=0
+  y_host = get-tuple-element(param_tuple), index=1
+  y = s32[2,1] custom-call(y_host), custom_call_target="MoveToDevice"
+  ROOT crs = s32[2,1] add(x, y)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param0: tuple(x   ,   y)
+  //              /         \
+  // get-tuple-element  get-tuple-element
+  //             \      |
+  //              \    copy
+  //               \   /
+  //                add
+  HloInstruction* param;
+  HloInstruction* gte_x;
+  HloInstruction* gte_y;
+  HloInstruction* copy;
+  HloInstruction* add;
+  auto parameter_pattern = m::Parameter(&param, 0);
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(
+          &add, m::GetTupleElement(&gte_x, parameter_pattern),
+          m::Copy(&copy, m::GetTupleElement(&gte_y, parameter_pattern)))));
+  TestShapeHasMemorySpace(param->shape().tuple_shapes(0),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_x->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(add->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param->shape().tuple_shapes(1),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_y->shape(), kHostMemorySpaceColor);
+}
+
+TEST_F(HostOffloaderTest, ParameterStreamingNoOpToHost) {
+  const std::string& hlo_string = R"(
+HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)})->s32[2,1]{1,0:T(2,128)}}
+
+ENTRY main {
+  param = s32[2,1]{1,0} parameter(0)
+  to_host = s32[2,1]{1,0} custom-call(param), custom_call_target="MoveToHost"
+  ROOT to_device = s32[2,1]{1,0} custom-call(to_host), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+  LOG(INFO) << module->ToString();
+
+  // Look for the following pattern:
+  //    param
+  //      |
+  // copy(to device)
+  HloInstruction* param;
+  HloInstruction* copy;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(&copy, m::Parameter(&param, 0))));
+  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, OutputStreaming) {
+  const std::string& hlo_string = R"(
+    HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)})}
+
+    ENTRY main {
+      param_0 = s32[2,1]{1,0} parameter(0)
+      param_1 = s32[2,1]{1,0} parameter(1)
+      constant_2 = s32[] constant(2)
+      constant_4 = s32[] constant(4)
+      broadcast_0 = s32[2,1]{1,0} broadcast(constant_2), dimensions={}
+      multiply_0 = s32[2,1]{1,0} multiply(param_1, broadcast_0)
+      multiply_1 = s32[2,1]{1,0} multiply(multiply_0, param_0)
+      broadcast_1 = s32[2,1]{1,0} broadcast(constant_4), dimensions={}
+      multiply_2 = s32[2,1]{1,0} multiply(multiply_1, broadcast_1)
+      custom_call = s32[2,1]{1,0} custom-call(multiply_2), custom_call_target="MoveToHost"
+      ROOT tuple = (s32[2,1]{1,0}, s32[2,1]{1,0}) tuple(custom_call, multiply_1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //         constant
+  //            |
+  // param1 broadcast  param0
+  //     \  /          /
+  //   multiply       /
+  //       \         /
+  //        \       /
+  //         multiply   constant
+  //         |     |       |
+  //         |  ---+---broadcast
+  //         | /   |
+  //      multiply |
+  //          |    |
+  //         copy  |
+  //           \   |
+  //           tuple
+  HloInstruction* param_1;
+  HloInstruction* broadcast_0;
+  HloInstruction* multiply_0;
+  HloInstruction* param_0;
+  HloInstruction* multiply_1;
+  HloInstruction* broadcast_1;
+  HloInstruction* multiply_2;
+  HloInstruction* copy;
+  HloInstruction* tuple;
+  auto multiplyPattern =
+      m::Multiply(&multiply_1,
+                  m::Multiply(&multiply_0, m::Parameter(&param_1),
+                              m::Broadcast(&broadcast_0, m::ConstantScalar(2))),
+                  m::Parameter(&param_0));
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          &tuple,
+          m::Copy(&copy, m::Multiply(
+                             &multiply_2, multiplyPattern,
+                             m::Broadcast(&broadcast_1, m::ConstantScalar(4)))),
+          multiplyPattern)));
+  TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, InvalidOutputStreaming) {
+  const std::string& hlo_string = R"(
+    HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})}
+
+    ENTRY main {
+      param_0 = s32[2,1]{1,0} parameter(0)
+      param_1 = s32[2,1]{1,0} parameter(1)
+      constant_2 = s32[] constant(2)
+      constant_4 = s32[] constant(4)
+      broadcast_0 = s32[2,1]{1,0} broadcast(constant_2), dimensions={}
+      multiply_0 = s32[2,1]{1,0} multiply(param_1, broadcast_0)
+      multiply_1 = s32[2,1]{1,0} multiply(multiply_0, param_0)
+      broadcast_1 = s32[2,1]{1,0} broadcast(constant_4), dimensions={}
+      multiply_2 = s32[2,1]{1,0} multiply(multiply_1, broadcast_1)
+      custom_call = s32[2,1]{1,0} custom-call(multiply_2), custom_call_target="MoveToHost"
+      ROOT tuple = (s32[2,1]{1,0}, s32[2,1]{1,0}) tuple(custom_call, multiply_1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  absl::StatusOr<bool> result = RunHostOffloader(module.get());
+  EXPECT_FALSE(result.ok());
+}
+
+TEST_F(HostOffloaderTest, OutputStreamingWithoutTuple) {
+  const std::string& hlo_string = R"(
+    HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->s32[2,1]{1,0:T(2,128)S(5)}}
+
+    ENTRY main {
+      param_0 = s32[2,1]{1,0} parameter(0)
+      param_1 = s32[2,1]{1,0} parameter(1)
+      constant_2 = s32[] constant(2)
+      constant_4 = s32[] constant(4)
+      broadcast_0 = s32[2,1]{1,0} broadcast(constant_2), dimensions={}
+      multiply_0 = s32[2,1]{1,0} multiply(param_1, broadcast_0)
+      multiply_1 = s32[2,1]{1,0} multiply(multiply_0, param_0)
+      broadcast_1 = s32[2,1]{1,0} broadcast(constant_4), dimensions={}
+      multiply_2 = s32[2,1]{1,0} multiply(multiply_1, broadcast_1)
+      ROOT custom_call = s32[2,1]{1,0} custom-call(multiply_2), custom_call_target="MoveToHost"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //         constant
+  //            |
+  // param1 broadcast  param0
+  //     \  /          /
+  //   multiply       /
+  //       \         /
+  //        \       /
+  //         multiply   constant
+  //         |     |       |
+  //         |  ---+---broadcast
+  //         | /
+  //      multiply
+  //          |
+  //         copy
+
+  HloInstruction* param_1;
+  HloInstruction* broadcast_0;
+  HloInstruction* multiply_0;
+  HloInstruction* param_0;
+  HloInstruction* multiply_1;
+  HloInstruction* broadcast_1;
+  HloInstruction* multiply_2;
+  HloInstruction* copy;
+  auto multiplyPattern =
+      m::Multiply(&multiply_1,
+                  m::Multiply(&multiply_0, m::Parameter(&param_1),
+                              m::Broadcast(&broadcast_0, m::ConstantScalar(2))),
+                  m::Parameter(&param_0));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy, m::Multiply(&multiply_2, multiplyPattern,
+                                     m::Broadcast(&broadcast_1,
+                                                  m::ConstantScalar(4))))));
+  TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, OutputStreamingCustomCallRoot) {
+  const std::string& hlo_string = R"(
+    HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->s32[2,1]{1,0:T(2,128)S(5)}}
+
+    ENTRY main {
+      param_0 = s32[2,1]{1,0} parameter(0)
+      param_1 = s32[2,1]{1,0} parameter(1)
+      constant_2 = s32[] constant(2)
+      constant_4 = s32[] constant(4)
+      broadcast_0 = s32[2,1]{1,0} broadcast(constant_2), dimensions={}
+      multiply_0 = s32[2,1]{1,0} multiply(param_1, broadcast_0)
+      multiply_1 = s32[2,1]{1,0} multiply(multiply_0, param_0)
+      broadcast_1 = s32[2,1]{1,0} broadcast(constant_4), dimensions={}
+      multiply_2 = s32[2,1]{1,0} multiply(multiply_1, broadcast_1)
+      ROOT custom_call = s32[2,1]{1,0} custom-call(multiply_2), custom_call_target="MoveToHost"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //         constant
+  //            |
+  // param1 broadcast  param0
+  //     \  /          /
+  //   multiply       /
+  //       \         /
+  //        \       /
+  //         multiply   constant
+  //         |             |
+  //         |  ---+---broadcast
+  //         | /
+  //      multiply
+  //          |
+  //         copy
+  HloInstruction* param_1;
+  HloInstruction* broadcast_0;
+  HloInstruction* multiply_0;
+  HloInstruction* param_0;
+  HloInstruction* multiply_1;
+  HloInstruction* broadcast_1;
+  HloInstruction* multiply_2;
+  HloInstruction* copy;
+  auto multiplyPattern =
+      m::Multiply(&multiply_1,
+                  m::Multiply(&multiply_0, m::Parameter(&param_1),
+                              m::Broadcast(&broadcast_0, m::ConstantScalar(2))),
+                  m::Parameter(&param_0));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy, m::Multiply(&multiply_2, multiplyPattern,
+                                     m::Broadcast(&broadcast_1,
+                                                  m::ConstantScalar(4))))));
+  TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, OutputStreamingInUnrolledScanLoop) {
+  const std::string& hlo_string = R"(
+HloModule m,
+entry_computation_layout={(s32[16,16,8]{1,2,0:T(8,128)})->s32[16,16,8]{1,2,0:T(8,128)S(5)}},
+allow_spmd_sharding_propagation_to_output={true}, num_partitions=2
+
+body {
+  loop_peel_param = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) parameter(0)
+  get-tuple-element.12 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=0
+  constant.29 = s32[]{:T(256)} constant(1)
+  add.5 = s32[]{:T(256)} add(get-tuple-element.12, constant.29)
+  get-tuple-element.13 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(loop_peel_param), index=1
+  get-tuple-element.18 = s32[16,8]{0,1:T(8,128)} get-tuple-element(loop_peel_param), index=4
+  custom-call.3 = s32[16,8]{0,1:T(8,128)} custom-call(get-tuple-element.18), custom_call_target="MoveToHost"
+  bitcast = s32[1,16,8]{1,2,0:T(8,128)} bitcast(custom-call.3)
+  get-tuple-element.15 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=3
+  constant.30 = s32[]{:T(256)} constant(0)
+  dynamic-update-slice.2 = s32[16,16,8]{1,2,0:T(8,128)} dynamic-update-slice(get-tuple-element.13, bitcast, get-tuple-element.15, constant.30, constant.30), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  get-tuple-element.14 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(loop_peel_param), index=2
+  dynamic-slice.2 = s32[1,16,8]{1,2,0:T(8,128)} dynamic-slice(get-tuple-element.14, get-tuple-element.12, constant.30, constant.30), dynamic_slice_sizes={1,16,8}
+  broadcast.8 = s32[1,16,8]{1,2,0:T(8,128)} broadcast(constant.29), dimensions={}
+  add.6 = s32[1,16,8]{1,2,0:T(8,128)} add(dynamic-slice.2, broadcast.8)
+  bitcast.1 = s32[16,8]{0,1:T(8,128)} bitcast(add.6)
+  ROOT tuple.3 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) tuple(add.5, dynamic-update-slice.2, get-tuple-element.14, get-tuple-element.12, bitcast.1)
+} // body
+
+condition {
+  loop_peel_cond_param = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) parameter(0)
+  get-tuple-element.11 = s32[]{:T(256)} get-tuple-element(loop_peel_cond_param), index=0
+  constant.28 = s32[]{:T(256)} constant(16)
+  ROOT compare.1 = pred[]{:T(1024)} compare(get-tuple-element.11, constant.28), direction=LT
+}
+
+ENTRY entry {
+  constant.26 = s32[]{:T(256)} constant(1)
+  constant.24 = s32[]{:T(256)} constant(0)
+  broadcast.6 = s32[16,16,8]{1,2,0:T(8,128)} broadcast(constant.24), dimensions={}
+  param.2 = s32[16,16,8]{1,2,0:T(8,128)} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  slice = s32[1,16,8]{1,2,0:T(8,128)} slice(param.2), slice={[0:1], [0:16], [0:8]}
+  broadcast.7 = s32[1,16,8]{1,2,0:T(8,128)} broadcast(constant.26), dimensions={}
+  add.4 = s32[1,16,8]{1,2,0:T(8,128)} add(slice, broadcast.7)
+  bitcast.2 = s32[16,8]{0,1:T(8,128)} bitcast(add.4)
+  tuple.4 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) tuple(constant.26, broadcast.6, param.2, constant.24, bitcast.2)
+  while.1 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) while(tuple.4), condition=condition, body=body
+  get-tuple-element.17 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(while.1), index=1
+  get-tuple-element.19 = s32[16,8]{0,1:T(8,128)} get-tuple-element(while.1), index=4
+  custom-call.4 = s32[16,8]{0,1:T(8,128)} custom-call(get-tuple-element.19), custom_call_target="MoveToHost"
+  bitcast.3 = s32[1,16,8]{1,2,0:T(8,128)} bitcast(custom-call.4)
+  get-tuple-element.16 = s32[]{:T(256)} get-tuple-element(while.1), index=3
+  ROOT dynamic-update-slice.3 = s32[16,16,8]{1,2,0:T(8,128)} dynamic-update-slice(get-tuple-element.17, bitcast.3, get-tuple-element.16, constant.24, constant.24), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+} // entry
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  HloInstruction* bitcast;
+  HloInstruction* gte_0;
+  HloInstruction* gte_1;
+  HloInstruction* dus;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  &dus, m::GetTupleElement(&gte_0), m::Bitcast(&bitcast),
+                  m::GetTupleElement(&gte_1), m::ConstantScalar(0),
+                  m::ConstantScalar(0))));
+
+  TestShapeHasMemorySpace(bitcast->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(dus->shape(), kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, OutputStreamingNoOpToDevice) {
+  const std::string& hlo_string = R"(
+HloModule OutputStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)})->s32[2,1]{1,0:T(2,128)S(5)}}
+
+ENTRY main {
+  param = s32[2,1]{1,0} parameter(0)
+  to_device = s32[2,1]{1,0} custom-call(param), custom_call_target="MoveToDevice"
+  ROOT to_host = s32[2,1]{1,0} custom-call(to_device), custom_call_target="MoveToHost"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+  LOG(INFO) << module->ToString();
+
+  // Look for the following pattern:
+  //    param
+  //      |
+  // copy(to host)
+  HloInstruction* param;
+  HloInstruction* copy;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(&copy, m::Parameter(&param, 0))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, ParameterAndOutputStreamingPassThrough) {
+  const std::string& hlo_string = R"(
+HloModule OutputStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)})->s32[2,1]{1,0:T(2,128)S(5)}}
+
+ENTRY main {
+  ROOT param = s32[2,1]{1,0} parameter(0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+  HloInstruction* param;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(&param, 0)));
+  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+}
+
+TEST_F(HostOffloaderTest, ParameterAndOutputStreamingPassThroughTuple) {
+  const std::string& hlo_string = R"(
+HloModule OutputStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)})->s32[2,1]{1,0:T(2,128)S(5)}}
+
+ENTRY main {
+  param = s32[2,1]{1,0} parameter(0)
+  tuple = (s32[2,1]{1,0}) tuple(param)
+  ROOT gte = s32[2,1]{1,0} get-tuple-element(tuple), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //  param
+  //    |
+  //  tuple
+  //    |
+  //   gte
+  HloInstruction* param;
+  HloInstruction* tuple;
+  HloInstruction* gte;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  &gte, m::Tuple(&tuple, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+}
+
+TEST_F(HostOffloaderTest, LoneMoveToDevice) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
+
+ENTRY main {
+  param_0 = f32[16,256]{0,1} parameter(0)
+  ROOT custom_call_2 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  HloInstruction* param;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(&param, 0)));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, RepeatedMoveToHost) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
+
+ENTRY main {
+  param_0 = f32[16,256]{0,1} parameter(0)
+  custom_call_0 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToHost"
+  custom_call_1 = f32[16,256]{0,1} custom-call(custom_call_0), custom_call_target="MoveToHost"
+  ROOT custom_call_2 = f32[16,256]{0,1} custom-call(custom_call_1), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, RepeatedMoveToDevice) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
+
+ENTRY main {
+  param_0 = f32[16,256]{0,1} parameter(0)
+  custom_call_0 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToHost"
+  custom_call_1 = f32[16,256]{0,1} custom-call(custom_call_0), custom_call_target="MoveToDevice"
+  ROOT custom_call_2 = f32[16,256]{0,1} custom-call(custom_call_1), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, RepeatedMoveToHostNonSequential) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
+
+ENTRY main {
+  param_0 = f32[16,256]{0,1} parameter(0)
+  custom_call_0 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToHost"
+  custom_call_1 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToHost"
+  ROOT custom_call_2 = f32[16,256]{0,1} custom-call(custom_call_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, RepeatedMoveToDeviceNonSequential) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
+
+ENTRY main {
+  param_0 = f32[16,256]{0,1} parameter(0)
+  custom_call_0 = f32[16,256]{0,1} custom-call(param_0), custom_call_target="MoveToHost"
+  custom_call_1 = f32[16,256]{0,1} custom-call(custom_call_0), custom_call_target="MoveToDevice"
+  ROOT custom_call_2 = f32[16,256]{0,1} custom-call(custom_call_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+  // Note: There is another copy with another user, but that's not our problem.
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }

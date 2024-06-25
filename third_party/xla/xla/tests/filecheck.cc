@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 
 #include <cstdlib>
+#include <string>
 
 #include "xla/types.h"
 #include "xla/util.h"
@@ -44,10 +45,12 @@ absl::StatusOr<bool> RunFileCheck(const std::string& input,
 absl::StatusOr<bool> RunFileCheckWithPatternFile(
     const std::string& input, const std::string& pattern_file) {
   // Invoke FileCheck to check whether input matches `pattern`.
+  std::string binary_name = "FileCheck";
+  tsl::io::AppendDotExeIfWindows(binary_name);
   std::string file_check_path = tsl::GetDataDependencyFilepath(
       tsl::testing::kIsOpenSource
-          ? tsl::io::JoinPath("external", "llvm-project", "llvm", "FileCheck")
-          : tsl::io::JoinPath("llvm", "llvm-project", "llvm", "FileCheck"));
+          ? tsl::io::JoinPath("external", "llvm-project", "llvm", binary_name)
+          : tsl::io::JoinPath("llvm", "llvm-project", "llvm", binary_name));
 
   tsl::SubProcess file_check_process;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -47,6 +47,7 @@ class Tile {
     return Tile(tile_proto.dimensions());
   }
   TileProto ToProto() const;
+  void SetProto(TileProto& tile_proto) const;
 
   bool operator==(const Tile& other) const {
     return dimensions() == other.dimensions();
@@ -109,6 +110,7 @@ class SplitConfig {
                        split_config_proto.split_indices());
   }
   SplitConfigProto ToProto() const;
+  void SetProto(SplitConfigProto& split_config_proto) const;
 
   bool operator==(const SplitConfig& other) const {
     return dimension() == other.dimension() &&
@@ -183,6 +185,8 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+  // Sets a LayoutProto to the representation of the Layout.
+  void SetProto(LayoutProto& proto) const;
 
   // Prints a human-readable string that represents this layout.
   void Print(Printer* printer) const;
@@ -474,7 +478,7 @@ class Layout {
 
   // The number of bits used to store an individual array element.
   // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  uint16_t element_size_in_bits_ = 0;
+  int64_t element_size_in_bits_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying

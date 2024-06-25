@@ -33,7 +33,7 @@ Status ValidDim(int64_t dims, int64_t dim) {
         "Each dimension number must be in region [0, rank). Given rank ", dims,
         " and dimension number value ", dim);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidSpatialDimensions(
@@ -46,7 +46,7 @@ Status ValidSpatialDimensions(
   for (int i = 0; i < spatial_dimensions.size(); ++i) {
     TF_RETURN_IF_ERROR(ValidDim(dims, spatial_dimensions.Get(i)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -279,7 +279,7 @@ Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
   } else if (!dimension_numbers_.ParseFromString(dimension_numbers_str)) {
     return InvalidArgument("Error parsing convolution dimension numbers.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
@@ -322,7 +322,7 @@ Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
       padding_list_[2 * i + 1] = padding_end;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -52,9 +52,9 @@ TfLiteStatus CopyTensorsShapeAndType(TfLiteContext* context,
 
     TfLiteTensor* dst_tensor = dst_subgraph->tensor(dst_tensor_indices[i]);
     if (resize_subgraph_inputs) {
-      std::vector<int> dims(src_tensor->dims->data,
-                            src_tensor->dims->data + src_tensor->dims->size);
-      dst_subgraph->ResizeInputTensor(dst_tensor_indices[i], dims);
+      dst_subgraph->ResizeInputTensor(dst_tensor_indices[i],
+                                      src_tensor->dims->data,
+                                      src_tensor->dims->size);
     } else {
       TF_LITE_ENSURE_OK(
           context, context->ResizeTensor(context, dst_tensor,
@@ -160,6 +160,11 @@ TfLiteStatus DeepOrShallowCopyTensorsShapeTypeData(
   }
   return kTfLiteOk;
 }
+
+// Returns the subgraph input tensor index if the given output is also an input.
+// Otherwise returns -1.
+int OutputIsInput(int output_idx, const std::vector<int>& subgraph_inputs);
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

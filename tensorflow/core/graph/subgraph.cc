@@ -189,7 +189,7 @@ bool AddNodeToTargets(const string& node_or_tensor_name,
 
 Status PruneForTargets(Graph* g, const NameIndex& name_index,
                        const std::vector<Node*>& fetch_nodes,
-                       const gtl::ArraySlice<string>& target_nodes) {
+                       const absl::Span<const string>& target_nodes) {
   string not_found;
   std::unordered_set<const Node*> targets;
   for (Node* n : fetch_nodes) {
@@ -291,9 +291,9 @@ Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
 }
 
 Status RewriteGraphForExecution(
-    Graph* g, const gtl::ArraySlice<string>& fed_outputs,
-    const gtl::ArraySlice<string>& fetch_outputs,
-    const gtl::ArraySlice<string>& target_node_names,
+    Graph* g, const absl::Span<const string>& fed_outputs,
+    const absl::Span<const string>& fetch_outputs,
+    const absl::Span<const string>& target_node_names,
     const DeviceAttributes& device_info, bool use_function_convention,
     RewriteGraphMetadata* out_metadata) {
   std::vector<std::unique_ptr<PruneRewrite>> feed_rewrites;
@@ -338,7 +338,7 @@ std::vector<string> ConvertToVector(StringContainer field) {
 Status RewriteGraphForExecution(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
     const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
-    const gtl::ArraySlice<string>& target_node_names,
+    const absl::Span<const string>& target_node_names,
     RewriteGraphMetadata* out_metadata) {
   if (fetch_rewrites.empty() && target_node_names.empty()) {
     return errors::InvalidArgument(

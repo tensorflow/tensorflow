@@ -24,11 +24,11 @@ limitations under the License.
 // NOTE: This header does not follow C conventions and does not define a C API.
 // It is effectively an (internal) implementation detail of the C API.
 
-// `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
+// `TfLiteOperator` is an external version of `TfLiteRegistration`
 // for C API which doesn't use internal types (such as `TfLiteContext`) but only
 // uses stable API types (such as `TfLiteOpaqueContext`). The purpose of each
 // field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal {
+typedef struct TfLiteOperator {
   // Custom op name.  This should be non-null iff the op is a custom op,
   // i.e. iff builtin_code is kTfLiteBuiltinCustom.
   const char* custom_name;
@@ -81,7 +81,32 @@ typedef struct TfLiteRegistrationExternal {
   // Indicates if an operator's output can safely overwrite its input.
   // See the comments in `TfLiteInPlaceOp`.
   uint64_t inplace_operator;
-} TfLiteRegistrationExternal;
+
+  // Data supplied by the user in the `TfLiteOperatorCreateWithData` and then
+  // returned back to the user in the `TfLiteOperator` callbacks listed above.
+  // The user is expected to manage the memory pointed by this field and the
+  // lifetime of that memory should extend at least from the call to
+  // `TfLiteOperatorCreateWithData` to the invocation of `TfLiteOperator.free`.
+  void* user_data;
+  // The following callbacks can be set with the `TfLiteOperatorSetXXXWithData`
+  // functions and if, so set, will pass back the value of the user_data field
+  // above as first argument.
+  //
+  // TODO(b/339641079): Remove the legacy callbacks listed above and rename
+  // these below without the `_with_data` suffix.
+  void* (*init_with_data)(void* user_data, TfLiteOpaqueContext* context,
+                          const char* buffer, size_t length);
+  void (*free_with_data)(void* user_data, TfLiteOpaqueContext* context,
+                         void* buffer);
+  TfLiteStatus (*prepare_with_data)(void* user_data,
+                                    TfLiteOpaqueContext* context,
+                                    TfLiteOpaqueNode* node);
+  TfLiteStatus (*invoke_with_data)(void* user_data,
+                                   TfLiteOpaqueContext* context,
+                                   TfLiteOpaqueNode* node);
+  struct TfLiteAsyncKernel* (*async_kernel_with_data)(
+      void* user_data, TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+} TfLiteOperator;
 
 // Returns true iff it's safe to dereference
 // 'delegate->opaque_delegate_builder'.

@@ -80,7 +80,7 @@ struct TPUDeviceAssignment {
 };
 
 // Extracts device coordinates from a device assignment attribute on an op.
-StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+absl::StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
     mlir::ArrayAttr device_assignment_attr);
 
 // Finds the TPU compilation device and execution devices from `devices` for a
@@ -234,7 +234,7 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
 //       replica_device_ids: 7
 //     }
 //   }
-StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
+absl::StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     llvm::ArrayRef<DeviceNameUtils::ParsedName> devices, int num_replicas,
     int num_cores_per_replica, llvm::StringRef topology_attr,
     llvm::ArrayRef<int64_t> device_assignment_attr);

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DeleteMultiDeviceIterator"
   input_arg {
     name: "multi_device_iterator"

@@ -1,4 +1,12 @@
-# Integrate text embedders.
+# Integrate text embedders
+
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
 
 Text embedders allow embedding text into a high-dimensional feature vector
 representing its semantic meaning, which can then be compared with the feature

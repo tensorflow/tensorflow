@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 
 RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,

@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -63,11 +65,18 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
 
+// Returns the computations within `module` whose instructions can still be
+// fused: computations that are not fusion computations, and not called
+// computations that are inlined (reducers, scatter combiners, etc.).
+std::vector<HloComputation*> GetFusibleComputations(
+    const HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads);
+
 // Returns projected shared memory usage of a given instruction in bytes.
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
 
-inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
+inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 96; }
 
 // Whether the op transposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
@@ -187,27 +196,27 @@ absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
 size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 
 // Returns instructions which are roots of the fusion, following the operands of
-// GTE instructions in the root tuple. Groups multiple subsequent instructions
-// with the same root. CHECKs that the fusion never outputs the same instruction
-// twice, as well as that there are no explicitly created tuples or nested gtes
-// in fusion output.
+// GTE instructions in the root tuple that extract from a tuple.
 //
-// For input: (tuple (gte R1) (gte R1) O2)
-// Expected output: [R1, O2]
+// For input: (tuple (gte tuple(R1)) (gte tuple(R1)) O2)
+// Expected output: [R1, R1, O2]
 //
 // For input: (tuple R1 R2 O2)
 // Expected output: [R1, R2, O2]
 //
-// For input: (tuple (gte R1) (gte R1) R2 O3)
-// Expected output: [R1, R2, O3]
+// For input: (tuple (gte tuple(R1)) R2 (gte tuple(R1)) O3)
+// Expected output: [R1, R2, R1, O3]
+//
+// For input: (tuple (gte R1) R2 (gte R1) O3)
+// Expected output: [R1, R2, R1, O3]
 //
 // For input: R1
 // Expected output: [R1]
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
 
-// Whether the instruction is a Triton Softmax fusion.
-bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+// Whether the instruction is a generic Triton fusion.
+bool IsGenericTritonFusion(const HloInstruction& instr);
 
 // Whether the fusion will likely behave poorly with vectorization due to the
 // instructions it contains.

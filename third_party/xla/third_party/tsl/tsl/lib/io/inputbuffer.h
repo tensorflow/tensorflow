@@ -45,38 +45,39 @@ class InputBuffer {
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
   template <typename T>
-  Status ReadLine(T* result);
+  absl::Status ReadLine(T* result);
 
   // Reads bytes_to_read bytes into *result, overwriting *result.
   //
   // If successful, returns OK.  If we there are not enough bytes to
   // read before the end of the file, we return an OUT_OF_RANGE error.
   // Otherwise, we return some other non-OK status.
-  Status ReadNBytes(int64_t bytes_to_read, std::string* result);
+  absl::Status ReadNBytes(int64_t bytes_to_read, std::string* result);
 
   // An overload that writes to char*.  Caller must ensure result[0,
   // bytes_to_read) is valid to be overwritten.  Returns OK iff "*bytes_read ==
   // bytes_to_read".
-  Status ReadNBytes(int64_t bytes_to_read, char* result, size_t* bytes_read);
+  absl::Status ReadNBytes(int64_t bytes_to_read, char* result,
+                          size_t* bytes_read);
 
   // Reads a single varint32.
-  Status ReadVarint32(uint32* result);
+  absl::Status ReadVarint32(uint32* result);
 
   // Reads a single varint64.
-  Status ReadVarint64(uint64* result);
+  absl::Status ReadVarint64(uint64* result);
 
   // Like ReadNBytes() without returning the bytes read.
-  Status SkipNBytes(int64_t bytes_to_skip);
+  absl::Status SkipNBytes(int64_t bytes_to_skip);
 
   // Seek to this offset within the file.
   //
   // If we seek to somewhere within our pre-buffered data, we will re-use what
   // data we can.  Otherwise, Seek() throws out the current buffer and the next
   // read will trigger a File::Read().
-  Status Seek(int64_t position);
+  absl::Status Seek(int64_t position);
 
   // Provides a hint about future reads, which may improve their performance.
-  Status Hint(int64_t bytes_to_read);
+  absl::Status Hint(int64_t bytes_to_read);
 
   // Returns the position in the file.
   int64_t Tell() const { return file_pos_ - (limit_ - pos_); }
@@ -85,19 +86,19 @@ class InputBuffer {
   RandomAccessFile* file() const { return file_; }
 
  private:
-  Status FillBuffer();
+  absl::Status FillBuffer();
 
   // Internal slow-path routine used by ReadVarint32().
-  Status ReadVarint32Fallback(uint32* result);
+  absl::Status ReadVarint32Fallback(uint32* result);
 
   // Internal slow-path routine used by ReadVarint64().
-  Status ReadVarint64Fallback(uint64* result);
+  absl::Status ReadVarint64Fallback(uint64* result);
 
   // Helper method for reading a varint which can span at max `max_bytes`.
   // If the varint is longer, a DataLoss error status is returned.
   // If end of file is reached while reading, OutOfRange error is returned.
   template <typename T>
-  Status ReadVarintFallback(T* result, int max_bytes);
+  absl::Status ReadVarintFallback(T* result, int max_bytes);
 
   RandomAccessFile* file_;  // Not owned
   int64_t file_pos_;        // Next position to read from in "file_"
@@ -118,28 +119,28 @@ extern template Status InputBuffer::ReadLine<std::string>(std::string* result);
 extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 // Inlined for performance.
-inline Status InputBuffer::ReadVarint32(uint32* result) {
+inline absl::Status InputBuffer::ReadVarint32(uint32* result) {
   if (pos_ + core::kMaxVarint32Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
     const char* offset = core::GetVarint32Ptr(pos_, limit_, result);
     if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
     pos_ = const_cast<char*>(offset);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return ReadVarint32Fallback(result);
   }
 }
 
 // Inlined for performance.
-inline Status InputBuffer::ReadVarint64(uint64* result) {
+inline absl::Status InputBuffer::ReadVarint64(uint64* result) {
   if (pos_ + core::kMaxVarint64Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
     const char* offset = core::GetVarint64Ptr(pos_, limit_, result);
     if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
     pos_ = const_cast<char*>(offset);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return ReadVarint64Fallback(result);
   }

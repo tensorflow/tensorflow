@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,7 +26,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
@@ -626,6 +630,42 @@ void CancelOp::Invoke() {
   }
 }
 
+struct ConstOp : mlrt::KernelFrame {
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.constop";
+
+  absl::string_view tensor_proto() const {
+    return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  Context& context() { return execution_context().GetUserContext<Context>(); }
+
+  void Invoke();
+};
+
+void ConstOp::Invoke() {
+  tensorflow::TensorProto proto;
+  // TODO(b/330806453): Remove the std::string conversion once ParseFromString()
+  // in OSS accepets absl::string_view.
+  // NOLINTNEXTLINE: readability-redundant-string-conversions
+  if (!proto.ParseFromString(std::string(tensor_proto()))) {
+    execution_context().Fail(
+        absl::InternalError("Failed to parse const tensor proto"));
+    return;
+  }
+
+  tensorflow::Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    execution_context().Fail(
+        absl::InternalError("Failed to create tensor from tensor proto"));
+    return;
+  }
+
+  results()[0].Emplace<tensorflow::tfrt_stub::FallbackTensor>(
+      std::move(tensor));
+}
+
 struct CreateOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
@@ -665,7 +705,7 @@ void CreateOp::Invoke() {
                     node_def.input().size(),
                     [&](tensorflow::AttrValueMap* attr_value_map) {
                       *attr_value_map = node_def.attr();
-                      return OkStatus();
+                      return absl::OkStatus();
                     },
                     fallback_request_state.device_manager(),
                     fallback_request_state.process_function_library_runtime())
@@ -985,6 +1025,7 @@ void RegisterTfMlrtKernels(mlrt::KernelRegistry& registry) {
   // TODO(chky,rohitju): These kernels should be unified with the corresponding
   // tfrt_fallback_sync kernels, e.g. tfrt_fallback_sync.executeop.
   registry.Register<CancelOp>();
+  registry.Register<ConstOp>();
   registry.Register<CreateOp>();
   registry.Register<CreateOp>("tfrt_fallback_sync.createop");
   registry.Register<ExecuteOp>();

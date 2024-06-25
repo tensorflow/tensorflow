@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -30,72 +31,72 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 TEST(FutureTest, JoinZeroFuture) {
-  Future<Status> future = JoinFutures({});
+  Future<> future = JoinFutures({});
 
   TF_EXPECT_OK(future.Await());
 }
 
 TEST(FutureTest, JoinOneOkFuture) {
-  Promise<Status> promise = Future<Status>::CreatePromise();
-  std::vector<Future<Status>> futures;
-  futures.push_back(Future<Status>(promise));
+  Promise<> promise = Future<>::CreatePromise();
+  std::vector<Future<>> futures;
+  futures.push_back(Future<>(promise));
 
-  Future<Status> future = JoinFutures(absl::MakeSpan(futures));
+  Future<> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  promise.Set(OkStatus());
+  promise.Set(absl::OkStatus());
   TF_EXPECT_OK(future.Await());
 }
 
 TEST(FutureTest, JoinOneFailingFuture) {
-  Promise<Status> promise = Future<Status>::CreatePromise();
-  std::vector<Future<Status>> futures;
-  futures.push_back(Future<Status>(promise));
+  Promise<> promise = Future<>::CreatePromise();
+  std::vector<Future<>> futures;
+  futures.push_back(Future<>(promise));
 
-  Future<Status> future = JoinFutures(absl::MakeSpan(futures));
+  Future<> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  promise.Set(InvalidArgument("Some error"));
+  promise.Set(absl::InvalidArgumentError("Some error"));
   EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
 }
 
 TEST(FutureTest, JoinAllOkFutures) {
   constexpr int kNumFutures = 3;
-  std::vector<Promise<Status>> promises;
-  std::vector<Future<Status>> futures;
+  std::vector<Promise<>> promises;
+  std::vector<Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
-    promises.push_back(Future<Status>::CreatePromise());
-    futures.push_back(Future<Status>(promises.back()));
+    promises.push_back(Future<>::CreatePromise());
+    futures.push_back(Future<>(promises.back()));
   }
 
-  Future<Status> future = JoinFutures(absl::MakeSpan(futures));
+  Future<> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  for (Promise<Status>& promise : promises) {
-    promise.Set(OkStatus());
+  for (Promise<>& promise : promises) {
+    promise.Set(absl::OkStatus());
   }
   TF_EXPECT_OK(future.Await());
 }
 
 TEST(FutureTest, JoinAllFailingFutures) {
   constexpr int kNumFutures = 3;
-  std::vector<Promise<Status>> promises;
-  std::vector<Future<Status>> futures;
+  std::vector<Promise<>> promises;
+  std::vector<Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
-    promises.push_back(Future<Status>::CreatePromise());
-    futures.push_back(Future<Status>(promises.back()));
+    promises.push_back(Future<>::CreatePromise());
+    futures.push_back(Future<>(promises.back()));
   }
 
-  Future<Status> future = JoinFutures(absl::MakeSpan(futures));
+  Future<> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  for (Promise<Status>& promise : promises) {
-    promise.Set(InvalidArgument("Some error"));
+  for (Promise<>& promise : promises) {
+    promise.Set(absl::InvalidArgumentError("Some error"));
   }
   EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
@@ -106,23 +107,23 @@ class JoinAllOkFuturesExceptForOneTest : public testing::TestWithParam<int> {};
 TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
   const int kNumFutures = 3;
   const int failing_future_idx = GetParam();
-  std::vector<Promise<Status>> promises;
-  std::vector<Future<Status>> futures;
+  std::vector<Promise<>> promises;
+  std::vector<Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
-    promises.push_back(Future<Status>::CreatePromise());
-    futures.push_back(Future<Status>(promises.back()));
+    promises.push_back(Future<>::CreatePromise());
+    futures.push_back(Future<>(promises.back()));
   }
 
-  Future<Status> future = JoinFutures(absl::MakeSpan(futures));
+  Future<> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
   for (int i = 0; i < kNumFutures; ++i) {
     if (i == failing_future_idx) {
-      promises[i].Set(InvalidArgument("Some error"));
+      promises[i].Set(absl::InvalidArgumentError("Some error"));
     } else {
-      promises[i].Set(OkStatus());
+      promises[i].Set(absl::OkStatus());
     }
   }
   EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,

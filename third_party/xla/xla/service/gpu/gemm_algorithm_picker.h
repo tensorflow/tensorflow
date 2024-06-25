@@ -33,25 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#endif
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
-
-absl::StatusOr<AutotuneResult> GetBestBlasAlgorithm(
-    se::Stream* stream, se::RedzoneAllocator& allocator,
-    std::optional<std::string_view> gemm_str,
-    const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    absl::Span<const se::blas::AlgorithmType> algorithms,
-    const Shape& output_shape, const HloModuleConfig& hlo_module_config,
-    double beta,
-    const std::function<absl::StatusOr<se::blas::ProfileResult>(
-        const se::blas::AlgorithmType&)>& run_benchmark);
 
 // GemmAlgorithmPicker supports two modes: device and deviceless.
 // In device mode, we run autotuning on the device and store autotune results.

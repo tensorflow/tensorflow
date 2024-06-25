@@ -22,14 +22,11 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuExecutor_Deallocate);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetAllocatorStats);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DeviceMemoryUsage);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateStream);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateStream);
   TFTPU_SET_FN(executor_fn, TpuExecutor_CreateStreamDependency);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetCoreLocation);
   TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateEvent);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateEvent);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_PollForEventStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_RecordEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyToHost);

@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
@@ -5,7 +6,11 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package_group(
+    name = "tf_lite_runtime",
+    packages = ["//tensorflow/lite/..."],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -121,6 +126,7 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src_all",
     srcs = [
         ":tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite/schema:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core:macros.h",
         "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core/api:tflite_internal_cc_3p_api_deps_src",
@@ -299,7 +305,6 @@ cc_test(
         ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -406,18 +411,20 @@ cc_library(
 #     deps = [
 #         ":macros",
 #         "//base:addressmap",
-#         "//base:examine_stack",
 #         "//base:low_level_alloc",
 #         "//base:malloc_hook",
-#         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-#         "//tensorflow/core/profiler/lib:traceme",
 #         "//tensorflow/lite/core/c:common",
 #         "//tensorflow/lite/kernels:kernel_util",
 #         "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
+#         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
+#         "@local_tsl//tsl/profiler/lib:traceme",
+#         "@local_tsl//tsl/profiler/lib:traceme_encode",
 #         "@com_google_absl//absl/base",
+#         "@com_google_absl//absl/base:core_headers",
 #         "@com_google_absl//absl/debugging:stacktrace",
 #         "@com_google_absl//absl/debugging:symbolize",
 #         "@com_google_absl//absl/synchronization",
+#         "@com_google_absl//absl/time",
 #     ],
 #     alwayslink = 1,
 # )
@@ -490,9 +497,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = [
-        "//tensorflow/lite/core/api:error_reporter",
-    ],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 cc_library(
@@ -539,6 +544,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -585,6 +591,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -655,6 +662,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":logger",
@@ -737,6 +745,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":builtin_ops",
         ":external_cpu_backend_context",
         ":macros",
@@ -886,6 +895,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
+        "//tensorflow/compiler/mlir/lite:string_utils",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
@@ -991,7 +1001,6 @@ cc_test(
         ":string_util",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1061,7 +1070,6 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1166,6 +1174,7 @@ cc_test(
 cc_test_with_tflite(
     name = "mutable_op_resolver_utils_test",
     srcs = ["mutable_op_resolver_utils_test.cc"],
+    tags = ["tflite_disable_mobile_test"],  # Due to b/144306101 and b/329899620.
     tflite_deps = [
         ":mutable_op_resolver_utils",
         ":test_util",
@@ -1251,10 +1260,9 @@ cc_test(
     deps = [
         ":array",
         ":test_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

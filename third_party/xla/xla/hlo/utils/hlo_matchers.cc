@@ -390,6 +390,47 @@ void HloSourceTargetPairsMatcher::DescribeTo(std::ostream* os) const {
   };
   *os << '{' << absl::StrJoin(source_target_pairs_, ",", pair_formatter) << "}";
 }
+bool HloMetadataMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  *listener << " (metadata: ";
+  if (instruction->metadata().op_type() != metadata_.op_type()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().op_type() << ", want "
+              << metadata_.op_type() << ")";
+    return false;
+  }
+  *listener << metadata_.op_type() << " ";
+  if (instruction->metadata().op_name() != metadata_.op_name()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().op_name() << ", want "
+              << metadata_.op_name() << ")";
+    return false;
+  }
+  *listener << metadata_.op_name() << " ";
+  if (instruction->metadata().source_file() != metadata_.source_file()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_file() << ", want "
+              << metadata_.source_file() << ")";
+    return false;
+  }
+  *listener << metadata_.source_file() << " ";
+  if (instruction->metadata().source_line() != metadata_.source_line()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_line() << ", want "
+              << metadata_.source_line() << ")";
+    return false;
+  }
+  *listener << metadata_.source_line();
+  *listener << ")";
+  return true;
+}
+
+void HloMetadataMatcher::DescribeTo(std::ostream* os) const {
+  *os << " (metadata: " << metadata_.op_type() << " " << metadata_.op_name()
+      << " " << metadata_.source_file() << " " << metadata_.source_line()
+      << ")";
+}
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {

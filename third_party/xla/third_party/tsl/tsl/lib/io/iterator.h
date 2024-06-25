@@ -68,7 +68,7 @@ class Iterator {
   virtual StringPiece value() const = 0;
 
   // If an error has occurred, return it.  Else return an ok status.
-  virtual Status status() const = 0;
+  virtual absl::Status status() const = 0;
 
   // Clients are allowed to register function/arg1/arg2 triples that
   // will be invoked when this iterator is destroyed.
@@ -96,7 +96,7 @@ class Iterator {
 extern Iterator* NewEmptyIterator();
 
 // Return an empty iterator with the specified status.
-extern Iterator* NewErrorIterator(const Status& status);
+extern Iterator* NewErrorIterator(const absl::Status& status);
 
 }  // namespace table
 }  // namespace tsl

@@ -39,7 +39,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#if GOOGLE_CUDA
 #include "xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/amdgpu_compiler.h"
+#endif
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
@@ -116,7 +120,11 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+#if GOOGLE_CUDA
   auto gpu_compiler = gpu::NVPTXCompiler();
+#elif TENSORFLOW_USE_ROCM
+  auto gpu_compiler = gpu::AMDGPUCompiler();
+#endif
   Compiler::TargetConfig gpu_target_config{
       se_client->client()->backend().default_stream_executor()};
   StreamExecutorGpuCompiler compiler;
@@ -169,6 +177,43 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);
+}
+
+constexpr absl::string_view kProgramIdentity = R"(HloModule Identity
+
+ENTRY main {
+  ROOT Arg_0.1 = s32[1]{0} parameter(0)
+})";
+
+TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+  StreamExecutorGpuCompiler compiler;
+  xla::CompileOptions opts;
+  opts.target_config = Compiler::TargetConfig(
+      se_client->client()->backend().default_stream_executor());
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
+                          GetXlaComputation(kProgramIdentity));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      se_client->Load(std::move(executable)));
+
+  // Serialize the executable and deserialize it without failure.
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          se_client->SerializeExecutable(*loaded_executable));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      se_client->DeserializeExecutable(serialized_executable, std::nullopt));
+
+  EXPECT_EQ(deserialized_executable->name(), "Identity");
 }
 
 }  // namespace

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/async_collective_creator.h"
 
+#include <cstdint>
 #include <iterator>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -44,7 +46,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncAllReduce(
   auto* ar = Cast<HloAllReduceInstruction>(instruction);
   HloInstruction* start =
       computation->AddInstruction(HloInstruction::CreateAllReduceStart(
-          ar->shape(), ar->operands(), ar->to_apply(), ar->replica_groups(),
+          ar->shape(), ar->operands(), ar->to_apply(), ar->device_list(),
           ar->constrain_layout(), ar->channel_id(),
           ar->use_global_device_ids()));
   HloInstruction* done =
@@ -69,8 +71,8 @@ absl::StatusOr<ReplacedAsync> CreateAsyncAllGather(
        ag->shape()});
   HloInstruction* start =
       computation->AddInstruction(HloInstruction::CreateAllGatherStart(
-          shape, ag->operands(), ag->all_gather_dimension(),
-          ag->replica_groups(), ag->constrain_layout(), ag->channel_id(),
+          shape, ag->operands(), ag->all_gather_dimension(), ag->device_list(),
+          ag->constrain_layout(), ag->channel_id(),
           ag->use_global_device_ids()));
   HloInstruction* done =
       computation->AddInstruction(HloInstruction::CreateUnary(
@@ -226,6 +228,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+  int64_t collectives_replaced = 0;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     std::vector<HloInstruction*> supported_collectives =
@@ -235,8 +238,11 @@ absl::StatusOr<bool> AsyncCollectiveCreator::Run(
     }
     TF_ASSIGN_OR_RETURN(bool comp_changed,
                         ReplaceCollectives(computation, supported_collectives));
+    collectives_replaced += supported_collectives.size();
     changed |= comp_changed;
   }
+  VLOG(1) << "Replaced " << collectives_replaced
+          << " sync collectives with async versions.";
   return changed;
 }
 

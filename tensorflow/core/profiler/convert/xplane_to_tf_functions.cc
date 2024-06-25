@@ -72,7 +72,8 @@ double ComputeExpensiveCallPercent(const TfFunction& tf_function) {
       expensive_call_time_ps += metrics.self_time_ps();
     }
   }
-  return SafeDivide(100.0 * expensive_call_time_ps, total_call_time_ps);
+  return tsl::profiler::SafeDivide(100.0 * expensive_call_time_ps,
+                                   total_call_time_ps);
 }
 
 // Each invocation of a tf-function creates an ActivationRecord.

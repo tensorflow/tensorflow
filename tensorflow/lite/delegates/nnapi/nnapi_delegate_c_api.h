@@ -23,7 +23,7 @@ extern "C" {
 
 // Use TfLiteNnapiDelegateOptionsDefault() for Default options.
 // WARNING: This is an experimental API and subject to change.
-struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
+typedef struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
   // Preferred Power/perf trade-off. For more details please see
   // ANeuralNetworksCompilation_setPreference documentation in :
   // https://developer.android.com/ndk/reference/group/neural-networks.html
@@ -32,10 +32,8 @@ struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
     kLowPower = 0,
     kFastSingleAnswer = 1,
     kSustainedSpeed = 2,
-  };
-
-  // Preferred Power/perf trade-off. Default to kUndefined.
-  ExecutionPreference execution_preference;
+  } execution_preference;  // Preferred Power/perf trade-off.
+                           // Default to kUndefined.
 
   // Selected NNAPI accelerator with nul-terminated name.
   // Default to nullptr, which implies the NNAPI default behavior: NNAPI
@@ -81,7 +79,7 @@ struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
   // If specified, NNAPI delegate will use the support lib instead of NNAPI in
   // Android OS.
   void* nnapi_support_library_handle;
-};
+} TfLiteNnapiDelegateOptions;
 
 // Returns a delegate that uses NNAPI for ops execution.
 // Must outlive the interpreter.

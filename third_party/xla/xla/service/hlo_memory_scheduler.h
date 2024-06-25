@@ -16,7 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
 #define XLA_SERVICE_HLO_MEMORY_SCHEDULER_H_
 
+#include <cstdint>
+#include <functional>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -24,7 +30,6 @@ limitations under the License.
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/tuple_points_to_analysis.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -35,28 +40,27 @@ using MemorySchedulerPostprocessor =
     std::function<HloInstructionSequence(const HloInstructionSequence&)>;
 
 // A memory scheduler computes an execution sequence for the HLO instructions in
-// 'computation' that minimizes peak memory, given a points-to analysis result
-// that describes buffer aliasing, together with a target-specific size function
-// that maps a tensor's logical size to its padded size. peak_memory (may be
-// nullptr) is set to the peak memory of the resulting schedule according to the
-// HeapSimulator.
+// 'computation' that minimizes peak memory (or finds a balance between memory
+// and available concurrency), given a points-to analysis result that describes
+// buffer aliasing, together with a target-specific size function that maps a
+// tensor's logical size to its padded size. peak_memory (may be nullptr) is set
+// to the peak memory of the resulting schedule according to the HeapSimulator.
 //
 // TODO(yunxing): Cleanup usage of TuplePointsToAnalysis.
-typedef std::function<StatusOr<HloInstructionSequence>(
-    HloComputation*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
-    const LogicalBuffer::SizeFunction&,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&,
-    const MemorySchedulerPostprocessor&,
-    /*peak_memory*/ int64_t*)>
-    MemorySchedulerAlgorithm;
+using MemorySchedulerAlgorithm =
+    std::function<absl::StatusOr<HloInstructionSequence>(
+        HloComputation*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
+        const LogicalBuffer::SizeFunction&,
+        const absl::flat_hash_map<const HloComputation*, int64_t>&,
+        const MemorySchedulerPostprocessor&,
+        /*peak_memory*/ int64_t*)>;
 
 // Scheduler for the entire module.
-typedef std::function<StatusOr<HloSchedule>(
+using ModuleSchedulerAlgorithm = std::function<absl::StatusOr<HloSchedule>(
     const HloModule*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
     const LogicalBuffer::SizeFunction&,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    /*peak_memory*/ int64_t*)>
-    ModuleSchedulerAlgorithm;
+    /*peak_memory*/ int64_t*)>;
 
 // Lift a computation scheduler into a module scheduler by calling the
 // computation scheduler on all computations in a module.
@@ -64,7 +68,7 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
     const MemorySchedulerAlgorithm&, const MemorySchedulerPostprocessor& = {});
 
 // List scheduler
-StatusOr<HloInstructionSequence> ListMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> ListMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -74,7 +78,26 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // DFS-order scheduler
-StatusOr<HloInstructionSequence> DFSMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
+    HloComputation* computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const HloAliasAnalysis& alias_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const absl::flat_hash_map<const HloComputation*, int64_t>&
+        memory_by_computation,
+    const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
+
+// BFS-order scheduler
+//
+// BFS-order scheduler is a simple memory scheduler that schedules instructions
+// in a breadth-first order, which maximizes the available concurrency at the
+// cost of increased memory usage (HLO operations that do not have buffer
+// conflicts can be executed in parallel).
+//
+// This is the most trivial scheduling optimized for maximum concurrency. In
+// practice it is only useful for CPU backend where memory is cheap and we have
+// a lot of available compute cores, and cheap concurrency primitives.
+absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -84,7 +107,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
 // Naive Post Order scheduler
-StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -97,7 +120,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
 // and the post-order scheduler and chooses whichever returns a lower min-
 // memory, not accounting for fragmentation. peak_memory (may be nullptr) is set
 // to the peak memory of the resulting schedule according to the HeapSimulator.
-StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -106,7 +129,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
         memory_by_computation,
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory);
 
-StatusOr<HloSchedule> DefaultModuleScheduler(
+absl::StatusOr<HloSchedule> DefaultModuleScheduler(
     const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -117,7 +140,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
 // module. size_function is the function returning the number of bytes required
 // for a LogicalBuffer. peak_memory (if not nullptr) is set to the largest peak
 // memory (according to the HeapSimulator) of all computations in the module.
-StatusOr<HloSchedule> ScheduleModule(
+absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm = {},
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
@@ -125,7 +148,7 @@ StatusOr<HloSchedule> ScheduleModule(
 
 // Computes the schedule for a single computation.
 // Currently only used by the GPU backend.
-StatusOr<HloInstructionSequence> ScheduleComputation(
+absl::StatusOr<HloInstructionSequence> ScheduleComputation(
     HloComputation* computation,
     const LogicalBuffer::SizeFunction& size_function,
     const MemorySchedulerPostprocessor& postprocessor);
@@ -146,7 +169,7 @@ class HloMemoryScheduler : public HloModulePass {
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -163,7 +186,7 @@ class HloTrivialScheduler : public HloModulePass {
   absl::string_view name() const override { return "hlo-trivial-scheduler"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
@@ -177,7 +200,7 @@ class HloDescheduler : public HloModulePass {
   absl::string_view name() const override { return "hlo-descheduler"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

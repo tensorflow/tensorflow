@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/async_while.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/fuse_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/parallelization.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/rewrite_ifrt_load_variable.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tf_to_mlrt.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/while_to_map_fn.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
@@ -37,6 +38,7 @@ void RegisterMlrtPasses() {
   mlir::registerPass([]() { return CreateAsyncWhilePass(); });
   mlir::registerPass([]() { return CreateParallelizationPass(); });
   mlir::registerPass([]() { return CreateWhileToMapFnPass(); });
+  mlir::registerPass([]() { return CreateRewriteIfrtLoadVariablePass(); });
   mlir::registerPass(
       []() { return CreateTfToMlrtPreParallelizationConversionPass({}); });
   mlir::registerPass([]() { return CreateTfToMlrtConversionPass({}); });
@@ -49,6 +51,8 @@ void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
                             const tfrt_stub::CostRecorder *cost_recorder) {
   pm.addPass(
       mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
+
+  pm.addPass(mlrt_compiler::CreateRewriteIfrtLoadVariablePass());
 
   if (options.enable_while_parallel_iterations) {
     pm.addPass(mlrt_compiler::CreateAsyncWhilePass());

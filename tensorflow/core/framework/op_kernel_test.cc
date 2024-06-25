@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/protobuf.h"
 
 class DummyKernel : public tensorflow::OpKernel {
  public:
@@ -350,15 +351,19 @@ TEST_F(OpKernelTest, NotFound) {
   const auto not_found = error::NOT_FOUND;
   // Something with that op type name exists, but only with a
   // different DeviceType.
-  ExpectFailure(CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test1", {DT_FLOAT, DT_INT32})),
                 DEVICE_GPU, not_found);
-  ExpectFailure(CreateNodeDef("Test3", {DT_INT8, DT_INT8}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_INT8, DT_INT8})),
                 DEVICE_GPU, not_found);
-  ExpectFailure(CreateNodeDef("Test3", {DT_FLOAT, DT_FLOAT}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_FLOAT, DT_FLOAT})),
                 DEVICE_CPU, not_found);
 
   // No kernel with that signature registered.
-  ExpectFailure(CreateNodeDef("Test3", {DT_INT32, DT_INT32}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_INT32, DT_INT32})),
                 DEVICE_GPU, not_found);
 
   // Nothing with that op type name exists.
@@ -370,23 +375,27 @@ TEST_F(OpKernelTest, TooFewInputs) {
   const auto invalid = error::INVALID_ARGUMENT;
   NodeDef node_def = CreateNodeDef("Test1", {DT_FLOAT, DT_INT32});
   node_def.clear_input();
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
   node_def.add_input("a");
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
 }
 
 TEST_F(OpKernelTest, TooManyInputs) {
   const auto invalid = error::INVALID_ARGUMENT;
   NodeDef node_def = CreateNodeDef("Test1", {DT_FLOAT, DT_INT32});
   node_def.add_input("c");
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
 }
 
 TEST_F(OpKernelTest, MatchSignatureFails) {
   const auto invalid = error::INVALID_ARGUMENT;
   foo::match_signature_ = true;
-  ExpectFailure(CreateNodeDef("Test2", {DT_FLOAT}).DebugString(), DEVICE_GPU,
-                invalid);
+  ExpectFailure(
+      tsl::LegacyUnredactedDebugString(CreateNodeDef("Test2", {DT_FLOAT})),
+      DEVICE_GPU, invalid);
   EXPECT_FALSE(foo::match_signature_);
 }
 
@@ -416,7 +425,7 @@ TEST_F(OpKernelTest, InputDtype) {
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
   params.inputs = inputs;
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
+  auto ctx = std::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
   EXPECT_FALSE(ctx->input_dtype("non_existent_input", &dtype).ok());
@@ -584,7 +593,7 @@ class ScopedAllocatorDevice : public DeviceBase {
 TEST_F(OpKernelTest, ScopedAllocationTest) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  auto sa_device = absl::make_unique<ScopedAllocatorDevice>(env);
+  auto sa_device = std::make_unique<ScopedAllocatorDevice>(env);
   params.device = sa_device.get();
   Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(
@@ -598,7 +607,7 @@ TEST_F(OpKernelTest, ScopedAllocationTest) {
   params.output_attr_array = output_alloc_attrs.data();
   std::vector<int> forward_from({OpKernelContext::Params::kNeverForward});
   params.forward_from_array = forward_from.data();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
+  auto ctx = std::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(sa_device->num_allocations(false), 0);
   EXPECT_EQ(sa_device->num_allocations(true), 0);
@@ -788,7 +797,7 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok()) << status.ToString();
   params.op_kernel = op.get();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
+  auto ctx = std::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
   OpOutputList out_list;
@@ -1066,7 +1075,7 @@ void BM_InputRangeHelper(::testing::benchmark::State& state,
                          const NodeDef& node_def, const char* input_name,
                          int expected_start, int expected_stop) {
   Status status;
-  auto device = absl::make_unique<DummyDevice>(Env::Default());
+  auto device = std::make_unique<DummyDevice>(Env::Default());
 
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), node_def,
@@ -1142,7 +1151,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
 
   // Build OpKernel and OpKernelContext
   Status status;
-  auto device = absl::make_unique<DummyDevice>(Env::Default());
+  auto device = std::make_unique<DummyDevice>(Env::Default());
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), node_def,
                                               TF_GRAPH_DEF_VERSION, &status));
@@ -1155,7 +1164,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
   params.inputs = inputs;
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
+  auto ctx = std::make_unique<OpKernelContext>(&params);
 
   for (auto s : state) {
     auto trace = op->TraceString(*ctx, verbose);

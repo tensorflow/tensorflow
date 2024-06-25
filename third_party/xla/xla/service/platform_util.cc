@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -135,7 +135,7 @@ PlatformUtil::GetSupportedPlatforms() {
 // by XLA.
 static bool IsDeviceSupported(se::StreamExecutor* executor) {
   const auto& description = executor->GetDeviceDescription();
-  if (executor->platform()->id() == se::cuda::kCudaPlatformId) {
+  if (executor->GetPlatform()->id() == se::cuda::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
     se::CudaComputeCapability cc = description.cuda_compute_capability();
     if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
@@ -148,7 +148,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
                 << "device is " << cc.ToString();
       return false;
     }
-  } else if (executor->platform()->id() == se::rocm::kROCmPlatformId) {
+  } else if (executor->GetPlatform()->id() == se::rocm::kROCmPlatformId) {
     auto rocm_compute_capability = description.rocm_compute_capability();
     if (!rocm_compute_capability.is_supported_gfx_version()) {
       LOG(INFO) << "StreamExecutor ROCM device (" << executor->device_ordinal()

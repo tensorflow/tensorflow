@@ -36,21 +36,22 @@ std::string GetTensorBoardProfilePluginDir(const std::string& logdir);
 // This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in
 // ProfileResponse are unset/empty.
-Status SaveProfile(const std::string& repository_root, const std::string& run,
-                   const std::string& host,
-                   const tensorflow::ProfileResponse& response,
-                   std::ostream* os);
+absl::Status SaveProfile(const std::string& repository_root,
+                         const std::string& run, const std::string& host,
+                         const tensorflow::ProfileResponse& response,
+                         std::ostream* os);
 
 // Gzip the data and save to <repository_root>/<run>/.
-Status SaveGzippedToolData(const std::string& repository_root,
-                           const std::string& run, const std::string& host,
-                           const std::string& tool_name,
-                           const std::string& data);
+absl::Status SaveGzippedToolData(const std::string& repository_root,
+                                 const std::string& run,
+                                 const std::string& host,
+                                 const std::string& tool_name,
+                                 const std::string& data);
 
 // Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
-Status SaveXSpace(const std::string& repository_root, const std::string& run,
-                  const std::string& host,
-                  const tensorflow::profiler::XSpace& xspace);
+absl::Status SaveXSpace(const std::string& repository_root,
+                        const std::string& run, const std::string& host,
+                        const tensorflow::profiler::XSpace& xspace);
 
 }  // namespace profiler
 }  // namespace tsl

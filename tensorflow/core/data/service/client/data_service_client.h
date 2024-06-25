@@ -80,7 +80,9 @@ class DataServiceClient {
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Initializes the client.
-  Status Initialize(Allocator* allocator);
+  Status Initialize(
+      const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+      Allocator* allocator);
 
   // Reads the next element from tf.data workers. Blocks if the next element is
   // not ready.
@@ -174,15 +176,17 @@ class DataServiceClient {
   // task a chance to proceed.
   std::shared_ptr<Task> GetTaskToProcess();
   void AdvanceTaskIndex();
-  Status TryGetElement(const Task& task, GetElementResult& result);
+  Status TryGetElement(const Task& task, bool allow_skip,
+                       GetElementResult& result);
   void ProcessGetElementResponse(bool enqueue_result,
                                  GetElementResult& get_element_result,
                                  std::shared_ptr<Result> result, Task& task);
   Status GetElementTraced(Task* task, int64_t deadline_micros,
-                          bool enqueue_result, std::shared_ptr<Result> result);
+                          bool enqueue_result, bool allow_skip,
+                          std::shared_ptr<Result> result);
   Status MaybeRemoveTask(Task& task, int64_t deadline_micros, Result& result);
   Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
-                    std::shared_ptr<Result> result);
+                    bool allow_skip, std::shared_ptr<Result> result);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;
@@ -244,6 +248,7 @@ class DataServiceClient {
   int64_t job_id_;
   int64_t iteration_client_id_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
   Allocator* allocator_;
 
   int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;

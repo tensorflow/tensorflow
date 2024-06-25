@@ -40,6 +40,7 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);
@@ -47,6 +48,35 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let assemblyFormat = [{
     `(` $input `)` oilist(`after` $control_inputs) attr-dict
     `:` functional-type($input, $output)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def Ifrt_CopyArraysOp
+    : Ifrt_Op<"CopyArrays", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
+  let summary = "Copies arrays to a new set of devices";
+  let description = [{
+    Copies the input arrays to the output arrays.
+
+    This op requires that all input arrays have use the same devices and memory
+    king, and all the output arrays use the same devices and memory king. Note
+    that the devices and memory kind used by the input and output arrays might
+    not be the same. Moreover, the corresponding output array of an input array
+    must have the same sharding as the op can not reshard.
+  }];
+
+  let arguments = (ins
+    Variadic<Ifrt_ArrayType>:$inputs,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
+    Variadic<Ifrt_ControlType>:$control_inputs);
+  let results = (outs
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
   }];
 
   let hasVerifier = 1;
@@ -88,9 +118,36 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble", [NestedInIfrtFunc]> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
-    Variadic<Ifrt_ControlType>:$controlInputs);
+    Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (
     outs Variadic<Ifrt_ArrayType>:$outputs);
+
+  let hasVerifier = 1;
+}
+
+def Ifrt_RemapArraysOp
+    : Ifrt_Op<"RemapArrays", [NestedInIfrtFunc]> {
+  let summary = "Remaps shards from input `Array`s to create new `Array`s.";
+  let description = [{
+    A metadata-only op that remaps shards across input `Array`s to create
+    new `Array`s based on a plan remapping array shards. The op can shuffle
+    or extract input array shards without causing a data copy or transfer. It
+    must meet the following requirements:
+     - All input/output `Array`s must have the same `DType` and per-shard shape.
+     - An input shard can be used at most once.
+     - Every output shard must have exactly one input shard mapped.
+  }];
+
+  let arguments = (ins
+    Variadic<Ifrt_ArrayType>:$inputs,
+    Ifrt_ArrayMappingAttrArrayAttr:$mappings,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
+  let results = (outs Variadic<Ifrt_ArrayType>:$outputs);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` `mappings` `=` $mappings attr-dict
+    `:` functional-type($inputs, $outputs)
+  }];
 
   let hasVerifier = 1;
 }
@@ -129,7 +186,6 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs,
-
     SymbolRefAttr:$callee,
     Ifrt_DevicesAttr:$devices,
     DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
@@ -168,7 +224,6 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs,
-
     SymbolRefAttr:$callee,
     DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs

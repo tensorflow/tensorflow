@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -33,11 +34,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
 namespace {
 
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::ConstantOp;
 using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::SubtractOp;
@@ -47,6 +50,7 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Optional;
+using ::tsl::testing::StatusIs;
 
 using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
 
@@ -70,10 +74,11 @@ constexpr absl::string_view kModuleDynamic = R"mlir(
 
 constexpr absl::string_view kModuleMultipleUses = R"mlir(
   module {
-    func.func @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>, %arg2: tensor<1x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
+    func.func @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
+      %cst = stablehlo.constant dense<1.0> : tensor<1x3xf32>
       %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
-      %1 = stablehlo.subtract %0, %arg2 : tensor<1x3xf32>
-      %2 = stablehlo.add %0, %arg2 : tensor<1x3xf32>
+      %1 = stablehlo.subtract %cst, %0 : tensor<1x3xf32>
+      %2 = stablehlo.add %0, %cst : tensor<1x3xf32>
       return %2 : tensor<1x3xf32>
     }
   }
@@ -89,6 +94,21 @@ constexpr absl::string_view kModuleXlaCallModule = R"mlir(
     }
     func.func private @composite_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
       return %arg0 : tensor<?x2xf32>
+    }
+  }
+)mlir";
+
+constexpr absl::string_view kModuleDotWeightOnlyPtq = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+      %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+      %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+      %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _tfl_quant_trait = "fully_quantizable", _quantization_method = "weight_only_ptq { }"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+      return %2 : tensor<?x2xf32>
+    }
+    func.func private @composite_dot_general_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<?x2xf32>, tensor<2x2xf32>) -> tensor<?x2xf32>
+      return %0 : tensor<?x2xf32>
     }
   }
 )mlir";
@@ -123,8 +143,8 @@ constexpr absl::string_view kModulePartitionedCall = R"mlir(
 
 constexpr absl::string_view kModuleHybridQuantized = R"mlir(
   module {
-    func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:-128>> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3xf32>) {
-      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:-128>>) -> tensor<1x3xf32>
+    func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:0>> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3xf32>) {
+      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:0>>) -> tensor<1x3xf32>
       return %0 : tensor<1x3xf32>
     }
   }
@@ -326,6 +346,22 @@ TEST_F(AttrsAndConstraintsTest, FindUserOfDifferentTypes) {
   EXPECT_THAT(FindUserOfType<ConvolutionOp>(dot_general_op), IsNull());
 }
 
+TEST_F(AttrsAndConstraintsTest, FindOperandOfDifferentTypes) {
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleMultipleUses);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto subtract_op = FindOperationOfType<SubtractOp>(main_fn);
+  ASSERT_THAT(subtract_op, NotNull());
+
+  EXPECT_THAT(FindOperandOfType<DotGeneralOp>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<ConstantOp>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<AddOp>(subtract_op), IsNull());
+}
+
 TEST_F(AttrsAndConstraintsTest, XlaCallModuleOpGetFuncAttr) {
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
   ASSERT_TRUE(module_op);
@@ -411,9 +447,8 @@ TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitFalse) {
 }
 
 TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpTrue) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleHybridQuantized);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleHybridQuantized);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* dot_general = FindOperationOfType<DotGeneralOp>(main_fn);
@@ -421,9 +456,8 @@ TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpTrue) {
 }
 
 TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpFalse) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleXlaCallModule);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* call_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
@@ -452,20 +486,85 @@ constexpr absl::string_view kModuleDotGeneralBatchMatmul = R"mlir(
   }
 )mlir";
 
-TEST_F(AttrsAndConstraintsTest, DotGeneralFullyConnectedReturnsQuantDim) {
-  OwningOpRef<ModuleOp> module_op_ref =
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsError) {
+  DotGeneralOp dot_general_op = nullptr;
+  StatusIs(absl::StatusCode::kInvalidArgument,
+           "Given dot_general op cannot be null when checking "
+           "`IsDotGeneralBatchMatmul`");
+}
+
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsTrue) {
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleDotGeneralFullyConnected);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
+  EXPECT_THAT(IsDotGeneralFullyConnected(dot_general_op), true);
+}
+
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsFalse) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotGeneralBatchMatmul);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
+  EXPECT_THAT(IsDotGeneralFullyConnected(dot_general_op), false);
+}
+
+TEST_F(AttrsAndConstraintsTest, DotGeneralFullyConnectedReturnsQuantDim) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotGeneralFullyConnected);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
   auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
   EXPECT_THAT(GetDotGeneralQuantizationDim(dot_general_op), Optional(1));
 }
 
 TEST_F(AttrsAndConstraintsTest, DotGeneralBatchMatmulReturnsNullQuantDim) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleDotGeneralBatchMatmul);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
   auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
   EXPECT_THAT(GetDotGeneralQuantizationDim(dot_general_op), Eq(std::nullopt));
+}
+
+TEST_F(AttrsAndConstraintsTest, ContainsConvOrDotTrue) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotWeightOnlyPtq);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  const StringRef function_name = GetEntryFunctionName(call_op);
+  EXPECT_TRUE(ContainsConvOrDot(function_name));
+}
+
+TEST_F(AttrsAndConstraintsTest, ContainsConvOrDotFalse) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleXlaCallModuleNoEntryNoQuantTrait);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  const StringRef function_name = GetEntryFunctionName(call_op);
+  EXPECT_FALSE(ContainsConvOrDot(function_name));
 }
 
 }  // namespace

@@ -31,14 +31,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
@@ -51,9 +52,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA
-#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -85,26 +83,28 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
   return dimension_numbers.rhs_batch_dimensions();
 }
 
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  const int operand_number) {
+absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
+                                                  const int operand_number) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   if (operand_number == 0) {
-    CHECK_EQ(dimension_numbers.lhs_contracting_dimensions().size(), 1);
+    TF_RET_CHECK(dimension_numbers.lhs_contracting_dimensions().size() == 1);
     return dimension_numbers.lhs_contracting_dimensions(0);
   }
-  CHECK_EQ(dimension_numbers.rhs_contracting_dimensions().size(), 1);
+  TF_RET_CHECK(dimension_numbers.rhs_contracting_dimensions().size() == 1);
   return dimension_numbers.rhs_contracting_dimensions(0);
 }
 
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     const int operand_number) {
-  absl::StatusOr<std::vector<int64_t>> non_contracting_dims =
+absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
+                                                     const int operand_number) {
+  TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
+                      ContractingDimensionIndex(dot, operand_number));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(dot.operand(operand_number)->shape(),
                             BatchDimensionsForOperand(dot, operand_number),
-                            {ContractingDimensionIndex(dot, operand_number)});
-  TF_CHECK_OK(non_contracting_dims.status());
-  CHECK_EQ(non_contracting_dims->size(), 1);
-  return non_contracting_dims->front();
+                            {contracting_dim}));
+  TF_RET_CHECK(non_contracting_dims.size() == 1);
+  return non_contracting_dims.front();
 }
 
 absl::StatusOr<Shape> GetBatchRowColumnShape(
@@ -117,7 +117,8 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     // The GeMM output always has its layout set such that the batch, row, and
     // col dim groups are each laid out physically sequentially. GeMM operands
     // must, therefore, be laid out similarly.
-    auto check_physically_sequential = [&](absl::Span<const int64_t> dims) {
+    auto check_physically_sequential =
+        [&](absl::Span<const int64_t> dims) -> absl::Status {
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])
@@ -246,6 +247,9 @@ std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
 
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx) {
+  if (Cast<HloDotInstruction>(&dot)->sparse_operands()) {
+    return false;
+  }
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
   TF_RET_CHECK(dot.operand_count() > operand_idx);
 
@@ -362,8 +366,12 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     // for matmuls with FP8 inputs and outputs, C must instead have the same
     // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
     // we set the dtype of C here.
+#if GOOGLE_CUDA
+    // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
+    // with fp8 output. Thus only do this for CUDA side.
     c_matrix_shape.set_element_type(
         bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
+#endif
   }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
@@ -612,15 +620,15 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
     return absl::InternalError("No Blas support for stream");
   }
 
-  // Set a workspace for all Blas operations launched below.
-  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
-
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, precision_algorithm,
         *algorithm, compute_precision, numeric_options, profile_result,
         context);
   }
+
+  // Set a workspace for all Blas operations launched below.
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
 
   if (output.batch_size != 1) {
     return blas->BlasGemmStridedBatched(

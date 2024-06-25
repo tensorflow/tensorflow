@@ -16,23 +16,26 @@ limitations under the License.
 #ifndef XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
 #define XLA_PJRT_TRACKED_DEVICE_BUFFER_H_
 
-#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "xla/pjrt/event_pool.h"
-#include "xla/pjrt/local_device_state.h"
-#include "xla/pjrt/utils.h"
-#include "xla/runtime/async_runtime.h"
+#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -65,7 +68,7 @@ class BufferSequencingEvent {
  public:
   explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
       : thread_pool_(thread_pool),
-        defined_status_(tsl::MakeUnconstructedAsyncValueRef<Status>()) {}
+        defined_status_(tsl::MakeUnconstructedAsyncValueRef<absl::Status>()) {}
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
   // be called at most once. Unblocks any other host threads that are blocked in
@@ -81,7 +84,7 @@ class BufferSequencingEvent {
   // Same as WaitForEventOnStream, but takes a raw platform-specific
   // stream. Currently on implemented for CUDA and ROCM GPU, where stream is a
   // GpuStreamHandle (e.g. a cudaStream_t).
-  Status WaitForEventOnExternalStream(std::intptr_t stream);
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns true if the event is known to have occurred by the tail of
   // 'stream'. If RecordOnStream has not yet been called, blocks the calling
@@ -127,7 +130,7 @@ class BufferSequencingEvent {
     return defined_status_.IsConcrete();
   }
 
-  void SetDefinedStatus(Status status) {
+  void SetDefinedStatus(absl::Status status) {
     {
       absl::MutexLock lock(&mu_);
       defined_status_.emplace(status);
@@ -136,10 +139,15 @@ class BufferSequencingEvent {
     this->ExecuteFutureTasks();
   }
 
-  Status GetDefinedStatus() {
+  absl::Status GetDefinedStatus() {
     absl::MutexLock lock(&mu_);
     CHECK(defined_status_.IsConcrete());
     return defined_status_.get();
+  }
+
+  bool IsPredeterminedError() {
+    absl::MutexLock lock(&mu_);
+    return defined_status_.IsConcrete() && !defined_status_.get().ok();
   }
 
  private:
@@ -173,7 +181,7 @@ class BufferSequencingEvent {
 
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
-  tsl::AsyncValueRef<Status> defined_status_ ABSL_GUARDED_BY(mu_);
+  tsl::AsyncValueRef<absl::Status> defined_status_ ABSL_GUARDED_BY(mu_);
 };
 
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it

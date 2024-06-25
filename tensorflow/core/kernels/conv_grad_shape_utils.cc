@@ -53,7 +53,7 @@ namespace {
 Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
+    const absl::Span<const int32> dilations, const std::vector<int32>& strides,
     Padding padding, int64_t padding_before, int64_t padding_after,
     int spatial_dim, int filter_spatial_dim,
     ConvBackpropSpatialDimension* dim) {
@@ -95,7 +95,7 @@ Status ConvBackpropExtractAndVerifyDimension(
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    const absl::Span<const int32>& dilations, const std::vector<int32>& strides,
     Padding padding, absl::Span<const int64_t> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.

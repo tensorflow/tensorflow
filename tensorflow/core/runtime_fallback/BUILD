@@ -60,7 +60,7 @@ cc_library(
     testonly = True,
     srcs = ["bef_executor_flags.cc"],
     hdrs = ["bef_executor_flags.h"],
-    visibility = ["//third_party/tf_runtime_google:__pkg__"],
+    visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",

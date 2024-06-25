@@ -23,10 +23,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -52,8 +53,8 @@ class WhileThunk : public Thunk {
   // Constructs a WhileThunk to compute while instruction 'hlo'.
   WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
-             std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-             std::unique_ptr<ThunkSequence> body_thunk_sequence,
+             std::unique_ptr<SequentialThunk> condition_thunk_sequence,
+             std::unique_ptr<SequentialThunk> body_thunk_sequence,
              std::optional<int64_t> trip_count = std::nullopt);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
@@ -74,6 +75,12 @@ class WhileThunk : public Thunk {
   const BufferAllocation::Slice& condition_result_buffer() const {
     return condition_result_buffer_index_;
   }
+
+  // Returns the current loop iteration if the caller is inside a while loop(s).
+  //
+  // Implementation relies on thread local storage, be careful when call it from
+  // code running on multiple threads.
+  static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
 
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;

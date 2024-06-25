@@ -37,17 +37,6 @@ namespace tensorflow {
 
 struct FunctionBody;
 
-// Converts FunctionDef to TFRT's Binary Executable Format. This is the entry
-// point of tf.function to TFRT. function_name and device_name are given from
-// the Python context. The lowered BEF will be stored in an external buffer
-// pointed by bef_buffer.
-Status ConvertFunctionToBef(
-    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
-    const FunctionLibraryDefinition& flib_def,
-    tfrt::ArrayRef<tfrt::string_view> devices,
-    const tensorflow::TfrtFunctionCompileOptions& options,
-    tfrt::BefBuffer* bef_buffer);
-
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
 // If `fallback_state` is not null, the MLIR functions for XLA clusters in
 // the form of XlaLaunch will be exported and added to the function library when

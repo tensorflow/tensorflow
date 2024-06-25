@@ -304,11 +304,11 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
       not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
-    # Make sure we get an input with handle data attached from resource
+    # Make sure we get an input with handle data attached from the resource
     # variables. Variables have correct handle data when graph building.
     input = ops.convert_to_tensor(input)
   ret = gen_array_ops.identity(input, name=name)
-  # Propagate handle data for happier shape inference for resource variables.
+  # Propagate handles data for happier shape inference for resource variables.
   if hasattr(input, "_handle_data"):
     ret._handle_data = input._handle_data  # pylint: disable=protected-access
   return ret
@@ -322,8 +322,9 @@ def expand_dims(input, axis=None, name=None, dim=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows Python
-  indexing rules: It's zero-based, a negative index it is counted backward
+  dimension index `axis` of the `input`'s shape. The dimension index follows
+  Python
+  indexing rules: It's zero-based, a negative index that is counted backward
   from the end.
 
   This operation is useful to:
@@ -349,7 +350,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   [10, 1, 10, 3]
 
   Following standard Python indexing rules, a negative `axis` counts from the
-  end so `axis=-1` adds an inner most dimension:
+  end so `axis=-1` adds an innermost dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
@@ -364,7 +365,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   This operation is related to:
 
   * `tf.squeeze`, which removes dimensions of size 1.
-  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.reshape`, which provides a more flexible reshaping capability.
   * `tf.sparse.expand_dims`, which provides this functionality for
     `tf.SparseTensor`
 
@@ -372,7 +373,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
     input: A `Tensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to expand the
       shape of `input`. Must be in the range `[-rank(input) - 1, rank(input)]`.
-    name: The name of the output `Tensor` (optional).
+    name: The name of the output is `Tensor` (optional).
     dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
 
   Returns:
@@ -461,7 +462,7 @@ def expand_dims_v2(input, axis, name=None):
 # pylint: enable=redefined-builtin,protected-access
 
 
-# Aliases for some automatically-generated names.
+# Aliases for some automatically generated names.
 # pylint: disable=protected-access
 @deprecation.deprecated("2016-11-30",
                         "This op will be removed after the deprecation date. "
@@ -1334,7 +1335,7 @@ def concat(values, axis, name="concat"):
   dimension.
 
   The number of dimensions of the input tensors must match, and all dimensions
-  except `axis` must be equal.
+  except the `axis` must be equal.
 
   For example:
 
@@ -5122,7 +5123,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
 @tf_export(v1=["gather_nd", "manip.gather_nd"])
 @dispatch.add_dispatch_support
 @deprecated_endpoints("manip.gather_nd")
-def gather_nd(params, indices, name=None, batch_dims=0):
+def gather_nd(params, indices, name=None, batch_dims=0, bad_indices_policy=""):
   r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
 
   `indices` is a `Tensor` of indices into `params`. The index vectors are
@@ -5131,10 +5132,6 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   This is similar to `tf.gather`, in which `indices` defines slices into the
   first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into
   the first `N` dimensions of `params`, where `N = indices.shape[-1]`.
-
-  Caution: On CPU, if an out of bound index is found, an error is returned.
-  On GPU, if an out of bound index is found, a 0 is stored in the
-  corresponding output value.
 
   ## Gathering scalars
 
@@ -5360,6 +5357,11 @@ def gather_nd(params, indices, name=None, batch_dims=0):
       Index tensor.
     name: A name for the operation (optional).
     batch_dims: An integer or a scalar 'Tensor'. The number of batch dimensions.
+    bad_indices_policy: A string. If `""` or `"DEFAULT"`, the default behavior
+      is used (error on CPU and ignore on GPU). If `"IGNORE"`, the bad indices
+      are ignored and 0 is stored in the corresponding output value. If
+      `"ERROR"`, an error is raised. Accelerators generally don't support
+      `"ERROR"`.
 
   Returns:
     A `Tensor`. Has the same type as `params`.
@@ -5367,27 +5369,50 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   batch_dims_ = tensor_util.constant_value(batch_dims)
   if batch_dims_ is not None:
     batch_dims = int(batch_dims_)
+  if batch_dims == 0 and bad_indices_policy not in ("", "DEFAULT"):
+    # TODO(cylai): also support `bad_indices_policy` for resource variables.
+    return gen_array_ops.gather_nd(
+        params, indices, name=name, bad_indices_policy=bad_indices_policy
+    )
   if batch_dims == 0:
     try:
       # TODO(apassos) find a less bad way of detecting resource variables
       # without introducing a circular dependency.
       return params.gather_nd(indices, name=name)
     except AttributeError:
-      return gen_array_ops.gather_nd(params, indices, name=name)
+      return gen_array_ops.gather_nd(
+          params, indices, name=name, bad_indices_policy=bad_indices_policy
+      )
   else:
-    return batch_gather_nd(params, indices, batch_dims=batch_dims, name=name)
+    return batch_gather_nd(
+        params,
+        indices,
+        batch_dims=batch_dims,
+        name=name,
+        bad_indices_policy=bad_indices_policy,
+    )
 
 
 @tf_export("gather_nd", v1=[])
 @dispatch.add_dispatch_support
-def gather_nd_v2(params, indices, batch_dims=0, name=None):
-  return gather_nd(params, indices, name=name, batch_dims=batch_dims)
+def gather_nd_v2(
+    params, indices, batch_dims=0, name=None, bad_indices_policy=""
+):
+  return gather_nd(
+      params,
+      indices,
+      name=name,
+      batch_dims=batch_dims,
+      bad_indices_policy=bad_indices_policy,
+  )
 
 
 gather_nd_v2.__doc__ = gather_nd.__doc__
 
 
-def batch_gather_nd(params, indices, batch_dims, name=None):
+def batch_gather_nd(
+    params, indices, batch_dims, name=None, bad_indices_policy=""
+):
   """gather_nd implementation with batch support."""
   with ops.name_scope(name, "BatchGatherND", [params, indices]):
     indices = ops.convert_to_tensor(indices, name="indices")
@@ -5463,7 +5488,9 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     # flat_indices now has shape [(B1.B2), i1, ..., iK, C]
     indices = concat((index_grid, flat_indices), axis=-1)
     # indices has shape [(B1.B2), i1, ..., iK, 2+C]
-    out = gen_array_ops.gather_nd(params, indices)
+    out = gen_array_ops.gather_nd(
+        params, indices, bad_indices_policy=bad_indices_policy
+    )
     # out has shape [(B1.B2), i1, ..., iK, N-C]. Now we reshape batch to
     # its original form.
     out_shape = shape(out)

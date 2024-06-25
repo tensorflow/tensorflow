@@ -70,7 +70,7 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
         %cast = tensor.cast %33 : tensor<?xelem_type> to tensor<*xelem_type>
         scf.yield %cast : tensor<*xelem_type>
       } else {
-        %21:2 = chlo.minimum_broadcast_shapes %7, %8 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %21:2 = mhlo.minimum_broadcast_shapes %7, %8 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
         %22 = shape.rank %21#0 : tensor<?xindex> -> index
         %23 = shape.rank %21#1 : tensor<?xindex> -> index
         %24 = arith.cmpi sgt, %22, %23 : index

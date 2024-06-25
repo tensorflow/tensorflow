@@ -85,10 +85,11 @@ class ValueInference {
   explicit ValueInference(XlaBuilder* builder) : builder_(builder) {
     CHECK(builder_);
   }
-  StatusOr<Literal> AnalyzeIsDynamic(XlaOp op);
+  absl::StatusOr<Literal> AnalyzeIsDynamic(XlaOp op);
   // Returns an OptionalLiteral. Each individual value of the literal is
   // the concrete constant value if it can be inferred, otherwise a nullopt.
-  StatusOr<OptionalLiteral> AnalyzeConstant(XlaOp op, ValueInferenceMode mode);
+  absl::StatusOr<OptionalLiteral> AnalyzeConstant(XlaOp op,
+                                                  ValueInferenceMode mode);
 
   // Returns underlying xla builder.
   XlaBuilder* builder() { return builder_; }
@@ -97,11 +98,11 @@ class ValueInference {
   // Given an op handle, returns a simplified version of the handle inside a
   // int64_t Literal. If the a -1 value for the handle means invalid
   // simplification and the result shouldn't be used.
-  StatusOr<Literal> SimplifyOp(int64_t handle);
+  absl::StatusOr<Literal> SimplifyOp(int64_t handle);
 
   // Perform CSE on a given handle, and return an equivalent handle if seen
   // before. Otherwise, returns nullopt.
-  StatusOr<std::optional<int64_t>> CseOpHandle(int64_t handle);
+  absl::StatusOr<std::optional<int64_t>> CseOpHandle(int64_t handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
   // A map from instruction_hash to handle that helps perform CSE.

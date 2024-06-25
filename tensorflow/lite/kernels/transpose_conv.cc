@@ -26,8 +26,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 // NOLINTNEXTLINE - This header file shouldn't go to the top.
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -59,6 +61,9 @@ struct OpData {
   int col2im_id = kTensorNotAllocated;
   int transposed_weights_id = kTensorNotAllocated;
   int scratch_tensor_id = kTensorNotAllocated;
+  int input_quantized_id = kTensorNotAllocated;
+  int scaling_factors_id = kTensorNotAllocated;
+  int input_offset_id = kTensorNotAllocated;
 
   // col2im is the temporary tensor allocated and used in optimized path for
   // storing col2im data:gemm result for input_matrix x filter_matrix.
@@ -72,6 +77,11 @@ struct OpData {
   // Scratch tensor is used in the quantized path for storing accumulation
   // results.
   int32_t scratch_tensor_index;
+
+  // Indexes are used for hybrid (dynamic range quantization) path.
+  int32_t input_quantized_index;
+  int32_t scaling_factors_index;
+  int32_t input_offset_index;
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -157,6 +167,32 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
       context->AddTensors(context, 1, &data->scratch_tensor_id);
     }
     data->scratch_tensor_index = temporaries_count;
+    ++temporaries_count;
+  }
+
+  if (input_type == kTfLiteFloat32 && weights_type == kTfLiteInt8) {
+    // Allocate tensor to store the on-the-fly quantized inputs.
+    data->input_quantized_index = temporaries_count;
+    if (data->input_quantized_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->input_quantized_id));
+    }
+    ++temporaries_count;
+
+    // Allocate tensor to store the quantization params computed during
+    // on-the-fly input quantization.
+    data->scaling_factors_index = temporaries_count;
+    if (data->scaling_factors_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->scaling_factors_id));
+    }
+    ++temporaries_count;
+
+    data->input_offset_index = temporaries_count;
+    if (data->input_offset_id == kTensorNotAllocated) {
+      TF_LITE_ENSURE_OK(
+          context, context->AddTensors(context, 1, &data->input_offset_id));
+    }
     ++temporaries_count;
   }
 
@@ -308,8 +344,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                   bias->type == params->quantized_bias_type);
       data->quantized_bias_type = params->quantized_bias_type;
     }
-  } else {
-    TF_LITE_ENSURE_TYPES_EQ(context, weights->type, input->type);
   }
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
   // Ensure that weights and inputs have the same channel dimension.
@@ -404,6 +438,69 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), channels_out));
+  }
+
+  if (input->type == kTfLiteFloat32 && weights->type == kTfLiteInt8) {
+    node->temporaries->data[data->input_quantized_index] =
+        data->input_quantized_id;
+    TfLiteTensor* input_quantized;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, data->input_quantized_index,
+                                  &input_quantized));
+    input_quantized->type = kTfLiteInt8;
+    input_quantized->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
+      TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                       input_quantized_size));
+    }
+
+    node->temporaries->data[data->scaling_factors_index] =
+        data->scaling_factors_id;
+    TfLiteTensor* scaling_factors;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, data->scaling_factors_index,
+                                  &scaling_factors));
+    scaling_factors->type = kTfLiteFloat32;
+    scaling_factors->allocation_type = kTfLiteArenaRw;
+    // Only one scale factor per batch is typically necessary. See optimized
+    // implementation for why we need to allocate for the height of the inputs
+    // flattened to 2D.
+    const int channels_in = weights->dims->data[3];
+    TF_LITE_ENSURE(context, channels_in != 0);
+    const int height = NumElements(input) / channels_in;
+    int scaling_dims[1] = {height};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = height;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                       scaling_factors_size));
+    }
+
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            weights->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE_EQ(
+        context, affine_quantization->scale->size,
+        weights->dims->data[affine_quantization->quantized_dimension]);
+    node->temporaries->data[data->input_offset_index] = data->input_offset_id;
+    TfLiteTensor* input_offsets;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, data->input_offset_index,
+                                       &input_offsets));
+    input_offsets->type = kTfLiteInt32;
+    input_offsets->allocation_type = kTfLiteArenaRw;
+    // See above comment for the need to allocate for height of inputs.
+    TF_LITE_ENSURE(context, channels_in != 0);
+    const int input_offset_dims[1] = {height};
+    if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, input_offset_dims)) {
+      TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+      input_offsets_size->data[0] = input_offset_dims[0];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
+                                                       input_offsets_size));
+    }
   }
 
   return kTfLiteOk;
@@ -617,6 +714,67 @@ void EvalQuantizedPerChannel16x8(
   }
 }
 
+TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                        const TfLiteTransposeConvParams* params, OpData* data,
+                        const TfLiteTensor* input, const TfLiteTensor* weights,
+                        const TfLiteTensor* bias, TfLiteTensor* output) {
+  float output_activation_min, output_activation_max;
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
+
+  const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
+  TfLiteTensor* quantized_input_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->input_quantized_index,
+                                     &quantized_input_tensor));
+  int8_t* quantized_input_ptr_batch =
+      GetTensorData<int8_t>(quantized_input_tensor);
+  TfLiteTensor* scaling_factors_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->scaling_factors_index,
+                                     &scaling_factors_tensor));
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors_tensor);
+  TfLiteTensor* input_offset_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->input_offset_index,
+                                     &input_offset_tensor));
+  int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offset_tensor);
+
+  for (int b = 0; b < batch_size; ++b) {
+    const int offset = b * input_size;
+    tensor_utils::AsymmetricQuantizeFloats(
+        GetTensorData<float>(input) + offset, input_size,
+        quantized_input_ptr_batch + offset, &scaling_factors_ptr[b],
+        &input_offset_ptr[b]);
+  }
+
+  const auto* affine_quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(weights->quantization.params);
+
+  tflite::ConvParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width_offset = data->padding.width_offset;
+  op_params.padding_values.height_offset = data->padding.height_offset;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  op_params.float_activation_min = output_activation_min;
+  op_params.float_activation_max = output_activation_max;
+
+  reference_ops::HybridTransposeConv(
+      op_params, scaling_factors_ptr, GetTensorShape(input),
+      quantized_input_ptr_batch, GetTensorShape(weights),
+      GetTensorData<int8_t>(weights), GetTensorShape(bias),
+      GetTensorData<float>(bias), GetTensorShape(output),
+      GetTensorData<float>(output), affine_quantization->scale->data,
+      input_offset_ptr);
+
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Retrieve tensors (All should be allocated by now)
@@ -677,14 +835,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Currently support float32, uint8, int8, int16.
   switch (input->type) {
     case kTfLiteFloat32: {
-      // Only for GenericOptimized path, we use transposed weights.
-      if (data->weights_are_transposed) {
-        if (!IsConstantTensor(weights)) {
-          ResizeAndTransposeWeights(context, weights, transposed_weights);
+      if (weights->type == kTfLiteInt8) {
+        TF_LITE_ENSURE_OK(context, EvalHybrid(context, node, params, data,
+                                              input, weights, bias, output));
+      } else {
+        // Only for GenericOptimized path, we use transposed weights.
+        if (data->weights_are_transposed) {
+          if (!IsConstantTensor(weights)) {
+            ResizeAndTransposeWeights(context, weights, transposed_weights);
+          }
         }
+        EvalFloat<kernel_type>(context, params, data, input, weights, bias,
+                               transposed_weights, col2im, output);
       }
-      EvalFloat<kernel_type>(context, params, data, input, weights, bias,
-                             transposed_weights, col2im, output);
       break;
     }
     case kTfLiteUInt8: {

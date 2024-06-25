@@ -45,7 +45,7 @@ class ScopedAllocator {
   // instance.  It must be large enough to back all of the specified
   // (offset, byte) ranges of the fields.
   ScopedAllocator(const Tensor& backing_tensor, int32_t scope_id,
-                  const std::string& name, const gtl::ArraySlice<Field> fields,
+                  const std::string& name, const absl::Span<const Field> fields,
                   int32_t expected_call_count,
                   ScopedAllocatorContainer* container);
 

@@ -101,9 +101,14 @@ void Log(const std::string& msg) {
 
 // Needs to be kept in sync with PrimitiveType in xla_data.proto.
 enum PrimitiveType {
-  S16 = 0,
+  S2,
+  S4,
+  S8,
+  S16,
   S32,
   S64,
+  U2,
+  U4,
   U8,
   U16,
   U32,
@@ -116,19 +121,21 @@ enum PrimitiveType {
   C128,
   F8E5M2,
   F8E4M3FN,
-  S4,
-  U4,
   F8E4M3B11FNUZ,
   F8E5M2FNUZ,
   F8E4M3FNUZ,
 };
 
 const std::vector<std::string>& primitive_strings() {
-  static auto vec = new std::vector<std::string>(
-      {"s16", "s32", "s64",           "u8",         "u16",
-       "u32", "u64", "f16",           "bf16",       "f32",
-       "f64", "c64", "c128",          "f8e5m2",     "f8e4m3fn",
-       "s4",  "u4",  "f8e4m3b11fnuz", "f8e5m2fnuz", "f8e4m3fnuz"});
+  static auto vec =
+      new std::vector<std::string>({"s2",         "s4",        "s8",
+                                    "s16",        "s32",       "s64",
+                                    "u2",         "u4",        "u8",
+                                    "u16",        "u32",       "u64",
+                                    "f16",        "bf16",      "f32",
+                                    "f64",        "c64",       "c128",
+                                    "f8e5m2",     "f8e4m3fn",  "f8e4m3b11fnuz",
+                                    "f8e5m2fnuz", "f8e4m3fnuz"});
   return *vec;
 }
 
@@ -384,6 +391,8 @@ void Fill(void* buffer, const ArrayShape& shape) {
   Log("Shape type = " + ToString(shape.type) +
       ", shape = " + ArrayShapeToString(shape));
   switch (shape.type) {
+    case S8:
+      return FillIntT<signed char>(buffer, num_elements);  // NOLINT
     case S16:
       return FillIntT<short>(buffer, num_elements);  // NOLINT
     case S32:
@@ -412,6 +421,8 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case BF16:
     case C64:
     case C128:
+    case S2:
+    case U2:
     case S4:
     case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
@@ -436,6 +447,8 @@ void DisplayT(const void* buffer, int num_elements) {
 void Display(const void* buffer, const ArrayShape& shape) {
   int num_elements = GetNumElements(shape);
   switch (shape.type) {
+    case S8:
+      return DisplayT<signed char>(buffer, num_elements);  // NOLINT
     case S16:
       return DisplayT<short>(buffer, num_elements);  // NOLINT
     case S32:
@@ -464,6 +477,8 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case BF16:
     case C64:
     case C128:
+    case S2:
+    case U2:
     case S4:
     case U4:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));

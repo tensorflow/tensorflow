@@ -18,11 +18,12 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/status/status.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -47,20 +48,18 @@ absl::Status MakeBatchPointers(se::Stream* stream,
                                se::DeviceMemoryBase base_ptr,
                                size_t stride_bytes, size_t n,
                                se::DeviceMemoryBase ptrs_out) {
-  static constexpr size_t kThreads = 128;
-
-  se::StreamExecutor* executor = stream->parent();
-
 #if TENSORFLOW_USE_ROCM
   stream_executor::gpu::rocm_MakeBatchPointers(
       se::gpu::AsGpuStreamValue(stream),
       reinterpret_cast<char*>(base_ptr.opaque()), stride_bytes, n,
       reinterpret_cast<void**>(ptrs_out.opaque()));
 #else
+  se::StreamExecutor* executor = stream->parent();
+  static constexpr size_t kThreads = 128;
 
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (se::TypedKernel<
+      (se::TypedKernelFactory<
           se::DeviceMemoryBase, size_t, size_t,
           se::DeviceMemoryBase>::Create(executor, "make_batch_pointers",
                                         make_batch_pointers::kernel())));

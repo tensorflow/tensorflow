@@ -47,7 +47,7 @@ TEST(ClientImplTest, Devices) {
 
   for (Device* device : client->devices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
-                            client->LookupDevice(device->id()));
+                            client->LookupDevice(device->Id()));
     EXPECT_EQ(device, looked_up_device);
   }
 

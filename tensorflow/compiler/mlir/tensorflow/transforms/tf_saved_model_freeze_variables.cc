@@ -54,7 +54,7 @@ constexpr StringRef kTfInputShapesAttr = "tf._input_shapes";
 // Build and returns ElementsAttr which holds the data in 'tensor'.
 ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
                                           OpBuilder builder) {
-  tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
+  absl::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(tensor, &builder);
   if (!tensor_attr_or.ok()) return nullptr;
   return tensor_attr_or.value();

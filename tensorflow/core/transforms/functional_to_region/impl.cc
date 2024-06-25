@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
@@ -383,7 +384,7 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   }
   ArrayAttr region_attrs = nullptr;
   if (!llvm::all_of(preserved_attrs, [](Attribute attr) {
-        return AreRegionAttrsEmpty(attr.cast<RegionAttr>());
+        return AreRegionAttrsEmpty(mlir::cast<RegionAttr>(attr));
       }))
     region_attrs = rewriter.getArrayAttr(preserved_attrs);
 

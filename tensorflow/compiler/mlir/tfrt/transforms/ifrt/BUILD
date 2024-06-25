@@ -15,8 +15,10 @@ package_group(
         "//tensorflow/core/tfrt/saved_model/tests/...",
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
+        "//learning/serving/servables/tfrt/...",
         "//learning/pathways/serving/runtime/...",
         "//learning/pathways/serving/tests/...",
+        "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
     ]),
@@ -50,13 +52,26 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_types",
+    srcs = [],
+    hdrs = ["ifrt_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "tf_ifrt_passes",
     srcs = [
         "lower_to_ifrt_restore_variable.cc",
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
+        "tf_identity_propagation.cc",
         "tf_ifrt_passes.cc",
         "tf_restore_merging.cc",
+        "tf_restore_pruning.cc",
         "tf_restore_splitting.cc",
     ],
     hdrs = [
@@ -108,6 +123,7 @@ cc_library(
     hdrs = ["tf2hlo.h"],
     deps = [
         ":ifrt_constants",
+        ":ifrt_types",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
@@ -145,6 +161,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "extract_callback",
+    srcs = ["extract_callback.cc"],
+    hdrs = ["extract_callback.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_a_m_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_n_z_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:visitor",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tf_cc_test(
     name = "tf2hlo_test",
     srcs = [
@@ -155,6 +194,7 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
+        ":ifrt_types",
         ":tf2hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -221,6 +261,7 @@ tf_cc_test(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
+        "//tensorflow/core/tfrt/ifrt:ifrt_serving_core_selector",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "@com_google_absl//absl/strings",
@@ -233,6 +274,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/tsl/framework/test_util:mock_serving_device_selector",
         "@tf_runtime//:hostcontext",
     ],
 )

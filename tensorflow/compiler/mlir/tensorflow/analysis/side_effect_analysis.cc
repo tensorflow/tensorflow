@@ -26,25 +26,32 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -73,7 +80,7 @@ const ResourceIdSet& UnknownResourceSet() {
 const ResourceIdSet& GetResourceUniqueIdsOrUnknown(
     Value value,
     const ResourceAliasAnalysis::Info& alias_analysis) {
-  if (!getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>() ||
+  if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(value.getType())) ||
       alias_analysis.IsUnknownResource(value)) return UnknownResourceSet();
   return alias_analysis.GetResourceUniqueIds(value);
 }
@@ -145,7 +152,7 @@ bool MayHaveSideEffect(Operation* op) {
 bool ShouldUseResourceAliasAnalysis(
     const MemoryEffects::EffectInstance& effect) {
   Value value = effect.getValue();
-  if (value && getElementTypeOrSelf(value.getType()).isa<ResourceType>()) {
+  if (value && mlir::isa<ResourceType>(getElementTypeOrSelf(value.getType()))) {
     // For value-based effects on resource values we can use resource alias
     // analysis.
     return true;

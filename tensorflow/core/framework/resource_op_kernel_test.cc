@@ -69,7 +69,7 @@ class StubResourceOpKernel : public ResourceOpKernel<StubResource> {
       return errors::InvalidArgument("stub has code ", resource->code,
                                      " but requested code ", code);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

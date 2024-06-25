@@ -531,9 +531,9 @@ class TensorShapeOld {
  public:
   /// \brief Construct a `TensorShape` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0`
-  explicit TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes);
+  explicit TensorShapeOld(absl::Span<const int64_t> dim_sizes);
   TensorShapeOld(std::initializer_list<int64_t> dim_sizes)
-      : TensorShapeOld(gtl::ArraySlice<int64_t>(dim_sizes)) {}
+      : TensorShapeOld(absl::Span<const int64_t>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
   explicit TensorShapeOld(const TensorShapeProto& proto);
@@ -587,7 +587,7 @@ class TensorShapeOld {
   }
 
   /// Returns sizes of all dimensions.
-  gtl::ArraySlice<int64_t> dim_sizes() const { return dim_sizes_; }
+  absl::Span<const int64_t> dim_sizes() const { return dim_sizes_; }
 
   /// \brief Returns the number of elements in the tensor.
   ///
@@ -629,7 +629,7 @@ class TensorShapeOld {
 
   // TODO(josh11b): Maybe use something from the Eigen Tensor library
   // for the sizes.
-  gtl::InlinedVector<int64_t, 4> dim_sizes_;
+  absl::InlinedVector<int64_t, 4UL> dim_sizes_;
 
   // total number of elements (avoids recomputing it each time).
   int64_t num_elements_;
@@ -690,7 +690,7 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
                                      " entries)");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {
@@ -701,7 +701,7 @@ TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {
   }
 }
 
-TensorShapeOld::TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes) {
+TensorShapeOld::TensorShapeOld(absl::Span<const int64_t> dim_sizes) {
   dim_sizes_.reserve(dim_sizes.size());
   num_elements_ = 1;
   for (auto s : dim_sizes) {
@@ -793,7 +793,7 @@ TensorShapeIterOld TensorShapeOld::end() const {
 
 string TensorShapeOld::DebugString() const {
   return strings::StrCat(
-      "[", absl::StrJoin(gtl::ArraySlice<int64_t>(dim_sizes_), ","), "]");
+      "[", absl::StrJoin(absl::Span<const int64_t>(dim_sizes_), ","), "]");
 }
 
 string TensorShapeOld::DebugString(const TensorShapeProto& proto) {

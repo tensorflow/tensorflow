@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -24,15 +28,18 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -171,6 +178,65 @@ TEST(LowerWhileOpTest, Simple) {
     ASSERT_EQ(out_tensors.size(), 1);
     EXPECT_EQ(out_tensors[0].scalar<int>()(), 12);
   }
+}
+
+static void DanglingNodeTestHelper(int expected_count) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // Add test functions for cond and body.
+  FunctionDefLibrary f_lib_proto;
+  *f_lib_proto.add_function() =
+      test::function::XTimesTwoWithDanglingFloorDivNode();
+  *f_lib_proto.add_function() = test::function::LessThanOrEqualToN(8);
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  Node* while_node;
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
+  AttrValue cond_func;
+  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("XTimesTwoWithDanglingFloorDivNode");
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &root.graph()->flib_def())
+          .Input(inputs)
+          .Attr("T", {DT_INT32})
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr("parallel_iterations", 100)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &while_node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(while_node)),
+      Output(while_node));
+  TF_ASSERT_OK(root.DoShapeInference(while_node));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  int mul_count = 0;
+  int floor_div_count = 0;
+
+  for (const auto* op : graph->op_nodes()) {
+    if (op->type_string() == "Mul") {
+      mul_count++;
+    }
+    if (op->type_string() == "FloorDiv") {
+      floor_div_count++;
+    }
+  }
+
+  ASSERT_EQ(mul_count, 1);
+  ASSERT_EQ(floor_div_count, expected_count);
+}
+
+TEST(LowerWhileOpTest, DanglingNode) { DanglingNodeTestHelper(1); }
+
+TEST(LowerWhileOpTest, DanglingNodeWithPruning) {
+  flags::Global().enable_function_pruning_before_inlining.reset(true);
+  DanglingNodeTestHelper(0);
+  flags::Global().enable_function_pruning_before_inlining.reset(false);
 }
 
 TEST(LowerWhileOpTest, ForwardAssignedInputDevice) {

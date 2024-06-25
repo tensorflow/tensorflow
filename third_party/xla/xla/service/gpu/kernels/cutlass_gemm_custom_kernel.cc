@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -100,7 +100,7 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
   // object constructed in the storage. For now we ignore it, and it's textbook
   // definition of UB, but for CUTLASS kernels we use today it's perfectly safe.
   struct Params {
-    alignas(64) std::byte storage[1024];
+    alignas(128) std::byte storage[1024];
   };
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
@@ -210,10 +210,13 @@ absl::StatusOr<CustomKernel> GetCutlassGemmKernel(
       return Load<F32xF32ToF32<Default>>(std::move(name), m, n, k, indices,
                                          slices, device);
     case PrimitiveType::BF16:
+#if CUDA_VERSION >= 12000
       if (cuda_cc.IsAtLeastHopper()) {
         return Load<Bf16xBf16ToBf16<Sm90>>(std::move(name), m, n, k, indices,
                                            slices, device);
-      } else if (cuda_cc.IsAtLeastAmpere()) {
+      }
+#endif
+      if (cuda_cc.IsAtLeastAmpere()) {
         return Load<Bf16xBf16ToBf16<Sm80>>(std::move(name), m, n, k, indices,
                                            slices, device);
       }

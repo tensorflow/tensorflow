@@ -91,8 +91,8 @@ TEST_F(LevenshteinDistanceTest, DifferentComparisons) {
   ASSERT_EQ(LevenshteinDistance(lower_, upper_, std::equal_to<char>()), 5);
   ASSERT_EQ(LevenshteinDistance(upper_, lower_, std::equal_to<char>()), 5);
   ASSERT_EQ(
-      LevenshteinDistance(gtl::ArraySlice<char>(lower_.data(), lower_.size()),
-                          gtl::ArraySlice<char>(upper_.data(), upper_.size()),
+      LevenshteinDistance(absl::Span<const char>(lower_.data(), lower_.size()),
+                          absl::Span<const char>(upper_.data(), upper_.size()),
                           std::equal_to<char>()),
       5);
   auto no_case_cmp = [](char c1, char c2) {
@@ -125,8 +125,8 @@ static void BM_EditDistanceHelper(::testing::benchmark::State& state, int len,
     }
   }
   for (auto s : state) {
-    LevenshteinDistance(gtl::ArraySlice<char>(a.data(), len),
-                        gtl::ArraySlice<char>(b.data(), len),
+    LevenshteinDistance(absl::Span<const char>(a.data(), len),
+                        absl::Span<const char>(b.data(), len),
                         std::equal_to<char>());
   }
 }

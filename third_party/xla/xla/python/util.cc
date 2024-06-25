@@ -15,34 +15,38 @@ limitations under the License.
 
 #include "xla/python/util.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/status.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 
 namespace xla {
 
-Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
-  ifrt::Future<absl::Status> future;
+absl::Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
+  if (ifrt_arrays.empty()) {
+    return absl::OkStatus();
+  }
+
+  ifrt::Future<> future;
   if (ifrt_arrays.size() == 1) {
     future = ifrt_arrays[0]->GetReadyFuture();
   } else {
-    std::vector<ifrt::Future<absl::Status>> futures;
-    futures.reserve(ifrt_arrays.size());
+    std::vector<tsl::RCReference<ifrt::Value>> values;
+    values.reserve(ifrt_arrays.size());
     for (ifrt::Array* const ifrt_array : ifrt_arrays) {
-      futures.push_back(ifrt_array->GetReadyFuture());
+      values.push_back(tsl::FormRef(ifrt_array));
     }
-    future = ifrt::JoinFutures(absl::MakeSpan(futures));
+    ifrt::Client* const client = ifrt_arrays.front()->client();
+    future = client->GetReadyFuture(values);
   }
 
-  Status s = future.Await();
+  absl::Status s = future.Await();
   if (!s.ok()) {
     // Fix up error string because some clients rely on it.
     if (s.message() == "GetReadyFuture() called on deleted or donated buffer") {

@@ -25,7 +25,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
+absl::StatusOr<HloPassMetadata*>
+HloModuleMetadata::GetCurrentHloPassMetadata() {
   if (running_passes_.empty()) {
     return NotFound(
         "HloPassMetadata for currently running pass not found, either because "
@@ -36,12 +37,12 @@ StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
   return running_passes_.back();
 }
 
-Status HloModuleMetadata::MutateCurrentHloPassMetadata(
+absl::Status HloModuleMetadata::MutateCurrentHloPassMetadata(
     absl::FunctionRef<void(HloPassMetadata*)> mutator) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   mutator(pass_metadata);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::RecordPassStart() {
@@ -51,12 +52,12 @@ void HloModuleMetadata::RecordPassStart() {
   running_passes_.push_back(pass_metadata);
 }
 
-Status HloModuleMetadata::RecordPassEnd() {
+absl::Status HloModuleMetadata::RecordPassEnd() {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
   running_passes_.pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModuleMetadata::set_prepartitioning_metadata(
@@ -87,7 +88,7 @@ void HloModuleMetadata::set_prepartitioning_metadata(
   }
 }
 
-Status HloModuleMetadata::set_custom_metadata(
+absl::Status HloModuleMetadata::set_custom_metadata(
     const ::tsl::protobuf::Message& message) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
@@ -96,7 +97,7 @@ Status HloModuleMetadata::set_custom_metadata(
                  << pass_metadata->pass_id();
     return Internal("failed to pack custom metadata");
   };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

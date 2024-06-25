@@ -23,11 +23,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -90,13 +90,13 @@ class LayoutUtil {
   // Validates that the layout within the given shape is correct. The check
   // is performed for all subshapes as well. If missing layouts are allowed
   // the check does not fail on array shapes without layouts.
-  static Status ValidateLayoutInShape(const Shape& shape,
-                                      bool allow_missing_layouts = false);
+  static absl::Status ValidateLayoutInShape(const Shape& shape,
+                                            bool allow_missing_layouts = false);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.
-  static Status ValidateLayoutForShape(const Layout& layout,
-                                       const Shape& shape);
+  static absl::Status ValidateLayoutForShape(const Layout& layout,
+                                             const Shape& shape);
 
   // Clears the layout in the given Shape. After this function is called,
   // HasLayout will return false for the shape.
@@ -163,6 +163,7 @@ class LayoutUtil {
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
+  static bool HasAnyLayout(const Shape& shape);
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
@@ -241,7 +242,7 @@ class LayoutUtil {
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
   // have the same tuple structure (if any) and arrays must have the same
   // rank. within the shapes must have the same number of dimensions.
-  static Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
+  static absl::Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
   // otherwise. Recursively compares layouts of tuples.
@@ -300,6 +301,11 @@ class LayoutUtil {
   // stored in a particular split. This can be useful for calculating how much
   // memory to allocate in each of the memories.
   static int64_t MaxElementsInPerSplit(const Shape& shape);
+
+  // Returns the physical shape with the descending layout based on a logical
+  // shape and its layout, e.g., (8,128){0,1} -> (128,8){1,0}.
+  // It only supports the leaf shape but not the tuple shape.
+  static Shape GetPhysicalShapeFromLogicalShape(const Shape& logical_shape);
 };
 
 }  // namespace xla

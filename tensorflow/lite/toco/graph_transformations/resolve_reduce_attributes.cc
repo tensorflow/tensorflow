@@ -52,29 +52,29 @@ bool ResolveAttributes(Model* model, T* op) {
   switch (op->type) {
     case OperatorType::kMean:
       *modified = ResolveAttributes(model, static_cast<MeanOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kSum:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceProd:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceMin:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kReduceMax:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kAny:
       *modified =
           ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 }
 

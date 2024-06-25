@@ -166,7 +166,7 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
       ready_.push_back(src.node());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
@@ -341,7 +341,7 @@ Status SymbolicGradientBuilder::Initialize() {
       TF_RETURN_IF_ERROR(BackpropAlongEdge(grad_inputs_[i], outputs_[i]));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
@@ -372,7 +372,7 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
     *grad = ops::AddN(scope_, grads_to_keep);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(const string& opname) {
@@ -388,7 +388,7 @@ Status SymbolicGradientBuilder::CallGradFunction(
   TF_RETURN_IF_ERROR(registry_->Lookup(op.node()->type_string(), &grad_fn));
   TF_RETURN_IF_ERROR(grad_fn(scope_, op, grad_inputs, grad_outputs));
   TF_RETURN_IF_ERROR(scope_.status());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
@@ -414,7 +414,8 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Wait until we have all exit nodes' backprops collected before processing
   // the while loop.
   // TODO(skyewm): what if not all the exit nodes are reachable?
-  if (backprops.size() < while_ctx->exit_nodes().size()) return OkStatus();
+  if (backprops.size() < while_ctx->exit_nodes().size())
+    return absl::OkStatus();
 
   // We've seen all the exit nodes for this loop and have collected all the
   // backprops. Create the gradient graph for the while loop.
@@ -435,7 +436,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
       TF_RETURN_IF_ERROR(BackpropAlongEdge(dx[i], {e->src(), e->src_output()}));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SymbolicGradientBuilder::AddGradients() {
@@ -553,7 +554,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     int num_requested_inputs = p.first->num_outputs() - pending_[p.first->id()];
     CHECK_EQ(num_requested_inputs, p.second);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -16,10 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/runtime/fused_mha_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_fused_mha_runner.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -37,7 +48,6 @@ FusedMHAThunk::FusedMHAThunk(
       rhs_bmm2_buffer_(rhs_bmm2),
       output_buffer_(output),
       scratch_buffer_(scratch),
-      mask_buffer_(mask),
       bias_buffer_(bias),
       activation_buffer_(activation),
       seqlen_q_buffer_(seqlen_q),
@@ -66,6 +76,13 @@ std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
              : std::nullopt;
 }
 
+absl::Status FusedMHAThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHARunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHAOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
+}
+
 absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase lhs_bmm1_buffer =
@@ -79,8 +96,6 @@ absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase scratch_buffer =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
-  std::optional<se::DeviceMemoryBase> mask_buffer =
-      AssignBufferIfNotNull(buffer_allocations, mask_buffer_);
   std::optional<se::DeviceMemoryBase> bias_buffer =
       AssignBufferIfNotNull(buffer_allocations, bias_buffer_);
   std::optional<se::DeviceMemoryBase> activation_buffer =
@@ -91,10 +106,10 @@ absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
       AssignBufferIfNotNull(buffer_allocations, seqlen_k_buffer_);
   RunFusedMHAOptions opts;
   opts.runner_cache = &GetOrCreateRunner(params.stream);
-  TF_RETURN_IF_ERROR(RunGpuFMHA(
-      config_, lhs_bmm1_buffer, rhs_bmm1_buffer, rhs_bmm2_buffer, output_buffer,
-      scratch_buffer, mask_buffer, bias_buffer, activation_buffer,
-      seqlen_q_buffer, seqlen_k_buffer, params.stream, opts));
+  TF_RETURN_IF_ERROR(RunGpuFMHA(config_, lhs_bmm1_buffer, rhs_bmm1_buffer,
+                                rhs_bmm2_buffer, output_buffer, scratch_buffer,
+                                bias_buffer, activation_buffer, seqlen_q_buffer,
+                                seqlen_k_buffer, params.stream, opts));
 
   if (!params.stream->ok()) {
     return Internal("FusedMHAThunk::ExecuteOnStream failed.");
@@ -110,7 +125,6 @@ FusedMHABackwardThunk::FusedMHABackwardThunk(
     BufferAllocation::Slice d_output, BufferAllocation::Slice scratch,
     BufferAllocation::Slice d_bmm1_lhs, BufferAllocation::Slice d_bmm1_rhs,
     BufferAllocation::Slice d_bmm2_rhs, BufferAllocation::Slice d_s,
-    BufferAllocation::Slice softmax_sum, BufferAllocation::Slice d_Q_accum,
     BufferAllocation::Slice mask, BufferAllocation::Slice d_bias,
     BufferAllocation::Slice fwd_output, BufferAllocation::Slice bias,
     BufferAllocation::Slice seqlen_q, BufferAllocation::Slice seqlen_k)
@@ -125,9 +139,6 @@ FusedMHABackwardThunk::FusedMHABackwardThunk(
       d_bmm1_rhs_buffer_(d_bmm1_rhs),
       d_bmm2_rhs_buffer_(d_bmm2_rhs),
       d_s_buffer_(d_s),
-      softmax_sum_buffer_(softmax_sum),
-      d_Q_accum_buffer_(d_Q_accum),
-      mask_buffer_(mask),
       d_bias_buffer_(d_bias),
       fwd_output_buffer_(fwd_output),
       bias_buffer_(bias),
@@ -148,6 +159,13 @@ FusedMHABackwardThunk::GetOrCreateRunner(
              .first;
   }
   return *it->second;
+}
+
+absl::Status FusedMHABackwardThunk::Initialize(const InitializeParams& params) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsFusedMHABackwardRunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHABackwardOpConfig());
+  return lazy_runner->GetOrCreateRunner(config, params.stream).status();
 }
 
 absl::Status FusedMHABackwardThunk::ExecuteOnStream(
@@ -182,12 +200,6 @@ absl::Status FusedMHABackwardThunk::ExecuteOnStream(
 
   std::optional<se::DeviceMemoryBase> d_s_buffer =
       AssignBufferIfNotNull(buffer_allocations, d_s_buffer_);
-  std::optional<se::DeviceMemoryBase> softmax_sum_buffer =
-      AssignBufferIfNotNull(buffer_allocations, softmax_sum_buffer_);
-  std::optional<se::DeviceMemoryBase> d_Q_accum_buffer =
-      AssignBufferIfNotNull(buffer_allocations, d_Q_accum_buffer_);
-  std::optional<se::DeviceMemoryBase> mask_buffer =
-      AssignBufferIfNotNull(buffer_allocations, mask_buffer_);
   std::optional<se::DeviceMemoryBase> d_bias_buffer =
       AssignBufferIfNotNull(buffer_allocations, d_bias_buffer_);
   std::optional<se::DeviceMemoryBase> fwd_output_buffer =
@@ -206,9 +218,8 @@ absl::Status FusedMHABackwardThunk::ExecuteOnStream(
       config_, bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
       bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer, d_output_buffer,
       scratch_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer, d_bmm2_rhs_buffer,
-      d_s_buffer, softmax_sum_buffer, d_Q_accum_buffer, mask_buffer,
-      d_bias_buffer, fwd_output_buffer, bias_buffer, seqlen_q_buffer,
-      seqlen_k_buffer, params.stream, opts));
+      d_s_buffer, d_bias_buffer, fwd_output_buffer, bias_buffer,
+      seqlen_q_buffer, seqlen_k_buffer, params.stream, opts));
   if (!params.stream->ok()) {
     return Internal("FusedMHABackwardThunk::ExecuteOnStream failed.");
   }

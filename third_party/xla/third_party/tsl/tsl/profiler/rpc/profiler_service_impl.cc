@@ -50,9 +50,9 @@ using tensorflow::TerminateResponse;
 
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
-Status CollectDataToRepository(const ProfileRequest& request,
-                               ProfilerSession* profiler,
-                               ProfileResponse* response) {
+absl::Status CollectDataToRepository(const ProfileRequest& request,
+                                     ProfilerSession* profiler,
+                                     ProfileResponse* response) {
   response->set_empty_trace(true);
   // Read the profile data into xspace.
   XSpace xspace;
@@ -76,7 +76,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     VLOG(1) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler =
         ProfilerSession::Create(req->opts());
-    Status status = profiler->Status();
+    absl::Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             std::string(status.message()));

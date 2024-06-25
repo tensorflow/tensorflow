@@ -31,7 +31,8 @@ cc_library(
     name = "array_slice",
     hdrs = ["array_slice.h"],
     deps = [
-        "//tensorflow/core/lib/gtl:inlined_vector",
+        ":inlined_vector",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
     ],
 )

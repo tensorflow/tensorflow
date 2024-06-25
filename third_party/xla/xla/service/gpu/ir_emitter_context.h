@@ -32,10 +32,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -60,16 +61,19 @@ class IrEmitterContext {
  public:
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
+                   const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
-                   bool emit_kernels)
+                   llvm::Module* llvm_module_constants, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
+        execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module),
+        llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -79,6 +83,9 @@ class IrEmitterContext {
   const HloModule& hlo_module() const { return *hlo_module_; }
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
+  }
+  const ExecutionStreamAssignment& execution_stream_assignment() const {
+    return *execution_stream_assignment_;
   }
   absl::string_view platform_name() const { return platform_name_; }
   const se::DeviceDescription& gpu_device_info() const {
@@ -99,6 +106,11 @@ class IrEmitterContext {
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
+  // A separate module can optionally be used to emit constants.
+  llvm::Module* llvm_module_constants() {
+    return (llvm_module_constants_ == nullptr) ? llvm_module_
+                                               : llvm_module_constants_;
+  }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
@@ -123,10 +135,12 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
+  const ExecutionStreamAssignment* execution_stream_assignment_;
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
+  llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;

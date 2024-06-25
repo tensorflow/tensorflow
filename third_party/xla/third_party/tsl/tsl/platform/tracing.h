@@ -121,7 +121,7 @@ class ScopedRegion {
   }
 
   ~ScopedRegion() {
-    if (collector_) {
+    if (collector_ && EventCollector::IsEnabled()) {
       collector_->StopRegion();
     }
   }

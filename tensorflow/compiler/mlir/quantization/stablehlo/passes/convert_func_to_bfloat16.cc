@@ -143,8 +143,8 @@ class BFloat16TypePattern : public ConversionPattern {
       state.attributes.set(
           const_op.getValueAttrName(),
           DenseFPElementsAttr::get(
-              const_op.getValue().getType().dyn_cast<ShapedType>().clone(
-                  rewriter.getBF16Type()),
+              mlir::dyn_cast<ShapedType>(const_op.getValue().getType())
+                  .clone(rewriter.getBF16Type()),
               bfloat16_values));
     }
 

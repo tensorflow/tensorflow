@@ -30,6 +30,7 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/tensor/opdefs/tensor.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace fallback_sync {
@@ -50,7 +51,7 @@ FallbackSyncDialect::FallbackSyncDialect(MLIRContext *context)
 }
 
 static Type GetTensorType(Builder *builder) {
-  return tfrt::t::TensorType::get(builder->getContext());
+  return tfrt::tfrt_tensor::TensorType::get(builder->getContext());
 }
 
 }  // namespace fallback_sync

@@ -18,8 +18,10 @@ limitations under the License.
 #include <cctype>
 #include <cstddef>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -29,11 +31,10 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -120,8 +121,8 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                          MLIRContext* context) {
   std::string full_affine_map_string =
       absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return mlir::cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue();
 }
 
@@ -133,8 +134,8 @@ AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
       "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
       "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
       serialized_affine_expr, ")>");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return mlir::cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue()
       .getResult(0);
 }
@@ -143,7 +144,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
   size_t lhs_length = lhs.size();
   size_t rhs_length = rhs.size();
   size_t l = 0, r = 0;
-  while (l < lhs_length && r < rhs_length) {
+  while (l < lhs_length || r < rhs_length) {
     while (l < lhs_length && std::isspace(lhs[l])) {
       ++l;
     }
@@ -151,7 +152,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
       ++r;
     }
     if (l == lhs_length || r == rhs_length) {
-      continue;
+      break;
     }
     if (lhs[l++] != rhs[r++]) {
       return false;

@@ -1887,7 +1887,6 @@ class MapGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
       options = options_lib.Options()
       options.experimental_optimization.apply_default_optimizations = False
-      options.experimental_warm_start = False
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
       return dataset.with_options(options)
 

@@ -138,7 +138,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   *modified = false;
   auto batch_op_it = model->operators.begin() + op_index;
   if (batch_op_it->get()->type != OperatorType::kBatchMatMul) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* batch_op =
       static_cast<const BatchMatMulOperator*>(batch_op_it->get());
@@ -149,7 +149,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   const auto& input_lhs_array = model->GetArray(input_lhs);
   const auto& input_rhs_array = model->GetArray(input_rhs);
   if (!input_lhs_array.has_shape() || !input_rhs_array.has_shape())
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
 
   // Transpose LHS input if necessary.
   if (batch_op->adj_x) {
@@ -194,7 +194,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
     model->operators.emplace(tail_it, matmul_op);
     DeleteOpAndArrays(model, batch_op);
     *modified = true;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   AddMessageF("Unrolling BatchMatMul %s %d times", LogName(*batch_op),
               bcast.output_batch_size());
@@ -262,7 +262,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
 
   DeleteOpAndArrays(model, batch_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -14,14 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 
+#include <Python.h>
+
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "google/protobuf/text_format.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
@@ -32,20 +40,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/toco/import_tensorflow.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
+#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_convert.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -223,7 +231,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_Exception, tsl::NullTerminatedMessage(status));
+    PyErr_SetString(PyExc_Exception, absl::StatusMessageAsCStr(status));
     return nullptr;
   }
   if (extended_return && !enable_mlir_converter) {
@@ -298,7 +306,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool enable_whole_model_verify,
                             PyObject* op_denylist, PyObject* node_denylist,
                             bool enable_variable_quantization,
-                            bool disable_per_channel_for_dense_layers) {
+                            bool disable_per_channel_for_dense_layers,
+                            PyObject* debug_options_proto_txt_raw) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -307,6 +316,38 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   if (tflite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
     return nullptr;
+  }
+
+  std::optional<tensorflow::converter::DebugOptions> debug_options =
+      tensorflow::converter::DebugOptions();
+  if (debug_options_proto_txt_raw != nullptr) {
+    auto ConvertArg = [&](PyObject* obj, bool* error) {
+      char* buf;
+      Py_ssize_t len;
+      if (::tflite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
+        *error = true;
+        return std::string();
+      } else {
+        *error = false;
+        return std::string(buf, len);
+      }
+    };
+
+    bool error;
+    std::string debug_options_proto_txt =
+        ConvertArg(debug_options_proto_txt_raw, &error);
+    if (error) {
+      PyErr_SetString(PyExc_ValueError, "Toco flags are invalid.");
+      return nullptr;
+    }
+
+    if (!debug_options->ParseFromString(debug_options_proto_txt)) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Failed to convert Toco to Python String.");
+      return nullptr;
+    }
+  } else {
+    debug_options = std::nullopt;
   }
 
   absl::flat_hash_set<std::string> denylisted_ops;
@@ -342,10 +383,12 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       input_model_buffer, input_type, output_type, inference_tensor_type,
       /*operator_names=*/{}, disable_per_channel, fully_quantize, output_model,
-      error_reporter.get(), enable_numeric_verify, enable_whole_model_verify,
+      enable_numeric_verify, enable_whole_model_verify,
       /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
-      enable_variable_quantization, disable_per_channel_for_dense_layers);
-  if (status != kTfLiteOk) {
+      enable_variable_quantization, disable_per_channel_for_dense_layers,
+      debug_options);
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "QuantizeModel failed: " << status.message();
     error_reporter->exception();
     return nullptr;
   }
@@ -375,10 +418,9 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status =
-      mlir::lite::SparsifyModel(*tflite_model, &builder, error_reporter.get());
+  auto status = mlir::lite::SparsifyModel(*tflite_model, &builder);
 
-  if (status != kTfLiteOk) {
+  if (!status.ok()) {
     error_reporter->exception();
     return nullptr;
   }
@@ -452,7 +494,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
   Py_RETURN_TRUE;
 }
 
-const std::vector<std::string> RetrieveCollectedErrors() {
+std::vector<std::string> RetrieveCollectedErrors() {
   mlir::TFL::ErrorCollector* collector =
       mlir::TFL::ErrorCollector::GetErrorCollector();
   std::vector<std::string> collected_errors;

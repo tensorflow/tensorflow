@@ -30,7 +30,7 @@ namespace toco {
   const auto assert_it = model->operators.begin() + op_index;
   const auto* assert_op = assert_it->get();
   if (assert_op->type != OperatorType::kAssert) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   bool changed = false;
@@ -58,7 +58,7 @@ namespace toco {
   // That's it. We can stop here, no need to duplicate the work that
   // RemoveUnusedOp will do removing this now-unused node.
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

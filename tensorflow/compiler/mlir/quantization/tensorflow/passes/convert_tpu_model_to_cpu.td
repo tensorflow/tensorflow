@@ -26,7 +26,7 @@ def GetBatchFunctionOpArgOperands:
 // because `TF_BatchFunctionOp` doesn't have the `CallOpInterface` trait.
 def ReplaceBatchFunctionOpToPartitionedCallOp : Pat<
   (TF_BatchFunctionOp:$src_op_res
-      $_, $_, $f, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_),
+      $_, $_, $f, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_, $_),
   (TF_PartitionedCallOp
       (GetBatchFunctionOpArgOperands $src_op_res),
       $f,

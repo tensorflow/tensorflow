@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -51,10 +52,12 @@ ENTRY primitive_computation_mul.8 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   absl::StatusOr<std::unique_ptr<Executable>> failed_executable =
-      backend().compiler()->RunBackend(
-          std::move(optimized_module), backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator());
+      backend().compiler()->RunBackend(std::move(optimized_module),
+                                       backend().default_stream_executor(),
+                                       &allocator);
 
   EXPECT_FALSE(failed_executable.ok());
   EXPECT_THAT(

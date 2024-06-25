@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_mobile",
@@ -6,13 +5,14 @@ load(
     "tf_cc_test",
     "tf_features_nolayering_check_if_ios",
 )
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -57,10 +57,13 @@ tf_cc_test(
     srcs = ["fallback_state_test.cc"],
     deps = [
         ":fallback_state",
-        "//tensorflow/core:framework",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
@@ -121,7 +124,7 @@ cc_library(
     hdrs = ["device_with_custom_allocator.h"],
     deps = [
         "//tensorflow/core:framework",
-        "@local_tsl//tsl/framework:allocator",
+        "@local_xla//xla/tsl/framework:allocator",
     ],
 )
 

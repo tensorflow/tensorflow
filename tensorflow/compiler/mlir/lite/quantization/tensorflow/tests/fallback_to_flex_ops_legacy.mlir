@@ -52,7 +52,7 @@ func.func @conv2d_backprop_input_with_sub(%arg0: tensor<4xi32>, %arg1: tensor<3x
 func.func @depth_to_space(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
   %0 = "tf.DepthToSpace"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
   func.return %0 : tensor<1x2x2x1xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) {custom_code = "FlexDepthToSpace", custom_option = #tfl<const_bytes : "{{.*}}">} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0) <{custom_code = "FlexDepthToSpace", custom_option = #tfl<const_bytes : "{{.*}}">}> : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<1x2x2x1xf32>
 }
 
@@ -60,7 +60,7 @@ func.func @depth_to_space(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
 func.func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
-// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) {custom_code = "FlexFloorMod", custom_option = #tfl<const_bytes : "{{.*}}">} : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+// CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%arg0, %arg1) <{custom_code = "FlexFloorMod", custom_option = #tfl<const_bytes : "{{.*}}">}> : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
 // CHECK: return %[[CUSTOM_0]] : tensor<5xf32>
 }
 

@@ -83,14 +83,14 @@ class DebugIO {
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string> debug_urls,
+                                   const absl::Span<const string> debug_urls,
                                    bool gated_grpc, int64_t step_id = -1);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string> debug_urls);
+                                   const absl::Span<const string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //

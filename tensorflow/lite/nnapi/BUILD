@@ -1,5 +1,5 @@
-load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

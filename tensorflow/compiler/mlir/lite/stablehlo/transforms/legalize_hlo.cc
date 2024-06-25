@@ -162,10 +162,8 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     }
 
     // tf Convolution doesn't support quantized type.
-    if (conv_op.getRhs()
-            .getType()
-            .getElementType()
-            .isa<quant::QuantizedType>()) {
+    if (mlir::isa<quant::QuantizedType>(
+            conv_op.getRhs().getType().getElementType())) {
       return failure();
     }
 
@@ -193,11 +191,11 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     const int kernel_input_feature_dimension =
         dnums.getKernelInputFeatureDimension();
     const int input_channels =
-        conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-            input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getLhs().getType())
+            .getDimSize(input_feature_dimension);
     const int kernel_input_channels =
-        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-            kernel_input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getRhs().getType())
+            .getDimSize(kernel_input_feature_dimension);
     int feature_group_count = conv_op.getFeatureGroupCount();
 
     // check if group count is valid
@@ -238,14 +236,14 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
   };
 
   static bool IsSupportedConvOp(mhlo::ConvolutionOp conv_op) {
-    if (!conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape()) {
+    if (!mlir::cast<ShapedType>(conv_op.getRhs().getType()).hasStaticShape()) {
       return false;
     }
-    if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() &&
-        !conv_op.getType().cast<ShapedType>().hasStaticShape()) {
+    if (!mlir::cast<ShapedType>(conv_op.getLhs().getType()).hasStaticShape() &&
+        !mlir::cast<ShapedType>(conv_op.getType()).hasStaticShape()) {
       auto dnums = conv_op.getDimensionNumbers();
-      auto lhs_type = conv_op.getLhs().getType().cast<ShapedType>();
-      auto out_type = conv_op.getType().cast<ShapedType>();
+      auto lhs_type = mlir::cast<ShapedType>(conv_op.getLhs().getType());
+      auto out_type = mlir::cast<ShapedType>(conv_op.getType());
       int64_t input_batch_dim = dnums.getInputBatchDimension();
       int64_t out_batch_dim = dnums.getOutputBatchDimension();
       for (size_t i = 0; i < lhs_type.getRank(); ++i) {
@@ -263,10 +261,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
       return false;
 
-    if (conv_op.getWindowStrides()
-            .value()
-            .getType()
-            .cast<ShapedType>()
+    if (mlir::cast<ShapedType>(conv_op.getWindowStrides().value().getType())
             .getRank() != 1)
       return false;
 
@@ -290,10 +285,10 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       int64_t pad_low_int64;
       int64_t pad_high_int64;
       tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
-          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-              input_spatial_dim[i]),
-          conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-              kernel_spatial_dim[i]),
+          mlir::cast<ShapedType>(conv_op.getLhs().getType())
+              .getDimSize(input_spatial_dim[i]),
+          mlir::cast<ShapedType>(conv_op.getRhs().getType())
+              .getDimSize(kernel_spatial_dim[i]),
           dilation[dim], strides[dim], tensorflow::Padding::SAME, &output_size,
           &pad_low_int64, &pad_high_int64);
       if (!status.ok()) return false;
@@ -314,7 +309,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       return value;
     }
 
-    auto input_type = value.getType().cast<RankedTensorType>();
+    auto input_type = mlir::cast<RankedTensorType>(value.getType());
     auto input_shape = input_type.getShape();
 
     llvm::SmallVector<int64_t, 4> start;
@@ -380,7 +375,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     // Convolution. This is needed because TF.Conv3DOp doesn't support EXPLICIT.
     if (padding == "EXPLICIT" && num_spatial_dims == 3) {
       auto lhs_type =
-          conv_op.getLhs().getType().template dyn_cast<RankedTensorType>();
+          mlir::dyn_cast<RankedTensorType>(conv_op.getLhs().getType());
       RankedTensorType padding_attr_type = mlir::RankedTensorType::get(
           {lhs_type.getRank(), 2}, rewriter.getIntegerType(64));
       auto padding_const = rewriter.create<TF::ConstOp>(
@@ -394,7 +389,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       padding = "VALID";
     }
 
-    auto conv_output_type = conv_op.getType().cast<RankedTensorType>();
+    auto conv_output_type = mlir::cast<RankedTensorType>(conv_op.getType());
     DenseIntElementsAttr permutation;
     const bool need_transpose_output = NeedsReformatTypeAndPermutation(
         dnums.getOutputBatchDimension(), dnums.getOutputFeatureDimension(),
@@ -418,7 +413,7 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       // Reshapes filter format to [filter_height, filter_width, in_channels,
       // channel_multiplier] from HLO's [filter_height, filter_width, 1,
       // in_channels * channel_multiplier] format.
-      auto filter_type = rhs.getType().cast<ShapedType>();
+      auto filter_type = mlir::cast<ShapedType>(rhs.getType());
       llvm::ArrayRef<int64_t> hlo_filter_shape = filter_type.getShape();
       llvm::SmallVector<int64_t, 4> tf_filter_shape(hlo_filter_shape.begin(),
                                                     hlo_filter_shape.end());
@@ -491,13 +486,13 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     // Group convolution is not supported yet.
     const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
     const int64_t input_channels =
-        conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-            input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getLhs().getType())
+            .getDimSize(input_feature_dimension);
     const int kernel_input_feature_dimension =
         dnums.getKernelInputFeatureDimension();
     const int kernel_input_channels =
-        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-            kernel_input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getRhs().getType())
+            .getDimSize(kernel_input_feature_dimension);
     const int64_t feature_group_count = conv_op.getFeatureGroupCount();
     if (feature_group_count != input_channels / kernel_input_channels ||
         input_channels % kernel_input_channels != 0)
@@ -508,7 +503,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     //
 
     // Reshape input image to add a new spatial dimension.
-    auto image_type = conv_op.getLhs().getType().cast<ShapedType>();
+    auto image_type = mlir::cast<ShapedType>(conv_op.getLhs().getType());
     SmallVector<int64_t, 4> image_2d_shape(image_type.getShape().begin(),
                                            image_type.getShape().end());
     image_2d_shape.push_back(1);
@@ -530,7 +525,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
         image_permutation_and_shape.permutation);
 
     // Reshape kernel to add a new spatial dimension.
-    auto kernel_type = conv_op.getRhs().getType().cast<ShapedType>();
+    auto kernel_type = mlir::cast<ShapedType>(conv_op.getRhs().getType());
     SmallVector<int64_t, 4> kernel_2d_shape;
     for (int64_t dim : kernel_type.getShape()) {
       kernel_2d_shape.push_back(dim);
@@ -623,7 +618,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     //
 
     // Determine the 2-D convolution output shape.
-    auto output_type = conv_op->getResult(0).getType().cast<ShapedType>();
+    auto output_type = mlir::cast<ShapedType>(conv_op->getResult(0).getType());
     SmallVector<int64_t, 4> output_2d_shape;
     for (int64_t dim : output_type.getShape()) {
       output_2d_shape.push_back(dim);
@@ -648,7 +643,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
         conv_op.getPrecisionConfigAttr());
 
     OpResult conv2d_output = conv2d_op->getResult(0);
-    auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
+    auto conv2d_output_type = mlir::cast<ShapedType>(conv2d_output.getType());
 
     //
     // Transpose and reshape the output
@@ -676,9 +671,9 @@ using Convert3DConvOp = ConvertNdConvOp<3>;
 // lhs_dilation>1 and window_strides=1.
 LogicalResult IsSupportedNonTrivialConvOp(mhlo::ConvolutionOp conv_op,
                                           ConversionPatternRewriter& rewriter) {
-  if (!conv_op.getLhs().getType().cast<ShapedType>().hasStaticShape() ||
-      !conv_op.getRhs().getType().cast<ShapedType>().hasStaticShape() ||
-      !conv_op.getType().cast<ShapedType>().hasStaticShape())
+  if (!mlir::cast<ShapedType>(conv_op.getLhs().getType()).hasStaticShape() ||
+      !mlir::cast<ShapedType>(conv_op.getRhs().getType()).hasStaticShape() ||
+      !mlir::cast<ShapedType>(conv_op.getType()).hasStaticShape())
     return rewriter.notifyMatchFailure(conv_op, "requires static shape");
   mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
 
@@ -687,10 +682,7 @@ LogicalResult IsSupportedNonTrivialConvOp(mhlo::ConvolutionOp conv_op,
     return rewriter.notifyMatchFailure(conv_op,
                                        "requires non-trivial lhs_dilation");
 
-  if (conv_op.getWindowStrides()
-          .value()
-          .getType()
-          .cast<ShapedType>()
+  if (mlir::cast<ShapedType>(conv_op.getWindowStrides().value().getType())
           .getRank() != 1)
     return rewriter.notifyMatchFailure(
         conv_op, "requires window_strides to equal to one");
@@ -746,19 +738,19 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
     const int input_feature_dimension = dnums.getInputFeatureDimension();
     const int input_channels =
-        conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-            input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getLhs().getType())
+            .getDimSize(input_feature_dimension);
     int feature_group_count = conv_op.getFeatureGroupCount();
     const int kernel_input_feature_dimension =
         dnums.getKernelInputFeatureDimension();
     const int kernel_input_channels =
-        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-            kernel_input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getRhs().getType())
+            .getDimSize(kernel_input_feature_dimension);
     const int kernel_output_feature_dimension =
         dnums.getKernelOutputFeatureDimension();
     const int kernel_output_channels =
-        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-            kernel_output_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getRhs().getType())
+            .getDimSize(kernel_output_feature_dimension);
 
     // To support a depthwise convolution, we need-
     // 1. feature_group_count != 1 (except when input_channels==1)
@@ -795,7 +787,7 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
     auto create_slice = [&](mlir::Value tensor, int depth_idx, int channel_idx,
                             bool is_kernel = false) -> mlir::Value {
       std::vector<int64_t> tensor_shape =
-          tensor.getType().cast<ShapedType>().getShape().vec();
+          mlir::cast<ShapedType>(tensor.getType()).getShape().vec();
 
       // Calculate offsets based on depth_idx, channel_idx and tensor_shape
       std::vector<int64_t> start_indices(tensor_shape.size(), 0);
@@ -828,7 +820,8 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
 
       // Calculate convolution output_type based on sliced_input and
       // sliced_kernel
-      auto output_type = conv_op->getResult(0).getType().cast<ShapedType>();
+      auto output_type =
+          mlir::cast<ShapedType>(conv_op->getResult(0).getType());
       std::vector<int64_t> new_output_shape = output_type.getShape().vec();
       new_output_shape[dnums.getOutputFeatureDimension()] /=
           feature_group_count;
@@ -884,8 +877,8 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
     int feature_group_count = conv_op.getFeatureGroupCount();
     const int input_feature_dimension = dnums.getInputFeatureDimension();
     const int input_channels =
-        conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-            input_feature_dimension);
+        mlir::cast<ShapedType>(conv_op.getLhs().getType())
+            .getDimSize(input_feature_dimension);
 
     // Check for Group Convolution parameters
     if (feature_group_count != 1 && feature_group_count != input_channels) {
@@ -919,7 +912,7 @@ class ConvertToResizeBilinearOpOrDepthwiseTransposedConvOp
     auto padding_values = padding.getValues<int64_t>();
 
     // Cast the dimension sizes to int.
-    auto lhs_type = conv_op.getLhs().getType().cast<ShapedType>();
+    auto lhs_type = mlir::cast<ShapedType>(conv_op.getLhs().getType());
     llvm::SmallVector<int> input_sizes = {
         static_cast<int>(lhs_type.getDimSize(input_spatial_dimensions[0])),
         static_cast<int>(lhs_type.getDimSize(input_spatial_dimensions[1]))};
@@ -1101,7 +1094,8 @@ class ConvertNonTrivialConvOp
         transpose_order[dnums.getOutputSpatialDimensions().data()[i]] = i + 1;
       }
       auto output_shape =
-          conv_op.getResult().getType().cast<RankedTensorType>().getShape();
+          mlir::cast<RankedTensorType>(conv_op.getResult().getType())
+              .getShape();
       SmallVector<int64_t, 4> transposed_output_shape = {
           output_shape[dnums.getOutputBatchDimension()],
           output_shape[dnums.getOutputSpatialDimensions().data()[0]],
@@ -1114,7 +1108,7 @@ class ConvertNonTrivialConvOp
       }
       auto output_type = RankedTensorType::get(
           transposed_output_shape,
-          conv_op.getRhs().getType().cast<ShapedType>().getElementType());
+          mlir::cast<ShapedType>(conv_op.getRhs().getType()).getElementType());
       auto output_sizes = rewriter.create<TF::ConstOp>(
           conv_op.getLoc(),
           DenseIntElementsAttr::get(
@@ -1138,7 +1132,8 @@ class ConvertNonTrivialConvOp
     } else {
       SmallVector<int32_t, 4> output_shape_i32;
       for (int64_t dim :
-           conv_op.getResult().getType().cast<RankedTensorType>().getShape()) {
+           mlir::cast<RankedTensorType>(conv_op.getResult().getType())
+               .getShape()) {
         output_shape_i32.push_back(dim);
       }
       auto output_sizes = rewriter.create<TF::ConstOp>(
@@ -1176,14 +1171,12 @@ class ConvertNonTrivialConvOp
 
     for (size_t i = 1; i <= num_spatial_dims; ++i) {
       int64_t stride = strides[i];
-      int64_t input_size =
-          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-              input_spatial_dims[i - 1]);
-      int64_t kernel_size =
-          conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
-              kernel_spatial_dims[i - 1]);
-      int64_t output_size = conv_op.getType().cast<ShapedType>().getDimSize(
-          output_spatial_dims[i - 1]);
+      int64_t input_size = mlir::cast<ShapedType>(conv_op.getLhs().getType())
+                               .getDimSize(input_spatial_dims[i - 1]);
+      int64_t kernel_size = mlir::cast<ShapedType>(conv_op.getRhs().getType())
+                                .getDimSize(kernel_spatial_dims[i - 1]);
+      int64_t output_size = mlir::cast<ShapedType>(conv_op.getType())
+                                .getDimSize(output_spatial_dims[i - 1]);
 
       // stablehlo.convolution op needs explicit padding to be set to model any
       // Transposed-Convolution in JAX/PT. Checking to see if-
@@ -1225,11 +1218,10 @@ class ConvertNonTrivialConvOp
         return false;
       }
       int64_t stride = strides[i + 1];
-      int64_t input_size =
-          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
-              input_spatial_dims[i]);
-      int64_t output_size = conv_op.getType().cast<ShapedType>().getDimSize(
-          output_spatial_dims[i]);
+      int64_t input_size = mlir::cast<ShapedType>(conv_op.getLhs().getType())
+                               .getDimSize(input_spatial_dims[i]);
+      int64_t output_size = mlir::cast<ShapedType>(conv_op.getType())
+                                .getDimSize(output_spatial_dims[i]);
       // The reason for the below check is as follows:
       // When computing the output, we have the following relation between
       // o - output dim size, i - input dim size, s - stride, P - total pads
@@ -1280,13 +1272,11 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::DynamicSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    ShapedType input_type = op.getOperand().getType().cast<ShapedType>();
+    ShapedType input_type = mlir::cast<ShapedType>(op.getOperand().getType());
     if (!input_type.hasStaticShape()) return failure();
-    Type start_indices_element_type = op.getStartIndices()
-                                          .front()
-                                          .getType()
-                                          .cast<ShapedType>()
-                                          .getElementType();
+    Type start_indices_element_type =
+        mlir::cast<ShapedType>(op.getStartIndices().front().getType())
+            .getElementType();
 
     // The mhlo dynamic_slice's start_indices can be either signed/unsigned
     // int32/int64. However, TF only takes in either i32 or i64 types for begin,
@@ -1307,8 +1297,8 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
     for (uint64_t i = 0, e = op.getStartIndices().size(); i < e; ++i) {
       // Always put a cast there.
       auto start = op.getStartIndices()[i];
-      auto cast_type = start.getType().cast<ShapedType>().clone(
-          signed_start_indices_element_type);
+      auto cast_type = mlir::cast<ShapedType>(start.getType())
+                           .clone(signed_start_indices_element_type);
       auto cast_op = rewriter.create<TF::CastOp>(op.getLoc(), cast_type, start);
       Value clamp_max = rewriter.create<TF::ConstOp>(
           op.getLoc(), rewriter.getIntegerAttr(
@@ -1409,11 +1399,11 @@ class ConvertDynamicUpdateSliceOp
   LogicalResult matchAndRewrite(
       mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    ShapedType operand_type = op.getOperand().getType().cast<ShapedType>();
+    ShapedType operand_type = mlir::cast<ShapedType>(op.getOperand().getType());
     ShapedType update_type =
-        op.getUpdate().getType().dyn_cast_or_null<ShapedType>();
-    ShapedType start_indices_type =
-        op.getStartIndices().front().getType().dyn_cast_or_null<ShapedType>();
+        mlir::dyn_cast_or_null<ShapedType>(op.getUpdate().getType());
+    ShapedType start_indices_type = mlir::dyn_cast_or_null<ShapedType>(
+        op.getStartIndices().front().getType());
     if (update_type == nullptr || start_indices_type == nullptr)
       return rewriter.notifyMatchFailure(
           op, "update and start_indices should have ShapedType");
@@ -1474,8 +1464,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
           op, "only match for the case where operands is of size 2");
     auto keys = op.getInputs()[0];
     auto indices = op.getInputs()[1];
-    auto keys_ty = keys.getType().dyn_cast_or_null<ShapedType>();
-    auto indices_ty = indices.getType().dyn_cast_or_null<ShapedType>();
+    auto keys_ty = mlir::dyn_cast_or_null<ShapedType>(keys.getType());
+    auto indices_ty = mlir::dyn_cast_or_null<ShapedType>(indices.getType());
     if (!keys_ty || !keys_ty.hasStaticShape() ||
         !keys_ty.getElementType().isIntOrFloat())
       return rewriter.notifyMatchFailure(
@@ -1589,7 +1579,7 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
                                       DotDimensionsInfo dot_dimensions_info,
                                       ImplicitLocOpBuilder& builder,
                                       bool is_lhs) {
-  auto operand_type = operand.getType().cast<ShapedType>();
+  auto operand_type = mlir::cast<ShapedType>(operand.getType());
   BoolAttr true_attr = builder.getBoolAttr(true);
   auto operand_shape = builder.create<TF::ShapeOp>(operand, true_attr);
   const int64_t operand_rank = operand_type.getRank();
@@ -1665,8 +1655,8 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
 Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                  DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
-  auto lhs_type = lhs.getType().cast<ShapedType>();
-  auto rhs_type = rhs.getType().cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
+  auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
   const int lhs_rank = lhs_type.getRank();
   const int rhs_rank = rhs_type.getRank();
   ImplicitLocOpBuilder builder(loc, rewriter);
@@ -1821,7 +1811,7 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
 // necessary.
 Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
   auto dot_op = cast<mhlo::DotOp>(old_op);
-  auto lhs_rank = dot_op.getLhs().getType().cast<ShapedType>().getRank();
+  auto lhs_rank = mlir::cast<ShapedType>(dot_op.getLhs().getType()).getRank();
   auto dot_dimension_numbers =
       DotDimensionNumbersAttr::get(rewriter.getContext(),
                                    /*lhs_batching_dimensions=*/{},
@@ -1831,17 +1821,18 @@ Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
                                    /*rhs_contracting_dimensions=*/{0});
   return ConvertDot(
       rewriter, dot_op.getLhs(), dot_op.getRhs(), dot_dimension_numbers,
-      dot_op.getResult().getType().cast<ShapedType>(), dot_op.getLoc());
+      mlir::cast<ShapedType>(dot_op.getResult().getType()), dot_op.getLoc());
 }
 
 // Converts mhlo.dot to tf.BatchMatMul. Reshape or Transpose ops will also be
 // inserted to convert to well-formed matrix multiply.
 Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
   auto dot_general_op = cast<mhlo::DotGeneralOp>(old_op);
-  return ConvertDot(rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
-                    dot_general_op.getDotDimensionNumbers(),
-                    dot_general_op.getResult().getType().cast<ShapedType>(),
-                    dot_general_op.getLoc());
+  return ConvertDot(
+      rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
+      dot_general_op.getDotDimensionNumbers(),
+      mlir::cast<ShapedType>(dot_general_op.getResult().getType()),
+      dot_general_op.getLoc());
 }
 
 // Replace BinaryOp with a combination of TfBinaryOp and TfReduceOp if the
@@ -1940,9 +1931,9 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.getInputs()[0].getType().isa<RankedTensorType>())
+    if (!mlir::isa<RankedTensorType>(reduce_op.getInputs()[0].getType()))
       return failure();
-    if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
+    if (!mlir::isa<RankedTensorType>(reduce_op.getType(0))) return failure();
     return success();
   }
 };
@@ -1953,13 +1944,13 @@ class ConvertReduceOpToTfProd
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    auto type = init_value.getType().cast<ShapedType>().getElementType();
-    if (type.isa<FloatType>()) {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
       float const_value;
       if (failed(GetConstantSplatValue<float>(init_value, const_value)) ||
           const_value != 1.0)
         return failure();
-    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       int32_t const_value;
       if (failed(GetConstantSplatValue<int32_t>(init_value, const_value)) ||
           const_value != 1)
@@ -1978,13 +1969,13 @@ class ConvertReduceOpToTfSum
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    auto type = init_value.getType().cast<ShapedType>().getElementType();
-    if (type.isa<FloatType>()) {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
       APFloat const_value(.0);
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isZero())
         return failure();
-    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       APInt const_value;
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isZero())
@@ -2003,13 +1994,13 @@ class ConvertReduceOpToTfMax
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    auto type = init_value.getType().cast<ShapedType>().getElementType();
-    if (type.isa<FloatType>()) {
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+    if (mlir::isa<FloatType>(type)) {
       APFloat const_value(.0);
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isInfinity() || !const_value.isNegative())
         return failure();
-    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       APInt const_value;
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isMinSignedValue())
@@ -2027,14 +2018,14 @@ class ConvertReduceOpToTfMin
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
 
-    if (type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(type)) {
       APFloat const_value(.0);
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isInfinity() || const_value.isNegative())
         return failure();
-    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+    } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       APInt const_value;
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isMaxSignedValue())
@@ -2088,7 +2079,7 @@ class ConvertReduceOpToTfArgmax
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return value.isNegative() && value.isInfinity();
     } else if (element_type.isInteger(1)) {
@@ -2112,7 +2103,7 @@ class ConvertReduceOpToTfArgmin
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return !value.isNegative() && value.isInfinity();
     } else if (element_type.isInteger(1)) {
@@ -2134,18 +2125,18 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
       mhlo::IotaOp iota_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     RankedTensorType type =
-        iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+        mlir::dyn_cast_or_null<RankedTensorType>(iota_op.getType());
     // TF::RangeOp doesn't support UI16.
     if (!type || type.getElementType().isUnsignedInteger(16)) return failure();
 
     const uint64_t dimension = iota_op.getIotaDimension();
     Type element_type = type.getElementType();
     Attribute start, limit, delta;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       start = rewriter.getFloatAttr(element_type, 0.0);
       limit = rewriter.getFloatAttr(element_type, type.getShape()[dimension]);
       delta = rewriter.getFloatAttr(element_type, 1.0);
-    } else if (element_type.isa<IntegerType>()) {
+    } else if (mlir::isa<IntegerType>(element_type)) {
       start = rewriter.getIntegerAttr(element_type, 0);
       limit = rewriter.getIntegerAttr(element_type, type.getShape()[dimension]);
       delta = rewriter.getIntegerAttr(element_type, 1);
@@ -2249,9 +2240,10 @@ bool IsSpatialPoolingWithoutDilation(
 
   // Check that the individual padding values are corresponding to SAME
   // padding from TensorFlow.
-  auto operand_type = rw.getInputs()[0].getType().dyn_cast<RankedTensorType>();
+  auto operand_type =
+      mlir::dyn_cast<RankedTensorType>(rw.getInputs()[0].getType());
   RankedTensorType output_type =
-      rw.getResult(0).getType().dyn_cast<RankedTensorType>();
+      mlir::dyn_cast<RankedTensorType>(rw.getResult(0).getType());
   if (!operand_type || !output_type) return false;
 
   for (uint64_t i = 1; i < rank - 1; ++i) {
@@ -2293,12 +2285,13 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     auto const_op = llvm::dyn_cast_or_null<mhlo::ConstantOp>(
         rw.getInitValues()[0].getDefiningOp());
     if (!const_op) return failure();
-    auto const_op_dense_value = const_op.getValue().cast<DenseElementsAttr>();
+    auto const_op_dense_value =
+        mlir::cast<DenseElementsAttr>(const_op.getValue());
     if (!const_op_dense_value || !IsInitValue(const_op_dense_value)) {
       return failure();
     }
 
-    auto operand_type = rw.getInputs()[0].getType().cast<ShapedType>();
+    auto operand_type = mlir::cast<ShapedType>(rw.getInputs()[0].getType());
 
     // For a cumulative op, require a tensor of 1s for each dimension in
     // operand.
@@ -2383,7 +2376,7 @@ class ConvertLoweredCumSumOp
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return value.isZero();
     }
@@ -2399,7 +2392,7 @@ class ConvertLoweredCumProdOp
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
       return false;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
       return value.isExactlyValue(1.0);
     }
@@ -2431,8 +2424,8 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
 
     // Check that this is a floating point reduce window with a rank of 4 or 5.
     const RankedTensorType rw_type =
-        rw.getResult(0).getType().dyn_cast<RankedTensorType>();
-    if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
+        mlir::dyn_cast<RankedTensorType>(rw.getResult(0).getType());
+    if (!rw_type || !mlir::isa<FloatType>(rw_type.getElementType()) ||
         rw_type.getRank() <= 3 || rw_type.getRank() > 5)
       return failure();
 
@@ -2568,8 +2561,8 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
 
     // Check that this is a floating point reduce window with a rank of 4 or 5.
     const RankedTensorType rw_type =
-        rw.getResult(0).getType().dyn_cast<RankedTensorType>();
-    if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
+        mlir::dyn_cast<RankedTensorType>(rw.getResult(0).getType());
+    if (!rw_type || !mlir::isa<FloatType>(rw_type.getElementType()) ||
         rw_type.getRank() <= 3 || rw_type.getRank() > 5)
       return failure();
 
@@ -2639,7 +2632,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
 
 // Returns the shape of the given value in a Constant Op.
 arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
-  ArrayRef<int64_t> shape = value.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
   auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
                                          rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, shape);
@@ -2659,36 +2652,37 @@ bool IsSign(APFloat a, APFloat sign) {
 }
 
 bool IsDenseSplatIntAttr(ElementsAttr float_or_int) {
-  return float_or_int.isa<SplatElementsAttr>() &&
-         float_or_int.isa<DenseIntElementsAttr>();
+  return mlir::isa<SplatElementsAttr>(float_or_int) &&
+         mlir::isa<DenseIntElementsAttr>(float_or_int);
 }
 
 bool IsDenseSplatFloatAttr(ElementsAttr float_or_int) {
-  return float_or_int.isa<SplatElementsAttr>() &&
-         float_or_int.isa<DenseFPElementsAttr>();
+  return mlir::isa<SplatElementsAttr>(float_or_int) &&
+         mlir::isa<DenseFPElementsAttr>(float_or_int);
 }
 
 bool ValueIsReciprocal(ElementsAttr float_or_int, ElementsAttr rhs) {
   if (IsDenseSplatFloatAttr(float_or_int) &&
       IsDenseSplatFloatAttr(float_or_int)) {
-    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>() *
-            rhs.cast<SplatElementsAttr>().getSplatValue<APFloat>())
+    return (mlir::cast<SplatElementsAttr>(float_or_int)
+                .getSplatValue<APFloat>() *
+            mlir::cast<SplatElementsAttr>(rhs).getSplatValue<APFloat>())
         .isExactlyValue(1.0);
   } else if (IsDenseSplatIntAttr(float_or_int) &&
              IsDenseSplatIntAttr(float_or_int)) {
-    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() *
-            rhs.cast<SplatElementsAttr>().getSplatValue<APInt>()) == 1;
+    return (mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>() *
+            mlir::cast<SplatElementsAttr>(rhs).getSplatValue<APInt>()) == 1;
   }
   return false;
 }
 
 bool ValueEquals(ElementsAttr float_or_int, double rhs) {
   if (IsDenseSplatFloatAttr(float_or_int)) {
-    return float_or_int.cast<SplatElementsAttr>()
+    return mlir::cast<SplatElementsAttr>(float_or_int)
         .getSplatValue<APFloat>()
         .isExactlyValue(rhs);
   } else if (IsDenseSplatIntAttr(float_or_int)) {
-    return float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() ==
+    return mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>() ==
            static_cast<int>(rhs);
   }
   return false;
@@ -2696,11 +2690,12 @@ bool ValueEquals(ElementsAttr float_or_int, double rhs) {
 
 bool ValueGreaterThanZero(ElementsAttr float_or_int) {
   if (IsDenseSplatIntAttr(float_or_int)) {
-    auto value = float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>();
+    auto value =
+        mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APInt>();
     return !value.isNegative() && !value.isZero();
   } else if (IsDenseSplatFloatAttr(float_or_int)) {
     auto value =
-        float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+        mlir::cast<SplatElementsAttr>(float_or_int).getSplatValue<APFloat>();
     return !value.isNaN() && !value.isNegative() && !value.isZero();
   }
   return false;
@@ -2723,13 +2718,13 @@ bool TensorIsSign(PatternRewriter& rewriter, ElementsAttr float_or_int,
       int_spl && sgn_cst_spl) {
     return IsSign(int_spl.getValue(), sgn_cst_spl.getValue());
   }
-  if (float_or_int.isa<DenseFPElementsAttr>()) {
+  if (mlir::isa<DenseFPElementsAttr>(float_or_int)) {
     auto sgn_splat_value = sgn_splat.getSplatValue<APFloat>();
     return llvm::all_of(float_or_int.getValues<APFloat>(), [&](APFloat value) {
       return IsSign(value, sgn_splat_value);
     });
   }
-  if (float_or_int.isa<DenseIntElementsAttr>()) {
+  if (mlir::isa<DenseIntElementsAttr>(float_or_int)) {
     auto sgn_splat_value = sgn_splat.getSplatValue<APInt>();
     return llvm::all_of(float_or_int.getValues<APInt>(), [&](APInt value) {
       return IsSign(value, sgn_splat_value);
@@ -2778,9 +2773,11 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     Value start_indices = gather_op.getStartIndices();
 
     // Can only convert with static shaped gather.
-    ShapedType operand_type = operand.getType().cast<ShapedType>();
-    ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
-    ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
+    ShapedType operand_type = mlir::cast<ShapedType>(operand.getType());
+    ShapedType start_indices_type =
+        mlir::cast<ShapedType>(start_indices.getType());
+    ShapedType result_type =
+        mlir::cast<ShapedType>(gather_op.getResult().getType());
     if (!operand_type.hasStaticShape()) {
       gather_op.emitOpError() << "Dynamic shaped operand is not supported.";
       return failure();
@@ -2917,9 +2914,11 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     static const int max_batch_size = 50;
 
     // Can only convert with static shaped gather.
-    ShapedType operand_type = operand.getType().cast<ShapedType>();
-    ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
-    ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
+    ShapedType operand_type = mlir::cast<ShapedType>(operand.getType());
+    ShapedType start_indices_type =
+        mlir::cast<ShapedType>(start_indices.getType());
+    ShapedType result_type =
+        mlir::cast<ShapedType>(gather_op.getResult().getType());
     if (!operand_type.hasStaticShape() ||
         !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
       return rewriter.notifyMatchFailure(
@@ -3140,7 +3139,7 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
 
     // This rule doesn't support mhlo::WhileOp with tuple inputs.
     for (auto type : while_op->getOperandTypes()) {
-      if (type.isa<TupleType>()) return failure();
+      if (mlir::isa<TupleType>(type)) return failure();
     }
 
     // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
@@ -3296,7 +3295,7 @@ class ConvertCustomCallWithApproxTopK
       }
     }
     auto backend_config =
-        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(op.getBackendConfigAttr());
     if (!backend_config) {
       return op.emitOpError() << "Missing backend_config attribute";
     }
@@ -3385,12 +3384,13 @@ class ConvertCustomCallWithApproxTopK
              << "ApproxTopK takes exactly 1 called_computation.";
     }
     mlir::func::FuncOp callee = module_op_->lookupSymbol<mlir::func::FuncOp>(
-        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     mlir::FunctionType callee_type = callee.getFunctionType();
     SmallVector<Type, 4> expected_callee_input_types;
     auto num_inputs = op.getInputs().size() / 2;
     for (unsigned i = 0; i < num_inputs; ++i) {
-      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      auto input_type =
+          mlir::dyn_cast<RankedTensorType>(op.getOperand(i).getType());
       auto scalar = RankedTensorType::get({}, input_type.getElementType());
       expected_callee_input_types.push_back(scalar);
       expected_callee_input_types.push_back(scalar);
@@ -3491,12 +3491,10 @@ class ConvertRealDynamicSliceOp
   LogicalResult matchAndRewrite(
       mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto start_indices_type = real_dynamic_slice_op.getStartIndices()
-                                  .getType()
-                                  .cast<RankedTensorType>();
-    auto end_indices_type = real_dynamic_slice_op.getLimitIndices()
-                                .getType()
-                                .cast<RankedTensorType>();
+    auto start_indices_type = mlir::cast<RankedTensorType>(
+        real_dynamic_slice_op.getStartIndices().getType());
+    auto end_indices_type = mlir::cast<RankedTensorType>(
+        real_dynamic_slice_op.getLimitIndices().getType());
 
     if (start_indices_type.getNumDynamicDims() != 0 ||
         end_indices_type.getNumDynamicDims() != 0) {
@@ -3522,7 +3520,7 @@ class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
       mhlo::DynamicIotaOp dynamic_iota_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     RankedTensorType type =
-        dynamic_iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+        mlir::dyn_cast_or_null<RankedTensorType>(dynamic_iota_op.getType());
     if (!type || type.getElementType().isUnsignedInteger(64)) {
       return rewriter.notifyMatchFailure(dynamic_iota_op,
                                          "TF::RangeOp doesn't support UI64");
@@ -3538,19 +3536,19 @@ class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
     const uint64_t dimension = dynamic_iota_op.getIotaDimension();
     Type element_type = type.getElementType();
     Attribute start, delta;
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       start = rewriter.getFloatAttr(element_type, 0.0);
       delta = rewriter.getFloatAttr(element_type, 1.0);
-    } else if (element_type.isa<IntegerType>()) {
+    } else if (mlir::isa<IntegerType>(element_type)) {
       start = rewriter.getIntegerAttr(element_type, 0);
       delta = rewriter.getIntegerAttr(element_type, 1);
     } else {
       return failure();
     }
     auto output_shape = dynamic_iota_op.getOperand();
-    if (element_type.isa<FloatType>()) {
+    if (mlir::isa<FloatType>(element_type)) {
       auto cast_type =
-          output_shape.getType().cast<ShapedType>().clone(element_type);
+          mlir::cast<ShapedType>(output_shape.getType()).clone(element_type);
       output_shape = rewriter.create<TF::CastOp>(dynamic_iota_op.getLoc(),
                                                  cast_type, output_shape);
     }
@@ -3581,7 +3579,7 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
   // broadcast_dimensions is an increasing list by definition, thus it suffices
   // to check the first element.
   int64_t input_rank = broadcast_dimensions.getNumElements();
-  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
   return input_rank == 0 ||
          (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
           output_rank - input_rank);
@@ -3606,11 +3604,12 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
                                 Value output) {
   // Initialize expanded shape with output rank and dimensions of 1.
   SmallVector<Attribute, 4> expanded_shape(
-      output.getType().cast<ShapedType>().getRank(),
+      mlir::cast<ShapedType>(output.getType()).getRank(),
       /*Value=*/rewriter.getI64IntegerAttr(1));
 
   // Set dimension sizes specified by broadcast_dimensions.
-  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> input_shape =
+      mlir::cast<ShapedType>(input.getType()).getShape();
   for (auto x : llvm::enumerate(broadcast_dimensions)) {
     expanded_shape[x.value().getSExtValue()] =
         rewriter.getI64IntegerAttr(input_shape[x.index()]);
@@ -3627,9 +3626,9 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
 Value ExpandedDynamicShape(PatternRewriter& rewriter, Value input,
                            DenseIntElementsAttr broadcast_dimensions,
                            Value output) {
-  assert(output.getType().cast<ShapedType>() &&
+  assert(mlir::cast<ShapedType>(output.getType()) &&
          "output type must be of ShapedType");
-  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
   llvm::SmallVector<int64_t, 4> expanded_dimensions;
   llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
   for (auto x : llvm::enumerate(broadcast_dimensions)) {

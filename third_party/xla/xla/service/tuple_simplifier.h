@@ -37,7 +37,7 @@ class TupleSimplifier : public HloModulePass {
   // computation was changed.
   using HloPassInterface::Run;
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -59,7 +59,7 @@ class TupleSimplifier : public HloModulePass {
   //         |
   //       Tuple
   //
-  StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
+  absl::StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
 };
 
 }  // namespace xla

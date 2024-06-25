@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/GPU/GPUToLLVMIRTranslation.h"  // from @llvm-project
@@ -91,7 +92,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
-  auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
+  auto type = mlir::dyn_cast<mlir::ShapedType>(alloc.getType());
   if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp
@@ -144,7 +145,7 @@ Status LowerHloToJITInvocation(mlir::ModuleOp module,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering HLO to JIT invocation failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerHlotoLoops(mlir::ModuleOp module,
@@ -176,8 +177,6 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
   // Transform HLO operations to LinAlg and standard.
   pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
 
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
@@ -236,7 +235,7 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering HLO to loops failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
@@ -305,7 +304,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering to GPU kernels failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
@@ -350,7 +349,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
         "Lowering to low-level device IR failed.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
@@ -366,7 +365,7 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
   return failed(pm.run(module))
              ? tensorflow::errors::Internal(
                    "Amending LLVMIR with static knowledge failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 Status GenerateDeviceCode(mlir::ModuleOp module,
@@ -387,7 +386,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
 
   return failed(pm.run(module))
              ? tensorflow::errors::Internal("Generating device code failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
@@ -402,7 +401,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 
   return failed(pm.run(module)) ? tensorflow::errors::Internal(
                                       "Final lowering of host side failed.")
-                                : OkStatus();
+                                : absl::OkStatus();
 }
 
 }  // namespace

@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tsl/platform/env.h"
@@ -128,7 +129,7 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 // Create the tensor for the bound input, which can be a variable or an asset.
 //
 // TODO(chky): For V2 models, the bound input can also be a resource.
-StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
+absl::StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
     mlir::Operation* bound_input, absl::string_view saved_model_dir) {
   // Assets are files in the saved model directory. We pass their filenames to
   // functions so that they can be used.
@@ -143,7 +144,7 @@ StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
       "Failed to create captured tensors: unknown bound input type.");
 }
 
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+absl::StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
     mlir::ModuleOp module, absl::string_view saved_model_dir) {
   InitializersAndSignatures result;
 
@@ -223,7 +224,7 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
   return result;
 }
 
-StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+absl::StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
   LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
@@ -231,7 +232,7 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 
   tensorflow::MetaGraphDef meta_graph_def;
   TF_RETURN_IF_ERROR(tensorflow::ReadMetaGraphDefFromSavedModel(
-      std::string(saved_model_dir), tags, &meta_graph_def));
+      saved_model_dir, tags, &meta_graph_def));
 
   const auto read_meta_graph_duration = absl::Now() - read_start_time;
   saved_model_read_meta_graph_time_seconds
@@ -242,7 +243,7 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
   return std::move(meta_graph_def);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions,
@@ -302,6 +303,11 @@ std::string GetBefFilePath(std::string aot_package_directory) {
                            std::string(kBefBufferFileName));
 }
 
+std::string GetMlrtByteCodeFilePath(const std::string& aot_package_directory) {
+  return tsl::io::JoinPath(aot_package_directory,
+                           std::string(kMlrtBufferFileName));
+}
+
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory, kMlirModuleFilename);
 }
@@ -326,7 +332,28 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
   return bef;
 }
 
-absl::Status DeserializeAotMlirModule(
+absl::StatusOr<mlrt::bc::Buffer> LoadMlrtAndMlir(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state) {
+  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
+  const std::string mlrt_file_path =
+      tfrt_stub::GetMlrtByteCodeFilePath(aot_package_directory);
+  TF_ASSIGN_OR_RETURN(mlrt::bc::Buffer mlrt_bytecode,
+                      DeserializeMlrtBytecodeBuffer(mlrt_file_path));
+
+  if (mlrt_bytecode.empty()) {
+    return absl::InternalError("MLRT Bytecode is empty.");
+  }
+
+  if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
+    TF_RETURN_IF_ERROR(AddXlaFunctions(fallback_state, mlir_module));
+  }
+
+  return mlrt_bytecode;
+}
+
+absl::Status DeserializeAoTMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
@@ -337,6 +364,22 @@ absl::Status DeserializeAotMlirModule(
   TF_RETURN_IF_ERROR(
       DeserializeMlirModule(mlir_module_str, context, mlir_module));
   return absl::OkStatus();
+}
+
+CallableOptions CombineSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_defs) {
+  CallableOptions callable_options;
+  for (const auto& sig_iter : signature_defs) {
+    const auto& signature_def = sig_iter.second;
+
+    for (const auto& p : signature_def.inputs()) {
+      callable_options.add_feed(p.second.name());
+    }
+    for (const auto& p : signature_def.outputs()) {
+      callable_options.add_fetch(p.second.name());
+    }
+  }
+  return callable_options;
 }
 
 void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry) {

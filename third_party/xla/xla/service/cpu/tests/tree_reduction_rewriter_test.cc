@@ -15,16 +15,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/statusor.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/llvm_irgen_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

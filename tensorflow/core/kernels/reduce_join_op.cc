@@ -31,8 +31,8 @@ namespace tensorflow {
 
 namespace {
 
-const gtl::InlinedVector<int64_t, 8> GetStrides(const TensorShape& shape) {
-  gtl::InlinedVector<int64_t, 8> result(shape.dims());
+const absl::InlinedVector<int64_t, 8> GetStrides(const TensorShape& shape) {
+  absl::InlinedVector<int64_t, 8> result(shape.dims());
   int64_t product = 1;
   for (int32_t i = shape.dims() - 1; i >= 0; --i) {
     result[i] = product;
@@ -47,9 +47,9 @@ const gtl::InlinedVector<int64_t, 8> GetStrides(const TensorShape& shape) {
 // nonspecified dimensions set to 0.  Dimensions must be ordered from outer-most
 // to inner-most with respect to the subset linear index.
 inline int64_t LinearSubIndexToFullIndex(
-    int64_t output_index, const gtl::InlinedVector<int32, 8>& dim_list,
+    int64_t output_index, const absl::InlinedVector<int32, 8>& dim_list,
     const TensorShape& input_shape,
-    const gtl::InlinedVector<int64_t, 8>& strides) {
+    const absl::InlinedVector<int64_t, 8>& strides) {
   int64_t result = 0;
   int64_t quotient = output_index;
   for (int32_t i = dim_list.size() - 1; i >= 0; --i) {
@@ -63,7 +63,7 @@ inline int64_t LinearSubIndexToFullIndex(
 
 // Computes the number of input elements reduced per output element.
 int64_t GetReductionIterSize(
-    const gtl::InlinedVector<int32, 8>& reduced_indices,
+    const absl::InlinedVector<int32, 8>& reduced_indices,
     const TensorShape& input_shape) {
   int64_t result = 1;
   for (int32_t reduce_dim : reduced_indices) {
@@ -74,12 +74,12 @@ int64_t GetReductionIterSize(
 
 // Computes a list of all true reduced indices, accounting for negative
 // indices.
-gtl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
-                                               int32_t input_dims) {
+absl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
+                                                int32_t input_dims) {
   const auto reduction_indices_flat = reduction_indices.flat<int32>();
   const int32_t reduction_dims = reduction_indices_flat.size();
 
-  gtl::InlinedVector<int32, 8> reduced_indices(reduction_dims);
+  absl::InlinedVector<int32, 8> reduced_indices(reduction_dims);
   for (int32_t i = 0; i < reduction_dims; ++i) {
     reduced_indices[i] = reduction_indices_flat(reduction_dims - i - 1);
     reduced_indices[i] += reduced_indices[i] < 0 ? input_dims : 0;
@@ -89,15 +89,15 @@ gtl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
 }
 
 // Appends all unreduced dimensions to the given vector.
-void MakeUnreducedIndices(gtl::InlinedVector<bool, 8> index_is_reduced,
+void MakeUnreducedIndices(absl::InlinedVector<bool, 8> index_is_reduced,
                           int32_t input_dims,
-                          gtl::InlinedVector<int32, 8>* unreduced_indices) {
+                          absl::InlinedVector<int32, 8>* unreduced_indices) {
   for (int32_t index = 0; index < input_dims; ++index) {
     if (!index_is_reduced[index]) unreduced_indices->push_back(index);
   }
 }
 
-TensorShape GetOutputShape(gtl::InlinedVector<bool, 8> index_is_reduced,
+TensorShape GetOutputShape(absl::InlinedVector<bool, 8> index_is_reduced,
                            const TensorShape& input_shape, bool keep_dims) {
   TensorShape output_shape;
   for (size_t index = 0; index < index_is_reduced.size(); ++index) {
@@ -131,7 +131,7 @@ class ReduceJoinOp : public OpKernel {
     const auto reduction_indices_flat = reduction_indices.flat<int32>();
     const int32_t reduction_dims = reduction_indices_flat.size();
 
-    gtl::InlinedVector<bool, 8> index_is_reduced(input_dims, false);
+    absl::InlinedVector<bool, 8> index_is_reduced(input_dims, false);
     for (int32_t i = 0; i < reduction_dims; i++) {
       int32_t reduce_index = reduction_indices_flat(i);
       const int32_t true_reduce_index =
@@ -146,9 +146,9 @@ class ReduceJoinOp : public OpKernel {
       index_is_reduced[true_reduce_index] = true;
     }
 
-    gtl::InlinedVector<int32, 8> reduced_indices =
+    absl::InlinedVector<int32, 8> reduced_indices =
         GetReducedIndices(reduction_indices, input_dims);
-    gtl::InlinedVector<int32, 8> unreduced_indices;
+    absl::InlinedVector<int32, 8> unreduced_indices;
     MakeUnreducedIndices(index_is_reduced, input_dims, &unreduced_indices);
     const auto strides = GetStrides(input_shape);
 
@@ -161,7 +161,7 @@ class ReduceJoinOp : public OpKernel {
 
     const int64_t reduction_iter_size =
         GetReductionIterSize(reduced_indices, input_shape);
-    gtl::InlinedVector<StringPiece, 8> curr_strings(reduction_iter_size);
+    absl::InlinedVector<StringPiece, 8> curr_strings(reduction_iter_size);
     for (int64_t output_index = 0; output_index < output_shape.num_elements();
          ++output_index) {
       int64_t output_full_index = LinearSubIndexToFullIndex(

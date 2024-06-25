@@ -47,7 +47,7 @@ static LogicalResult traceUpwardsToArgument(Value v, llvm::DenseSet<Value> seen,
   }
   seen.insert(v);
 
-  if (auto blockArg = v.dyn_cast<BlockArgument>()) {
+  if (auto blockArg = mlir::dyn_cast<BlockArgument>(v)) {
     Operation *op = blockArg.getOwner()->getParentOp();
 
     // If we're in the first block, then the argument to that block is the

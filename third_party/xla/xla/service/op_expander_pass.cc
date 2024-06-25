@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/service/op_expander_pass.h"
 
-#include <utility>
+#include <iterator>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_creation_utils.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -45,7 +49,11 @@ absl::StatusOr<bool> OpExpanderPass::Run(
     if (expanded_root == nullptr) {
       continue;
     }
-    TF_RETURN_IF_ERROR(inst->parent()->ReplaceInstruction(inst, expanded_root));
+    TF_ASSIGN_OR_RETURN(bool changed,
+                        inst->parent()->ReplaceInstruction(
+                            inst, expanded_root, preserve_sharding_,
+                            relay_control_dependency_));
+    DCHECK(changed);
   }
 
   return !matching_instructions.empty();

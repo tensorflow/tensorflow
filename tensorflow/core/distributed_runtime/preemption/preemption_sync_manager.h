@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 
-#include "tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -87,7 +87,7 @@ class HloModuleGroup {
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
-  static StatusOr<HloModuleGroup> CreateFromProto(
+  static absl::StatusOr<HloModuleGroup> CreateFromProto(
       const HloModuleGroupProto& proto,
       absl::Span<const HloModuleConfig> module_configs);
 

@@ -26,8 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-tsl::Status FindOpRegistationFromFile(absl::string_view filename,
-                                      OpRegOffsets& op_reg_offsets) {
+absl::Status FindOpRegistationFromFile(absl::string_view filename,
+                                       OpRegOffsets& op_reg_offsets) {
   static constexpr LazyRE2 reg_pattern = {
       R"regex((REGISTER_OP)\("([\w>]+)"\))regex"};
   std::ifstream f(std::string{filename});
@@ -53,7 +53,7 @@ tsl::Status FindOpRegistationFromFile(absl::string_view filename,
     offsets += line.size() + 1;  // `line` doesn't contain line break
   }
   f.close();
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

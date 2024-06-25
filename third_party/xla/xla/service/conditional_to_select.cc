@@ -73,10 +73,10 @@ absl::StatusOr<bool> ConditionalToSelect::Run(
   bool did_mutate = false;
   VLOG(1) << "Running conditional-to-select pass";
   TF_RETURN_IF_ERROR(
-      call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
+      call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
         std::vector<HloInstruction*> ToInline;
         if (node.context() != CallContext::kEmbedded) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         for (const CallSite& callsite : node.callsites()) {
           if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
@@ -87,7 +87,7 @@ absl::StatusOr<bool> ConditionalToSelect::Run(
             did_mutate |= result;
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return did_mutate;
 }

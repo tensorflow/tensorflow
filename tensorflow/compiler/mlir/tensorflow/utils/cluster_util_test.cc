@@ -32,7 +32,7 @@ namespace {
 
 constexpr StringRef kTestClusterName = "tpu0";
 
-tsl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     StringRef string, MLIRContext* context) {
   DialectRegistry mlir_registry;
   RegisterAllTensorFlowDialects(mlir_registry);

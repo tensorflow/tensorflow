@@ -19,6 +19,7 @@
 # files once XLA moves out of Tensorflow internally.
 # TODO(ddunleavy): Update this after METADATA files are consolidated.
 name: Check Contents
+permissions: read-all
 on:
   pull_request:
 

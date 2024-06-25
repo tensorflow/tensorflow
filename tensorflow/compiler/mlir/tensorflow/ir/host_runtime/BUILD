@@ -73,6 +73,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:resource_handle",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",

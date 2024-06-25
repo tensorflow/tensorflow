@@ -19,11 +19,11 @@ limitations under the License.
 #include <algorithm>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -38,30 +38,32 @@ class HloPassFix : public Pass {
   template <typename... Args>
   explicit HloPassFix(Args&&... args) : Pass(args...) {}
 
-  Status RunOnChangedComputations(HloModule* module, RunState* outer_run_state,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::Status RunOnChangedComputations(
+      HloModule* module, RunState* outer_run_state,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     RunState run_state;
     run_state.changed_last_iteration = outer_run_state->changed_last_iteration;
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     outer_run_state->changed_this_iteration.insert(run_state.changed.begin(),
                                                    run_state.changed.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     RunState run_state(module);
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
   }
 
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     bool changed = false;
     bool changed_this_iteration = true;
     int64_t iteration_count = 0;
@@ -84,7 +86,7 @@ class HloPassFix : public Pass {
   }
 
  private:
-  Status RunToFixPoint(
+  absl::Status RunToFixPoint(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     VLOG(3) << "Running HloPassFix on " << Pass::name();
@@ -104,10 +106,10 @@ class HloPassFix : public Pass {
         break;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RunOnChangedComputationsOnce(
+  absl::Status RunOnChangedComputationsOnce(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     // If Pass overrides RunOnChangedComputations, just forward to it.
@@ -125,7 +127,7 @@ class HloPassFix : public Pass {
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

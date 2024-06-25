@@ -89,7 +89,7 @@ tensorflow::Status SerializeProto(T model_proto,
                                      model_proto),
         "Error while writing the resulting model proto");
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Read and write to the experimental SavedModel Image format.

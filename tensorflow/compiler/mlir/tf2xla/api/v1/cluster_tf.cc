@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -38,13 +39,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
 
@@ -59,10 +60,6 @@ using mlir::PassManager;
 using mlir::func::FuncOp;
 
 namespace {
-
-// Name of component for error logging. This name is fixed and required to
-// enable logging.
-constexpr char kBridgeComponent[] = "TFXLABridge";
 
 void CreateReplicatedBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(mlir::tf2xla::internal::CreateInferenceMetricsPass());
@@ -152,10 +149,12 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
   }
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v1",
+      /*bridge_type=*/mlir::TF::kMlirPh1BridgeCounterReplicated,
+      /*bridge_version=*/mlir::TF::kMlirPh1BridgeCounterV1,
+      /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
       /*result=*/"failure");
-  tsl::error_logging::Log(kBridgeComponent,
+  tsl::error_logging::Log(mlir::TF::kBridgeComponent,
                           "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
                           status.ToString())
       .IgnoreError();
@@ -221,7 +220,9 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
       RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v1",
+      /*bridge_type=*/mlir::TF::kMlirPh1BridgeCounterReplicated,
+      /*bridge_version=*/mlir::TF::kMlirPh1BridgeCounterV1,
+      /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
       /*result=*/"success");
 

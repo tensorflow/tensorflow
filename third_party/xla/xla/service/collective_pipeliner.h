@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 #define XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -65,7 +66,7 @@ class CollectivePipeliner : public HloModulePass {
   // Postprocessing cloned collective instructions, such as for modifying loop
   // iteration related frontend attributes to reflect loop pipelining.
   using HloPostprocessor =
-      std::optional<std::function<Status(HloInstruction* instr)>>;
+      std::optional<std::function<absl::Status(HloInstruction* instr)>>;
 
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -93,8 +94,15 @@ class CollectivePipeliner : public HloModulePass {
     // pipelinining.
     HloPredicate should_allow_loop_variant_parameter_in_chain =
         HloPredicateFalse;
+    // Whether we allow control dependencies on the Collective operation being
+    // pipelined. The control dependencies will be dropped when the operation is
+    // pipelined. This is currently only used to support kBackward pipelining.
+    bool should_allow_control_dependencies = false;
     HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
-    HloPostprocessor postprocess_backward_rorated_op = std::nullopt;
+    HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
+    // Determines whether a loop invariant instruction can be considered
+    // in the pipelining chain.
+    bool should_add_loop_invariant_op_in_chain = false;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
@@ -124,6 +132,12 @@ class CollectivePipeliner : public HloModulePass {
       return "collective-pipeliner-forwardsink";
     }
   }
+
+  // Pipelines the collectives that do not have any other pipelineable
+  // collectives in their user subtree.
+  absl::StatusOr<bool> RunPipeliner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

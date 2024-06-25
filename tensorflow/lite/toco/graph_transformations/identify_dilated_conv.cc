@@ -177,17 +177,17 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   // ***************************************************************************
   // SpaceToBatch Op.
   if (stb_op->type != OperatorType::kSpaceToBatchND) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (stb_op->inputs.size() != 3) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(stb_op->outputs.size(), 1);
   // Extract the dilation factor from Input[1] of SpaceToBatch
   // TODO(mjmatthews): Support 2D dilation factors.
   const auto& block_shape_array = model->GetArray(stb_op->inputs[1]);
   if (!block_shape_array.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(block_shape_array.shape().dimensions_count(), 1);
   int dilation_factor =
@@ -196,7 +196,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   // Expand Op
   auto* post_stb_op = GetOpWithInput(*model, stb_op->outputs[0]);
   if (!post_stb_op) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   bool has_expand_op = false;
   if (post_stb_op->type == OperatorType::kExpandDims) {
@@ -231,7 +231,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -169,7 +169,7 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
                                       DotDimensionsInfo dot_dimensions_info,
                                       ImplicitLocOpBuilder& builder,
                                       bool is_lhs) {
-  auto operand_type = operand.getType().cast<ShapedType>();
+  auto operand_type = mlir::cast<ShapedType>(operand.getType());
   auto operand_shape = builder.create<TFL::ShapeOp>(
       RankedTensorType::get(static_cast<int32_t>(operand_type.getRank()),
                             builder.getIntegerType(32)),
@@ -248,8 +248,8 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
 Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                  mhlo::DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
-  auto lhs_type = lhs.getType().cast<ShapedType>();
-  auto rhs_type = rhs.getType().cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
+  auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
   const int lhs_rank = lhs_type.getRank();
   const int rhs_rank = rhs_type.getRank();
   ImplicitLocOpBuilder builder(loc, rewriter);
@@ -412,7 +412,7 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
 // be inserted when necessary. See ConvertDotGeneralOp for additional notes.
 Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
   auto dot_op = cast<mhlo::DotOp>(old_op);
-  auto lhs_rank = dot_op.getLhs().getType().cast<ShapedType>().getRank();
+  auto lhs_rank = mlir::cast<ShapedType>(dot_op.getLhs().getType()).getRank();
   auto dot_dimension_numbers =
       mhlo::DotDimensionNumbersAttr::get(rewriter.getContext(),
                                          /*lhsBatchingDimensions=*/{},
@@ -422,15 +422,16 @@ Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
                                          /*rhsContractingDimensions=*/{0});
   return ConvertDot(
       rewriter, dot_op.getLhs(), dot_op.getRhs(), dot_dimension_numbers,
-      dot_op.getResult().getType().cast<ShapedType>(), dot_op.getLoc());
+      mlir::cast<ShapedType>(dot_op.getResult().getType()), dot_op.getLoc());
 }
 
 Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
   auto dot_general_op = cast<mhlo::DotGeneralOp>(old_op);
-  return ConvertDot(rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
-                    dot_general_op.getDotDimensionNumbers(),
-                    dot_general_op.getResult().getType().cast<ShapedType>(),
-                    dot_general_op.getLoc());
+  return ConvertDot(
+      rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
+      dot_general_op.getDotDimensionNumbers(),
+      mlir::cast<ShapedType>(dot_general_op.getResult().getType()),
+      dot_general_op.getLoc());
 }
 }  // namespace odml
 }  // namespace mlir

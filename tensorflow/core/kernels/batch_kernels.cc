@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -49,6 +51,8 @@ limitations under the License.
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -170,6 +174,9 @@ class BatchResource : public serving::BatchResourceBase {
                   /*low_priority_batch_timeout_micros=*/0,
                   /*low_priority_max_enqueued_batches=*/0,
                   /*low_priority_allowed_batch_sizes=*/{},
+                  /*mixed_priority_batching_policy=*/
+                  serving::MixedPriorityBatchingPolicy::
+                      kLowPriorityPaddingWithMaxBatchSize,
                   enable_large_batch_splitting, resource);
   }
 
@@ -182,6 +189,7 @@ class BatchResource : public serving::BatchResourceBase {
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
+      serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
@@ -197,8 +205,8 @@ class BatchResource : public serving::BatchResourceBase {
             enable_large_batch_splitting,
             /*disable_padding=*/false, low_priority_max_batch_size,
             low_priority_batch_timeout_micros,
-            low_priority_max_enqueued_batches,
-            low_priority_allowed_batch_sizes),
+            low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
+            mixed_priority_batching_policy),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -295,6 +303,8 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
                                &low_priority_allowed_batch_sizes_));
   OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
                                &low_priority_max_enqueued_batches_));
+  OP_REQUIRES_OK(c,
+                 c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -416,6 +426,10 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   } else {
     creator = [this,
                session_metadata = c->session_metadata()](BatchResource** r) {
+      TF_ASSIGN_OR_RETURN(
+          serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+          serving::GetMixedPriorityBatchingPolicy(mixed_priority_policy_));
+
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,
@@ -423,7 +437,8 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           allowed_batch_sizes_, low_priority_max_batch_size_,
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
-          enable_large_batch_splitting_, &new_resource));
+          mixed_priority_batching_policy, enable_large_batch_splitting_,
+          &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }

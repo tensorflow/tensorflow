@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace ApiConverter {
 
@@ -50,7 +51,7 @@ static SE_ExecutableRunOptions ToC(
   if (options.run_options().host_to_device_stream() != nullptr) {
     se_options.host_to_device_stream =
         static_cast<tensorflow::tpu::TpuStream*>(
-            options.run_options().host_to_device_stream()->implementation())
+            options.run_options().host_to_device_stream())
             ->se_stream();
   } else {
     se_options.host_to_device_stream = nullptr;
@@ -58,10 +59,7 @@ static SE_ExecutableRunOptions ToC(
 
   if (options.run_options().device_assignment() != nullptr) {
     xla::DeviceAssignmentProto dev_assign_proto;
-    options.run_options()
-        .device_assignment()
-        ->Serialize(&dev_assign_proto)
-        .IgnoreError();
+    options.run_options().device_assignment()->Serialize(&dev_assign_proto);
     se_options.device_assignment =
         stream_executor::tpu::SerializeProto(dev_assign_proto);
   } else {
@@ -76,8 +74,7 @@ static SE_ExecutableRunOptions ToC(
   CHECK_EQ(options.run_options().then_execute_function(), nullptr)
       << "ThenExecuteFunction not supported by this platform.";
 
-  auto impl =
-      const_cast<stream_executor::Stream*>(options.stream())->implementation();
+  auto impl = const_cast<stream_executor::Stream*>(options.stream());
   se_options.stream =
       static_cast<tensorflow::tpu::TpuStream*>(impl)->se_stream();
   return se_options;
@@ -151,7 +148,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
 
   xla::ScopedShapedBuffer result(
       ApiConverter::FromC(&se_execution_output.result),
-      run_options->stream()->parent()->GetAllocator());
+      ApiConverter::FromC(se_run_options.allocator));
   ApiConverter::Destroy(&se_execution_output.result);
 
   ExecutionOutput output(std::move(result));
@@ -165,7 +162,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
   for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
     output.AddToBeReleased(
         ApiConverter::FromC(&se_execution_output.to_be_released[i],
-                            run_options->stream()->parent()->GetAllocator())
+                            ApiConverter::FromC(se_run_options.allocator))
             .Release()
             .value());
   }

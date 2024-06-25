@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
@@ -74,7 +75,7 @@ bool IsDistributedFFTN(int num_transform_axes, const Layout& layout) {
 bool IsComplexFFT(mlir::Value input) {
   auto data_type =
       mlir::dyn_cast<mlir::TensorType>(input.getType()).getElementType();
-  return data_type.isa<mlir::ComplexType>();
+  return mlir::isa<mlir::ComplexType>(data_type);
 }
 
 Status IsProperFFTLength(mlir::Operation* op,

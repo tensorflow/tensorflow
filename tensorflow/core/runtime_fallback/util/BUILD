@@ -207,6 +207,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_googletest//:gtest_main",
         "@tf_runtime//:bef",
         "@tf_runtime//:bef_attr_encoder",
         "@tf_runtime//:core_runtime",

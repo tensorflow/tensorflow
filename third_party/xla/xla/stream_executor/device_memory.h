@@ -35,7 +35,6 @@ limitations under the License.
 namespace stream_executor {
 
 class DeviceMemoryAllocator;
-class StreamExecutor;
 
 // void*-analogous device memory allocation. For the typed variation, see
 // DeviceMemory<T>.
@@ -53,7 +52,13 @@ class DeviceMemoryBase {
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
   explicit DeviceMemoryBase(void *opaque = nullptr, uint64_t size = 0)
-      : opaque_(opaque), size_(size) {}
+      : opaque_(opaque), size_(size) {
+    // TODO(b/336267585): This constructor dangerously encourages
+    //                 DeviceMemoryBase(mem) which would imply
+    //                 DeviceMemoryBase(mem, 0)
+    //                 We should delete & resolve any dependencies.
+    //  explicit DeviceMemoryBase(void *opaque) = delete;
+  }
 
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.
@@ -107,16 +112,6 @@ class DeviceMemoryBase {
         reinterpret_cast<std::byte *>(opaque_) + offset_bytes, size_bytes);
   }
 
- protected:
-  friend class StreamExecutor;
-
-  // Resets the internal values of the opaque pointer and number of bytes in the
-  // memory region, just as in the constructor.
-  void Reset(void *opaque, uint64_t bytes) {
-    opaque_ = opaque;
-    size_ = bytes;
-  }
-
  private:
   // Platform-dependent value representing allocated memory.
   //
@@ -154,8 +149,11 @@ class DeviceMemory final : public DeviceMemoryBase {
   // allocation.
   uint64_t ElementCount() const { return size() / sizeof(ElemT); }
 
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
+  // Returns pointer to the allocated data
+  ElemT *base() { return reinterpret_cast<ElemT *>(opaque()); }
+  const ElemT *base() const {
+    return reinterpret_cast<const ElemT *>(opaque());
+  }
 
   // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
@@ -172,46 +170,15 @@ class DeviceMemory final : public DeviceMemoryBase {
                                             sizeof(ElemT) * element_count));
   }
 
-  // Resets the DeviceMemory data, in MakeFromByteSize fashion.
-  // This simply clobbers the prior values.
-  void ResetFromByteSize(void *opaque, uint64_t bytes) {
-    // TODO(leary) when NVCC is eliminated we can add this check (and the
-    // logging include it requires).
-    // CHECK_EQ(0, bytes % sizeof(ElemT));
-    DeviceMemoryBase::Reset(opaque, bytes);
-  }
-
-  // ------------------------------------------------------------
-
  protected:
-  // This constructor is solely used from derived classes; it is made protected
-  // because it accepts a byte-size instead of an element count, which could
-  // potentially be misused given the ElementCount() nature of this interface.
+  // This is made protected because it accepts a byte-size instead of an element
+  // count, which could potentially be misused given the ElementCount() nature
+  // of this interface.
   //
   // In order to specify the desire to use byte size instead of element count
   // explicitly, use MakeFromByteSize.
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
-
-// Host-side representation of packed-and-aligned vector datatypes on the device
-// side. Since these can appear in device kernel signatures, we support
-// launching them with these datatypes in launch signatures.
-
-struct Float2 {
-  float x, y;
-};
-
-struct Float4 {
-  Float2 xz, yw;
-};
-
-struct Double2 {
-  double x, y;
-};
-
-static_assert(sizeof(Float2) == 2 * sizeof(float), "Float2 must be packed");
-static_assert(sizeof(Float4) == 4 * sizeof(float), "Float4 must be packed");
-static_assert(sizeof(Double2) == 2 * sizeof(double), "Double2 must be packed");
 
 }  // namespace stream_executor
 

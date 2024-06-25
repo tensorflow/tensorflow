@@ -111,7 +111,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   QuantizationUnits GetQuantizableOps(ConstantOp op) const {
     // Non-float tensors do not need quantization.
     QuantizationUnits quantizable_ops;
-    const ShapedType type = op.getType().dyn_cast<ShapedType>();
+    const ShapedType type = mlir::dyn_cast<ShapedType>(op.getType());
     if (!type || !type.getElementType().isF32()) return quantizable_ops;
 
     const Value value = op.getResult();
@@ -150,7 +150,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
     }
 
     TensorType old_result_type =
-        op.getResult().getType().dyn_cast<TensorType>();
+        mlir::dyn_cast<TensorType>(op.getResult().getType());
     const FloatType quantized_type = FloatType::getF16(op.getContext());
     const ShapedType new_result_type = old_result_type.clone(quantized_type);
 
@@ -184,7 +184,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       // Get types.
       const Type old_result_type = op.getResult().getType();
       const ShapedType new_result_type =
-          convert_op.getType().dyn_cast<ShapedType>();
+          mlir::dyn_cast<ShapedType>(convert_op.getType());
 
       // Proceeds only if the converting is to float16.
       if (!new_result_type.getElementType().isF16()) continue;
@@ -192,7 +192,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       // Convert values.
       std::vector<Eigen::half> new_values;
       const DenseFPElementsAttr value_attr =
-          op.getValue().cast<DenseFPElementsAttr>();
+          mlir::cast<DenseFPElementsAttr>(op.getValue());
       new_values.reserve(value_attr.getNumElements());
 
       for (const float value : value_attr.getValues<float>()) {

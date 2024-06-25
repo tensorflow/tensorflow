@@ -5,6 +5,7 @@ op {
     name: "resource"
     description: <<END
 Resource variable of input tensor to split across all dimensions.
+END
   }
   out_arg {
     name: "outputs"

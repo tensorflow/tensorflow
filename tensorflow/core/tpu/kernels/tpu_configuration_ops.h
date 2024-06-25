@@ -31,7 +31,8 @@ namespace tensorflow {
 Status CreateTpuCompilationCache(
     ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache);
 
-StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(OpKernelContext* ctx);
+absl::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(
+    OpKernelContext* ctx);
 
 // The ConfigureDistributedTpu op is used to start an TPUDriver from
 // TensorFlow. It should be run on a TPU_SYSTEM device and returns the

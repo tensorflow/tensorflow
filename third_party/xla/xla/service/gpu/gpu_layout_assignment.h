@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -67,6 +67,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
                             LayoutConstraints* constraints);
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
+
+  bool InstructionCanChangeLayoutInstance(
+      const HloInstruction* instruction) override;
 
   const se::GpuComputeCapability gpu_version_;
   const se::dnn::VersionInfo dnn_version_;

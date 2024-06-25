@@ -37,27 +37,27 @@ TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
 
   class ElementwiseTestVisitor : public DfsHloVisitorWithDefault {
    public:
-    Status DefaultAction(HloInstruction* hlo) override {
+    absl::Status DefaultAction(HloInstruction* hlo) override {
       // The HLO should be neither an elementwise unary nor binary op. These
       // cases are handled in HandleElementwiseBinary/Unary.
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 2))
           << hlo->ToString();
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 1))
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status HandleElementwiseBinary(HloInstruction* hlo) override {
+    absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
       // HLO should be elementwise binary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 2)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
-    Status HandleElementwiseUnary(HloInstruction* hlo) override {
+    absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
       // HLO should be elementwise unary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 1)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 

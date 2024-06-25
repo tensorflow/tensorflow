@@ -73,9 +73,9 @@ NextPluggableDeviceContext::~NextPluggableDeviceContext() {
 void NextPluggableDeviceContext::CopyDeviceTensorToCPU(
     const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
     Tensor* cpu_tensor, StatusCallback done) {
-  profiler::TraceMeProducer traceme(
+  tsl::profiler::TraceMeProducer traceme(
       [] { return "NextPluggableDeviceContext::CopyDeviceTensorToCPU"; },
-      profiler::ContextType::kGeneric);
+      tsl::profiler::ContextType::kGeneric);
   tensorflow::Status s;
   TF_Tensor* c_cpu_tensor = TF_TensorFromTensor(*cpu_tensor, &s);
   if (!s.ok()) {
@@ -102,9 +102,9 @@ void NextPluggableDeviceContext::CopyDeviceTensorToCPU(
 void NextPluggableDeviceContext::CopyCPUTensorToDevice(
     const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
     StatusCallback done, bool sync_dst_compute) const {
-  profiler::TraceMeProducer traceme(
+  tsl::profiler::TraceMeProducer traceme(
       [] { return "NextPluggableDeviceContext::CopyCPUTensorToDevice"; },
-      profiler::ContextType::kGeneric);
+      tsl::profiler::ContextType::kGeneric);
   tensorflow::Status s;
   TF_Tensor* c_cpu_tensor = TF_TensorFromTensor(*cpu_tensor, &s);
   if (!s.ok()) {

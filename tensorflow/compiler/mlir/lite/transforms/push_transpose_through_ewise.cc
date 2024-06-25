@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -280,7 +281,7 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
     }
 
     auto other_input_type =
-        cst_arg->getResult(0).getType().cast<RankedTensorType>();
+        mlir::cast<RankedTensorType>(cst_arg->getResult(0).getType());
 
     Operation *tposed_const;
     if (other_input_type.getNumElements() == 1) {

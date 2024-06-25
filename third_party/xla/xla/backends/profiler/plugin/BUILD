@@ -1,9 +1,9 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,7 +26,6 @@ cc_library(
     visibility = ["//xla:internal"],
     deps = [
         ":profiler_c_api_hdrs",
-        "//xla:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",

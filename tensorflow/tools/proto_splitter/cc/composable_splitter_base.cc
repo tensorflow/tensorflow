@@ -1,7 +1,3 @@
-#include "tensorflow/tools/proto_splitter/cc/composable_splitter_base.h"
-
-#include <unistd.h>
-
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/tools/proto_splitter/cc/composable_splitter_base.h"
+
+#include <unistd.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/base/maker.h"  // from @riegeli
 #include "riegeli/bytes/cord_writer.h"  // from @riegeli
 #include "riegeli/bytes/fd_writer.h"  // from @riegeli
 #include "riegeli/bytes/string_writer.h"  // from @riegeli
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 #define IS_OSS true
 
@@ -102,9 +102,8 @@ absl::StatusOr<ChunkedProto> ComposableSplitterBase::Split() {
                         .chunked_message = &chunked_message_};
 }
 
-template <typename T>
 static absl::Status WriteToRecordWriter(
-    riegeli::RecordWriter<T>& writer, const std::vector<MessageBytes>& chunks,
+    riegeli::RecordWriterBase& writer, const std::vector<MessageBytes>& chunks,
     ChunkedMessage& chunked_message,
     const ::tensorflow::proto_splitter::VersionDef& version) {
   // Export Riegeli / chunked file.
@@ -173,11 +172,11 @@ absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
   } else {
     // Export Riegeli / chunked file.
     output_path = absl::StrCat(file_prefix, ".cpb");
-    using WriterType = riegeli::FdWriter<>;
-    riegeli::RecordWriter<WriterType> writer((WriterType(output_path)));
+    riegeli::RecordWriter writer(
+        riegeli::Maker<riegeli::FdWriter>(output_path));
     if (!writer.is_open()) return writer.status();
-    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
-        writer, *chunks, *chunked_message, Version()));
+    TF_RETURN_IF_ERROR(
+        WriteToRecordWriter(writer, *chunks, *chunked_message, Version()));
     if (!writer.Close()) return writer.status();
   }
   LOG(INFO) << "Splitter output written to " << output_path;
@@ -202,11 +201,11 @@ ComposableSplitterBase::WriteToString() {
     return std::make_tuple(output, false);
   } else {
     // Export Riegeli / chunked file.
-    using WriterType = riegeli::StringWriter<>;
-    riegeli::RecordWriter<WriterType> writer((WriterType(&output)));
+    riegeli::RecordWriter writer(
+        riegeli::Maker<riegeli::StringWriter>(&output));
     if (!writer.is_open()) return writer.status();
-    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
-        writer, *chunks, *chunked_message, Version()));
+    TF_RETURN_IF_ERROR(
+        WriteToRecordWriter(writer, *chunks, *chunked_message, Version()));
     if (!writer.Close()) return writer.status();
     LOG(INFO) << "Splitter output written to string";
     return std::make_tuple(output, true);
@@ -232,11 +231,10 @@ ComposableSplitterBase::WriteToCord() {
     return std::make_tuple(output, false);
   } else {
     // Export Riegeli / chunked file.
-    using WriterType = riegeli::CordWriter<>;
-    riegeli::RecordWriter<WriterType> writer((WriterType(&output)));
+    riegeli::RecordWriter writer(riegeli::Maker<riegeli::CordWriter>(&output));
     if (!writer.is_open()) return writer.status();
-    TF_RETURN_IF_ERROR(WriteToRecordWriter<WriterType>(
-        writer, *chunks, *chunked_message, Version()));
+    TF_RETURN_IF_ERROR(
+        WriteToRecordWriter(writer, *chunks, *chunked_message, Version()));
     if (!writer.Close()) return writer.status();
     LOG(INFO) << "Splitter output written to absl::Cord";
     return std::make_tuple(output, true);

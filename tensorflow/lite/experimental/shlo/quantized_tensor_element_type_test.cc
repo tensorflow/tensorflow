@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 
 #include <array>
+#include <cstdint>
+#include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -26,120 +29,194 @@ namespace {
 
 using testing::Each;
 using testing::ElementsAre;
+using testing::ElementsAreArray;
 using testing::Eq;
+using testing::FloatEq;
+using testing::Pointwise;
 
-template <DataType storage_type, DataType expressed_type>
-struct TestPair {
-  using StorageT = StorageType<storage_type>;
-  using ExpressedT = StorageType<expressed_type>;
+TEST(Quantization, IsValidQuantizationTypePairWorks) {
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kI1, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kSI32));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kBF16));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kF16));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI4, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kSI32));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kBF16));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kF16));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI8, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kF16));
+  EXPECT_TRUE(IsValidQuantizationTypePair(DataType::kSI16, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kSI32, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kBF16, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF16, DataType::kF32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kI1));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kSI4));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kSI8));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kSI16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kSI32));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kBF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kF16));
+  EXPECT_FALSE(IsValidQuantizationTypePair(DataType::kF32, DataType::kF32));
+}
 
-  static constexpr DataType kStorageType = storage_type;
-  static constexpr DataType kExpressedType = expressed_type;
+struct QuantizationPair {
+  DataType storage_type;
+  DataType expressed_type;
 };
 
-template <typename T>
-class QuantizedTensorElementTypeTest : public ::testing::Test {};
-
-using TestTypes = ::testing::Types<TestPair<DataType::kSI4, DataType::kBF16>,
-                                   TestPair<DataType::kSI4, DataType::kF16>,
-                                   TestPair<DataType::kSI4, DataType::kF32>,
-                                   TestPair<DataType::kSI8, DataType::kBF16>,
-                                   TestPair<DataType::kSI8, DataType::kF16>,
-                                   TestPair<DataType::kSI8, DataType::kF32>,
-                                   TestPair<DataType::kSI16, DataType::kBF16>,
-                                   TestPair<DataType::kSI16, DataType::kF16>,
-                                   TestPair<DataType::kSI16, DataType::kF32>,
-                                   TestPair<DataType::kSI32, DataType::kBF16>,
-                                   TestPair<DataType::kSI32, DataType::kF16>,
-                                   TestPair<DataType::kSI32, DataType::kF32>>;
-
-TYPED_TEST_SUITE(QuantizedTensorElementTypeTest, TestTypes);
-
-TYPED_TEST(QuantizedTensorElementTypeTest, PerTensor) {
-  typename TypeParam::ExpressedT scale{.5f};
-  typename TypeParam::StorageT zero_point{3};
-
-  auto element =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorageType,
-                                            TypeParam::kExpressedType>(
-          scale, zero_point);
-
-  EXPECT_THAT(element.StorageType(), Eq(TypeParam::kStorageType));
-  EXPECT_THAT(element.ExpressedType(), Eq(TypeParam::kExpressedType));
-  EXPECT_THAT(element.IsPerTensorQuantized(), Eq(true));
-  EXPECT_THAT(element.IsPerAxisQuantized(), Eq(false));
-  EXPECT_THAT(element.template Scales<TypeParam::kExpressedType>(),
-              ElementsAre(.5f));
-  EXPECT_THAT(element.template ZeroPoints<TypeParam::kStorageType>(),
-              ElementsAre(3));
+std::vector<QuantizationPair> ValidQuantizationTypePairs() {
+  return {QuantizationPair{.storage_type = DataType::kSI4,
+                           .expressed_type = DataType::kBF16},
+          QuantizationPair{.storage_type = DataType::kSI4,
+                           .expressed_type = DataType::kF16},
+          QuantizationPair{.storage_type = DataType::kSI4,
+                           .expressed_type = DataType::kF32},
+          QuantizationPair{.storage_type = DataType::kSI8,
+                           .expressed_type = DataType::kBF16},
+          QuantizationPair{.storage_type = DataType::kSI8,
+                           .expressed_type = DataType::kF16},
+          QuantizationPair{.storage_type = DataType::kSI8,
+                           .expressed_type = DataType::kF32},
+          QuantizationPair{.storage_type = DataType::kSI16,
+                           .expressed_type = DataType::kF32}};
 }
 
-TYPED_TEST(QuantizedTensorElementTypeTest, PerAxis) {
-  using ExpressedT = typename TypeParam::ExpressedT;
-  using StorageT = typename TypeParam::StorageT;
-  std::array scales = {ExpressedT{.5f}, ExpressedT{.6f}, ExpressedT{.2f}};
-  std::array zero_points = {StorageT{3}, StorageT{1}, StorageT{2}};
+struct PerTensorTest : testing::TestWithParam<QuantizationPair> {
+  // NOLINTNEXTLINE: Using function naming for functors.
+  static constexpr auto ExtractValueAsInt = [](auto v) {
+    return static_cast<int32_t>(v);
+  };
+  // NOLINTNEXTLINE: Using function naming for functors.
+  static constexpr auto ExtractValueAsFloat = [](auto v) {
+    return static_cast<float>(v);
+  };
+};
 
-  auto element = QuantizedTensorElementType::PerAxis<TypeParam::kStorageType,
-                                                     TypeParam::kExpressedType>(
-      absl::MakeConstSpan(scales), absl::MakeConstSpan(zero_points), 3u);
+TEST_P(PerTensorTest, BuildPerTensorWorks) {
+  const QuantizationPair& config = GetParam();
+  QuantizedElementTypePerTensor type(config.storage_type, 1,
+                                     config.expressed_type, 2.5);
 
-  EXPECT_THAT(element.StorageType(), Eq(TypeParam::kStorageType));
-  EXPECT_THAT(element.ExpressedType(), Eq(TypeParam::kExpressedType));
-  EXPECT_THAT(element.IsPerTensorQuantized(), Eq(false));
-  EXPECT_THAT(element.IsPerAxisQuantized(), Eq(true));
-  EXPECT_THAT(element.QuantizedDimension(), Eq(3));
-  EXPECT_THAT(element.template Scales<TypeParam::kExpressedType>(),
-              ElementsAre(ExpressedT{.5f}, ExpressedT{.6f}, ExpressedT{.2f}));
-  EXPECT_THAT(element.template ZeroPoints<TypeParam::kStorageType>(),
-              ElementsAre(3, 1, 2));
+  EXPECT_EQ(type.StorageType(), config.storage_type);
+  EXPECT_EQ(type.ExpressedType(), config.expressed_type);
+  EXPECT_EQ(std::visit(ExtractValueAsInt, type.ZeroPoint()), 1);
+  EXPECT_THAT(std::visit(ExtractValueAsFloat, type.Scale()), FloatEq(2.5));
 }
 
-TYPED_TEST(QuantizedTensorElementTypeTest, BaselineTypeForPerAxisWorks) {
-  using ExpressedT = typename TypeParam::ExpressedT;
-  ExpressedT scales[3] = {ExpressedT(0.5f), ExpressedT(0.6f), ExpressedT(0.2f)};
-  typename TypeParam::StorageT zero_points[3] = {3, 1, 2};
-  const auto element =
-      QuantizedTensorElementType::PerAxis<TypeParam::kStorageType,
-                                          TypeParam::kExpressedType>(
-          absl::MakeConstSpan(scales), absl::MakeConstSpan(zero_points),
-          /*quantized_dimension=*/3u);
+TEST_P(PerTensorTest, BaselineTypeWorks) {
+  float scale = 0.5f;
+  int32_t zero_point = 3;
+
+  const QuantizationPair& config = GetParam();
+  QuantizedElementTypePerTensor element(config.storage_type, zero_point,
+                                        config.expressed_type, scale);
   const auto baseline = BaselineType(element);
 
   EXPECT_EQ(baseline.StorageType(), element.StorageType());
   EXPECT_EQ(baseline.ExpressedType(), element.ExpressedType());
-  EXPECT_EQ(baseline.IsPerTensorQuantized(), element.IsPerTensorQuantized());
-  EXPECT_EQ(baseline.IsPerAxisQuantized(), element.IsPerAxisQuantized());
+  EXPECT_EQ(std::visit(ExtractValueAsInt, baseline.ZeroPoint()), 0);
+  EXPECT_THAT(std::visit(ExtractValueAsFloat, baseline.Scale()), FloatEq(1));
+}
+
+INSTANTIATE_TEST_SUITE_P(PerTensor, PerTensorTest,
+                         testing::ValuesIn(ValidQuantizationTypePairs()));
+
+struct PerAxisTest : testing::TestWithParam<QuantizationPair> {
+  // NOLINTNEXTLINE: Using function naming for functors.
+  static constexpr auto ExtractValueAsInt = [](auto v) {
+    return std::vector<int32_t>(v.begin(), v.end());
+  };
+  // NOLINTNEXTLINE: Using function naming for functors.
+  static constexpr auto ExtractValueAsFloat = [](auto v) {
+    return std::vector<float>(v.begin(), v.end());
+  };
+};
+
+TEST_P(PerAxisTest, BuildPerAxisWorks) {
+  const QuantizationPair& config = GetParam();
+  const std::vector<int32_t> ref_zero_points{1, 2, 3};
+  const std::vector<float> ref_scales{1.5, 2.5, 3.5};
+
+  QuantizedElementTypePerAxis type(config.storage_type, ref_zero_points,
+                                   config.expressed_type, ref_scales,
+                                   /*quantized_dimension=*/1);
+
+  EXPECT_EQ(type.StorageType(), config.storage_type);
+  EXPECT_EQ(type.ExpressedType(), config.expressed_type);
+  EXPECT_THAT(std::visit(ExtractValueAsInt, type.ZeroPoints()),
+              ElementsAreArray(ref_zero_points));
+  EXPECT_THAT(std::visit(ExtractValueAsFloat, type.Scales()),
+              Pointwise(FloatEq(), ref_scales));
+}
+
+TEST_P(PerAxisTest, BaselineTypeWorks) {
+  const QuantizationPair& config = GetParam();
+  float scales[3] = {0.5f, 0.6f, 0.2f};
+  int32_t zero_points[3] = {3, 1, 2};
+  const QuantizedElementTypePerAxis element(config.storage_type, scales,
+                                            config.expressed_type, zero_points,
+                                            /*quantized_dimension=*/3u);
+  const auto baseline = BaselineType(element);
+
+  const auto extracted_zero_points =
+      std::visit(ExtractValueAsInt, baseline.ZeroPoints());
+  const auto extracted_scales =
+      std::visit(ExtractValueAsFloat, baseline.Scales());
+
+  EXPECT_EQ(baseline.StorageType(), element.StorageType());
+  EXPECT_EQ(baseline.ExpressedType(), element.ExpressedType());
   EXPECT_EQ(baseline.QuantizedDimension(), element.QuantizedDimension());
-  EXPECT_THAT(baseline.template Scales<TypeParam::kExpressedType>().size(),
-              element.template Scales<TypeParam::kExpressedType>().size());
-  EXPECT_THAT(baseline.template Scales<TypeParam::kExpressedType>(), Each(1.f));
-  EXPECT_THAT(baseline.template ZeroPoints<TypeParam::kStorageType>().size(),
-              element.template ZeroPoints<TypeParam::kStorageType>().size());
-  EXPECT_THAT(baseline.template ZeroPoints<TypeParam::kStorageType>(), Each(0));
+
+  EXPECT_THAT(extracted_zero_points, Each(0));
+  EXPECT_THAT(extracted_zero_points.size(), std::size(zero_points));
+  EXPECT_THAT(extracted_scales, Each(FloatEq(1.0f)));
+  EXPECT_THAT(extracted_scales.size(), std::size(scales));
 }
 
-TYPED_TEST(QuantizedTensorElementTypeTest, BaselineTypeForPerTensorWorks) {
-  typename TypeParam::ExpressedT scale(0.5f);
-  typename TypeParam::StorageT zero_point = 3;
-
-  const auto element =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorageType,
-                                            TypeParam::kExpressedType>(
-          scale, zero_point);
-  const auto baseline = BaselineType(element);
-
-  EXPECT_EQ(baseline.StorageType(), element.StorageType());
-  EXPECT_EQ(baseline.ExpressedType(), element.ExpressedType());
-  EXPECT_EQ(baseline.IsPerTensorQuantized(), element.IsPerTensorQuantized());
-  EXPECT_EQ(baseline.IsPerAxisQuantized(), element.IsPerAxisQuantized());
-  EXPECT_THAT(baseline.template Scales<TypeParam::kExpressedType>().size(),
-              element.template Scales<TypeParam::kExpressedType>().size());
-  EXPECT_THAT(baseline.template Scales<TypeParam::kExpressedType>(), Each(1.f));
-  EXPECT_THAT(baseline.template ZeroPoints<TypeParam::kStorageType>().size(),
-              element.template ZeroPoints<TypeParam::kStorageType>().size());
-  EXPECT_THAT(baseline.template ZeroPoints<TypeParam::kStorageType>(), Each(0));
-}
+INSTANTIATE_TEST_SUITE_P(PerAxis, PerAxisTest,
+                         testing::ValuesIn(ValidQuantizationTypePairs()));
 
 }  // namespace
 }  // namespace shlo_ref

@@ -76,13 +76,13 @@ std::string ExplainMatch(const Matcher<T>& matcher, const V& value) {
 }
 
 TEST(IsOkAndHoldsTest, MatchesValue) {
-  StatusOr<std::string> status_or_message("Hello, world");
+  absl::StatusOr<std::string> status_or_message("Hello, world");
   EXPECT_THAT(status_or_message, IsOkAndHolds("Hello, world"));
   EXPECT_THAT(status_or_message, IsOkAndHolds(HasSubstr("Hello,")));
 }
 
 TEST(IsOkAndHoldsTest, MatchesContainer) {
-  StatusOr<std::vector<std::string>> status_or_messages =
+  absl::StatusOr<std::vector<std::string>> status_or_messages =
       std::vector<std::string>{"Hello, world", "Hello, tf"};
   EXPECT_THAT(status_or_messages,
               IsOkAndHolds(ElementsAre("Hello, world", "Hello, tf")));
@@ -91,23 +91,23 @@ TEST(IsOkAndHoldsTest, MatchesContainer) {
 }
 
 TEST(IsOkAndHoldsTest, DoesNotMatchStatus) {
-  StatusOr<std::string> status_or_message =
+  absl::StatusOr<std::string> status_or_message =
       errors::InvalidArgument("Invalid argument");
   EXPECT_THAT(status_or_message, Not(IsOkAndHolds("Hello, world")));
 }
 
 TEST(IsOkAndHoldsTest, DoesNotMatchValue) {
-  StatusOr<std::string> status_or_message("Hello, tf");
+  absl::StatusOr<std::string> status_or_message("Hello, tf");
   EXPECT_THAT(status_or_message, Not(IsOkAndHolds("Hello, world")));
 }
 
 TEST(IsOkAndHoldsTest, DoesNotMatchContainer) {
-  StatusOr<std::vector<int>> status_or_container({1, 2, 3});
+  absl::StatusOr<std::vector<int>> status_or_container({1, 2, 3});
   EXPECT_THAT(status_or_container, Not(IsOkAndHolds(ElementsAre(4, 5, 6))));
 }
 
 TEST(IsOkAndHoldsTest, DescribeExpectedValue) {
-  Matcher<StatusOr<std::string>> is_ok_and_has_substr =
+  Matcher<absl::StatusOr<std::string>> is_ok_and_has_substr =
       IsOkAndHolds(HasSubstr("Hello"));
   EXPECT_EQ(Describe(is_ok_and_has_substr),
             "is OK and has a value that has substring \"Hello\"");
@@ -116,20 +116,22 @@ TEST(IsOkAndHoldsTest, DescribeExpectedValue) {
 }
 
 TEST(IsOkAndHoldsTest, ExplainNotMatchingStatus) {
-  Matcher<StatusOr<int>> is_ok_and_less_than = IsOkAndHolds(LessThan(100));
-  StatusOr<int> status = errors::Unknown("Unknown");
+  Matcher<absl::StatusOr<int>> is_ok_and_less_than =
+      IsOkAndHolds(LessThan(100));
+  absl::StatusOr<int> status = errors::Unknown("Unknown");
   EXPECT_THAT(ExplainMatch(is_ok_and_less_than, status),
               HasSubstr("which has status UNKNOWN: Unknown"));
 }
 
 TEST(IsOkAndHoldsTest, ExplainNotMatchingValue) {
-  Matcher<StatusOr<int>> is_ok_and_less_than = IsOkAndHolds(LessThan(100));
+  Matcher<absl::StatusOr<int>> is_ok_and_less_than =
+      IsOkAndHolds(LessThan(100));
   EXPECT_EQ(ExplainMatch(is_ok_and_less_than, 120),
             "which contains value 120, which is 20 more than 100");
 }
 
 TEST(IsOkAndHoldsTest, ExplainNotMatchingContainer) {
-  Matcher<StatusOr<std::vector<int>>> is_ok_and_less_than =
+  Matcher<absl::StatusOr<std::vector<int>>> is_ok_and_less_than =
       IsOkAndHolds(ElementsAre(1, 2, 3));
   std::vector<int> actual{4, 5, 6};
   EXPECT_THAT(ExplainMatch(is_ok_and_less_than, actual),
@@ -137,20 +139,20 @@ TEST(IsOkAndHoldsTest, ExplainNotMatchingContainer) {
 }
 
 TEST(StatusIsTest, MatchesOK) {
-  EXPECT_THAT(OkStatus(), StatusIs(error::OK));
-  StatusOr<std::string> message("Hello, world");
+  EXPECT_THAT(absl::OkStatus(), StatusIs(error::OK));
+  absl::StatusOr<std::string> message("Hello, world");
   EXPECT_THAT(message, StatusIs(error::OK));
 }
 
 TEST(StatusIsTest, DoesNotMatchOk) {
   EXPECT_THAT(errors::DeadlineExceeded("Deadline exceeded"),
               Not(StatusIs(error::OK)));
-  StatusOr<std::string> status = errors::NotFound("Not found");
+  absl::StatusOr<std::string> status = errors::NotFound("Not found");
   EXPECT_THAT(status, Not(StatusIs(error::OK)));
 }
 
 TEST(StatusIsTest, MatchesStatus) {
-  Status s = errors::Cancelled("Cancelled");
+  absl::Status s = errors::Cancelled("Cancelled");
   EXPECT_THAT(s, StatusIs(error::CANCELLED));
   EXPECT_THAT(s, StatusIs(error::CANCELLED, "Cancelled"));
   EXPECT_THAT(s, StatusIs(_, "Cancelled"));
@@ -161,7 +163,7 @@ TEST(StatusIsTest, MatchesStatus) {
 }
 
 TEST(StatusIsTest, StatusOrMatchesStatus) {
-  StatusOr<int> s = errors::InvalidArgument("Invalid Argument");
+  absl::StatusOr<int> s = errors::InvalidArgument("Invalid Argument");
   EXPECT_THAT(s, StatusIs(error::INVALID_ARGUMENT));
   EXPECT_THAT(s, StatusIs(error::INVALID_ARGUMENT, "Invalid Argument"));
   EXPECT_THAT(s, StatusIs(_, "Invalid Argument"));
@@ -172,7 +174,7 @@ TEST(StatusIsTest, StatusOrMatchesStatus) {
 }
 
 TEST(StatusIsTest, DoesNotMatchStatus) {
-  Status s = errors::Internal("Internal");
+  absl::Status s = errors::Internal("Internal");
   EXPECT_THAT(s, Not(StatusIs(error::FAILED_PRECONDITION)));
   EXPECT_THAT(s, Not(StatusIs(error::INTERNAL, "Failed Precondition")));
   EXPECT_THAT(s, Not(StatusIs(_, "Failed Precondition")));
@@ -180,7 +182,7 @@ TEST(StatusIsTest, DoesNotMatchStatus) {
 }
 
 TEST(StatusIsTest, StatusOrDoesNotMatchStatus) {
-  StatusOr<int> s = errors::FailedPrecondition("Failed Precondition");
+  absl::StatusOr<int> s = errors::FailedPrecondition("Failed Precondition");
   EXPECT_THAT(s, Not(StatusIs(error::INTERNAL)));
   EXPECT_THAT(s, Not(StatusIs(error::FAILED_PRECONDITION, "Internal")));
   EXPECT_THAT(s, Not(StatusIs(_, "Internal")));
@@ -188,7 +190,7 @@ TEST(StatusIsTest, StatusOrDoesNotMatchStatus) {
 }
 
 TEST(StatusIsTest, DescribeExpectedValue) {
-  Matcher<Status> status_is =
+  Matcher<absl::Status> status_is =
       StatusIs(error::UNAVAILABLE, std::string("Unavailable"));
   EXPECT_EQ(Describe(status_is),
             "has a status code that is equal to UNAVAILABLE, "
@@ -196,7 +198,7 @@ TEST(StatusIsTest, DescribeExpectedValue) {
 }
 
 TEST(StatusIsTest, DescribeNegatedExpectedValue) {
-  Matcher<StatusOr<std::string>> status_is =
+  Matcher<absl::StatusOr<std::string>> status_is =
       StatusIs(error::ABORTED, std::string("Aborted"));
   EXPECT_EQ(DescribeNegation(status_is),
             "has a status code that isn't equal to ABORTED, "
@@ -204,60 +206,61 @@ TEST(StatusIsTest, DescribeNegatedExpectedValue) {
 }
 
 TEST(StatusIsTest, ExplainNotMatchingErrorCode) {
-  Matcher<Status> status_is = StatusIs(error::NOT_FOUND, _);
-  const Status status = errors::AlreadyExists("Already exists");
+  Matcher<absl::Status> status_is = StatusIs(error::NOT_FOUND, _);
+  const absl::Status status = errors::AlreadyExists("Already exists");
   EXPECT_EQ(ExplainMatch(status_is, status), "whose status code is wrong");
 }
 
 TEST(StatusIsTest, ExplainNotMatchingErrorMessage) {
-  Matcher<Status> status_is = StatusIs(error::NOT_FOUND, "Not found");
-  const Status status = errors::NotFound("Already exists");
+  Matcher<absl::Status> status_is = StatusIs(error::NOT_FOUND, "Not found");
+  const absl::Status status = errors::NotFound("Already exists");
   EXPECT_EQ(ExplainMatch(status_is, status), "whose error message is wrong");
 }
 
 TEST(StatusIsTest, ExplainStatusOrNotMatchingErrorCode) {
-  Matcher<StatusOr<int>> status_is = StatusIs(error::ALREADY_EXISTS, _);
-  const StatusOr<int> status_or = errors::NotFound("Not found");
+  Matcher<absl::StatusOr<int>> status_is = StatusIs(error::ALREADY_EXISTS, _);
+  const absl::StatusOr<int> status_or = errors::NotFound("Not found");
   EXPECT_EQ(ExplainMatch(status_is, status_or), "whose status code is wrong");
 }
 
 TEST(StatusIsTest, ExplainStatusOrNotMatchingErrorMessage) {
-  Matcher<StatusOr<int>> status_is =
+  Matcher<absl::StatusOr<int>> status_is =
       StatusIs(error::ALREADY_EXISTS, "Already exists");
-  const StatusOr<int> status_or = errors::AlreadyExists("Not found");
+  const absl::StatusOr<int> status_or = errors::AlreadyExists("Not found");
   EXPECT_EQ(ExplainMatch(status_is, status_or), "whose error message is wrong");
 }
 
 TEST(StatusIsTest, ExplainStatusOrHasValue) {
-  Matcher<StatusOr<int>> status_is =
+  Matcher<absl::StatusOr<int>> status_is =
       StatusIs(error::RESOURCE_EXHAUSTED, "Resource exhausted");
-  const StatusOr<int> value = -1;
+  const absl::StatusOr<int> value = -1;
   EXPECT_EQ(ExplainMatch(status_is, value), "whose status code is wrong");
 }
 
 TEST(IsOkTest, MatchesOK) {
-  EXPECT_THAT(OkStatus(), IsOk());
-  StatusOr<std::string> message = std::string("Hello, world");
+  EXPECT_THAT(absl::OkStatus(), IsOk());
+  absl::StatusOr<std::string> message = std::string("Hello, world");
   EXPECT_THAT(message, IsOk());
 }
 
 TEST(IsOkTest, DoesNotMatchOK) {
   EXPECT_THAT(errors::PermissionDenied("Permission denied"), Not(IsOk()));
-  StatusOr<std::string> status = errors::Unauthenticated("Unauthenticated");
+  absl::StatusOr<std::string> status =
+      errors::Unauthenticated("Unauthenticated");
   EXPECT_THAT(status, Not(IsOk()));
 }
 
 TEST(IsOkTest, DescribeExpectedValue) {
-  Matcher<Status> status_is_ok = IsOk();
+  Matcher<absl::Status> status_is_ok = IsOk();
   EXPECT_EQ(Describe(status_is_ok), "is OK");
-  Matcher<StatusOr<std::string>> status_or_is_ok = IsOk();
+  Matcher<absl::StatusOr<std::string>> status_or_is_ok = IsOk();
   EXPECT_EQ(Describe(status_or_is_ok), "is OK");
 }
 
 TEST(IsOkTest, DescribeNegatedExpectedValue) {
-  Matcher<Status> status_is_ok = IsOk();
+  Matcher<absl::Status> status_is_ok = IsOk();
   EXPECT_EQ(DescribeNegation(status_is_ok), "is not OK");
-  Matcher<StatusOr<std::string>> status_or_is_ok = IsOk();
+  Matcher<absl::StatusOr<std::string>> status_or_is_ok = IsOk();
   EXPECT_EQ(DescribeNegation(status_or_is_ok), "is not OK");
 }
 

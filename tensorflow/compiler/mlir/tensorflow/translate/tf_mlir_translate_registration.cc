@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 using tsl::Status;
@@ -127,9 +130,9 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
   auto graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
-
-  auto status =
-      tensorflow::ConvertMlirToGraph(module, confs, &graph, flib_def.get());
+  absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
+  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      module, confs, &graph, flib_def.get(), &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Export to Graph failed: " << status;
     return mlir::failure();
@@ -152,7 +155,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   // Print the graph to the output after going through GraphDef conversion.
   // The DumpGraphToFile would do this anyway so just skip straight to it.
   graph->ToGraphDef(graphdef.get());
-  output << graphdef->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef);
 
   return success();
 }
@@ -167,19 +170,18 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
   if (!module) return failure();
 
-  // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
-  StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::ConvertMlirToGraphdef(module, confs));
+  absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
+      tensorflow::tf2xla::v2::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
     return mlir::failure();
   }
 
-  output << graphdef_or.value()->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef_or.value());
   return success();
 }
 

@@ -20,12 +20,15 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIPSPARSE_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIPSPARSE_WRAPPER_H_
 
+#include "rocm/rocm_config.h"
+
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/hipsparse/hipsparse.h"
 #else
 #include "rocm/include/hipsparse.h"
 #endif
 #include "xla/stream_executor/platform/dso_loader.h"
+#include "xla/stream_executor/platform/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
 
@@ -38,7 +41,7 @@ namespace wrap {
   struct WrapperShim__##__name {                    \
     template <typename... Args>                     \
     hipsparseStatus_t operator()(Args... args) {    \
-      hipSparseStatus_t retval = ::__name(args...); \
+      hipsparseStatus_t retval = ::__name(args...); \
       return retval;                                \
     }                                               \
   } __name;
@@ -46,8 +49,8 @@ namespace wrap {
 #else
 
 #define HIPSPARSE_API_WRAPPER(__name)                                          \
-  struct DynLoadShim__##__name {                                               \
-    static const char* kName;                                                  \
+  static struct DynLoadShim__##__name {                                        \
+    constexpr static const char* kName = #__name;                              \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;               \
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
@@ -56,8 +59,8 @@ namespace wrap {
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s = tsl::Env::Default()                                             \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);                  \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
+                                                         kName, &f);           \
       CHECK(s.ok()) << "could not find " << kName                              \
                     << " in miopen DSO; dlerror: " << s.message();             \
       return reinterpret_cast<FuncPtrT>(f);                                    \
@@ -70,8 +73,7 @@ namespace wrap {
     hipsparseStatus_t operator()(Args... args) {                               \
       return DynLoad()(args...);                                               \
     }                                                                          \
-  } __name;                                                                    \
-  const char* DynLoadShim__##__name::kName = #__name;
+  } __name;
 
 #endif
 
@@ -128,7 +130,7 @@ namespace wrap {
   __macro(hipsparseDcsru2csr_bufferSizeExt)     \
   __macro(hipsparseDcsru2csr)                   \
   __macro(hipsparseScsru2csr_bufferSizeExt)     \
-  __macro(hipsparseScsru2csr)                   \  
+  __macro(hipsparseScsru2csr)                   \
   __macro(hipsparseSpMM_bufferSize)             \
   __macro(hipsparseSpMM)                        \
   __macro(hipsparseZcsru2csr_bufferSizeExt)     \

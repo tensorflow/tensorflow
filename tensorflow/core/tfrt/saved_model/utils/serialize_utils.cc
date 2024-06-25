@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -53,6 +54,7 @@ absl::StatusOr<tfrt::BefBuffer> DeserializeBEFBuffer(
 absl::Status SerializeMLRTBytecode(const mlrt::bc::Buffer &bytecode,
                                    const std::string &filepath) {
   std::string errorMessage;
+
   auto output = mlir::openOutputFile(filepath, &errorMessage);
   (output->os())
       .write(reinterpret_cast<const char *>(bytecode.data()), bytecode.size());
@@ -60,6 +62,21 @@ absl::Status SerializeMLRTBytecode(const mlrt::bc::Buffer &bytecode,
   LOG(INFO) << "Completed serializing MLRTBytecode to: " << filepath;
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<mlrt::bc::Buffer> DeserializeMlrtBytecodeBuffer(
+    const std::string &filepath) {
+  std::string bytecode_data;
+  TF_CHECK_OK(ReadFileToString(tsl::Env::Default(), filepath, &bytecode_data));
+  // Convert the string to a byte array.
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+  allocator.Allocate(bytecode_data.length(), alignof(char));
+
+  memcpy(buffer.data(), bytecode_data.data(), bytecode_data.length());
+
+  LOG(INFO) << "Successfully loaded serialized MLRTBytecode from: " << filepath;
+  return buffer;
 }
 
 }  // namespace tfrt_stub

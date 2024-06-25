@@ -42,7 +42,9 @@ absl::StatusOr<bool> GpuSanitizeConstantNames::Run(
         continue;
       }
 
-      instr->UniquifyName(&instr_name_uniquer);
+      // Record the non-constant HLO instruction name in uniquer, and keep
+      // original instruction name unchanged.
+      instr_name_uniquer.GetUniqueName(instr->name());
     }
   }
 

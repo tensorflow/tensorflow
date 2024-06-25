@@ -23,17 +23,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -216,6 +213,9 @@ TEST(ShapeUtilTest, EqualDynamicShapes) {
   EXPECT_FALSE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
                        ShapeUtil::MakeShape(F32, {4, 3}, {false, false})));
+  EXPECT_FALSE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize}, {true}),
+      ShapeUtil::MakeShape(F32, {2}, {true})));
 }
 
 TEST(ShapeUtilTest, CompatibleDynamicShapes) {
@@ -633,14 +633,15 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+      [&invocations](
+          absl::Span<const int64_t> indexes) -> absl::StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
     return true;
   };
 
-  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+  absl::Status error_status = ShapeUtil::ForEachIndexWithStatus(
       shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
       increment_func);
 
@@ -655,7 +656,7 @@ TEST(ShapeUtilTest, GetForEachIndexParallelThreadCount) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
   auto check_func = [kThreadCount](absl::Span<const int64_t> /*indexes*/,
-                                   int thread_id) -> StatusOr<bool> {
+                                   int thread_id) -> absl::StatusOr<bool> {
     EXPECT_GE(thread_id, -1);
     EXPECT_LT(thread_id, kThreadCount);
     return true;
@@ -672,7 +673,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   int64_t output[10][10];
   int init = 5;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
     return true;
   };
@@ -690,7 +691,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel_Rank0) {
   Shape shape = ShapeUtil::MakeShape(F32, {});
   int64_t output = -1;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     output = indexes.size();
     return true;
   };
@@ -705,7 +706,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel_Empty) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 0});
   bool called = false;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     called = true;
     return true;
   };
@@ -724,7 +725,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel_DimensionPinnedWithZeros) {
   int64_t output[2][2] = {};
   int init = 5;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
     return true;
   };
@@ -748,7 +749,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel_WithSkips) {
   int64_t output[10][10] = {};
   int init = 5;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
     return true;
   };
@@ -772,13 +773,13 @@ TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
   int64_t output[10][10];
   int init = 5;
   auto set_func = [&](absl::Span<const int64_t> indexes,
-                      int /*thread_id*/) -> StatusOr<bool> {
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
     return true;
   };
   int init2 = 15;
   auto set_func2 = [&](absl::Span<const int64_t> indexes,
-                       int /*thread_id*/) -> StatusOr<bool> {
+                       int /*thread_id*/) -> absl::StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init2 + indexes[0] + indexes[1];
     return true;
   };
@@ -808,8 +809,9 @@ TEST(ShapeUtilTest, ForEachIndexParallel_CalledFromMultipleThreads) {
                                  kCallingThreads);
     for (int t = 0; t < kCallingThreads; ++t) {
       pool.Schedule([&output, &kShape, t] {
-        auto set_func = [&output, t](absl::Span<const int64_t> indexes,
-                                     int /*thread_id*/) -> StatusOr<bool> {
+        auto set_func = [&output, t](
+                            absl::Span<const int64_t> indexes,
+                            int /*thread_id*/) -> absl::StatusOr<bool> {
           output[t][indexes[0]][indexes[1]] = kInit + indexes[0] + indexes[1];
           return true;
         };
@@ -972,7 +974,7 @@ TEST(ShapeUtilTest, UpdateDynamicDimensions) {
 }
 
 TEST(ShapeUtilTest, InvalidDynamicDimension) {
-  StatusOr<Shape> error_status = ShapeUtil::MakeValidatedShape(
+  absl::StatusOr<Shape> error_status = ShapeUtil::MakeValidatedShape(
       F32, {Shape::kUnboundedSize, Shape::kUnboundedSize}, {true, false});
 
   EXPECT_FALSE(error_status.ok());
@@ -1198,6 +1200,20 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   layout->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
   EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
+}
+
+TEST(XlaShapeUtilTest, ZeroSize) {
+  // Verify that if any one dimension is 0 we have a zero byte buffer.
+  std::vector<std::vector<int64_t>> test_cases = {
+      {0, 64, 128}, {128, 0, 64}, {64, 128, 0},
+      {0, 63, 127}, {127, 0, 63}, {63, 127, 0},
+  };
+  for (const auto& dimensions : test_cases) {
+    xla::Shape int4_shape = xla::ShapeUtil::MakeShape(xla::S4, dimensions);
+    int4_shape.mutable_layout()->set_element_size_in_bits(4);
+    EXPECT_EQ(xla::ShapeUtil::ArrayDataSize(int4_shape), 0);
+    EXPECT_EQ(xla::ShapeUtil::ArraySize(int4_shape), 0);
+  }
 }
 
 TEST(ShapeUtilTest, DecomposeBitcastToReshape) {
@@ -1620,7 +1636,7 @@ void BM_ForEachIndex(::testing::benchmark::State& state) {
   for (auto s : state) {
     int count = 0;
     auto increment_func =
-        [&count](absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+        [&count](absl::Span<const int64_t> indexes) -> absl::StatusOr<bool> {
       count++;
       return true;
     };

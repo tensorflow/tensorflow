@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -50,11 +54,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/framework/device_id_manager.h"
-#include "tsl/framework/serving_device_selector.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -293,7 +295,7 @@ absl::StatusOr<uint64_t> GenerateFingerprint(
   return tsl::Fingerprint64(
       absl::StrCat(fallback_request_state->session_metadata().name(),
                    fallback_request_state->session_metadata().version(),
-                   fdef->signature().DebugString()));
+                   tsl::LegacyUnredactedDebugString(fdef->signature())));
 }
 
 std::vector<XlaCompiler::Argument> BuildXlaCompilerArguments(
@@ -396,8 +398,9 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
         "Execution with collectives is not supported yet.");
   }
 
-  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client->LookupAddressableDevice(device_idx));
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client->LookupAddressableDevice(xla::PjRtLocalDeviceId(device_idx)));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> executable_outputs,
       RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,

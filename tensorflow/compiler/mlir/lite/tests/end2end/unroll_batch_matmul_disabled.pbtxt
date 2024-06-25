@@ -78,6 +78,6 @@ versions {
 }
 
 # CHECK: func @main(%[[VAL_0:.*]]: tensor<2x5x3xf32>, %[[VAL_1:.*]]: tensor<3x7xf32>) -> tensor<2x5x7xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "Placeholder,Placeholder_1", outputs = "MatMul"}} {
-# CHECK:     %[[VAL_2:.*]] = "tfl.batch_matmul"(%[[VAL_0]], %[[VAL_1]]) {adj_x = false, adj_y = false} : (tensor<2x5x3xf32>, tensor<3x7xf32>) -> tensor<2x5x7xf32>
+# CHECK:     %[[VAL_2:.*]] = "tfl.batch_matmul"(%[[VAL_0]], %[[VAL_1]]) <{adj_x = false, adj_y = false}> : (tensor<2x5x3xf32>, tensor<3x7xf32>) -> tensor<2x5x7xf32>
 # CHECK:     return %[[VAL_2]] : tensor<2x5x7xf32>
 # CHECK: }

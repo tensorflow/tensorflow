@@ -20,6 +20,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "xla/python/ifrt/dtype.pb.h"
+
 namespace xla {
 namespace ifrt {
 
@@ -33,6 +36,7 @@ namespace ifrt {
 // * Add kString.
 class DType {
  public:
+  // LINT.IfChange
   enum Kind {
     // Invalid data type.
     kInvalid = 0,
@@ -41,6 +45,7 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS2 = 26,
     kS4 = 21,
     kS8 = 2,
     kS16 = 3,
@@ -48,6 +53,7 @@ class DType {
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU2 = 27,
     kU4 = 22,
     kU8 = 6,
     kU16 = 7,
@@ -86,6 +92,7 @@ class DType {
     // collision.
     kString = 99,
   };
+  // LINT.ThenChange(dtype.proto:DTypeProtoKind)
 
   explicit DType(Kind kind) : kind_(kind) {}
   DType(const DType&) = default;
@@ -111,6 +118,12 @@ class DType {
   // Returns the bit size of a single element of this DType. Returns
   // std::nullopt if there is no fixed size.
   std::optional<int> bit_size() const;
+
+  // Constructs `DType` from `DTypeProto`.
+  static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
+
+  // Returns a `DTypeProto` representation.
+  DTypeProto ToProto() const;
 
   std::string DebugString() const;
 

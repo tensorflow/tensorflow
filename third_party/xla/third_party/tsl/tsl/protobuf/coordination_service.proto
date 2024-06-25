@@ -159,6 +159,7 @@ message KeyValueEntry {
 // Request and response messages for inserting configuration key-value data.
 message InsertKeyValueRequest {
   KeyValueEntry kv = 1;
+  bool allow_overwrite = 2;
 }
 
 message InsertKeyValueResponse {}

@@ -94,7 +94,8 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.
     auto create_z_x_transpose_op = [&](Value input) -> Value {
-      RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+      RankedTensorType input_type =
+          mlir::cast<RankedTensorType>(input.getType());
       const int input_rank = input_type.getRank();
 
       // Create a 1D I32 tensor for representing the dimension permutation.
@@ -176,7 +177,7 @@ struct ConvertBatchMatMulOpToReduceSum
     // the adj(X|Y) attribute, respectively.
     // So adjX == True indicates [..., c_x, r_x == 1].
     llvm::ArrayRef<int64_t> lhs_shape =
-        bmm_op.getX().getType().cast<RankedTensorType>().getShape();
+        mlir::cast<RankedTensorType>(bmm_op.getX().getType()).getShape();
     int rX = lhs_shape.size() - 2;
     int cX = lhs_shape.size() - 1;
     if (bmm_op.getAdjX()) {
@@ -189,7 +190,7 @@ struct ConvertBatchMatMulOpToReduceSum
     }
 
     llvm::ArrayRef<int64_t> rhs_shape =
-        bmm_op.getY().getType().cast<RankedTensorType>().getShape();
+        mlir::cast<RankedTensorType>(bmm_op.getY().getType()).getShape();
     int rY = rhs_shape.size() - 1;
     int cY = rhs_shape.size() - 2;
     if (bmm_op.getAdjX()) {
@@ -210,11 +211,11 @@ struct ConvertBatchMatMulOpToReduceSum
 
  private:
   bool SplatValueEquals(SplatElementsAttr float_or_int, double rhs) const {
-    if (float_or_int.isa<DenseFPElementsAttr>()) {
-      return float_or_int.cast<DenseFPElementsAttr>()
+    if (mlir::isa<DenseFPElementsAttr>(float_or_int)) {
+      return mlir::cast<DenseFPElementsAttr>(float_or_int)
           .getSplatValue<APFloat>()
           .isExactlyValue(rhs);
-    } else if (float_or_int.cast<DenseIntElementsAttr>()) {
+    } else if (mlir::cast<DenseIntElementsAttr>(float_or_int)) {
       return float_or_int.getSplatValue<APInt>() == static_cast<int>(rhs);
     }
     return false;

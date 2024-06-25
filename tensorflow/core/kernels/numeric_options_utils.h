@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_NUMERIC_OPTIONS_UTILS_H_
 
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/tsl/util/determinism.h"
 #include "tsl/platform/tensor_float_32_utils.h"
-#include "tsl/util/determinism.h"
 
 namespace tensorflow {
 

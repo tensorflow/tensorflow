@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tsl {
 namespace profiler {
@@ -223,6 +223,16 @@ const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
   int i =
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
   return (i != -1) ? &plane.lines(i) : nullptr;
+}
+std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id) {
+  std::vector<int> indices = FindAll(
+      plane.lines(), [id](const XLine* line) { return line->id() == id; });
+  std::vector<const XLine*> lines;
+  lines.reserve(indices.size());
+  for (int index : indices) {
+    lines.push_back(&plane.lines(index));
+  }
+  return lines;
 }
 
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {

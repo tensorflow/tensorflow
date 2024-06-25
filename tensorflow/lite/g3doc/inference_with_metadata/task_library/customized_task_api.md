@@ -1,5 +1,13 @@
 # Build you own Task API
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 <a href="overview.md">TensorFlow Lite Task Library</a> provides prebuilt
 native/Android/iOS APIs on top of the same infrastructure that abstracts
 TensorFlow. You can extend the Task API infrastructure to build customized APIs

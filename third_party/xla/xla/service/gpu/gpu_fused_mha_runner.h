@@ -25,10 +25,10 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
@@ -38,6 +38,24 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+inline absl::StatusOr<xla::gpu::CudnnfMHAMaskKind> AsCudnnFmhaMaskKind(
+    xla::gpu::CudnnfMHABackendConfig_MaskType mask_type) {
+  switch (mask_type) {
+    case xla::gpu::CudnnfMHABackendConfig::NO_MASK:
+      return xla::gpu::CudnnfMHAMaskKind::kNoMask;
+    case xla::gpu::CudnnfMHABackendConfig::PADDING:
+      return xla::gpu::CudnnfMHAMaskKind::kPadding;
+    case xla::gpu::CudnnfMHABackendConfig::CAUSAL:
+      return xla::gpu::CudnnfMHAMaskKind::kCausal;
+    case xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL:
+      return xla::gpu::CudnnfMHAMaskKind::kPaddingCausal;
+    case xla::gpu::CudnnfMHABackendConfig::ALIBI:
+      return xla::gpu::CudnnfMHAMaskKind::kAlibi;
+    default:
+      return xla::Internal("Unknown fmha mask kind.");
+  }
+}
+
 // This is an interim structure to hold the parameters to construct a
 // GpufMHAConfig.
 // Struct to describe properties of a FMHA without being tied to specific
@@ -46,8 +64,7 @@ namespace gpu {
 struct GpufMHADescriptor {
   CudnnfMHAKind kind;
   CudnnfMHABackendConfig backend_config;
-  bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   Shape lhs_bmm1_shape;
   Shape rhs_bmm1_shape;
   Shape rhs_bmm2_shape;
@@ -64,8 +81,7 @@ struct GpufMHADescriptor {
 struct GpufMHABackwardDescriptor {
   CudnnfMHAKind kind;
   CudnnfMHABackendConfig backend_config;
-  bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   Shape bmm1_grad_gemm1_rhs_shape;
   Shape bmm1_grad_gemm2_rhs_shape;
   Shape bmm2_grad_gemm1_lhs_shape;
@@ -85,10 +101,14 @@ struct GpufMHABackwardDescriptor {
   std::optional<Shape> d_bias_shape;
   std::optional<Shape> bias_shape;
 };
+
 // Structure to describe static properties of a GPU fused Multi-Headed
 // Attention.
 struct GpufMHAConfig {
   static absl::StatusOr<GpufMHAConfig> For(const GpufMHADescriptor& fmha_desc);
+
+  absl::StatusOr<se::dnn::FusedMHAOp::Config> AsDnnFusedMHAOpConfig() const;
+
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
   PrimitiveType output_type;
@@ -98,8 +118,7 @@ struct GpufMHAConfig {
   std::optional<int64_t> seed;
 
   se::dnn::AlgorithmDesc algorithm;
-  bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   // bias -> [1, num_attn_heads, q_seq_len, kv_seq_len]
   // mask -> [batch_size, 1, q_seq_len, kv_seq_len]
   se::dnn::MatmulTensorDescriptor lhs_bmm1;
@@ -118,6 +137,10 @@ struct GpufMHAConfig {
 struct GpufMHABackwardConfig {
   static absl::StatusOr<GpufMHABackwardConfig> For(
       const GpufMHABackwardDescriptor& fmha_desc);
+
+  absl::StatusOr<se::dnn::FusedMHABackwardOp::Config>
+  AsDnnFusedMHABackwardOpConfig() const;
+
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
   PrimitiveType output_type;
@@ -127,8 +150,7 @@ struct GpufMHABackwardConfig {
   std::optional<int64_t> seed;
 
   se::dnn::AlgorithmDesc algorithm;
-  bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   // mask -> [batch_size, 1, q_seq_len, kv_seq_len]
   // d_bias -> [1, num_heads, q_seq_len, kv_seq_len]
   se::dnn::MatmulTensorDescriptor bmm1_grad_gemm1_rhs;
@@ -152,7 +174,6 @@ struct GpufMHAParams {
       const GpufMHAConfig& config, se::DeviceMemoryBase lhs_bmm1_buffer,
       se::DeviceMemoryBase rhs_bmm1_buffer,
       se::DeviceMemoryBase rhs_bmm2_buffer, se::DeviceMemoryBase output_buffer,
-      std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> bias_buffer,
       std::optional<se::DeviceMemoryBase> activation_buffer,
       std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
@@ -164,7 +185,6 @@ struct GpufMHAParams {
   se::DeviceMemoryBase rhs_bmm2_buffer;
   se::DeviceMemoryBase output_buffer;
   std::optional<se::DeviceMemoryBase> activation_buffer;
-  std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> bias_buffer;
   std::optional<se::DeviceMemoryBase> seqlen_q_buffer;
   std::optional<se::DeviceMemoryBase> seqlen_k_buffer;
@@ -182,9 +202,6 @@ struct GpufMHABackwardParams {
       se::DeviceMemoryBase d_bmm1_rhs_buffer,
       se::DeviceMemoryBase d_bmm2_rhs_buffer,
       std::optional<se::DeviceMemoryBase> d_s_buffer,
-      std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-      std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
-      std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> d_bias_buffer,
       std::optional<se::DeviceMemoryBase> fwd_output_buffer,
       std::optional<se::DeviceMemoryBase> bias_buffer,
@@ -201,9 +218,6 @@ struct GpufMHABackwardParams {
   se::DeviceMemoryBase d_bmm1_rhs_buffer;
   se::DeviceMemoryBase d_bmm2_rhs_buffer;
   std::optional<se::DeviceMemoryBase> d_s_buffer;
-  std::optional<se::DeviceMemoryBase> softmax_sum_buffer;
-  std::optional<se::DeviceMemoryBase> d_Q_accum_buffer;
-  std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> d_bias_buffer;
   std::optional<se::DeviceMemoryBase> fwd_output_buffer;
   std::optional<se::DeviceMemoryBase> bias_buffer;
@@ -255,15 +269,10 @@ class FusedMultiHeadedAttentionRunner {
   //  the state of any specific instance of the class.
   static Repr CreateRunner(const GpufMHAConfig& config) {
     switch (config.kind) {
-      case CudnnfMHAKind::kBmmBmm:
       case CudnnfMHAKind::kSoftmaxDropout:
       case CudnnfMHAKind::kSoftmax:
       case CudnnfMHAKind::kScaleBiasSoftmax:
       case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
-      case CudnnfMHAKind::kScaleMaskSoftmax:
-      case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-      case CudnnfMHAKind::kScaleBiasMaskSoftmax:
-      case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
         return std::make_unique<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>>(
             config.algorithm);
       default:
@@ -334,15 +343,10 @@ class FusedMultiHeadedAttentionBackwardRunner {
   //  rely on the state of any specific instance of the class.
   static Repr CreateRunner(const GpufMHABackwardConfig& config) {
     switch (config.kind) {
-      case CudnnfMHAKind::kBackwardBmmBmm:
       case CudnnfMHAKind::kBackwardSoftmaxDropout:
       case CudnnfMHAKind::kBackwardSoftmax:
       case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
       case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
-      case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
-      case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
-      case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
-      case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
         return std::make_unique<
             se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>>(
             config.algorithm);
@@ -394,7 +398,6 @@ absl::Status RunGpuFMHA(const GpufMHAConfig& fmha_config,
                         se::DeviceMemoryBase rhs_bmm2_buffer,
                         se::DeviceMemoryBase output_buffer,
                         se::DeviceMemoryBase scratch_buffer,
-                        std::optional<se::DeviceMemoryBase> mask_buffer,
                         std::optional<se::DeviceMemoryBase> bias_buffer,
                         std::optional<se::DeviceMemoryBase> activation_buffer,
                         std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
@@ -412,9 +415,6 @@ absl::Status RunGpuFMHABackward(
     se::DeviceMemoryBase d_bmm1_rhs_buffer,
     se::DeviceMemoryBase d_bmm2_rhs_buffer,
     std::optional<se::DeviceMemoryBase> d_s_buffer,
-    std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-    std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
-    std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,
     std::optional<se::DeviceMemoryBase> bias_buffer,

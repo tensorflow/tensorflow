@@ -1,5 +1,13 @@
 # Integrate BERT question answerer
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 The Task Library `BertQuestionAnswerer` API loads a Bert model and answers
 questions based on the content of a given passage. For more information, see the
 documentation for the Question-Answer model

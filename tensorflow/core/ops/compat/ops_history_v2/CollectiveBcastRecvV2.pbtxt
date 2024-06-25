@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CollectiveBcastRecvV2"
   input_arg {
     name: "group_size"

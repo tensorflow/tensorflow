@@ -20,10 +20,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -33,14 +33,13 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -71,7 +70,7 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
   }
 }
 
-std::string KernelThunk::ToStringExtra(int indent) const {
+std::string KernelThunk::ToString(int indent) const {
   return absl::StrFormat(
       ", kernel = %s, launch dimensions = %s, cluster_dim = %s", kernel_name_,
       launch_dimensions_.ToString(),
@@ -104,7 +103,7 @@ static void PrintBufferContents(
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
-    CHECK(stream->Memcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
     CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;
@@ -179,7 +178,7 @@ CustomKernelThunk::CustomKernelThunk(
   }
 }
 
-std::string CustomKernelThunk::ToStringExtra(int indent) const {
+std::string CustomKernelThunk::ToString(int indent) const {
   return custom_kernel_.ToString();
 }
 
@@ -188,9 +187,9 @@ absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
 
   auto it = kernel_cache_.find(params.executor);
   if (kernel_cache_.end() == it) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::Kernel> kernel,
-        se::Kernel::Create(params.executor, custom_kernel_.kernel_spec()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                        se::KernelFactory::Create(
+                            params.executor, custom_kernel_.kernel_spec()));
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 

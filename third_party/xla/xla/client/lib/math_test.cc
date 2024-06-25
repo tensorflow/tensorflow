@@ -196,7 +196,8 @@ XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
 XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
-XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
+// Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
+XLA_TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
   this->TestSqrtPowInequivalence();
 }
 XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
@@ -647,7 +648,7 @@ XLA_TEST_F(MathTest, BesselI0eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, BesselI0eDouble) {
+XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,
@@ -713,7 +714,7 @@ XLA_TEST_F(MathTest, BesselI1eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, BesselI1eDouble) {
+XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,

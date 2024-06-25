@@ -16,9 +16,9 @@ func.func @FuseTransposeFCLhsToBatchMatmul(%arg0: tensor<1024x4xf32>, %arg1: ten
   %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32>
   %cst_1 = "tfl.no_value"() {value} : () -> none
   %0 = "tfl.transpose"(%arg0, %cst_0) : (tensor<1024x4xf32>, tensor<2xi32>) -> tensor<4x1024xf32>
-  // CHECK: %[[RES0:.*]] = "tfl.batch_matmul"(%arg1, %arg0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<8x1024xf32>, tensor<1024x4xf32>) -> tensor<8x4xf32>
+  // CHECK: %[[RES0:.*]] = "tfl.batch_matmul"(%arg1, %arg0) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<8x1024xf32>, tensor<1024x4xf32>) -> tensor<8x4xf32>
   %1 = "tfl.fully_connected"(%0, %arg1, %cst_1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024xf32>, tensor<8x1024xf32>, none) -> tensor<4x8xf32>
-  // CHECK: %[[RES1:.*]] = "tfl.batch_matmul"(%[[RES0]], %arg2) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<8x4xf32>, tensor<4x256xf32>) -> tensor<8x256xf32>
+  // CHECK: %[[RES1:.*]] = "tfl.batch_matmul"(%[[RES0]], %arg2) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<8x4xf32>, tensor<4x256xf32>) -> tensor<8x256xf32>
   %2 = "tfl.batch_matmul"(%1, %arg2) {adj_x = true, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x8xf32>, tensor<4x256xf32>) -> tensor<8x256xf32>
   func.return %2 : tensor<8x256xf32>
   // CHECK: return %[[RES1]] : tensor<8x256xf32>
@@ -34,7 +34,7 @@ func.func @Batchmatmul2Fullyconnected(%arg0: tensor<4x128x2xf32>) -> (tensor<4x1
   // CHECK-SAME: [1.000000e+00, 2.000000e+00]
   // CHECK-SAME: tensor<1x2xf32>
   // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
-  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-SAME: <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
@@ -48,7 +48,7 @@ func.func @Batchmatmul2FullyconnectedAdjy(%arg0: tensor<4x128x2xf32>) -> (tensor
   // CHECK-SAME: [1.000000e+00, 2.000000e+00]
   // CHECK-SAME: tensor<1x2xf32>
   // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
-  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-SAME: <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
@@ -62,7 +62,7 @@ func.func @Batchmatmul2FullyconnectedAdjx(%arg0: tensor<4x2x128xf32>) -> (tensor
   // CHECK: %[[TRANSPOSED_X:.*]] = "tfl.transpose"
   // CHECK-SAME: (tensor<4x2x128xf32>, tensor<3xi32>) -> tensor<4x128x2xf32>
   // CHECK-NEXT: %[[FC_RES:.*]] = "tfl.fully_connected"(%[[TRANSPOSED_X]]
-  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-SAME: <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
@@ -87,7 +87,7 @@ func.func @Batchmatmul2FullyconnectedTransposedY(%arg0: tensor<4x128x2xf32>) -> 
   // CHECK-SAME: [1.000000e+00, 2.000000e+00]
   // CHECK-SAME: tensor<1x2xf32>
   // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
-  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-SAME: <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
@@ -113,7 +113,7 @@ func.func @Batchmatmul2FullyconnectedQDQ(%arg0: tensor<4x128x2xf32>, %arg1: tens
   // CHECK: %[[TRANSPOSED_X:.*]] = "tfl.transpose"
   // CHECK-SAME: (tensor<2x1xf32>, tensor<2xi32>) -> tensor<1x2xf32>
   // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[TRANSPOSED_X]]
-  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-SAME: <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
@@ -123,8 +123,8 @@ func.func @BatchmatmulToReduceSumI32(%arg0: tensor<1x16384x257xi32>) -> (tensor<
   %0 = arith.constant dense<1> : tensor<1x1x16384xi32>
   %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<1x1x16384xi32>, tensor<1x16384x257xi32>) -> tensor<1x1x257xi32>
   func.return %1 : tensor<1x1x257xi32>
-  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) {keep_dims = true} : (tensor<1x16384x257xi32>, tensor<1xi32>) -> tensor<1x1x257xi32>
+  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
+  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) <{keep_dims = true}> : (tensor<1x16384x257xi32>, tensor<1xi32>) -> tensor<1x1x257xi32>
 }
 
 // CHECK-LABEL: BatchmatmulToReduceSumF32
@@ -133,6 +133,6 @@ func.func @BatchmatmulToReduceSumF32(%arg0: tensor<1x16384x257xf32>) -> (tensor<
   %0 = arith.constant dense<1.0> : tensor<1x1x16384xf32>
   %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<1x1x16384xf32>, tensor<1x16384x257xf32>) -> tensor<1x1x257xf32>
   func.return %1 : tensor<1x1x257xf32>
-  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) {keep_dims = true} : (tensor<1x16384x257xf32>, tensor<1xi32>) -> tensor<1x1x257xf32>
+  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
+  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) <{keep_dims = true}> : (tensor<1x16384x257xf32>, tensor<1xi32>) -> tensor<1x1x257xf32>
 }

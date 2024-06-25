@@ -107,6 +107,10 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   return proto;
 }
 
+std::string DeviceDescription::ToString() const {
+  return ToGpuProto().DebugString();
+}
+
 const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
   return gpu_compute_capability_;
 }

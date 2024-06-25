@@ -34,7 +34,8 @@ SnappyInputBuffer::SnappyInputBuffer(
       next_in_(input_buffer_.get()),
       bytes_read_(0) {}
 
-Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read, tstring* result) {
+absl::Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read,
+                                           tstring* result) {
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 
@@ -57,18 +58,18 @@ Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     result_ptr += bytes_read;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t SnappyInputBuffer::Tell() const { return bytes_read_; }
 
-Status SnappyInputBuffer::Reset() {
+absl::Status SnappyInputBuffer::Reset() {
   file_pos_ = 0;
   avail_in_ = 0;
   avail_out_ = 0;
   next_in_ = input_buffer_.get();
   bytes_read_ = 0;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
@@ -83,7 +84,7 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
   return can_read_bytes;
 }
 
-Status SnappyInputBuffer::Inflate() {
+absl::Status SnappyInputBuffer::Inflate() {
   // Read length of compressed block.
   uint32 compressed_block_length;
   TF_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
@@ -126,10 +127,10 @@ Status SnappyInputBuffer::Inflate() {
   next_in_ += compressed_block_length;
   avail_in_ -= compressed_block_length;
   avail_out_ += uncompressed_length;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
+absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
   *length = 0;
   size_t bytes_to_read = 4;
   while (bytes_to_read > 0) {
@@ -148,10 +149,10 @@ Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
       avail_in_--;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnappyInputBuffer::ReadFromFile() {
+absl::Status SnappyInputBuffer::ReadFromFile() {
   int bytes_to_read = input_buffer_capacity_;
   char* read_location = reinterpret_cast<char*>(input_buffer_.get());
 
@@ -171,7 +172,7 @@ Status SnappyInputBuffer::ReadFromFile() {
   }
   StringPiece data;
   // Try to read enough data to fill up input_buffer_.
-  Status s = file_->Read(file_pos_, bytes_to_read, &data, read_location);
+  absl::Status s = file_->Read(file_pos_, bytes_to_read, &data, read_location);
   if (data.data() != read_location) {
     memmove(read_location, data.data(), data.size());
   }
@@ -197,7 +198,7 @@ Status SnappyInputBuffer::ReadFromFile() {
     return errors::OutOfRange("EOF reached");
   }
   if (absl::IsOutOfRange(s)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return s;

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -109,6 +110,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 low_priority_batch_timeout_micros_;
   int32 low_priority_max_enqueued_batches_;
   std::vector<int32> low_priority_allowed_batch_sizes_;
+  std::string mixed_priority_policy_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_ = false;

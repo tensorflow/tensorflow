@@ -84,8 +84,8 @@ namespace {
 // Quantize the float value based on given scale and zero point attributes.
 IntegerAttr Quantize(float value, Attribute scale_attr, Attribute zp_attr,
                      OpBuilder builder) {
-  double scale = scale_attr.cast<FloatAttr>().getValueAsDouble();
-  int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
+  double scale = mlir::cast<FloatAttr>(scale_attr).getValueAsDouble();
+  int64_t zp = mlir::cast<IntegerAttr>(zp_attr).getInt();
 
   int quantized = static_cast<int>(std::round(value / scale) + zp);
   quantized =
@@ -187,11 +187,12 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     // default value in the argument attribute.
     llvm::SmallVector<Value, 4> new_operands;
     for (auto arg : llvm::enumerate(compose_func_type.getInputs())) {
-      if (auto tensor_type = arg.value().dyn_cast<TFRTensorType>()) {
+      if (auto tensor_type = mlir::dyn_cast<TFRTensorType>(arg.value())) {
         auto casted = builder.create<CastOp>(op->getLoc(), tensor_type,
                                              op->getOperand(arg.index()));
         new_operands.push_back(casted);
-      } else if (auto list_type = arg.value().dyn_cast<TFRTensorListType>()) {
+      } else if (auto list_type =
+                     mlir::dyn_cast<TFRTensorListType>(arg.value())) {
         llvm::SmallVector<Value, 4> variadic_operands;
         for (int i = arg.index(); i < op->getNumOperands(); i++) {
           auto casted = builder.create<CastOp>(
@@ -211,8 +212,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
         }
         if (!attribute && attr_name.getValue() == "out_type") {
           auto type = op->getResult(0).getType();
-          if (type.isa<TensorType>()) {
-            type = type.cast<TensorType>().getElementType();
+          if (mlir::isa<TensorType>(type)) {
+            type = mlir::cast<TensorType>(type).getElementType();
           }
           attribute = TypeAttr::get(type);
         }
@@ -220,8 +221,9 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
         // Wrap these special attributes as a special TFR constant, so the SSA
         // value has a valid type to be used as TFR function argument. These
         // attributes are not expected to be manipulated by the lowering passes.
-        if (attribute.isa<TypeAttr>() || attribute.isa<ArrayAttr>() ||
-            attribute.isa<StringAttr>() || attribute.isa<FlatSymbolRefAttr>()) {
+        if (mlir::isa<TypeAttr>(attribute) || mlir::isa<ArrayAttr>(attribute) ||
+            mlir::isa<StringAttr>(attribute) ||
+            mlir::isa<FlatSymbolRefAttr>(attribute)) {
           TFRAttrType output_type = TFRAttrType::get(builder.getContext());
           attr_cst =
               builder.create<ConstOp>(op->getLoc(), output_type, attribute);
@@ -245,9 +247,10 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     // op result.
     llvm::SmallVector<Value, 4> new_results;
     for (auto res : llvm::enumerate(compose_func_type.getResults())) {
-      if (res.value().dyn_cast<TFRTensorType>()) {
+      if (mlir::dyn_cast<TFRTensorType>(res.value())) {
         new_results.push_back(new_op.getResult(res.index()));
-      } else if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
+      } else if (auto list_type =
+                     mlir::dyn_cast<TFRTensorListType>(res.value())) {
         for (int i = res.index(), j = 0; i < op->getNumResults(); i++, j++) {
           auto index = builder.create<mlir::arith::ConstantOp>(
               op->getLoc(), builder.getIndexAttr(j));

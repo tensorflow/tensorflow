@@ -1416,7 +1416,6 @@ For a more intuitive description, see the "Informal Description" section below.
 | `collapsed_slice_dims` | `ArraySlice<int64>` | The set of dimensions in each slice that are collapsed away. These dimensions must have size 1. |
 | `start_index_map`      | `ArraySlice<int64>` | A map that describes how to map indices in `start_indices` to legal indices into operand. |
 | `indices_are_sorted`   | `bool`              | Whether the indices are guaranteed to be sorted by the caller. |
-| `unique_indices`       | `bool`              | Whether the indices are guaranteed to be unique by the caller. |
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1485,11 +1484,6 @@ if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
 then the semantics is implementation defined.
-
-If `unique_indices` is set to true then XLA can assume that all elements
-scattered to are unique. So XLA could use non-atomic operations. If
-`unique_indices` is set to true and the indices being scattered to are not
-unique then the semantics is implementation defined.
 
 ### Informal Description and Examples
 
@@ -2382,6 +2376,7 @@ Arguments                      | Type                  | Semantics
 `inserted_window_dims`         | `ArraySlice<int64>`   | The set of *window dimensions* that must be inserted into `updates` shape.
 `scatter_dims_to_operand_dims` | `ArraySlice<int64>`   | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
 `indices_are_sorted`           | `bool`                | Whether the indices are guaranteed to be sorted by the caller.
+`unique_indices`               | `bool`                | Whether the indices are guaranteed to be unique by the caller.
 
 Where:
 
@@ -2483,6 +2478,11 @@ specifically for cases when the `update_computation` is _not commutative_.
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
 then the semantics is implementation defined.
+
+If `unique_indices` is set to true then XLA can assume that all elements
+scattered to are unique. So XLA could use non-atomic operations. If
+`unique_indices` is set to true and the indices being scattered to are not
+unique then the semantics is implementation defined.
 
 Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
 the scatter op updates the elements in the input that are extracted by the

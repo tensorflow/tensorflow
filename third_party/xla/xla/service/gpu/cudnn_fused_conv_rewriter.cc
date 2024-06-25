@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,28 +40,23 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/util.h"
-#include "tsl/platform/ml_dtypes.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"
-#endif
-
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -96,6 +92,10 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
   return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
 }
 
+bool IsROCm(se::GpuComputeCapability cc) {
+  return std::holds_alternative<se::RocmComputeCapability>(cc);
+}
+
 // elu, relu6, and leaky-relu activations are supported in cudnn via the
 // "runtime fusion" engine, which JIT compiles C++ code.  This can be slow to
 // compile, so we guard it with a debug option.
@@ -106,8 +106,12 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
 // Note that as of writing, xla_gpu_use_runtime_fusion is disabled by default
 // due to apparent bugs in cudnn 8.9.0.  See debug_options_flags.cc for details.
 bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
-                                 se::CudaComputeCapability cc) {
-  return debug_opts.xla_gpu_use_runtime_fusion() && cc.IsAtLeast(7, 5);
+                                 se::GpuComputeCapability cc) {
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&cc);
+  if (cuda_cc != nullptr)
+    return debug_opts.xla_gpu_use_runtime_fusion() && cuda_cc->IsAtLeast(7, 5);
+  else
+    return true;
 }
 
 bool IsSuitableForCudnnRuntimeFusion(HloInstruction* conv) {
@@ -658,10 +662,17 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 // 5. Optionally calculate the maximum of the absolute of the result.
 // 6. Optionally cast the output back to FP8.
 absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
-                                 se::CudaComputeCapability cc) {
+                                 se::CudaComputeCapability cc,
+                                 se::dnn::VersionInfo dnn_version,
+                                 int32_t toolkit_version) {
   bool changed = false;
 
-#if CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
+  if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
+    return false;
+  }
+  if (toolkit_version < 12000) {
+    return false;
+  }
   if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
     return false;
   }
@@ -759,7 +770,6 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
       changed = true;
     }
   }
-#endif  // CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
   return changed;
 }
 
@@ -779,6 +789,12 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
             .WithOneUse(),
         m::Op(&addend));
     if (!Match(instr, pattern)) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseBiasOrSideInput: ", conv->ToString());
+        })) {
       continue;
     }
 
@@ -845,12 +861,6 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
       config.set_side_input_scale(1);
     } else {
       // Can't fuse; this op already has a bias and a side-input.
-      continue;
-    }
-
-    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
-          return absl::StrCat("FuseBiasOrSideInput: ", conv->ToString());
-        })) {
       continue;
     }
 
@@ -984,7 +994,7 @@ absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
 }
 
 absl::StatusOr<bool> FuseElu(HloComputation* comp,
-                             se::CudaComputeCapability cc) {
+                             se::GpuComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1085,7 +1095,7 @@ absl::StatusOr<bool> FuseRelu(HloComputation* comp) {
 }
 
 absl::StatusOr<bool> FuseRelu6(HloComputation* comp,
-                               se::CudaComputeCapability cc) {
+                               se::GpuComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1134,7 +1144,7 @@ absl::StatusOr<bool> FuseRelu6(HloComputation* comp,
 }
 
 absl::StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
-                                   se::CudaComputeCapability cc) {
+                                   se::GpuComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1254,7 +1264,9 @@ absl::StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
   return changed;
 }
 
-absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
+absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
+                                     se::GpuComputeCapability cc) {
+  if (IsROCm(cc)) return false;
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1480,9 +1492,13 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    TF_ASSIGN_OR_RETURN(changed, F8GraphConv(comp, compute_capability_));
-    if (changed) {
-      return changed;
+    if (!IsROCm(compute_capability_)) {
+      auto cc = std::get<se::CudaComputeCapability>(compute_capability_);
+      TF_ASSIGN_OR_RETURN(
+          changed, F8GraphConv(comp, cc, dnn_version_, toolkit_version_));
+      if (changed) {
+        return changed;
+      }
     }
     // Fuse "inside out" starting with the operations closest to the conv.
     TF_ASSIGN_OR_RETURN(changed, FuseRemoveConvertInConv(comp));
@@ -1516,7 +1532,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
     any_changed |= changed;
 
-    TF_ASSIGN_OR_RETURN(changed, FuseConvertToS8(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseConvertToS8(comp, compute_capability_));
     any_changed |= changed;
 
     // f16 convs' bias+side-input can appear before or after conversion to f16.

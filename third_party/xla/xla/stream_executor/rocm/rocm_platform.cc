@@ -102,7 +102,7 @@ int ROCmPlatform::VisibleDeviceCount() const {
   return GpuDriver::GetDeviceCount();
 }
 
-const string& ROCmPlatform::Name() const { return name_; }
+const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
@@ -129,8 +129,7 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(), config.ordinal);
+  auto executor = std::make_unique<GpuExecutor>(this, config.ordinal);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{

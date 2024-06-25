@@ -1,12 +1,12 @@
 """Macro that creates external repositories for remote config."""
 
-load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
-load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
-load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
-load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
 load("//tensorflow/tools/toolchains/remote_config:containers.bzl", "containers")
+load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
+load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
+load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
+load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
+load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
 
 def _container_image_uri(container_name):
     container = containers[container_name]

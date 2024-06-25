@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ComputeDedupDataTupleMask"
   output_arg {
     name: "output_shape"

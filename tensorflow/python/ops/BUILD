@@ -36,6 +36,7 @@ visibility = [
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
+    "//third_party/py/scenic:__subpackages__",
 ]
 
 package(
@@ -1601,6 +1602,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -2071,6 +2073,7 @@ py_strict_library(
         ":array_ops_stack",
         ":bitwise_ops_gen",
         ":data_flow_ops_gen",
+        ":logging_ops_gen",
         ":math_ops_gen",
         ":nn_ops_gen",
         ":sparse_ops_gen",
@@ -2637,6 +2640,7 @@ cuda_py_strict_test(
     srcs = ["sparse_bincount_ops_test.py"],
     deps = [
         ":sparse_ops",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",

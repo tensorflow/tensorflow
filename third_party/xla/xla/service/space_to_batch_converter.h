@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 #define XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 
+#include <stdbool.h>
+
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"

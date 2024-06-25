@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_dce.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -481,6 +485,54 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+}
+
+// This while loop has three tuple elements.  Element 0 is unused and should be
+// removed. Element 1 is used by the loop body, and element 2 is used by the
+// loop condition; these two should stay.
+TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperandsCheckMetadata) {
+  const std::string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  RemoveUnusedOperands.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=0
+    get-tuple-element.2 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=1
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    get-tuple-element.3 = s32[] get-tuple-element((s32[], s32[], s32[])
+      loop_var), index=2
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element.1,
+      s32[] add, s32[] get-tuple-element.3)
+  }
+  RemoveUnusedOperands.loop_condition {
+    constant.2 = s32[] constant(0)
+    param0 = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
+      index=2
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    constant.3 = s32[] constant(0)
+    y = s32[] parameter(1)
+    tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] constant.3,
+      s32[] y)
+    ROOT while = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) tuple.1),
+      condition=RemoveUnusedOperands.loop_condition,
+      body=RemoveUnusedOperands.body, metadata={op_name="while"}
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  OpMetadata while_metadata;
+  while_metadata.set_op_name("while");
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              AllOf(op::Tuple(), op::Metadata(while_metadata)));
+  EXPECT_THAT(m->entry_computation()->GetInstructionWithName("while.1"),
+              AllOf(op::While(), op::Metadata(while_metadata)));
 }
 
 // Check that we can remove unused loop operands even if the loop contains a

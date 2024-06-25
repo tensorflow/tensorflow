@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/loop_schedule_linearizer.h"
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -22,6 +24,7 @@ limitations under the License.
 #include "xla/service/copy_insertion.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

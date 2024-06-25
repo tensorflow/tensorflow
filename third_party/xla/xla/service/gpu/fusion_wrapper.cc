@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -36,7 +35,7 @@ absl::StatusOr<bool> FusionWrapper::Run(
   auto instructions = module->entry_computation()->MakeInstructionPostOrder();
   bool changed = false;
 
-  std::function<Status(HloInstruction*)> handle_instruction;
+  std::function<absl::Status(HloInstruction*)> handle_instruction;
   handle_instruction = [&](HloInstruction* instruction) -> absl::Status {
     switch (instruction->opcode()) {
       case HloOpcode::kConditional:

@@ -1,15 +1,15 @@
 """Generates cubin headers for TF dialect ops."""
 
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
-load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
 )
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
+load(
+    "@local_xla//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""

@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -99,12 +99,20 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
+            ["-gen-attr-interface-decls"],
+            "ifrt_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "ifrt_attr_interfaces.cc.inc",
+        ),
+        (
             ["-gen-op-interface-decls"],
-            "ifrt_interfaces.h.inc",
+            "ifrt_op_interfaces.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "ifrt_interfaces.cc.inc",
+            "ifrt_op_interfaces.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -119,14 +127,12 @@ cc_library(
         "ifrt_dialect.cc",
         "ifrt_interfaces.cc",
         "ifrt_ops.cc",
-        "sharding_param.cc",
     ],
     hdrs = [
         "constants.h",
         "ifrt_dialect.h",
         "ifrt_interfaces.h",
         "ifrt_ops.h",
-        "sharding_param.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
@@ -134,10 +140,31 @@ cc_library(
         ":ifrt_dialect_inc_gen",
         ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
+        ":sharding_param",
+        "//xla/python/ifrt",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "sharding_param",
+    srcs = ["sharding_param.cc"],
+    hdrs = ["sharding_param.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -148,9 +175,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
-        "//xla:statusor",
         "//xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

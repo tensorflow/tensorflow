@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -22,14 +23,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/service/platform_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 
@@ -58,7 +59,7 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
       se::StreamExecutor* from = executors[i];
       se::StreamExecutor* to = executors[j];
       if (from->CanEnablePeerAccessTo(to)) {
-        Status status = from->EnablePeerAccessTo(to);
+        absl::Status status = from->EnablePeerAccessTo(to);
         if (!status.ok()) {
           LOG(WARNING) << "Unable to enable peer access between GPUs " << i
                        << " and " << j << "; status: " << status;
@@ -72,10 +73,11 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate) {
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> gpu_system_memory_size) {
   bool enable_unified_memory;
-  Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
-                                          &enable_unified_memory);
+  absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
+                                                false, &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
                << status.message();
@@ -103,6 +105,11 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   size_t allocator_memory = enable_unified_memory
                                 ? total_memory * fmax(1.0, memory_fraction)
                                 : total_memory * memory_fraction;
+  // If gpu_system_memory_size is set, use it instead of default value.
+  if (gpu_system_memory_size.has_value()) {
+    allocator_memory = gpu_system_memory_size.value();
+  }
+
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";
@@ -166,7 +173,7 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
                                   /*free_visitors=*/{}));
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  Status status =
+  absl::Status status =
       tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB", 64,
                                &xla_pjrt_gpu_host_memory_limit_gb);
   if (!status.ok()) {

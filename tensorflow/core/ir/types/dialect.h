@@ -28,6 +28,7 @@ limitations under the License.
 // Include the dialect class generated from dialect.td.
 // The constructor and the printing/parsing of dialect types are manually
 // implemented (see ops.cpp).
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/types/dialect.h.inc"
 
 // Include the Type classes declaration generated from types.td
@@ -52,15 +53,15 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType,
-                  quant::QuantizedType>();
+  return mlir::isa<ComplexType, FloatType, IntegerType, TensorFlowType,
+                   quant::QuantizedType>(type);
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
 inline bool IsValidTFTensorType(Type type) {
   // TensorFlow types should be tensors of one of the valid TensorFlow element
   // types.
-  if (auto tensor_ty = type.dyn_cast<TensorType>())
+  if (auto tensor_ty = mlir::dyn_cast<TensorType>(type))
     return IsValidTFElementType(tensor_ty.getElementType());
   return false;
 }
@@ -329,7 +330,7 @@ using ResultShapeRange = iterator_range<ResultShapeIterator>;
 template <typename RangeT>
 auto filter_resources(RangeT&& range) {
   return llvm::make_filter_range(std::forward<RangeT>(range), [](Value val) {
-    return getElementTypeOrSelf(val.getType()).isa<ResourceType>();
+    return mlir::isa<ResourceType>(getElementTypeOrSelf(val.getType()));
   });
 }
 
@@ -338,7 +339,7 @@ auto filter_resources(RangeT&& range) {
 // standard type if necessary.
 inline Type GetElementTypeOrSelfResolveRef(Type type) {
   Type element_type = getElementTypeOrSelf(type);
-  if (auto ref_type = element_type.dyn_cast<TensorFlowRefType>()) {
+  if (auto ref_type = mlir::dyn_cast<TensorFlowRefType>(element_type)) {
     element_type = ref_type.RemoveRef();
   }
   return element_type;

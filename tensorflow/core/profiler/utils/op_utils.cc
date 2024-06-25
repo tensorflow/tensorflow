@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -73,25 +74,38 @@ void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
   last_host_infeed_enqueue_ = host_infeed_enqueue;
 }
 
+void DeviceOpMetricsDbBuilder::EnterOpMetadata(
+    uint64 program_id, absl::string_view program_name,
+    absl::string_view category, absl::string_view provenance,
+    absl::string_view deduplicated_name, bool is_eager) {
+  // We only need to add xla metadata once to each new op, as they are the
+  // same across occurrences.
+  OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, program_name);
+  if (op_metrics->occurrences() > 0) return;
+  op_metrics->set_category(category == tsl::profiler::kUnknownOp
+                               ? "unknown"
+                               : std::string(category));
+  op_metrics->set_provenance(std::string(provenance));
+  if (!deduplicated_name.empty()) {
+    op_metrics->set_deduplicated_name(std::string(deduplicated_name));
+  }
+  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
+}
+
 void DeviceOpMetricsDbBuilder::EnterOp(
     uint64 program_id, absl::string_view name, absl::string_view category,
-    absl::string_view provenance, bool is_eager, uint64 occurrences,
-    uint64 time_ps, uint64 children_time_ps, int64_t flops,
-    int64_t bytes_accessed,
+    absl::string_view provenance, absl::string_view deduplicated_name,
+    bool is_eager, uint64 occurrences, uint64 time_ps, uint64 children_time_ps,
+    int64_t flops, int64_t bytes_accessed,
     const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
         memory_accessed_breakdown,
     int64_t model_flops) {
+  EnterOpMetadata(program_id, name, category, provenance, deduplicated_name,
+                  is_eager);
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
-  if (op_metrics->category().empty())
-    op_metrics->set_category(category == tsl::profiler::kUnknownOp
-                                 ? "unknown"
-                                 : std::string(category));
-  if (op_metrics->provenance().empty())
-    op_metrics->set_provenance(std::string(provenance));
   op_metrics->set_num_cores(1);
-  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);

@@ -138,28 +138,28 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
     case OperatorType::kRelu:
       break;
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 
   // Check if the input is a constant parameter.
   if (!IsConstantParameterArray(*model, unary_op->inputs[0])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // if the unary op involves a tensor required by a rnn state, ignore it
   for (const auto& rnn_state : model->flags.rnn_states()) {
     if (unary_op->inputs[0] == rnn_state.back_edge_source_array()) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     if (unary_op->inputs[0] == rnn_state.state_array()) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
 
   auto& output_array = model->GetArray(unary_op->outputs[0]);
   if (!output_array.has_shape()) {
     // Yield until the output array dims have been resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // At the moment we don't want to care about fused activation functions.
@@ -171,7 +171,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
         "Not resolving constant %s "
         " because it has a fused activation function",
         LogName(*unary_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // The min-max is only copied for ops that copy data without arithmetic.
@@ -193,7 +193,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
           "Not resolving constant %s because we currently only support casting "
           "to float",
           LogName(*unary_op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     if (cast_op->src_data_type != input_array.buffer->type) {
       AddMessageF(
@@ -203,7 +203,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
     }
   } else {
     if (input_array.buffer->type != ArrayDataType::kFloat) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     input_float_data = &(input_array.GetBuffer<ArrayDataType::kFloat>().data);
   }
@@ -248,7 +248,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
     CHECK_EQ(unary_op->inputs.size(), 2) << "Sum needs 2 inputs";
     if (!IsConstantParameterArray(*model, unary_op->inputs[1])) {
       AddMessageF("Axis input is non-constant");
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     auto& axis_array = model->GetArray(unary_op->inputs[1]);
     CHECK(axis_array.data_type == ArrayDataType::kInt32);
@@ -345,7 +345,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
         default:
           LOG(FATAL) << "Unsupported activation function "
                      << LogName(*unary_op);
-          return ::tensorflow::OkStatus();
+          return absl::OkStatus();
       }
       output_float_data[i] = new_value;
     }
@@ -355,7 +355,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
 
   DeleteOpAndArrays(model, unary_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

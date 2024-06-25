@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -90,7 +91,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   Value input = shape_op.getInput();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
-  if (auto block_arg = input.dyn_cast<BlockArgument>()) {
+  if (auto block_arg = mlir::dyn_cast<BlockArgument>(input)) {
     if (block_arg.getOwner() != replicate_block) return;
 
     shape_op.setOperand(replicate_op.GetReplicaOperandForBlockArgument(
@@ -112,7 +113,8 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   // shape has not changed in replicate prior to read. Currently after both
   // ResourceOpLiftingPass and TPURewritePass, there should not be any updates
   // to resources prior to their respective ReadVariableOp.
-  if (auto block_arg = read_var_op.getResource().dyn_cast<BlockArgument>()) {
+  if (auto block_arg =
+          mlir::dyn_cast<BlockArgument>(read_var_op.getResource())) {
     if (block_arg.getOwner() != replicate_block) return;
 
     OpBuilder builder(shape_op);

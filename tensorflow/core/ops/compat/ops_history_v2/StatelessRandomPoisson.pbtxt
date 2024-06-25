@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessRandomPoisson"
   input_arg {
     name: "shape"

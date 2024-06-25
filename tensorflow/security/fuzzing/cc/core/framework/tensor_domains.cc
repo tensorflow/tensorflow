@@ -57,7 +57,7 @@ Domain<bool> DomainRange(double min, double max) {
 template <typename T>
 auto StatusOrAnyTensor(const TensorShape& shape, Domain<T> content_domain) {
   return Map(
-      [shape](const std::vector<T>& contents) -> StatusOr<Tensor> {
+      [shape](const std::vector<T>& contents) -> absl::StatusOr<Tensor> {
         Tensor tensor;
         TF_RETURN_IF_ERROR(
             Tensor::BuildTensor(DataTypeToEnum<T>::v(), shape, &tensor));
@@ -75,9 +75,8 @@ auto StatusOrAnyTensor(const TensorShape& shape, Domain<T> content_domain) {
     return StatusOrAnyTensor(            \
         shape, DomainRange<EnumToDataType<data_type>::Type>(min, max));
 
-Domain<StatusOr<Tensor>> StatusOrAnyNumericTensor(const TensorShape& shape,
-                                                  DataType data_type,
-                                                  double min, double max) {
+Domain<absl::StatusOr<Tensor>> StatusOrAnyNumericTensor(
+    const TensorShape& shape, DataType data_type, double min, double max) {
   switch (data_type) {
     NUMERIC_TENSOR_HELPER(DT_FLOAT);
     NUMERIC_TENSOR_HELPER(DT_DOUBLE);
@@ -99,12 +98,13 @@ Domain<StatusOr<Tensor>> StatusOrAnyNumericTensor(const TensorShape& shape,
   }
 }
 
-Domain<Tensor> FilterInvalid(Domain<StatusOr<Tensor>> domain) {
-  return Map(
-      [](const StatusOr<Tensor>& t) { return *t; },
-      Filter(
-          [](const StatusOr<Tensor>& inner_t) { return inner_t.status().ok(); },
-          domain));
+Domain<Tensor> FilterInvalid(Domain<absl::StatusOr<Tensor>> domain) {
+  return Map([](const absl::StatusOr<Tensor>& t) { return *t; },
+             Filter(
+                 [](const absl::StatusOr<Tensor>& inner_t) {
+                   return inner_t.status().ok();
+                 },
+                 domain));
 }
 
 }  // namespace

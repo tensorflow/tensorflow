@@ -35,7 +35,7 @@ using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
 using ::tsl::StatusOr;
 
-StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* context) {
   DialectRegistry mlir_registry;
   RegisterCommonToolingDialects(mlir_registry);

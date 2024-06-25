@@ -363,13 +363,13 @@ std::unique_ptr<CallGraph> CallGraph::Build(
   return call_graph;
 }
 
-Status CallGraph::VisitNodesInternal(
+absl::Status CallGraph::VisitNodesInternal(
     VisitorFunction visitor_func, const CallGraphNode& node,
     absl::flat_hash_set<const CallGraphNode*>* visited) const {
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (const HloComputation* computation : node.callees()) {
@@ -380,8 +380,8 @@ Status CallGraph::VisitNodesInternal(
   return visitor_func(node);
 }
 
-Status CallGraph::VisitNodes(VisitorFunction visitor_func,
-                             bool visit_unreachable_nodes) const {
+absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
+                                   bool visit_unreachable_nodes) const {
   absl::flat_hash_set<const CallGraphNode*> visited;
   if (visit_unreachable_nodes) {
     // Traverse from all roots in the call graph.
@@ -396,7 +396,7 @@ Status CallGraph::VisitNodes(VisitorFunction visitor_func,
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CallGraph::IsFlattened() const {

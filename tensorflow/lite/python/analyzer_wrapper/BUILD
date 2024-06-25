@@ -27,6 +27,7 @@ cc_library(
     hdrs = ["model_analyzer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/api:error_reporter",
@@ -34,5 +35,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
     ],
 )

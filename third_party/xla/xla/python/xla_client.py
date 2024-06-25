@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import atexit
+from collections.abc import Mapping, Sequence
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
@@ -24,7 +25,7 @@ import inspect
 import logging
 import os
 import threading
-from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
+from typing import Any, Protocol, Union
 
 import ml_dtypes
 import numpy as np
@@ -43,15 +44,16 @@ from . import xla_extension as _xla
 # Pylint has false positives for type annotations.
 # pylint: disable=invalid-sequence-index
 
+ifrt_programs = _xla.ifrt_programs
 ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 246
+_version = 273
 
 # Version number for MLIR:Python components.
-mlir_api_version = 55
+mlir_api_version = 57
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -60,10 +62,11 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
+_NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 
 
 def make_cpu_client(
+    asynchronous=True,
     distributed_client=None,
     node_id=0,
     num_nodes=1,
@@ -71,7 +74,7 @@ def make_cpu_client(
 ) -> ...:
   register_custom_call_handler('cpu', _xla.register_custom_call_target)
   return _xla.get_tfrt_cpu_client(
-      asynchronous=True,
+      asynchronous=asynchronous,
       distributed_client=distributed_client,
       node_id=node_id,
       num_nodes=num_nodes,
@@ -120,7 +123,7 @@ def make_gpu_client(
   )
 
 
-def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
   assert pjrt_plugin_loaded('tpu')
   if not pjrt_plugin_initialized('tpu'):
     initialize_pjrt_plugin('tpu')
@@ -176,8 +179,8 @@ def initialize_pjrt_plugin(plugin_name: str) -> None:
 
 def make_c_api_client(
     plugin_name: str,
-    options: Optional[_NameValueMapping] = None,
-    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -197,12 +200,14 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client(library_path: Optional[str] = None):
+def make_tpu_client(
+    library_path: str | None = None, options: _NameValueMapping | None = None
+):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
     profiler.register_plugin_profiler(c_api)
-  return make_tfrt_tpu_c_api_client()
+  return make_tfrt_tpu_c_api_client(options)
 
 
 def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
@@ -538,11 +543,11 @@ DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
-XLACompatibleSharding = _xla.XLACompatibleSharding
 NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+PjRtLayout = _xla.PjRtLayout
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -564,22 +569,44 @@ LoadedExecutable.execute = LoadedExecutable_execute
 LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
+class CustomCallTargetTraits(enum.IntFlag):
+  DEFAULT = 0
+  # Calls to custom call are safe to trace into the command buffer. It means
+  # that calls to custom call always launch exactly the same device operations
+  # (can depend on attribute values) that can be captured and then replayed.
+  #
+  # Supported only for custom calls implemented with XLA FFI.
+  COMMAND_BUFFER_COMPATIBLE = 1
+
+
 class CustomCallHandler(Protocol):
 
   def __call__(
-      self, name: str, fn: Any, platform: str, /, api_version: int = ...
+      self,
+      name: str,
+      fn: Any,
+      platform: str,
+      /,
+      api_version: int = ...,
+      traits: CustomCallTargetTraits = ...,
   ) -> None:
     ...
 
 
 _custom_callback_handler: dict[str, CustomCallHandler] = {}
 # Key is xla_platform_name, value is (function_name, function, api_version)
-_custom_callback: dict[str, list[tuple[str, Any, int]]] = {}
+_custom_callback: dict[
+    str, list[tuple[str, Any, int, CustomCallTargetTraits]]
+] = {}
 _custom_callback_lock = threading.Lock()
 
 
 def register_custom_call_target(
-    name: str, fn: Any, platform: str = 'cpu', api_version: int = 0
+    name: str,
+    fn: Any,
+    platform: str = 'cpu',
+    api_version: int = 0,
+    traits: CustomCallTargetTraits = CustomCallTargetTraits.DEFAULT,
 ) -> None:
   """Registers a custom call target.
 
@@ -589,6 +616,7 @@ def register_custom_call_target(
     platform: the target platform.
     api_version: the XLA FFI version to use. Supported versions are: 0 for the
       untyped FFI and 1 for the typed FFI.
+    traits: custom call traits corresponding to XLA FFI handler traits.
   """
   # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
   # Since that is hardcoded to CUDA, we are using the following as workaround.
@@ -596,11 +624,11 @@ def register_custom_call_target(
   with _custom_callback_lock:
     if xla_platform_name in _custom_callback_handler:
       _custom_callback_handler[xla_platform_name](
-          name, fn, xla_platform_name, api_version
+          name, fn, xla_platform_name, api_version, traits
       )
     else:
       _custom_callback.setdefault(xla_platform_name, []).append(
-          (name, fn, api_version)
+          (name, fn, api_version, traits)
       )
 
 
@@ -626,8 +654,8 @@ def register_custom_call_handler(
       return
     _custom_callback_handler[xla_platform_name] = handler
     if xla_platform_name in _custom_callback:
-      for name, fn, api_version in _custom_callback[xla_platform_name]:
-        handler(name, fn, xla_platform_name, api_version)
+      for name, fn, api_version, traits in _custom_callback[xla_platform_name]:
+        handler(name, fn, xla_platform_name, api_version, traits)
       del _custom_callback[xla_platform_name]
 
 
@@ -661,7 +689,7 @@ class PaddingConfig:
 
 
 def make_padding_config(
-    padding_config: Union[PaddingConfig, Sequence[Tuple[int, int, int]]]
+    padding_config: Union[PaddingConfig, Sequence[tuple[int, int, int]]]
 ) -> PaddingConfig:
   """Create PaddingConfig proto from list of triples of integers.
 
@@ -705,7 +733,7 @@ class DotDimensionNumbers:
 def make_dot_dimension_numbers(
     dimension_numbers: Union[
         DotDimensionNumbers,
-        Tuple[Tuple[List[int], List[int]], Tuple[List[int], List[int]]],
+        tuple[tuple[list[int], list[int]], tuple[list[int], list[int]]],
     ]
 ) -> DotDimensionNumbers:
   """Builds a DotDimensionNumbers object from a specification.
@@ -760,7 +788,7 @@ class ConvolutionDimensionNumbers:
 
 def make_convolution_dimension_numbers(
     dimension_numbers: Union[
-        None, ConvolutionDimensionNumbers, Tuple[str, str, str]
+        None, ConvolutionDimensionNumbers, tuple[str, str, str]
     ],
     num_spatial_dimensions: int,
 ) -> ConvolutionDimensionNumbers:
@@ -930,7 +958,9 @@ atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
-copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_copy_array_to_devices_with_sharding = (
+    _xla.batched_copy_array_to_devices_with_sharding
+)
 batched_device_put = _xla.batched_device_put
 batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind

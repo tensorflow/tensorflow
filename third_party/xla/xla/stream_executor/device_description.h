@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -50,7 +51,8 @@ struct CudaComputeCapability {
     PASCAL_ = 6,
     VOLTA = 7,
     AMPERE = 8,
-    HOPPER = 9
+    HOPPER = 9,
+    BLACKWELL = 10
   };
 
   constexpr CudaComputeCapability() = default;
@@ -58,14 +60,37 @@ struct CudaComputeCapability {
     this->major = major;
     this->minor = minor;
   }
+  // cuda arch format "major.minor", example: "8.6".
+  explicit CudaComputeCapability(const std::string &cuda_arch_name) {
+    std::vector<std::string> split = absl::StrSplit(cuda_arch_name, '.');
+    assert(split.size() == 2);
+    this->major = std::stoi(split[0]);
+    this->minor = std::stoi(split[1]);
+  }
 
   explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
     this->major = proto.major();
     this->minor = proto.minor();
   }
 
+  static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{HOPPER, 0};
+  }
+
+  static CudaComputeCapability Volta() {
+    return CudaComputeCapability{VOLTA, 0};
+  }
+
+  static CudaComputeCapability Ampere() {
+    return CudaComputeCapability{AMPERE, 0};
+  }
+
   bool IsAtLeast(int other_major, int other_minor = 0) const {
-    return !(*this < CudaComputeCapability{other_major, other_minor});
+    return IsAtLeast(CudaComputeCapability{other_major, other_minor});
+  }
+
+  bool IsAtLeast(const CudaComputeCapability &cc) const {
+    return !(*this < cc);
   }
 
   bool IsAtLeastVolta() const {
@@ -142,7 +167,6 @@ class RocmComputeCapability {
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
   RocmComputeCapability() = default;
-  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() const { return gcn_arch_name_; }
 
@@ -159,6 +183,15 @@ class RocmComputeCapability {
     return absl::StrJoin(kSupportedGfxVersions, ", ");
   }
 
+  bool gfx9_mi100() const { return gfx_version() == "gfx908"; }
+
+  bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
+
+  bool gfx9_mi300() const {
+    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
+    return absl::c_count(kList, gfx_version()) != 0;
+  }
+
   bool gfx9_mi100_or_later() const {
     static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
                                                   "gfx941", "gfx942"};
@@ -168,11 +201,6 @@ class RocmComputeCapability {
   bool gfx9_mi200_or_later() const {
     static constexpr absl::string_view kList[] = {"gfx90a", "gfx940", "gfx941",
                                                   "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
-  }
-
-  bool gfx9_mi300() const {
-    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
@@ -189,6 +217,11 @@ class RocmComputeCapability {
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
+
+  bool has_amd_matrix_core() const {
+    return (gfx9_mi100_or_later() || gfx_version().find("gfx11") ||
+            gfx_version().find("gfx12"));
+  }
 
   bool has_fp16_atomics_support() const {
     // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
@@ -372,7 +405,71 @@ class DeviceDescription {
     return shared_memory_per_block_optin_;
   }
 
+  // L1 size varies because it can be dynamically
+  // configured as shared memory; there is no easy way to query its actual size;
+  // also we do not count what occupies cache, but rather claim that what is
+  // much smaller than the cache size will likely stay in it.
+  constexpr int64_t l1_cache_size_per_SM() const {
+    return std::visit(
+        [](const auto &capability) -> int64_t {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // MI100 and MI200 has 16KB L1 cache per CU.
+            if (capability.gfx9_mi100() || capability.gfx9_mi200()) {
+              return 16 * 1024;
+            }
+            // MI300 has 32KB L1 cache per CU.
+            if (capability.gfx9_mi300()) {
+              return 32 * 1024;
+            }
+          }
+          // Default return for other GPUs (e.g., RTX A6000).
+          return 2 * 1024;
+        },
+        gpu_compute_capability_);
+  }
+
+  constexpr int64_t dram_to_l2_transaction_size_bytes() const {
+    return std::visit(
+        [](const auto &capability) -> int {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // DRAM->L2 bus is 128 Byte width for MI300.
+            if (capability.gfx9_mi300()) {
+              return 128;
+            }
+          }
+          // Cache line is 128B that is split into 4 sectors of 32B. Default
+          // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
+          // V100, but it can be also configured.
+          // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
+          // (page 10).
+          // return 64 Bytes by default.
+          return 64;
+        },
+        gpu_compute_capability_);
+  }
+
+  constexpr int64_t memory_transactions_per_clock() const {
+    return std::visit(
+        [](const auto &capability) -> int {
+          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                       RocmComputeCapability>) {
+            // 16 works well on MI300.
+            if (capability.gfx9_mi300()) {
+              return 16;
+            }
+          }
+          // Default return for other GPUs.
+          return 32;
+        },
+        gpu_compute_capability_);
+  }
+
   GpuDeviceInfoProto ToGpuProto() const;
+
+  std::string ToString() const;
+
   explicit DeviceDescription(const GpuDeviceInfoProto &proto);
 
   // For string values that are not available via the underlying platform, this

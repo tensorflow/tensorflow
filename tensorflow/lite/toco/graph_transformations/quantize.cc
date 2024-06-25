@@ -518,7 +518,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   auto& op = *model->operators[op_index];
   if (op.type == OperatorType::kDequantize ||
       op.type == OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Our assumption here is that the input arrays are already quantized -
@@ -555,7 +555,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
       if (!array.minmax && !array.buffer) {
         LOG(WARNING) << "Can't quantize input array " << input
                      << " because it lacks min/max info";
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
       if (other_op && other_op->type != OperatorType::kDequantize) {
@@ -565,7 +565,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
             "which means that we should yield and let other ops "
             "get quantized first",
             LogName(op), input);
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -727,7 +727,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

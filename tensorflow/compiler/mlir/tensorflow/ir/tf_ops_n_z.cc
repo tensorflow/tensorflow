@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -102,6 +103,11 @@ Value LookThroughIdentity(Value result) {
   }
   return result;
 }
+
+bool IsWithinInt32Range(int64_t value) {
+  return (value >= std::numeric_limits<int32_t>::min() &&
+          value <= std::numeric_limits<int32_t>::max());
+};
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -416,10 +422,27 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
       return failure();
     }
 
-    // Create constant shape for reshape.
-    auto type = tensorflow::GetTypeFromTFTensorShape(
+    auto output_int_type = tensorflow::GetTypeFromTFTensorShape(
         output_ty.getRank(), rewriter.getIntegerType(64));
-    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape_attr =
+        DenseIntElementsAttr::get(output_int_type, output_ty.getShape());
+
+    // use int32_t instead of int64_t if all elements are in the range of int32
+    // because int64 is not supported in dynamic reshape in XLA
+    bool elements_all_in_int32_range =
+        std::all_of(output_ty.getShape().begin(), output_ty.getShape().end(),
+                    IsWithinInt32Range);
+
+    if (elements_all_in_int32_range) {
+      std::vector<int32_t> output_shape(output_ty.getRank());
+      std::transform(output_ty.getShape().begin(), output_ty.getShape().end(),
+                     output_shape.begin(),
+                     [](int64_t val) { return static_cast<int32_t>(val); });
+      output_int_type = tensorflow::GetTypeFromTFTensorShape(
+          output_ty.getRank(), rewriter.getIntegerType(32));
+      shape_attr = DenseIntElementsAttr::get(output_int_type, output_shape);
+    }
+
     auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
 
     // TODO(b/173622615): Remove after fixed.
@@ -2351,8 +2374,8 @@ void TPUExecuteOp::getEffects(
   // effects on resources. For the MLIR bridge, this op will never be
   // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
   // used instead.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2370,8 +2393,8 @@ void _XlaRunOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing _XlaCompile, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2432,22 +2455,24 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
   effects.reserve(getDeviceVarReadsIndices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
-  auto resource_handles = llvm::make_filter_range(getArgs(), [](Value value) {
-    return value.getType()
-        .cast<TensorType>()
-        .getElementType()
-        .isa<ResourceType>();
-  });
+  auto resource_handles =
+      llvm::make_filter_range(getArgsMutable(), [](OpOperand &op_operand) {
+        return op_operand.get()
+            .getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>();
+      });
 
-  for (const auto &entry : llvm::enumerate(resource_handles)) {
-    Value value = entry.value();
-    effects.emplace_back(MemoryEffects::Read::get(), value,
+  for (const auto& entry : llvm::enumerate(resource_handles)) {
+    OpOperand &op_operand = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
     if (getDeviceVarUpdatesIndices()
             .getValue()[entry.index()]
             .cast<IntegerAttr>()
             .getInt() >= 0)
-      effects.emplace_back(MemoryEffects::Write::get(), value,
+      effects.emplace_back(MemoryEffects::Write::get(), &op_operand,
                            ResourceEffects::Variable::get());
   }
 }
@@ -3047,8 +3072,8 @@ void XlaLaunchOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing XlaLaunch, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 

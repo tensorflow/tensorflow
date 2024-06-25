@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
@@ -317,11 +317,10 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  std::optional<tensorflow::Session *> session = std::nullopt;
-  if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", bundle.get(), &result, serialize_stablehlo_ops);
+      /*saved_model_dir=*/"", std::move(bundle), &result,
+      serialize_stablehlo_ops);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';
     return kTrFailure;

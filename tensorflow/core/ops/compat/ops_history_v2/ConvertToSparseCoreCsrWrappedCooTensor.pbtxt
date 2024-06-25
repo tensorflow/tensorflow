@@ -1,0 +1,105 @@
+op {
+  name: "ConvertToSparseCoreCsrWrappedCooTensor"
+  input_arg {
+    name: "sorted_row_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "sorted_col_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "sorted_gains_list"
+    type: DT_FLOAT
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "id_counts_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_pointers_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "ids_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_minibatches_per_sc"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count_per_sc"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_minibatches_per_sc"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_ids_per_chip_per_sample"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "allow_id_dropping"
+    type: "bool"
+  }
+}

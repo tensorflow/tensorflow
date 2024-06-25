@@ -114,8 +114,18 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
-  // Enable XLA Runtime in the CPU backend.
-  bool xla_cpu_use_xla_runtime = 177;
+  reserved 177;  // Was xla_cpu_use_xla_runtime
+  bool xla_cpu_use_thunk_runtime = 298;
+
+  // When true, XLA:CPU uses HLO module scheduler that is optimized for
+  // extracting concurrency at the cost of extra memory: we extend the live
+  // ranges of temporaries to allow XLA runtime to schedule independent
+  // operations in parallel on separate threads.
+  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+
+  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
+  // value is `256` (AVX2 on x86 platforms).
+  int32 xla_cpu_prefer_vector_width = 308;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
@@ -165,12 +175,7 @@ message DebugOptions {
   // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
-  // Defines the number of CUDA threads that can be used to accelerate
-  // a sparse computation compiled for the XLA Runtime and CPU backend.
-  // By default (value 0), no acceleration is used. Otherwise, this
-  // many threads may be used to accelerate sparse operations, typically
-  // useful when accelerating structured sparsity.
-  int32 xla_cpu_sparse_cuda_threads = 207;
+  reserved 207;  // Was xla_cpu_sparse_cuda_threads
 
   // Allows xla to increase the output precision of floating point operations
   // and all floating-point conversions to be simplified, including those
@@ -369,22 +374,36 @@ message DebugOptions {
   int32 xla_gpu_force_compilation_parallelism = 147;
   bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
 
-  // Guarantees run-to-run determinism. At present, the HLO ops Scatter and
-  // SelectAndScatter do not have deterministic XLA:GPU implementations.
-  // Compilation errors out if these ops are encountered.
+  // Guarantees run-to-run determinism.
+  // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
+  // disables autotuning.
   bool xla_gpu_deterministic_ops = 148;
 
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
-  // Convert synchronous collective ops into asynchronous.
-  bool xla_gpu_enable_async_collectives = 238;
-  bool xla_gpu_enable_async_all_reduce = 152;
-  bool xla_gpu_enable_async_collective_broadcast = 278;
-  bool xla_gpu_enable_async_collective_permute = 183;
-  bool xla_gpu_enable_async_all_gather = 199;
-  bool xla_gpu_enable_async_reduce_scatter = 200;
-  bool xla_gpu_enable_async_all_to_all = 201;
+  // Enum to define all collective ops
+  // that xla supports.
+  enum CollectiveOpType {
+    NOOP = 0;
+    ALLREDUCE = 1;
+    ALLGATHER = 2;
+    REDUCESCATTER = 3;
+    COLLECTIVEBROADCAST = 4;
+    ALLTOALL = 5;
+    COLLECTIVEPERMUTE = 6;
+  }
+
+  repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
+
+  // Used to be xla_gpu_enable_async_all_reduce
+  // xla_gpu_enable_async_collective_broadcast
+  // xla_gpu_enable_async_collective_permute
+  // xla_gpu_enable_async_all_gather
+  // xla_gpu_enable_async_reduce_scatter
+  // xla_gpu_enable_async_all_to_all
+  // xla_gpu_enable_async_collectives
+  reserved 152, 278, 183, 199, 200, 201, 238;
 
   // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
@@ -396,8 +415,11 @@ message DebugOptions {
   bool xla_gpu_enable_all_gather_combine_by_dim = 254;
   bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
-  // Combine GPU all-reduces into a single operation over a contiguous buffer.
-  bool xla_gpu_all_reduce_contiguous = 158;
+  // Was xla_gpu_all_reduce_contiguous
+  reserved 158;
+
+  // Split AR across all partitions into logical RS followed by AR.
+  bool xla_gpu_enable_all_reduce_splitter = 299;
 
   // Enable allreduce reassociation on allreduces that are converted to a wider
   // type. The resulting allreduce will be promoted to a wider-typed allreduce.
@@ -415,6 +437,10 @@ message DebugOptions {
 
   // Inflate collective cost by running each collective multiple times.
   int32 xla_gpu_collective_inflation_factor = 205;
+
+  // Whether to force inline before llvm module split to get a more balanced
+  // splits for parallel compilation.
+  bool xla_llvm_force_inline_before_split = 300;
 
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
@@ -440,8 +466,7 @@ message DebugOptions {
   reserved 161;  // Was xla_gpu_bef_executable
   reserved 162;  // Was xla_gpu_bef_thunk
 
-  // If true, use XLA runtime for XLA:GPU backend.
-  bool xla_gpu_enable_xla_runtime_executable = 169;
+  reserved 169;  // Was xla_gpu_enable_xla_runtime_executable
 
   // If true, XLA will try to pattern match subgraphs of HLO operations into
   // custom fusions registered in the current process (pre-compiled hand written
@@ -452,7 +477,8 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
-  // If true, use XLA runtime for XLA:GPU backend.
+  // Enables address computation fusion to optimize dynamic-slice and
+  // dynamic-update-slice operations around library calls.
   bool xla_gpu_enable_address_computation_fusion = 105;
 
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
@@ -471,7 +497,7 @@ message DebugOptions {
 
   // Commands are categorized into 5 types:
   // FUSION represents regular fusion kernels.
-  // CUBLAS, CUDNN, and COLLECTIVES represent library calls.
+  // CUBLAS/CUBLASLT, CUDNN, and COLLECTIVES represent library calls.
   // CONDITIONALS represents control flow.
   enum CommandBufferCmdType {
     INVALID = 0;
@@ -481,15 +507,13 @@ message DebugOptions {
     COLLECTIVES = 4;
     CONDITIONALS = 5;
     CUSTOM_CALL = 6;
+    CUBLASLT = 7;
   }
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
-  // Only instantiates a GPU graph after the captured function execution count
-  // reaches the threshold. This constant is a heuristic to avoid creating a
-  // large number of CUDA graph instances in memory.
-  int32 xla_gpu_graph_num_runs_to_instantiate = 202;
+  reserved 202;  // Was xla_gpu_graph_num_runs_to_instantiate
 
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a GPU
@@ -499,10 +523,7 @@ message DebugOptions {
   // Identify concurrent regions in GPU graphs and execute them concurrently.
   bool xla_gpu_graph_enable_concurrent_region = 215;
 
-  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
-  // instantiates new Gpu graphs, it evicts graphs that were not recently
-  // executed to free space on device.
-  int32 xla_gpu_graph_eviction_timeout_seconds = 230;
+  reserved 230;  // Was xla_gpu_graph_eviction_timeout_seconds
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
@@ -517,14 +538,9 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   int64 xla_gpu_redzone_padding_bytes = 228;
 
-  // Deprecated. Use xla_allow_excess_precision instead.
-  bool xla_gpu_simplify_all_fp_conversions = 168 [deprecated = true];
+  reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
 
-  // An experimental option to force all layouts present in the
-  // after-optimizations HLO to be descending, e.g.
-  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
-  // instructions.
-  bool xla_gpu_normalize_layouts = 172;
+  reserved 172;  // Was xla_gpu_normalize_layouts.
 
   // Generate calls to Arm Compute Library in the CPU backend.
   bool xla_cpu_use_acl = 174;
@@ -568,6 +584,7 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
   bool xla_gpu_enable_pipelined_p2p = 246;
+  bool xla_gpu_run_post_layout_collective_pipeliner = 313;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -598,6 +615,7 @@ message DebugOptions {
   bool xla_gpu_enable_triton_softmax_fusion = 220;
 
   bool xla_gpu_enable_priority_fusion = 221;
+  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
@@ -628,7 +646,9 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+  bool xla_gpu_dump_autotuned_gemm_fusions = 232;
+
+  string xla_gpu_override_gemm_autotuner = 295;
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
@@ -652,6 +672,18 @@ message DebugOptions {
 
   // Enable double buffering for loops.
   bool xla_gpu_enable_while_loop_double_buffering = 248;
+
+  enum WhileLoopUnrolling {
+    WHILE_LOOP_UNROLLING_NO_UNROLL = 0;
+    // Has the same effect as setting
+    // `xla_gpu_enable_while_loop_double_buffering`.
+    WHILE_LOOP_UNROLLING_DOUBLE_BUFFER = 1;
+    // Enables full loop unrolling using the same strategy as `DOUBLE_BUFFER`.
+    WHILE_LOOP_UNROLLING_FULL_UNROLL = 2;
+  }
+
+  // Determine the while loop unrolling scheme.
+  WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
 
   // Change the layout of the second triton dot operand to be column major.
   // Only works for (bf16 x bf16) -> bf16.
@@ -704,12 +736,21 @@ message DebugOptions {
   // will use for p2p operations.
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
-  bool xla_gpu_enable_mlir_emitters = 275;
+  reserved 275;  // was xla_gpu_enable_mlir_emitters
+
+  // Choose the level of mlir emitters that are enabled.
+  // Current levels:
+  // 0: Disabled.
+  // 1: Loop emitter
+  // 2: + Loop-like emitters
+  // 3: + Transpose
+  // 4: + Reduce
+  int64 xla_gpu_mlir_emitter_level = 303;
   // The maximum number of kernels to emit with MLIR. Unlimited if 0.
-  int64 xla_gpu_max_mlir_kernels = 281;
+  reserved 281;  // was xla_gpu_max_mlir_kernels
   // The number of initial kernels to not emit with MLIR. Only supported kernels
   // are counted.
-  int64 xla_gpu_skip_mlir_kernels = 282;
+  reserved 282;  // was xla_gpu_skip_mlir_kernels
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -723,11 +764,82 @@ message DebugOptions {
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
-  // 0: disabled.
-  // 1: fusions of GEMM, elementwise, transpose/reshape operations.
+  // 0: Disabled.
+  // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
+  // 2: + Broadcasts.
+  // 3: + Nontrivial noncontracting dimension reshapes/transposes.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
-  // Next id: 286
+  // This instructs the runtime whether to use
+  // memcpy for p2p communication when source and
+  // target are located within a node(nvlink).
+  bool xla_gpu_use_memcpy_local_p2p = 287;
+
+  // If non-zero, limits the number of solutions to be used by GEMM autotuner.
+  // This might be useful if underlying math library returns too many GEMM
+  // solutions.
+  int64 xla_gpu_autotune_max_solutions = 288;
+
+  // If true, large constants will be printed out when dumping HLOs.
+  bool xla_dump_large_constants = 290;
+
+  // If true, will verify that the numerical results of Triton fusions match
+  // the results of regular emitters.
+  bool xla_gpu_verify_triton_fusion_numerics = 291;
+
+  // File to write autotune logs to. It will stored in txt format.
+  string xla_gpu_dump_autotune_logs_to = 292;
+
+  // Base length to rewrite the reduce window to, no rewrite if set to 0.
+  int64 xla_reduce_window_rewrite_base_length = 293;
+
+  // If true, will enable host memory offloading on a device.
+  bool xla_gpu_enable_host_memory_offloading = 296;
+
+  // Excludes non-deterministic ops from compiled executables.
+  // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
+  // compilation itself can be non-deterministic.
+  // At present, the HLO op SelectAndScatter does not have a
+  // deterministic XLA:GPU implementation.
+  // Compilation errors out if SelectAndScatter is encountered.
+  // Scatter ops can non-deterministic by default; these get converted to
+  // a deterministic implementation.
+  bool xla_gpu_exclude_nondeterministic_ops = 297;
+
+  // If true, Nccl errors will terminate the process.
+  bool xla_gpu_nccl_terminate_on_error = 301;
+
+  // Use Shardonnay, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool xla_use_shardonnay = 302;
+
+  bool xla_gpu_shard_autotuning = 304;
+
+  bool xla_gpu_enable_approx_costly_collectives = 305;
+
+  string xla_gpu_kernel_cache_file = 306;
+
+  // Recognises rotate-right patterns (slice, slice, concat) within a while
+  // loop and labels the while loop as a pipelined while loop. This is an
+  // unsafe flag.
+  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
+
+  string xla_gpu_per_fusion_autotune_cache_dir = 310;
+
+  // The command buffer trace cache size, increasing the cache size may
+  // sometimes reduces the chances of doing command buffer tracing for
+  // updating command buffer instance.
+  int64 xla_cmd_buffer_trace_cache_size = 311;
+
+  // Enable this flag will use a separate memory space color for
+  // temp buffer, and then will use separate memory allocator to allocate it,
+  // as there is no other memory allocation interference,
+  // it will allocate temp buffer to some fix address on every iteration,
+  // which is good for cuda-graph perf.
+  bool xla_gpu_temp_buffer_use_separate_color = 312;
+
+  // Next id: 314
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -936,198 +1048,6 @@ message HloModuleConfigProto {
 message HloModuleProtoWithConfig {
   HloModuleProto hlo_module = 1;
   HloModuleConfigProto config = 2;
-}
-
-message GetDeviceHandlesRequest {
-  int64 device_count = 1;
-}
-
-message GetDeviceHandlesResponse {
-  repeated DeviceHandle device_handles = 1;
-}
-
-message TransferToClientRequest {
-  GlobalDataHandle data = 1;
-
-  // This optional field directs the service to return the literal in this
-  // layout. A shape is used to hold the layout to accommodate tuples.
-  ShapeProto shape_with_layout = 2;
-}
-
-message TransferToClientResponse {
-  LiteralProto literal = 1;
-}
-
-message TransferToServerRequest {
-  LiteralProto literal = 1;
-  DeviceHandle device_handle = 2;
-}
-
-message TransferToServerResponse {
-  GlobalDataHandle data = 1;
-}
-
-message TransferToInfeedRequest {
-  LiteralProto literal = 1;
-  int64 replica_id = 2;
-  DeviceHandle device_handle = 3;
-}
-
-message TransferToInfeedResponse {}
-
-message TransferFromOutfeedRequest {
-  // This optional field directs the service to return the literal in this
-  // layout. A shape is used to hold the layout to accommodate tuples.
-  ShapeProto shape_with_layout = 1;
-
-  int64 replica_id = 2;
-  DeviceHandle device_handle = 3;
-}
-
-message TransferFromOutfeedResponse {
-  LiteralProto literal = 1;
-}
-
-message ResetDeviceRequest {
-  DeviceHandle device_handle = 1;
-}
-
-message ResetDeviceResponse {}
-
-message ComputationGraphStatsRequest {
-  HloModuleProto computation = 1;
-  DebugOptions debug_options = 2;
-}
-
-message ComputationStatsResponse {
-  ComputationStats stats = 1;
-}
-
-message CreateChannelHandleRequest {
-  ChannelHandle.ChannelType channel_type = 1;
-}
-
-message CreateChannelHandleResponse {
-  ChannelHandle channel = 1;
-}
-
-message UnregisterRequest {
-  repeated GlobalDataHandle data = 1;
-}
-
-message UnregisterResponse {}
-
-message CompileRequest {
-  // The graph to be compiled.
-  HloModuleProto computation = 1;
-
-  // Options that affect how XLA compiles code to service this request.
-  ExecutionOptions execution_options = 2;
-
-  // The layouts of the input arguments. If not set, the default layout will be
-  // used. Although the real arguments are not needed in compilation, the
-  // layouts of the arguments can affect the compilation.
-  repeated ShapeProto input_shape_with_layout = 3;
-}
-
-message CompileResponse {
-  // The handle to the executable.
-  ExecutionHandle handle = 1;
-}
-
-message ExecuteRequest {
-  ExecutionHandle handle = 1;
-
-  // The shape and layout of the arguments must be the same as the those of the
-  // executable's parameters.
-  repeated GlobalDataHandle arguments = 2;
-}
-
-// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
-// the uses with calls to Compile and Execute.
-message ExecuteGraphRequest {
-  HloModuleProto computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 3;
-}
-
-message ExecuteGraphParallelRequest {
-  repeated ExecuteGraphRequest requests = 1;
-}
-
-message ExecuteResponse {
-  GlobalDataHandle output = 1;
-  ExecutionProfile profile = 2;
-}
-
-message ExecuteParallelResponse {
-  repeated ExecuteResponse responses = 1;
-}
-
-message ComputeConstantGraphRequest {
-  HloModuleProto computation = 1;
-  LayoutProto output_layout = 2;
-}
-
-message ComputeConstantResponse {
-  // A LiteralProto is returned directly for this request.
-  LiteralProto literal = 1;
-}
-
-message DeconstructTupleRequest {
-  GlobalDataHandle tuple_handle = 2;
-}
-
-message DeconstructTupleResponse {
-  repeated GlobalDataHandle element_handles = 1;
-}
-
-message LoadDataRequest {
-  // Describes the path of the ColumnIO tablet to load.
-  string columnio_tablet_path = 1;
-
-  // Describes the field to load within the ColumnIO tablet.
-  string columnio_field = 2;
-
-  // Individual element shape, excluding rows.
-  ShapeProto element_shape = 3;
-
-  // Warning: ColumnIO does not support random-access, so use offset with
-  // caution in performance-critical scenarios.
-  int64 offset = 4;
-
-  // Maximum number of elements (with shape element_shape) to load.
-  int64 limit = 5;
-
-  // If more than one item is requested (via limit > 1), then this request
-  // attribute zips together the produced vectors.
-  bool zip = 6;
-}
-
-message LoadDataResponse {
-  GlobalDataHandle data = 1;
-  ShapeProto data_shape = 2;
-  int64 available_rows = 3;
-  int64 rows_loaded = 4;
-  int64 nanoseconds = 5;
-}
-
-message GetShapeRequest {
-  GlobalDataHandle data = 1;
-}
-
-message GetShapeResponse {
-  ShapeProto shape = 1;
-}
-
-message UnpackRequest {
-  GlobalDataHandle data = 1;
-}
-
-message UnpackResponse {
-  repeated GlobalDataHandle tied_data = 1;
 }
 
 // A trace estimated by the Latency Hiding Scheduler.

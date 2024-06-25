@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMIC_ENQUEUE_SPARSE_EXPANDER_H_
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
 
 namespace tensorflow {

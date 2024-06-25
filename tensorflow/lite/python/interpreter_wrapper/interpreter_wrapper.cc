@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
@@ -85,18 +86,31 @@ using python_utils::PyDecrefDeleter;
 std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   if (!model) {
     return nullptr;
   }
 
   ::tflite::python::ImportNumpy();
 
+  TfLiteDelegate* xnnpack_delegate = nullptr;
+  if (default_delegate_latest_features) {
+    auto opts = TfLiteXNNPackDelegateOptionsDefault();
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING;
+    opts.num_threads = num_threads;
+    xnnpack_delegate = TfLiteXNNPackDelegateCreate(&opts);
+  }
   std::unique_ptr<Interpreter> interpreter;
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
   InterpreterBuilder builder(*model, resolver, &options);
+  if (default_delegate_latest_features) {
+    builder.AddDelegate(xnnpack_delegate);
+  }
+  builder.SetNumThreads(num_threads);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
@@ -200,29 +214,36 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
   }
 
   std::unique_ptr<tflite::MutableOpResolver> resolver;
-  switch (op_resolver_id) {
-    case kBuiltinOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
-      break;
-    case kBuiltinRefOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
-      break;
-    case kBuiltinOpResolverWithoutDefaultDelegates:
-      resolver = std::make_unique<
-          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
-      break;
-    default:
-      // This should not never happen because the eventual caller in
-      // interpreter.py should have passed a valid id here.
-      TFLITE_DCHECK(false);
-      return nullptr;
+  if (default_delegate_latest_features) {
+    resolver = std::make_unique<
+        tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+  } else {
+    switch (op_resolver_id) {
+      case kBuiltinOpResolver:
+        resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+        break;
+      case kBuiltinRefOpResolver:
+        resolver =
+            std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+        break;
+      case kBuiltinOpResolverWithoutDefaultDelegates:
+        resolver = std::make_unique<
+            tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+        break;
+      default:
+        // This should not never happen because the eventual caller in
+        // interpreter.py should have passed a valid id here.
+        TFLITE_DCHECK(false);
+        return nullptr;
+    }
   }
 
   for (const auto& registerer : registerers_by_name) {
@@ -232,9 +253,9 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   for (const auto& registerer : registerers_by_func) {
     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
-  auto interpreter =
-      CreateInterpreter(model.get(), *resolver, preserve_all_tensors,
-                        disable_delegate_clustering);
+  auto interpreter = CreateInterpreter(
+      model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
+      num_threads, default_delegate_latest_features);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -806,14 +827,16 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
-      disable_delegate_clustering);
+      disable_delegate_clustering, num_threads,
+      default_delegate_latest_features);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -822,7 +845,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     bool preserve_all_tensors, bool disable_delegate_clustering) {
   return CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
-      error_msg, preserve_all_tensors, disable_delegate_clustering);
+      error_msg, preserve_all_tensors, disable_delegate_clustering,
+      /*num_threads=*/1, /*default_delegate_latest_features=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -830,7 +854,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -843,16 +868,18 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
-      disable_delegate_clustering);
+      disable_delegate_clustering, num_threads,
+      default_delegate_latest_features);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
     bool preserve_all_tensors, bool disable_delegate_clustering) {
-  return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
-                                    error_msg, preserve_all_tensors,
-                                    disable_delegate_clustering);
+  return CreateWrapperCPPFromBuffer(
+      data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
+      disable_delegate_clustering, /*num_threads=*/1,
+      /*default_delegate_latest_features=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

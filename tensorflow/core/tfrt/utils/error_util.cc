@@ -44,13 +44,7 @@ tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   if (av->IsError()) {
     return av->GetError();
   }
-  return ::tensorflow::OkStatus();
-}
-
-absl::Status AbslStatusFromTfStatus(tensorflow::Status status) {
-  if (status.ok()) return absl::OkStatus();
-  return absl::Status(static_cast<absl::StatusCode>(status.code()),
-                      status.message());
+  return absl::OkStatus();
 }
 
 }  // namespace tfrt

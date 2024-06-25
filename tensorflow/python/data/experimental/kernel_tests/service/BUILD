@@ -366,8 +366,15 @@ tf_py_strict_test(
     deps = [
         ":multi_process_cluster",
         ":test_base",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_ops",
+        "//tensorflow/python/ops:math_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -384,6 +391,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:test",
     ],

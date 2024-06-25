@@ -60,10 +60,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/tracing.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
@@ -525,7 +525,7 @@ class RunManyGraphs {
 
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
-    TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
+    TRACEPRINTF("Partition %d %v", index, s);
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
@@ -742,7 +742,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     RunManyGraphs::Call* call = calls.get(i);
-    TRACEPRINTF("Partition %d %s", i, part.name.c_str());
+    TRACEPRINTF("Partition %d %s", i, part.name);
     part.worker->RunGraphAsync(
         &call->opts, call->req.get(), call->resp.get(),
         std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));

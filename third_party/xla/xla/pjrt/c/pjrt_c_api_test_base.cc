@@ -172,7 +172,7 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
 }
 
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-          xla::PjRtFuture<absl::Status>>
+          xla::PjRtFuture<>>
 PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
@@ -200,7 +200,7 @@ PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
   auto ready_event_error =
       ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));
   EXPECT_EQ(ready_event_error, nullptr);
-  xla::PjRtFuture<absl::Status> buffer_ready_event =
+  xla::PjRtFuture<> buffer_ready_event =
       ::pjrt::ConvertCEventToCppFuture(get_event_args.event, api_);
 
   return std::make_pair(std::move(buffer), buffer_ready_event);

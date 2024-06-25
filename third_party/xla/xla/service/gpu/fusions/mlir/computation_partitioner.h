@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,15 +24,41 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 namespace mlir_converter {
+
+struct EpilogueSpecification {
+  // Creates an epilogue with output indices matching the given root's shape.
+  static EpilogueSpecification FromIdentityIndexing(
+      const HloInstruction* hero, const HloInstruction* root,
+      mlir::MLIRContext* mlir_context);
+  // Creates an epilogue with the raw thread/block/symbol indices, as defined
+  // by the fusion's thread->output mapping.
+  static EpilogueSpecification FromOutputIndexing(
+      const HloFusionAnalysis& analysis,
+      const std::vector<const HloInstruction*>& heroes,
+      const std::vector<const HloInstruction*>& roots,
+      const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context);
+
+  std::vector<const HloInstruction*> heroes;
+  std::vector<const HloInstruction*> roots;
+
+  // The ranges of the indices that the subgraph is called with.
+  std::vector<int64_t> index_ranges;
+
+  // Indexing maps for each root output. All maps must have the same number of
+  // input dimensions.
+  std::vector<IndexingMap> root_indexing;
+};
 
 // Partitions an HLO computation into subgraphs so that all users of a node have
 // consistent indexing, i. e. when we compute a node `a` with users `b` and `c`,
@@ -63,10 +88,10 @@ namespace mlir_converter {
 // than its users.
 class PartitionedComputation {
  public:
-  explicit PartitionedComputation(
-      const HloComputation* computation,
-      std::function<bool(const HloInstruction*)> is_subgraph_root =
-          [](const HloInstruction*) { return false; });
+  explicit PartitionedComputation(const HloComputation* computation,
+                                  mlir::MLIRContext* mlir_context,
+                                  std::function<bool(const HloInstruction*)>
+                                      is_subgraph_root = HloPredicateFalse);
 
   struct Subgraph {
     // A unique name of the subgraph. Used for function names.
@@ -74,25 +99,30 @@ class PartitionedComputation {
 
     // The instructions that make up this subgraph.
     absl::flat_hash_set<const HloInstruction*> instructions;
-    std::vector<const HloInstruction*> instructions_post_order;
 
-    // The roots. These are guaranteed not to have users inside the subgraph.
+    // The roots (return values of the function).
     std::vector<const HloInstruction*> roots;
 
-    // For values that are function arguments (not function calls), stores the
-    // mapping from value to the argument index. The arguments always come
-    // after the tensor parameters and output indices; the indices are relative
-    // to the argument after the last index argument.
-    absl::flat_hash_map<const HloInstruction*, int> injected_values;
+    // The ranges of the indices that the subgraph is called with (dimensions
+    // and symbols).
+    std::vector<int64_t> index_ranges;
 
-    std::string ToString() const;
+    // Maps from raw indices to root indices.
+    std::vector<IndexingMap> root_indexing;
+
+    // For values that are function arguments (not function calls), stores
+    // the mapping from value to the starting argument index. The arguments
+    // always come after the tensor parameters and output indices; the indices
+    // are relative to the argument after the last index argument.
+    absl::flat_hash_map<const HloInstruction*, int> injected_value_starts;
+    // The sum of the arity of the injected values.
+    int num_injected_values = 0;
+
+    std::string ToString(int indentation = 0) const;
 
     // Creates a subgraph for the given heroes' epilogue. The heroes values will
     // be injected into the subgraph.
-    // If there is no epilogue (the root is the hero), returns nullopt.
-    static std::optional<Subgraph> ForEpilogue(
-        const HloComputation* computation,
-        absl::Span<const HloInstruction* const> heroes);
+    static Subgraph ForEpilogue(const EpilogueSpecification& epilogue);
   };
 
   absl::Span<const Subgraph> subgraphs() const { return subgraphs_; }
@@ -108,7 +138,7 @@ class PartitionedComputation {
     return *instructions_to_subgraphs_.at(instr);
   }
 
-  std::string ToString() const;
+  std::string ToString(int indentation = 0) const;
 
  private:
   const HloComputation* computation_;
@@ -125,9 +155,11 @@ using CallTargetProvider =
 // including all transitively called computations.
 class PartitionedComputations {
  public:
+  // Partition the given fusion computation and optionally generate an epilogue
+  // for the given heroes.
   explicit PartitionedComputations(
-      const HloComputation* fusion,
-      absl::Span<const HloInstruction* const> heroes = {});
+      const HloComputation* fusion, mlir::MLIRContext* mlir_context,
+      std::vector<EpilogueSpecification> epilogues = {});
 
   const PartitionedComputation& FindPartitionedComputation(
       const HloComputation* computation) const {
@@ -143,8 +175,8 @@ class PartitionedComputations {
 
   // If the fusion has an epilogue (i.e., the heroes are inside the fusion),
   // returns it.
-  const std::optional<PartitionedComputation::Subgraph>& epilogue() const {
-    return epilogue_;
+  const std::vector<PartitionedComputation::Subgraph>& epilogues() const {
+    return epilogues_;
   }
 
   const HloComputation* fusion() const { return fusion_; }
@@ -167,7 +199,7 @@ class PartitionedComputations {
   absl::flat_hash_map<const HloComputation*, const PartitionedComputation*>
       computation_to_partitioning_;
   const HloComputation* fusion_;
-  std::optional<PartitionedComputation::Subgraph> epilogue_;
+  std::vector<PartitionedComputation::Subgraph> epilogues_;
 };
 
 // Returns an MLIR function declaration for the given subgraph. For subgraphs of

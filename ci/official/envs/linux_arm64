@@ -19,7 +19,7 @@ TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_arm64
 # despite lacking Nvidia CUDA support.
 TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_DOCKER_ENABLE=1
-TFCI_DOCKER_IMAGE=gcr.io/tensorflow-sigs/build-arm64:tf-2-16-multi-python
+TFCI_DOCKER_IMAGE=us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:tf-2-16-multi-python
 TFCI_DOCKER_PULL_ENABLE=1
 TFCI_DOCKER_REBUILD_ARGS="--target=tf ci/official/containers/linux_arm64"
 TFCI_INDEX_HTML_ENABLE=1

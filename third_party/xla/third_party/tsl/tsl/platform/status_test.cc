@@ -34,7 +34,7 @@ using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
 TEST(ToStringTest, PayloadsArePrinted) {
-  Status status = errors::Aborted("Aborted Error Message");
+  absl::Status status = errors::Aborted("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
                                        "payload_value %c%c%c", 1, 2, 3)));
 
@@ -44,7 +44,7 @@ TEST(ToStringTest, PayloadsArePrinted) {
 }
 
 TEST(ToStringTest, MatchesAbslStatus) {
-  Status status = errors::Aborted("Aborted Error Message");
+  absl::Status status = errors::Aborted("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
                                        "payload_value %c%c%c", 1, 2, 3)));
 
@@ -57,7 +57,7 @@ TEST(ToStringTest, MatchesAbslStatus) {
 }
 
 TEST(StackTrace, SerializeAndDeserializeCorrectly) {
-  Status status = errors::Aborted("Aborted Error Message");
+  absl::Status status = errors::Aborted("Aborted Error Message");
   std::vector<StackFrame> stack_trace;
   stack_trace.push_back(StackFrame("filename_1", 33, "func_name_1"));
   stack_trace.push_back(StackFrame("filename_2", 66, "func_name_2"));
@@ -72,11 +72,11 @@ TEST(StackTrace, SerializeAndDeserializeCorrectly) {
 }
 
 TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
-  Status status_a = errors::Aborted("Status A");
-  Status status_b = errors::Aborted("Status B");
-  Status status_c = errors::Aborted("Status C");
+  absl::Status status_a = errors::Aborted("Status A");
+  absl::Status status_b = errors::Aborted("Status B");
+  absl::Status status_c = errors::Aborted("Status C");
 
-  Status combined =
+  absl::Status combined =
       StatusGroup({status_a, status_b, status_c}).as_summary_status();
 
   EXPECT_EQ(combined,
@@ -94,14 +94,14 @@ TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
 }
 
 TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
-  Status status_a = errors::Aborted("Status A");
+  absl::Status status_a = errors::Aborted("Status A");
   status_a.SetPayload("payload_key", absl::Cord("payload_value_a"));
-  Status status_b = errors::Aborted("Status B");
+  absl::Status status_b = errors::Aborted("Status B");
   status_b.SetPayload("payload_key", absl::Cord("payload_value_b"));
-  Status status_c = errors::Aborted("Status C");
+  absl::Status status_c = errors::Aborted("Status C");
   status_c.SetPayload("payload_key", absl::Cord("payload_value_c"));
 
-  Status combined =
+  absl::Status combined =
       StatusGroup({status_a, status_b, status_c}).as_summary_status();
   ASSERT_TRUE(combined.GetPayload("payload_key").has_value());
   std::string payload(combined.GetPayload("payload_key").value());
@@ -127,16 +127,16 @@ TEST(StatusGroupTest, DeterministicOrderWithPayloads) {
 }
 
 TEST(StatusGroupTest, PayloadsMergedProperly) {
-  Status status_a = errors::Aborted("Status A");
+  absl::Status status_a = errors::Aborted("Status A");
   status_a.SetPayload("payload_key_a",
                       absl::Cord(std::string("payload_value_a")));
-  Status status_b = errors::Aborted("Status B");
+  absl::Status status_b = errors::Aborted("Status B");
   status_b.SetPayload("payload_key_b",
                       absl::Cord(std::string("payload_value_b")));
-  Status status_c = errors::Aborted("Status C");
+  absl::Status status_c = errors::Aborted("Status C");
   status_c.SetPayload("payload_key_c",
                       absl::Cord(std::string("payload_value_c")));
-  Status derived_status_c =
+  absl::Status derived_status_c =
       StatusGroup::MakeDerived(errors::Aborted("Status C"));
   derived_status_c.SetPayload(
       "payload_key_c", absl::Cord(std::string("derived_payload_value_c")));
@@ -144,14 +144,14 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
   StatusGroup status_group({status_a, status_b, status_c, derived_status_c});
   EXPECT_THAT(status_group.GetPayloads(), ::testing::SizeIs(3));
 
-  Status combined = status_group.as_summary_status();
+  absl::Status combined = status_group.as_summary_status();
   EXPECT_EQ(combined.GetPayload("payload_key_a"), "payload_value_a");
   EXPECT_EQ(combined.GetPayload("payload_key_b"), "payload_value_b");
   EXPECT_EQ(combined.GetPayload("payload_key_c"), "payload_value_c");
 }
 
 TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(absl::StatusCode::kInternal, "Error message");
+  absl::Status s(absl::StatusCode::kInternal, "Error message");
   s.SetPayload("key1", absl::Cord("value1"));
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
@@ -168,7 +168,7 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
 }
 
 TEST(Status, OkStatusForEachPayloadNoIteration) {
-  Status s = OkStatus();
+  absl::Status s = absl::OkStatus();
   s.SetPayload("key1", absl::Cord("value1"));
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
@@ -182,7 +182,7 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
 }
 
 TEST(Status, SaveOKStatusToProto) {
-  tensorflow::StatusProto status_proto = StatusToProto(OkStatus());
+  tensorflow::StatusProto status_proto = StatusToProto(absl::OkStatus());
   EXPECT_EQ(status_proto.code(), error::OK);
   EXPECT_THAT(status_proto.message(), IsEmpty());
 }
@@ -195,7 +195,7 @@ TEST(Status, SaveErrorStatusToProto) {
 }
 
 TEST(Status, SaveEmptyStatusToProto) {
-  tensorflow::StatusProto status_proto = StatusToProto(Status());
+  tensorflow::StatusProto status_proto = StatusToProto(absl::Status());
   EXPECT_EQ(status_proto.code(), error::OK);
   EXPECT_THAT(status_proto.message(), IsEmpty());
 }

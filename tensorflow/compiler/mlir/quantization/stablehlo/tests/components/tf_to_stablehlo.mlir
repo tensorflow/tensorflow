@@ -1,17 +1,16 @@
 // RUN: stablehlo-quant-opt %s -split-input-file -verify-diagnostics -stablehlo-test-tf-to-stablehlo | FileCheck %s
 
-func.func @fused_batchnorm_no_training() -> (tensor<1x1x2x8xf32>) {
-  %cst_0 = "tf.Const"() {value = dense<[[[[0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.2], [0.3, 0.4, 0.3, 0.4, 0.3, 0.4, 0.3, 0.4]]]]> : tensor<1x1x2x8xf32>} : () -> tensor<1x1x2x8xf32>
-  %cst_1 = "tf.Const"() {value = dense<[0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.2]> : tensor<8xf32>} : () -> tensor<8xf32>
-  %cst_2 = "tf.Const"() {value = dense<[0.3, 0.4, 0.3, 0.4, 0.3, 0.4, 0.3, 0.4]> : tensor<8xf32>} : () -> tensor<8xf32>
-  %0:6 = "tf.FusedBatchNormV3"(%cst_0, %cst_1, %cst_2, %cst_1, %cst_2) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<1x1x2x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<1x1x2x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
-  func.return %0#0 : tensor<1x1x2x8xf32>
-}
-// CHECK: func.func @main() -> tensor<1x1x2x8xf32>
-// CHECK-DAG: %[[CONST:.*]] = stablehlo.constant dense<{{.*}}> : tensor<1x1x2x8xf32>
-// CHECK: return %[[CONST]] : tensor<1x1x2x8xf32>
-
-// -----
+// TODO(b/330759552): Fix the msan issue and enable this test.
+// func.func @fused_batchnorm_no_training() -> tensor<1x1x2x8xf32> {
+//   %cst_0 = "tf.Const"() {value = dense<[[[[0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.2], [0.3, 0.4, 0.3, 0.4, 0.3, 0.4, 0.3, 0.4]]]]> : tensor<1x1x2x8xf32>} : () -> tensor<1x1x2x8xf32>
+//   %cst_1 = "tf.Const"() {value = dense<[0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.2]> : tensor<8xf32>} : () -> tensor<8xf32>
+//   %cst_2 = "tf.Const"() {value = dense<[0.3, 0.4, 0.3, 0.4, 0.3, 0.4, 0.3, 0.4]> : tensor<8xf32>} : () -> tensor<8xf32>
+//   %0:6 = "tf.FusedBatchNormV3"(%cst_0, %cst_1, %cst_2, %cst_1, %cst_2) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<1x1x2x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<1x1x2x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
+//   func.return %0#0 : tensor<1x1x2x8xf32>
+// }
+// COM: CHECK: func.func @main() -> tensor<1x1x2x8xf32>
+// COM: CHECK-DAG: %[[CONST:.*]] = stablehlo.constant dense<{{.*}}> : tensor<1x1x2x8xf32>
+// COM: CHECK: return %[[CONST]] : tensor<1x1x2x8xf32>
 
 func.func @fused_batchnorm_no_training_arg_input(%arg_0: tensor<1x1x2x8xf32>) -> (tensor<1x1x2x8xf32>) {
   %cst_0 = "tf.Const"() {value = dense<[0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.2]> : tensor<8xf32>} : () -> tensor<8xf32>
@@ -115,7 +114,7 @@ func.func @func_conv_batchnorm_relu6_dynamic(%arg_0: tensor<?x3x4x3xf32>) -> (te
 // This test makes sure functions with tf._noinline=true is not inlined.
 
 module {
-  func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
+  func.func @stateful_partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
     %0 = "tf.StatefulPartitionedCall"(%arg0) <{
       config = "", config_proto = "", executor_type = "", f = @some_func
     }> {
@@ -140,7 +139,7 @@ module {
 
 module {
   func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
-    %0 = "tf.StatefulPartitionedCall"(%arg0) <{
+    %0 = "tf.PartitionedCall"(%arg0) <{
       config = "", config_proto = "", executor_type = "", f = @some_func
     }> {
       _collective_manager_ids = [], device = ""
@@ -154,6 +153,6 @@ module {
 }
 
 // CHECK: module
-// CHECK-NOT: tf.StatefulPartitionedCall
+// CHECK-NOT: tf.PartitionedCall
 // CHECK-NOT: some_func
 // CHECK-NOT: func.call

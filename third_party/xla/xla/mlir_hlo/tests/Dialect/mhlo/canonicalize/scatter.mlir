@@ -84,11 +84,11 @@ func.func @scatter_full_overwrite_add(
       mhlo.return %2 : tensor<bf16>
     }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0]>, unique_indices = true} : (tensor<1xbf16>, tensor<0xi32>, tensor<1xbf16>) -> tensor<1xbf16>
 
-  // CHECK: "mhlo.map"(%[[ARG0]], %[[ARG2]]) ({
+  // CHECK: "mhlo.map"(%[[ARG0]], %[[ARG2]]) <{dimensions = dense<0> : tensor<1xi64>}> ({
   // CHECK:  ^bb0(%[[ARG3:.*]]: tensor<bf16>, %[[ARG4:.*]]: tensor<bf16>):
   // CHECK:    %[[ADD:.*]] = mhlo.add %[[ARG3]], %[[ARG4]] : tensor<bf16>
   // CHECK:    mhlo.return %[[ADD]] : tensor<bf16>
-  // CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<1xbf16>, tensor<1xbf16>) -> tensor<1xbf16>
+  // CHECK:  }) : (tensor<1xbf16>, tensor<1xbf16>) -> tensor<1xbf16>
   func.return %scatter : tensor<1xbf16>
 }
 

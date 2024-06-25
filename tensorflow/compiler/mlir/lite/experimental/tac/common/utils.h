@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
@@ -52,7 +53,7 @@ bool NotTFLQuantDequantizeOp(Operation* op);
 
 // Returns true if it is a shaped type of f32 elements.
 inline bool IsF32ShapedType(Type t) {
-  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+  if (auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(t)) {
     return shaped_type.getElementType().isF32();
   }
   return false;

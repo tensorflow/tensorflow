@@ -30,7 +30,7 @@ cat > $(OUTS) <<EOF
 <manifest
   xmlns:android="http://schemas.android.com/apk/res/android"
   package="dummy.package.for.so">
-  <uses-sdk android:minSdkVersion="999"/>
+  <uses-sdk android:minSdkVersion="34"/>
 </manifest>
 EOF
 """,

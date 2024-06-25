@@ -18,7 +18,8 @@ Pod::Spec.new do |s|
 
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'
-  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.${TFL_VENDORED_BUNDLE_TYPE}'
+  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.xcframework'
+  s.resource_bundle = { 'TensorFlowLiteSelectTfOps' => 'Frameworks/TensorFlowLiteSelectTfOps.xcframework/PrivacyInfo.xcprivacy' }
   s.weak_frameworks = 'CoreML'
 
   # TODO(b/149803849): Remove this after adding support for simulators.

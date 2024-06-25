@@ -635,7 +635,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+      {FDH::Const<int32>("shape", absl::Span<const int32>({1})),
        FDH::Const<int32>("minval", 0),
        FDH::Const<int32>("maxval", 10),
        // A stateful node.

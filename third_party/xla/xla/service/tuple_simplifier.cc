@@ -26,7 +26,7 @@ namespace xla {
 TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
     : exclude_entry_computation_(exclude_entry_computation) {}
 
-StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
+absl::StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
@@ -53,7 +53,7 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   return changed;
 }
 
-StatusOr<bool> TupleSimplifier::Run(
+absl::StatusOr<bool> TupleSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.

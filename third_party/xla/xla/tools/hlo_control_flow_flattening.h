@@ -18,8 +18,13 @@ limitations under the License.
 
 #include <limits>
 #include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -62,24 +67,16 @@ class HloControlFlowFlattening : public HloModulePass {
 
  private:
   // Replaces an infeed with a custom call.
-  Status RemoveInfeed(HloInstruction* infeed_hlo) const;
+  absl::Status RemoveInfeed(HloInstruction* infeed_hlo) const;
   // Removes outfeeds and replaces the outfeed HLO with a side-effecting custom
   // call that ensures that XLA doesn't dead-code-eliminate the outfeeded values
   // but lowers to a no-op.
-  Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
+  absl::Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
   // Flattens the while loop. Precondition: while_hlo is a while instruction.
-  Status FlattenWhileLoop(HloInstruction* while_hlo,
-                          const CallGraph& call_graph) const;
+  absl::Status FlattenWhileLoop(HloInstruction* while_hlo,
+                                const CallGraph& call_graph) const;
   // Replaces an id with a zero constant.
-  Status RemoveId(HloInstruction* hlo) const;
-  // Removes send and send-done with a custom call.
-  Status RemoveSendDone(
-      HloInstruction* send_done,
-      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
-  // Removes recv and recv-done with a custom call.
-  Status RemoveRecvDone(
-      HloInstruction* recv_done,
-      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
+  absl::Status RemoveId(HloInstruction* hlo) const;
 
   int while_execution_count_;
   int max_outer_loop_count_;
@@ -89,9 +86,21 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_host_transfer_;
 
  protected:
-  // Replaces a collective op with a custom call.
-  Status RemoveCollective(HloInstruction* hlo) const;
-
+  // Replaces a collective op with a custom call and returns the custom call.
+  virtual absl::StatusOr<HloInstruction*> RemoveCollective(
+      HloInstruction* hlo) const;
+  // Replaces send and send-done with a custom call. Returns the new custom
+  // calls in a pair.
+  virtual absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+  RemoveSendAndSendDone(
+      HloInstruction* send_done,
+      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
+  // Replaces recv and recv-done with a custom call. Returns the new custom
+  // calls in a pair
+  virtual absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+  RemoveRecvAndRecvDone(
+      HloInstruction* recv_done,
+      absl::flat_hash_set<HloInstruction*>* additional_removed) const;
   bool remove_comm_;
 };
 

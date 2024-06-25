@@ -508,7 +508,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->operand(0);
   auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();
@@ -534,7 +534,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
 
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
-    StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
+    absl::StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
         while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
     if (!result.ok()) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
@@ -547,8 +547,9 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
 
     // Calculate the value of the induction variable after one iteration of the
     // loop, and check whether the while condition is true with this new value.
-    StatusOr<Literal> indvar_next_result = evaluator.EvaluateWithSubstitutions(
-        while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
+    absl::StatusOr<Literal> indvar_next_result =
+        evaluator.EvaluateWithSubstitutions(
+            while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
     if (!indvar_next_result.ok()) {
       VLOG(2) << "Couldn't evaluate induction variable update: "
               << indvar_next_result.status();
@@ -644,7 +645,7 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   TF_CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
                                   /*dest_shape_index=*/{0},
                                   /*src_shape_index=*/{}));
-  StatusOr<Literal> eval_result =
+  absl::StatusOr<Literal> eval_result =
       evaluator.Evaluate(*new_computation, {std::move(fake_input)});
 
   if (!eval_result.ok()) {

@@ -50,7 +50,7 @@ StatusOr<mlir::Operation*> IteratorGetNextSPMDExpander::ExpandOp(
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     mlir::TensorType global_output_type =
-        original_op.getResult(i).getType().cast<mlir::TensorType>();
+        mlir::cast<mlir::TensorType>(original_op.getResult(i).getType());
     std::vector<int64_t> local_shape =
         output_layouts[i].LocalShapeFromGlobalShape(
             global_output_type.getShape());
@@ -111,10 +111,9 @@ StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
   for (int i = 0; i < array_attr.size(); ++i) {
     std::vector<int64_t> local_shape =
         output_layouts[i].LocalShapeFromGlobalShape(
-            array_attr[i].cast<mlir::TF::ShapeAttr>().getShape());
-    output_shape_attrs[i] =
-        mlir::TF::ShapeAttr::get(op->getContext(), {local_shape})
-            .cast<mlir::Attribute>();
+            mlir::cast<mlir::TF::ShapeAttr>(array_attr[i]).getShape());
+    output_shape_attrs[i] = mlir::cast<mlir::Attribute>(
+        mlir::TF::ShapeAttr::get(op->getContext(), {local_shape}));
   }
 
   // Update the `output_shapes` attribute on the op to match the local shape

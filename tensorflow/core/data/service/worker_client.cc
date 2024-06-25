@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -55,12 +56,14 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info,
-                              Allocator* allocator) {
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(
+    const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+    Allocator* allocator) {
   auto client = std::make_unique<DataServiceWorkerClient>(
-      info.address(), dispatcher_protocol, info.protocol(), allocator);
+      info.address(), dispatcher_protocol, info.protocol(),
+      accelerator_device_info, allocator);
   TF_RETURN_IF_ERROR(client->Initialize());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       client->CheckCompatibility(info.compatibility_info()),
@@ -82,7 +85,8 @@ Status DataServiceWorkerClient::EnsureInitialized() {
     return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
-      GetDataTransferProtocol(), {protocol_, address_, allocator_}, &client_));
+      GetDataTransferProtocol(),
+      {protocol_, address_, accelerator_device_info_, allocator_}, &client_));
   return absl::OkStatus();
 }
 
@@ -239,7 +243,7 @@ class LocalDataTransferClient : public DataTransferClient {
     return absl::OkStatus();
   }
 
-  StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
+  absl::StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
       const GetElementRequest& req) const {
     std::shared_ptr<DataServiceWorkerImpl> worker =
         LocalWorkers::Get(worker_address_);

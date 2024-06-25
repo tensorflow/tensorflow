@@ -18,8 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <ostream>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -33,7 +35,7 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -178,6 +180,20 @@ bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
   return reduction_dimensions.dimensions[1] <=
          ReductionDimensionRaceFreeBound(hlo_module_config,
                                          reduction_dimensions);
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const ReductionDimensions& reduction_dimensions) {
+  bool is_row_reduction = reduction_dimensions.is_row_reduction;
+  os << (is_row_reduction ? "row " : "column ") << "reduction ["
+     << absl::StrJoin(reduction_dimensions.dimensions, ",") << "] -> ["
+     << reduction_dimensions.dimensions[0] << ", "
+     << reduction_dimensions
+            .dimensions[is_row_reduction
+                            ? ReductionDimensions::kRowKeptDimension
+                            : ReductionDimensions::kColMinorKeptDimension]
+     << "]";
+  return os;
 }
 
 ReductionDimensions GetReductionKindAndContiguousComponents(

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -60,10 +61,10 @@ template <
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto lhs_type = arithmetic_op.getX().getType().template cast<ShapedType>();
-  auto rhs_type = arithmetic_op.getY().getType().template cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(arithmetic_op.getX().getType());
+  auto rhs_type = mlir::cast<ShapedType>(arithmetic_op.getY().getType());
   auto result_type =
-      arithmetic_op.getResult().getType().template cast<ShapedType>();
+      mlir::cast<ShapedType>(arithmetic_op.getResult().getType());
 
   // We can fold arithmetic operation only of we can prove that we will not
   // accidentally hide a broadcasting error.
@@ -86,8 +87,8 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
   // Check that we have a constant operand on one side (candidate for identity).
   const bool is_commutative =
       (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
-  auto lhs_attr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto rhs_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  auto lhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  auto rhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
 
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
@@ -100,9 +101,9 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
-  if (auto ty = element_ty.template dyn_cast<FloatType>()) {
+  if (auto ty = mlir::dyn_cast<FloatType>(element_ty)) {
     identity_attr = FloatAttr::get(ty, static_cast<double>(identity));
-  } else if (auto ty = element_ty.template dyn_cast<IntegerType>()) {
+  } else if (auto ty = mlir::dyn_cast<IntegerType>(element_ty)) {
     identity_attr = IntegerAttr::get(ty, static_cast<int64_t>(identity));
   } else {
     return {};

@@ -66,7 +66,7 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
-StatusOr<bool> HloConstantFolding::Run(
+absl::StatusOr<bool> HloConstantFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
@@ -163,20 +163,19 @@ StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
-      // Don't constant fold unless it's a net positive or the output is small.
+      // Don't constant fold unless output and operand sizes are small.
       if (instruction->shape().IsArray()) {
-        int64_t elements_in_removed_operands = 0;
+        int64_t elements_in_operands = 0;
         for (HloInstruction* operand : instruction->operands()) {
-          if (operand->user_count() == 1 && operand->shape().IsArray()) {
-            elements_in_removed_operands +=
-                ShapeUtil::ElementsIn(operand->shape());
+          if (operand->shape().IsArray()) {
+            elements_in_operands += ShapeUtil::ElementsIn(operand->shape());
           }
         }
         int64_t elements_in_constant =
             ShapeUtil::ElementsIn(instruction->shape());
 
         static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-        if (std::max(elements_in_constant, elements_in_removed_operands) >
+        if (std::max(elements_in_constant, elements_in_operands) >
             kMaximumConstantSizeElements) {
           continue;
         }
@@ -231,8 +230,18 @@ StatusOr<bool> HloConstantFolding::Run(
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
       dead_instructions.push_back(instruction);
-      HloInstruction* new_constant = computation->AddInstruction(
+      HloInstruction* new_constant = instruction->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
+      if (new_constant->shape().has_layout()) {
+        // Update element_size_in_bits on the new instruction's layout. Literals
+        // always have element_size_in_bits set to 0, and CreateConstant copies
+        // the shape/layout from the Literal, so we need to set
+        // element_size_in_bits here.
+        new_constant->mutable_shape()
+            ->mutable_layout()
+            ->set_element_size_in_bits(
+                instruction->shape().layout().element_size_in_bits());
+      }
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
     }
   }

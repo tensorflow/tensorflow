@@ -85,12 +85,12 @@ func.func @tf_and_mhlo(%arg0: tensor<32x28x28x1xf32>, %arg1: tensor<!tf_type.res
   %4 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf_type.resource<tensor<3x3x1x5xf32>>>) -> tensor<3x3x1x5xf32>
   %5 = "tf.ReadVariableOp"(%arg3) : (tensor<!tf_type.resource<tensor<3920x10xf32>>>) -> tensor<3920x10xf32>
   %6 = mhlo.convolution(%arg0, %4) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<32x28x28x1xf32>, tensor<3x3x1x5xf32>) -> tensor<32x28x28x5xf32>
-  %7 = "mhlo.broadcast_in_dim"(%3) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<5xf32>) -> tensor<32x28x28x5xf32>
+  %7 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> : (tensor<5xf32>) -> tensor<32x28x28x5xf32>
   %8 = mhlo.add %6, %7 : tensor<32x28x28x5xf32>
   %9 = mhlo.maximum %8, %1 : tensor<32x28x28x5xf32>
   %10 = "mhlo.reshape"(%9) : (tensor<32x28x28x5xf32>) -> tensor<32x3920xf32>
   %11 = "mhlo.dot"(%10, %5) : (tensor<32x3920xf32>, tensor<3920x10xf32>) -> tensor<32x10xf32>
-  %12 = "mhlo.broadcast_in_dim"(%2) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<10xf32>) -> tensor<32x10xf32>
+  %12 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<1> : tensor<1xi64>}> : (tensor<10xf32>) -> tensor<32x10xf32>
   %13 = mhlo.add %11, %12 : tensor<32x10xf32>
   %14 = mhlo.maximum %13, %0 : tensor<32x10xf32>
   return %14 : tensor<32x10xf32>

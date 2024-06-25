@@ -7,6 +7,32 @@ package(
 )
 
 cc_library(
+    name = "cache_buffer",
+    srcs = ["cache_buffer.cc"],
+    hdrs = [
+        "cache_buffer.h",
+        "//tensorflow/lite/core/c:common.h",
+    ],
+    deps = [
+        ":resource",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_test(
+    name = "cache_buffer_test",
+    srcs = ["cache_buffer_test.cc"],
+    deps = [
+        ":cache_buffer",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "resource",
     srcs = [
         "initialization_status.cc",

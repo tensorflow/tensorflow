@@ -16,25 +16,30 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/ops/cosine.h"
 
 #include <cmath>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
+#include "tensorflow/lite/experimental/shlo/ops/unary_elementwise_test_util.h"
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
-using shlo_ref::testing::StatusIs;
 using testing::ElementsAreArray;
 using testing::NanSensitiveFloatEq;
 using testing::Pointwise;
 
 namespace shlo_ref {
+
+template <>
+struct ParamName<CosineOp> {
+  static std::string Get() { return "Cosine"; }
+};
 
 namespace {
 
@@ -43,48 +48,38 @@ struct Cosine {
   T operator()(T v) const {
     return std::cos(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 } cosine_ref;
 
-template <class T>
-struct NonQuantizedIntCosineTest : ::testing::Test {};
-
-TYPED_TEST_SUITE(NonQuantizedIntCosineTest, NonQuantizedIntTestTypes,
-                 TestParamNames);
-
-TYPED_TEST(NonQuantizedIntCosineTest, IntTensorsRaiseAnError) {
-  using StorageT = typename TypeParam::StorageT;
-
-  const Shape shape({2, 3, 4});
-  Vector<StorageT> input_data = RandomBuffer<TypeParam::kStorage>(shape);
-  Vector<StorageT> output_data(shape.NumElements());
-
-  Tensor input_tensor{
-      .type = TensorType{.shape = shape, .element_type = TypeParam::kStorage},
-      .data = nullptr};
-  Tensor output_tensor = input_tensor;
-
-  auto op = Create(CosineOp::Attributes{});
-  EXPECT_THAT(Prepare(op, input_tensor, output_tensor),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+template <>
+F16 Cosine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
 }
 
+template <>
+BF16 Cosine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
+
+INSTANTIATE_TYPED_TEST_SUITE_P(Cosine, UnaryElementwiseOpShapePropagationTest,
+                               CosineOp, TestParamNames);
+
+INSTANTIATE_TYPED_TEST_SUITE_P(
+    Cosine, UnaryElementwiseSameBaselineElementTypeConstraintTest,
+    UnaryElementwiseConstraint1Types<CosineOp>, TestParamNames);
+
+using UnsupportedTypes =
+    WithOpTypes<CosineOp, ConcatTypes<BoolTestType, IntTestTypes,
+                                      PerAxisQuantizedTestTypes>>;
+
+INSTANTIATE_TYPED_TEST_SUITE_P(Cosine, UnaryElementwiseUnsupportedTypeTest,
+                               UnsupportedTypes, TestParamNames);
+
 template <class T>
-struct NonQuantizedCosineTest : ::testing::Test {};
+struct CosineTest : ::testing::Test {};
 
-TYPED_TEST_SUITE(NonQuantizedCosineTest, NonQuantizedFloatTestTypes,
-                 TestParamNames);
+TYPED_TEST_SUITE(CosineTest, FloatTestTypes, TestParamNames);
 
-TYPED_TEST(NonQuantizedCosineTest, FloatTensorsWork) {
+TYPED_TEST(CosineTest, FloatTensorsWork) {
   using StorageT = typename TypeParam::StorageT;
 
   const Shape shape({2, 3, 4});
@@ -121,15 +116,16 @@ TYPED_TEST(QuantizedCosineTest, PerTensorWorks) {
   Vector<StorageT> output_data(shape.NumElements());
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(5);
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());
@@ -145,28 +141,6 @@ TYPED_TEST(QuantizedCosineTest, PerTensorWorks) {
   ASSERT_OK(Prepare(op, input_tensor, output_tensor));
   ASSERT_OK(Evaluate(op, input_tensor, output_tensor));
   EXPECT_THAT(output_data, ElementsAreArray(expected_data));
-}
-
-TYPED_TEST(QuantizedCosineTest, PerAxisFails) {
-  using StorageT = typename TypeParam::StorageT;
-  using ExpressedT = typename TypeParam::ExpressedT;
-
-  const Shape shape({4, 3, 2});
-  const int quantized_dimension = 2;
-  Vector<ExpressedT> empty_scales;
-  Vector<StorageT> empty_zero_points;
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerAxis<TypeParam::kStorage,
-                                          TypeParam::kExpressed>(
-          empty_scales, empty_zero_points, quantized_dimension);
-  Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
-      .data = nullptr};
-  Tensor output_tensor = input_tensor;
-
-  auto op = Create(CosineOp::Attributes{});
-  EXPECT_THAT(Prepare(op, input_tensor, output_tensor),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

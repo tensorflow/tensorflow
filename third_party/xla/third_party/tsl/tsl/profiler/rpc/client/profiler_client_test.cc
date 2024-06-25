@@ -48,7 +48,7 @@ TEST(RemoteProfilerSession, Simple) {
   auto remote_session =
       RemoteProfilerSession::Create(service_addr, deadline, request);
 
-  Status status;
+  absl::Status status;
   auto response = remote_session->WaitForCompletion(status);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
@@ -85,7 +85,7 @@ TEST(RemoteProfilerSession, Timeout) {
   // Expect this to fail immediately since deadline was set to the past,
   auto remote_session =
       RemoteProfilerSession::Create(service_addr, absl::Now(), request);
-  Status status;
+  absl::Status status;
   auto response = remote_session->WaitForCompletion(status);
   // At end of session we will have a timeout error.
   EXPECT_TRUE(errors::IsDeadlineExceeded(status));
@@ -108,7 +108,7 @@ TEST(RemoteProfilerSession, LongDeadline) {
 
   auto remote_session =
       RemoteProfilerSession::Create(service_addr, deadline, request);
-  Status status;
+  absl::Status status;
   auto response = remote_session->WaitForCompletion(status);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
@@ -135,7 +135,7 @@ TEST(RemoteProfilerSession, LongDuration) {
 
   auto remote_session =
       RemoteProfilerSession::Create(service_addr, deadline, request);
-  Status status;
+  absl::Status status;
   auto response = remote_session->WaitForCompletion(status);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.

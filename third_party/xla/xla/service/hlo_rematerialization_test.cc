@@ -22,6 +22,9 @@ limitations under the License.
 #include <string>
 
 #include <gmock/gmock.h>
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -42,6 +46,88 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
+
+class AsyncRematerializationTest : public RematerializationTestBase {
+ protected:
+  absl::StatusOr<bool> RunHloRematerialization(
+      int64_t memory_limit_bytes, HloModule* module,
+      const absl::flat_hash_map<HloComputation*, int64_t>&
+          async_computation_parallelism,
+      int64_t min_remat_size = 0) {
+    TF_EXPECT_OK(verifier().Run(module).status());
+    if (!module->has_schedule()) {
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
+          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      TF_EXPECT_OK(scheduler.Run(module).status());
+    }
+    HloRematerialization::RematerializationModeConfig config(
+        /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
+    auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
+    HloCostAnalysis cost_analysis(shape_size_func);
+    HloRematerialization::Options options(
+        cost_analysis, config, memory_limit_bytes,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+        min_remat_size, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_computation_parallelism=*/async_computation_parallelism);
+    HloRematerialization::RematerializationSizes sizes;
+    HloRematerialization remat(options, sizes);
+    return remat.Run(module, {HloInstruction::kMainExecutionThread});
+  }
+
+  static constexpr int64_t kNumParallelThreads = 16;
+};
+
+TEST_F(AsyncRematerializationTest, AsyncComputation) {
+  constexpr std::string_view hlo = R"(
+HloModule async, is_scheduled=true
+
+%offload_computation {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[1024]{0} broadcast(f32[] %reshape), dimensions={}
+  %negate = f32[1024]{0} negate(f32[1024]{0} %broadcast)
+  %concatenate = f32[2048]{0} concatenate(f32[1024]{0} %negate, f32[1024]{0} %negate), dimensions={0}
+  %slice = f32[1]{0} slice(f32[2048]{0} %concatenate), slice={[0:1]}
+  %concatenate.1 = f32[1025]{0} concatenate(f32[1024]{0} %broadcast, f32[1]{0} %slice), dimensions={0}
+  ROOT %slice.1 = f32[1]{0} slice(f32[1025]{0} %concatenate.1), slice={[0:1]}
+}
+
+%main_computation {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[1024]{0} broadcast(f32[] %reshape), dimensions={}
+  %negate = f32[1024]{0} negate(f32[1024]{0} %broadcast)
+  %concatenate = f32[2048]{0} concatenate(f32[1024]{0} %negate, f32[1024]{0} %negate), dimensions={0}
+  %slice = f32[1]{0} slice(f32[2048]{0} %concatenate), slice={[0:1]}
+  %concatenate.1 = f32[1025]{0} concatenate(f32[1024]{0} %broadcast, f32[1]{0} %slice), dimensions={0}
+  ROOT %slice.1 = f32[1]{0} slice(f32[1025]{0} %concatenate.1), slice={[0:1]}
+}
+
+ENTRY %main {
+  %param = f32[1]{0} parameter(0)
+  %call-start = ((f32[1]{0}), f32[1]{0}, s32[]) call-start(f32[1]{0} %param), to_apply=%offload_computation, async_execution_thread="offload"
+  %call-done = f32[1]{0} call-done(((f32[1]{0}), f32[1]{0}, s32[]) %call-start)
+  ROOT %call = f32[1]{0} call(f32[1]{0} %call-done), to_apply=%main_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* call_start = FindInstruction(module.get(), "call-start");
+  // Computation requires 16KB without rematerialization, but uses only 12KB
+  // with rematerialization so pick a memory limit between these values (14KB).
+  // Asynchronous computation will run on 16 devices and we do not rematerialize
+  // it, so it will reserve 16 * 16Kb from the memory limit.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHloRematerialization(
+          /*memory_limit_bytes=*/kNumParallelThreads * 16 * 1024 + 14 * 1024,
+          module.get(),
+          {{call_start->async_wrapped_computation(), kNumParallelThreads}}));
+  EXPECT_TRUE(changed);
+}
 
 // Inherits methods to create rematerializable computations. See
 // RematerializationTestBase for more.
@@ -58,6 +144,16 @@ class RecomputeAndCompressHloRematerializationTest
           ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
       TF_EXPECT_OK(scheduler.Run(module).status());
     }
+
+    // First, get a set of instruction names before running remat.
+    for (const HloComputation* computation : module->computations()) {
+      before_computation_names_.insert(computation->name());
+      for (const HloInstruction* instruction : computation->instructions()) {
+        before_instruction_names_.insert(instruction->name());
+      }
+    }
+
+    // Run remat.
     HloRematerialization::RematerializationModeConfig config(
         /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
     auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
@@ -66,11 +162,45 @@ class RecomputeAndCompressHloRematerializationTest
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
-        /*host_memory_offload_config=*/std::nullopt);
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
-    return remat.Run(module);
+    absl::StatusOr<bool> result = remat.Run(module);
+
+    // Finally, get a set of instruction names after running remat.
+    for (const HloComputation* computation : module->computations()) {
+      if (!before_computation_names_.contains(computation->name())) {
+        // This computation was cloned by remat. Skip.
+        continue;
+      }
+      for (const HloInstruction* instruction : computation->instructions()) {
+        after_instruction_names_.insert(instruction->name());
+      }
+    }
+
+    return result;
   }
+
+  void CheckForRematInInstructionNames(absl::string_view test_case_name) {
+    constexpr const absl::string_view kRematInstructionNameMustContain =
+        ".remat";
+    for (const auto& instruction_name : after_instruction_names_) {
+      if (!before_instruction_names_.contains(instruction_name)) {
+        // This is a newly inserted instruction by remat, check that it contains
+        // the target name.
+        EXPECT_TRUE(absl::StrContains(instruction_name,
+                                      kRematInstructionNameMustContain))
+            << "[" << test_case_name << "] Instruction \"" << instruction_name
+            << "\" must contain \"" << kRematInstructionNameMustContain << "\"";
+      }
+    }
+  }
+
+ private:
+  absl::flat_hash_set<absl::string_view> before_computation_names_;
+  absl::flat_hash_set<absl::string_view> before_instruction_names_;
+  absl::flat_hash_set<absl::string_view> after_instruction_names_;
 };
 
 // Test rematerialization of a single computation produced by
@@ -111,6 +241,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, SingleComputation) {
                 .sequence(computation)
                 .instructions()[computation->instruction_count() - 3],
             remat_bcast);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Test rematerialization of a single computation that contains nodes that
@@ -191,6 +323,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, RematerializeAroundWhile) {
   // Only the entry computation should have a rematerialized instruction added.
   EXPECT_EQ(entry_computation->instruction_count(), 8);
   EXPECT_EQ(body_computation->instruction_count(), 8);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Test rematerialization of a computation which calls another computation via a
@@ -225,6 +359,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   // Both computations should have rematerialized instructions added.
   EXPECT_EQ(entry_computation->instruction_count(), 9);
   EXPECT_EQ(body_computation->instruction_count(), 9);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Test rematerialization of a doubly nested computation. All computations
@@ -268,6 +404,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   EXPECT_EQ(entry_computation->instruction_count(), 9);
   EXPECT_EQ(middle_computation->instruction_count(), 9);
   EXPECT_EQ(inner_computation->instruction_count(), 9);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, RngNotRematerialized) {
@@ -336,6 +474,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, RngNotRematerialized) {
   EXPECT_EQ(count_rngs(entry_computation), 1);
   // There should have been rematerialization.
   EXPECT_GT(entry_computation->instruction_count(), original_instruction_count);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
@@ -438,6 +578,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   EXPECT_THAT(add_3->operand(0), op::Broadcast(param));
   EXPECT_NE(add_4->operand(0), bcast);
   EXPECT_THAT(add_4->operand(0), op::Broadcast(param));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, CopyNotRematerialized) {
@@ -484,6 +626,8 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, CopyNotRematerialized) {
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(count_copies(entry_computation), 1);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Test rematerialization of values through bitcasts
@@ -549,6 +693,8 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
                 .sequence(computation)
                 .instructions()[computation->instruction_count() - 4],
             remat_broadcast);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Test that the "deny list for move remats" engages when we rematerialize
@@ -584,6 +730,8 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
   ASSERT_THAT(add, op::Add(op::Bitcast(op::Broadcast(_)),
                            op::Bitcast(op::Broadcast(_))));
   EXPECT_TRUE(changed);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, RematTupleShape) {
@@ -625,8 +773,9 @@ ENTRY %entry {
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(
-      add, op::Add(op::Multiply(), op::GetTupleElement(AllOf(
-                                       op::Fusion(), ::testing::Ne(fusion)))));
+      add, op::Add(op::Multiply(), AllOf(op::Fusion(), ::testing::Ne(fusion))));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, RematTupleShapeDoubleUse) {
@@ -680,6 +829,8 @@ ENTRY %entry {
   // Check that the rematerialized fusion is the same for both ops.
   EXPECT_EQ(add->operand(0)->operand(1)->operand(0),
             add->operand(1)->operand(0));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
@@ -725,9 +876,11 @@ ENTRY %entry {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
-  ASSERT_THAT(add, op::Add(op::Bitcast(op::Multiply()),
-                           op::Bitcast(op::GetTupleElement(
-                               AllOf(op::Fusion(), ::testing::Ne(fusion))))));
+  ASSERT_THAT(add,
+              op::Add(op::Bitcast(op::Multiply()),
+                      op::Bitcast(AllOf(op::Fusion(), ::testing::Ne(fusion)))));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, RematThroughTuple) {
@@ -775,10 +928,11 @@ ENTRY %entry {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
-  ASSERT_THAT(
-      add, op::Add(op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(tuple),
-                                             ::testing::Ne(fusion))),
-                   op::Add()));
+  ASSERT_THAT(add, op::Add(AllOf(op::Fusion(), ::testing::Ne(tuple),
+                                 ::testing::Ne(fusion)),
+                           op::Add()));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 // Make sure when rematerializing all-gathers we increment channel_ids properly.
@@ -834,6 +988,8 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
   EXPECT_TRUE(original_ag->channel_id().has_value());
   EXPECT_TRUE(remat_ag->channel_id().has_value());
   EXPECT_EQ(*remat_ag->channel_id(), *original_ag->channel_id() + 1);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest, RematTupleArgFusion) {
@@ -895,6 +1051,8 @@ ENTRY %entry {
   ASSERT_THAT(
       root, op::Tuple(op::Reduce(),
                       op::Fusion(AllOf(op::Fusion(), ::testing::Ne(fusion0)))));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
@@ -969,6 +1127,8 @@ ENTRY %entry {
       (*it)->called_computations()[0]));
   EXPECT_TRUE(module->schedule().is_computation_scheduled(
       (*it2)->called_computations()[0]));
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 class CompressingRematerializationTest : public RematerializationTestBase {
@@ -1028,7 +1188,8 @@ class CompressingRematerializationTest : public RematerializationTestBase {
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, ChooseCompactLayoutForShape,
-        /*host_memory_offload_config=*/std::nullopt);
+        /*host_memory_offload_config=*/std::nullopt,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
@@ -1237,7 +1398,8 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
         cost_analysis, config, memory_limit_bytes,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
-        host_memory_offload_config);
+        host_memory_offload_config,
+        /*async_threads=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
@@ -1463,6 +1625,8 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
     EXPECT_TRUE(changed);
     EXPECT_EQ(entry_computation->instruction_count(), 9);
   }
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
 
 INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,

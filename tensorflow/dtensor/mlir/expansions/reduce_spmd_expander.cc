@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
@@ -110,7 +111,7 @@ template <>
 Status ExtractDims<mlir::TF::L2LossOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return absl::OkStatus();
   auto loss_op = llvm::cast<mlir::TF::L2LossOp>(op);
   *reduced_dims = llvm::SmallVector<int64_t, 4>{};
   reduced_dims->resize(ValueRank(loss_op->getOperand(0)));
@@ -119,23 +120,23 @@ Status ExtractDims<mlir::TF::L2LossOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return absl::OkStatus();
   auto bias_add_grad_op = llvm::cast<mlir::TF::BiasAddGradOp>(op);
   auto data_format = bias_add_grad_op.getDataFormat();
   // rank is at least 2 (required by BiasAddGrad).
   int rank = ValueRank(bias_add_grad_op->getOperand(0));
-  if (data_format.equals("NHWC")) {
+  if (data_format == "NHWC") {
     for (int dim = 0; dim < rank - 1; ++dim) {
       reduced_dims->push_back(dim);
     }
-  } else if (data_format.equals("NCHW")) {
+  } else if (data_format == "NCHW") {
     for (int dim = 0; dim < rank; ++dim) {
       if (dim == 1) continue;
       reduced_dims->push_back(dim);
@@ -146,18 +147,18 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::EncodePngOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return absl::OkStatus();
   *reduced_dims = {-3, -2, -1};
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractReductionParameters(mlir::Operation* op,
@@ -218,7 +219,7 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Generate an error message for TPU int64.
   if (input_layout->mesh().is_tpu_mesh()) {
     if (auto tensor_type =
-            op->getOperand(0).getType().dyn_cast<mlir::TensorType>()) {
+            mlir::dyn_cast<mlir::TensorType>(op->getOperand(0).getType())) {
       if (tensor_type.getElementType().isInteger(64)) {
         return errors::InvalidArgument(
             "ReduceOp on TPU does not support int64 as dtype.");

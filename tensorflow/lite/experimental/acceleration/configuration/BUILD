@@ -13,16 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 
+# buildifier: disable=out-of-order-load
+
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
+
+# copybara:comment_begin(oss-only)
+load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+# copybara:comment_end
+
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 # copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
-
-# copybara:comment_begin(oss-only)
-load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
-# copybara:comment_end
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

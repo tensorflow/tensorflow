@@ -49,13 +49,13 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
       : name_(name), data_(cord) {}
   ~RamRandomAccessFile() override {}
 
-  Status Name(StringPiece* result) const override {
+  absl::Status Name(StringPiece* result) const override {
     *result = name_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override {
+  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                    char* scratch) const override {
     if (offset >= data_->size()) {
       return errors::OutOfRange("");
     }
@@ -72,26 +72,26 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     if (left < n) {
       return errors::OutOfRange("");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Append(StringPiece data) override {
+  absl::Status Append(StringPiece data) override {
     data_->append(data.data(), data.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
-  Status Append(const absl::Cord& cord) override {
+  absl::Status Append(const absl::Cord& cord) override {
     data_->append(cord.char_begin(), cord.char_end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
 
-  Status Close() override { return OkStatus(); }
-  Status Flush() override { return OkStatus(); }
-  Status Sync() override { return OkStatus(); }
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
 
-  Status Tell(int64_t* position) override {
+  absl::Status Tell(int64_t* position) override {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }
@@ -107,7 +107,7 @@ class RamFileSystem : public FileSystem {
  public:
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const std::string& fname_, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     mutex_lock m(mu_);
@@ -121,11 +121,12 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status NewWritableFile(const std::string& fname_, TransactionToken* token,
-                         std::unique_ptr<WritableFile>* result) override {
+  absl::Status NewWritableFile(const std::string& fname_,
+                               TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
@@ -137,11 +138,12 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status NewAppendableFile(const std::string& fname_, TransactionToken* token,
-                           std::unique_ptr<WritableFile>* result) override {
+  absl::Status NewAppendableFile(
+      const std::string& fname_, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
@@ -153,25 +155,25 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return errors::Unimplemented("");
   }
 
-  Status FileExists(const std::string& fname_,
-                    TransactionToken* token) override {
+  absl::Status FileExists(const std::string& fname_,
+                          TransactionToken* token) override {
     FileStatistics stat;
     auto fname = StripRamFsPrefix(fname_);
 
     return Stat(fname, token, &stat);
   }
 
-  Status GetChildren(const std::string& dir_, TransactionToken* token,
-                     std::vector<std::string>* result) override {
+  absl::Status GetChildren(const std::string& dir_, TransactionToken* token,
+                           std::vector<std::string>* result) override {
     mutex_lock m(mu_);
     auto dir = StripRamFsPrefix(dir_);
 
@@ -185,11 +187,12 @@ class RamFileSystem : public FileSystem {
       ++it;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetMatchingPaths(const std::string& pattern_, TransactionToken* token,
-                          std::vector<std::string>* results) override {
+  absl::Status GetMatchingPaths(const std::string& pattern_,
+                                TransactionToken* token,
+                                std::vector<std::string>* results) override {
     mutex_lock m(mu_);
     auto pattern = StripRamFsPrefix(pattern_);
 
@@ -199,11 +202,11 @@ class RamFileSystem : public FileSystem {
         results->push_back("ram://" + it->first);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Stat(const std::string& fname_, TransactionToken* token,
-              FileStatistics* stat) override {
+  absl::Status Stat(const std::string& fname_, TransactionToken* token,
+                    FileStatistics* stat) override {
     mutex_lock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
@@ -216,30 +219,30 @@ class RamFileSystem : public FileSystem {
       stat->is_directory = false;
       stat->length = fs_[fname]->size();
       stat->mtime_nsec = 0;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     stat->is_directory = true;
     stat->length = 0;
     stat->mtime_nsec = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status DeleteFile(const std::string& fname_,
-                    TransactionToken* token) override {
+  absl::Status DeleteFile(const std::string& fname_,
+                          TransactionToken* token) override {
     mutex_lock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
       fs_.erase(fname);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     return errors::NotFound("");
   }
 
-  Status CreateDir(const std::string& dirname_,
-                   TransactionToken* token) override {
+  absl::Status CreateDir(const std::string& dirname_,
+                         TransactionToken* token) override {
     mutex_lock m(mu_);
     auto dirname = StripRamFsPrefix(dirname_);
 
@@ -250,15 +253,15 @@ class RamFileSystem : public FileSystem {
     }
 
     fs_[dirname] = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status RecursivelyCreateDir(const std::string& dirname_,
-                              TransactionToken* token) override {
+  absl::Status RecursivelyCreateDir(const std::string& dirname_,
+                                    TransactionToken* token) override {
     auto dirname = StripRamFsPrefix(dirname_);
 
     std::vector<std::string> dirs = StrSplit(dirname, "/");
-    Status last_status;
+    absl::Status last_status;
     std::string dir = dirs[0];
     last_status = CreateDir(dir, token);
 
@@ -269,8 +272,8 @@ class RamFileSystem : public FileSystem {
     return last_status;
   }
 
-  Status DeleteDir(const std::string& dirname_,
-                   TransactionToken* token) override {
+  absl::Status DeleteDir(const std::string& dirname_,
+                         TransactionToken* token) override {
     mutex_lock m(mu_);
     auto dirname = StripRamFsPrefix(dirname_);
 
@@ -283,11 +286,11 @@ class RamFileSystem : public FileSystem {
     }
     fs_.erase(dirname);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetFileSize(const std::string& fname_, TransactionToken* token,
-                     uint64* file_size) override {
+  absl::Status GetFileSize(const std::string& fname_, TransactionToken* token,
+                           uint64* file_size) override {
     mutex_lock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
@@ -296,13 +299,13 @@ class RamFileSystem : public FileSystem {
         return errors::InvalidArgument("Not a file");
       }
       *file_size = fs_[fname]->size();
-      return OkStatus();
+      return absl::OkStatus();
     }
     return errors::NotFound("");
   }
 
-  Status RenameFile(const std::string& src_, const std::string& target_,
-                    TransactionToken* token) override {
+  absl::Status RenameFile(const std::string& src_, const std::string& target_,
+                          TransactionToken* token) override {
     mutex_lock m(mu_);
     auto src = StripRamFsPrefix(src_);
     auto target = StripRamFsPrefix(target_);
@@ -310,7 +313,7 @@ class RamFileSystem : public FileSystem {
     if (fs_.find(src) != fs_.end()) {
       fs_[target] = fs_[src];
       fs_.erase(fs_.find(src));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return errors::NotFound("");
   }

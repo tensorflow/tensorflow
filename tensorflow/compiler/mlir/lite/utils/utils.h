@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -60,6 +61,139 @@ inline bool OpHasSameStaticShapes(Operation* op) {
     ++operand_num;
   }
   return true;
+}
+
+// Utility function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+inline DenseElementsAttr RemapPermutation(Value permutation1,
+                                          DenseElementsAttr perm2_const) {
+  SmallVector<int32_t> initial_permutation;
+  DenseElementsAttr perm1_const;
+
+  SmallVector<int32_t> new_permutation;
+  if (matchPattern(permutation1, m_Constant(&perm1_const))) {
+    for (int32_t idx = 0; idx < perm1_const.getNumElements(); ++idx) {
+      initial_permutation.push_back(idx);
+    }
+    for (auto perm : perm2_const.getValues<APInt>()) {
+      new_permutation.push_back(
+          initial_permutation[perm1_const
+                                  .getValues<APInt>()[perm.getSExtValue()]
+                                  .getSExtValue()]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(new_permutation.size())},
+          mlir::IntegerType::get(permutation1.getContext(), 32)),
+      llvm::ArrayRef(new_permutation));
+}
+
+// Utility function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+inline DenseElementsAttr RemapPermutation(Value permutation1,
+                                          Value permutation2) {
+  DenseElementsAttr perm2_const;
+  (void)matchPattern(permutation2, m_Constant(&perm2_const));
+
+  return RemapPermutation(permutation1, perm2_const);
+}
+
+// Returns true if the transpose op is trivial. Trivial means that
+// the permutation is a cyclic permutation of the original shape with only the
+// identity dimensions permuted.
+inline bool IsTransposeTrivial(llvm::ArrayRef<int64_t> input_shape,
+                               Value perm) {
+  DenseElementsAttr perm_values_attr;
+  if (!matchPattern(perm, m_Constant(&perm_values_attr))) return false;
+
+  SmallVector<int64_t, 8> perm_values;
+  for (const auto& dim : perm_values_attr.getValues<APInt>())
+    perm_values.push_back(dim.getSExtValue());
+
+  // This should never happen unless the input graph is malformed.
+  if (input_shape.size() != perm_values.size()) {
+    return false;
+  }
+
+  SmallVector<int, 8> old_major_index_ordering;
+  SmallVector<int, 8> new_major_index_ordering;
+  for (int i = 0, end = input_shape.size(); i < end; i++) {
+    if (input_shape[i] != 1) {
+      old_major_index_ordering.push_back(i);
+    }
+
+    if (input_shape[perm_values[i]] != 1) {
+      new_major_index_ordering.push_back(perm_values[i]);
+    }
+  }
+  return (old_major_index_ordering == new_major_index_ordering);
+}
+
+// Returns the permutation that maps the input shape to the output shape.
+// This is only valid for trivial reshape ops.
+inline DenseElementsAttr GetPermutationFromTrivialReshape(
+    ShapedType input_type, ShapedType output_type) {
+  ArrayRef<int64_t> in_shape = input_type.getShape();
+  ArrayRef<int64_t> out_shape = output_type.getShape();
+
+  // Get the indexes of the non-identity dimensions and the identity dimensions
+  // in the input shape.
+  SmallVector<int32_t> input_nonidentity_dims_index_array;
+  SmallVector<int32_t> input_identity_dims_index_array;
+
+  // Since the reshape is trivial, the input and output shapes should have the
+  // same number of dimensions. And the non-identity dimensions must be in the
+  // same cyclic order.
+  for (size_t idx = 0; idx < in_shape.size(); ++idx) {
+    if (in_shape[idx] != 1) {
+      input_nonidentity_dims_index_array.push_back(idx);
+    } else {
+      input_identity_dims_index_array.push_back(idx);
+    }
+  }
+
+  // Get the permutation that maps the input shape to the output shape.
+  SmallVector<int32_t> permutation;
+  size_t nonidentity_dims_index_poiter = 0;
+  size_t identity_dims_index_pointer = 0;
+  for (auto out_dim : out_shape) {
+    if (out_dim != 1) {
+      permutation.push_back(
+          input_nonidentity_dims_index_array[nonidentity_dims_index_poiter++]);
+    } else {
+      permutation.push_back(
+          input_identity_dims_index_array[identity_dims_index_pointer++]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(permutation.size())},
+          mlir::IntegerType::get(input_type.getContext(), 32)),
+      llvm::ArrayRef(permutation));
+}
+
+// Returns true if the reshape op is equivalent to a transpose op.
+// This is true if the reshape op is a trivial reshape op, meaning no change in
+// the order of non-identity dimensions.
+inline bool IsReshapeEquivalentToTranspose(ShapedType input_type,
+                                           ShapedType output_type) {
+  std::vector<int64_t> in_shape{input_type.getShape().vec()};
+  std::vector<int64_t> out_shape{output_type.getShape().vec()};
+
+  // If the reshape changes the number of dimensions so it cannot be interpreted
+  // as a transpose.
+  if (in_shape.size() != out_shape.size()) {
+    return false;
+  }
+
+  in_shape.erase(std::remove(in_shape.begin(), in_shape.end(), 1),
+                 in_shape.end());
+  out_shape.erase(std::remove(out_shape.begin(), out_shape.end(), 1),
+                  out_shape.end());
+  return in_shape == out_shape;
 }
 
 // Checks if all elements in the constant attribute value are 1.

@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/data/experimental/distributed_save_op.h"
 
+#include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -64,6 +66,14 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
   OP_REQUIRES(ctx, !address.empty(),
               errors::InvalidArgument(kAddress, " must be nonempty"));
+
+  bool has_atomic_move = false;
+  OP_REQUIRES_OK(ctx, ctx->env()->HasAtomicMove(directory, &has_atomic_move));
+  OP_REQUIRES(ctx, has_atomic_move,
+              absl::FailedPreconditionError(absl::StrCat(
+                  "The file system for ", std::string(directory),
+                  " does not support atomic move (rename), which is required "
+                  "to write tf.data snapshots.")));
 
   SerializationContext::Params params(ctx);
   SerializationContext serialization_ctx(params);

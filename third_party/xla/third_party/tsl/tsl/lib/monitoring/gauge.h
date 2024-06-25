@@ -225,7 +225,7 @@ class Gauge {
   template <typename... Labels>
   GaugeCell<ValueType>* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
  private:
   explicit Gauge(
@@ -241,16 +241,17 @@ class Gauge {
               }
             })) {
     if (registration_handle_) {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     } else {
-      status_ = Status(absl::StatusCode::kAlreadyExists,
+      status_ =
+          absl::Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
 
   mutable mutex mu_;
 
-  Status status_;
+  absl::Status status_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);

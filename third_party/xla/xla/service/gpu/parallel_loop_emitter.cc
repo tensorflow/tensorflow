@@ -254,7 +254,7 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
       // such that it divides num_elements, but for int4 arrays, the caller
       // always sets unroll_factor to a multiple of 2 to prevent different
       // threads from writing to adjacent elements occupying the same byte.
-      CHECK(primitive_util::Is4BitType(shape_.element_type()));
+      CHECK(primitive_util::IsSubByteNonPredType(shape_.element_type()));
       llvm_ir::LlvmIfData if_in_bounds = llvm_ir::EmitIfThenElse(
           b_->CreateICmpULT(array_index.linear(),
                             llvm::ConstantInt::get(index_type, num_elements)),

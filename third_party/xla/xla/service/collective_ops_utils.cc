@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -588,6 +590,7 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kReduceScatter:
       return true;
     case HloOpcode::kFusion:
       if (instruction->IsCustomFusion()) {
@@ -607,26 +610,22 @@ bool IsCollective(const HloInstruction* instruction) {
   }
 }
 
-bool IsCollectiveWithChannelId(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCollectivePermuteStart:
-      return instruction->channel_id().has_value();
-    case HloOpcode::kFusion:
-      for (const auto* inner_inst : instruction->fused_instructions()) {
-        if (IsCollectiveWithChannelId(inner_inst)) {
-          return true;
-        }
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    for (auto* inner_inst : instruction->fused_instructions()) {
+      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
+        return inner_inst;
       }
-      return false;
-    default:
-      return false;
+    }
+    return nullptr;
   }
+  if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
+    return nullptr;
+  }
+  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
+    return instruction;
+  }
+  return nullptr;
 }
 
 bool IsSyncCollective(const HloInstruction* instr) {
@@ -635,6 +634,39 @@ bool IsSyncCollective(const HloInstruction* instr) {
     return false;
   }
   return backend_config->collective_backend_config().is_sync();
+}
+
+using SourceTargetPair = std::pair<int64_t, int64_t>;
+using SourceTargetPairs = std::vector<SourceTargetPair>;
+
+bool IsForwardCycle(const SourceTargetPairs& pairs) {
+  int64_t num_pairs = pairs.size();
+  const SourceTargetPair& last_pair = pairs[num_pairs - 1];
+  if (last_pair.first != num_pairs - 1 || last_pair.second != 0) {
+    return false;
+  }
+  for (int64_t i = 0; i < num_pairs - 1; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i + 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsBackwardCycle(const SourceTargetPairs& pairs) {
+  int64_t num_pairs = pairs.size();
+  const SourceTargetPair& first_pair = pairs[0];
+  if (first_pair.first != 0 || first_pair.second != num_pairs - 1) {
+    return false;
+  }
+  for (int64_t i = 1; i < num_pairs; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i - 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // end namespace xla

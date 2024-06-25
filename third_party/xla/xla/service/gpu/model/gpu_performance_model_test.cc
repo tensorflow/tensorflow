@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -79,10 +80,12 @@ class GpuPerformanceModelTest : public HloTestBase {
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuHloCostAnalysis analysis_{options_, &device_info_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, ShapeSizeBytesFunction(), &mlir_context_};
+      &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
+      &mlir_context_};
 
   GpuPerformanceModelTest() : HloTestBase() {}
 };
@@ -385,6 +388,48 @@ ENTRY fusion {
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 514, 10);
 }
 
+// Same as FusingTransposeIntoReduceIsSlow, but artificially wrapping the
+// transpose in a multi-output fusion with 1 output, to check that we still get
+// the same results.
+TEST_F(GpuPerformanceModelTest,
+       FusingTransposeMultiOutputFusionIntoReduceIsSlow) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+transpose_fusion {
+  param0 = f32[1500,32,128] parameter(0)
+  transpose.1 = f32[1500,128,32] transpose(param0), dimensions={0,2,1}
+  ROOT res = (f32[1500,128,32]) tuple(transpose.1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[1500,32,128] parameter(0)
+  fusion = (f32[1500,128,32]) fusion(p0), kind=kInput, calls=transpose_fusion
+  gte = f32[1500,128,32] get-tuple-element(fusion), index=0
+  ROOT reduce.1 = f32[1500,32] reduce(gte, c), dimensions={1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("fusion");
+  std::vector<HloInstruction*> consumers{
+      module->entry_computation()->GetInstructionWithName("reduce.1")};
+
+  auto t = EstimateRunTimesForPriorityFusion(producer, consumers);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 514, 10);
+}
+
 TEST_F(GpuPerformanceModelTest, FusingNonMinorTransposeIntoReduceIsFast) {
   constexpr absl::string_view kHlo = R"(
 HloModule testmodule
@@ -616,6 +661,42 @@ ENTRY fusion {
       exp_producer_runtimes.time_unfused - exp_producer_runtimes.time_fused;
 
   EXPECT_LT(exp_producer_priority, exp_consumer_priority);
+}
+
+TEST_F(GpuPerformanceModelTest, DontFuseExpensiveElementwiseIntoSmallReduce) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation.0 {
+  p0 = f32[4,28672,32] parameter(0)
+  tanh = f32[4,28672,32] tanh(p0)
+  c1 = f32[] constant(72)
+  broadcast = f32[4,28672,32] broadcast(c1), dimensions={}
+  ROOT mul = f32[4,28672,32] multiply(tanh, broadcast)
+}
+
+ENTRY fusion {
+  p0 = f32[4,28672,32] parameter(0)
+  fusion = f32[4,28672,32] fusion(p0), kind=kLoop, calls=fused_computation.0
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[4,32] reduce(fusion, c0), to_apply=add, dimensions={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* fusion = module->entry_computation()->GetInstructionWithName("fusion");
+  auto* reduce = module->entry_computation()->GetInstructionWithName("reduce");
+
+  auto t = EstimateRunTimesForPriorityFusion(fusion, {reduce});
+
+  EXPECT_LT(t.time_unfused, t.time_fused);
 }
 
 }  // namespace

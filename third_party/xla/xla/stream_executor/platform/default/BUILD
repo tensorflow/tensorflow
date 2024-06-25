@@ -1,5 +1,5 @@
-load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "tsl_copts")
 
 licenses(["notice"])
 

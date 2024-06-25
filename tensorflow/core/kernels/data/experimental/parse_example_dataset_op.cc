@@ -410,9 +410,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         RecordStop(ctx);
         result->notification.WaitForNotification();
         RecordStart(ctx);
-        profiler::TraceMe traceme([&] {
-          return profiler::TraceMeEncode("ParseExampleConsume",
-                                         {{"element_id", result->id}});
+        tsl::profiler::TraceMe traceme([&] {
+          return tsl::profiler::TraceMeEncode("ParseExampleConsume",
+                                              {{"element_id", result->id}});
         });
         return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
@@ -581,9 +581,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                         const std::shared_ptr<InvocationResult>& result)
           TF_LOCKS_EXCLUDED(*mu_) {
-        profiler::TraceMe traceme([&] {
-          return profiler::TraceMeEncode("ParseExampleProduce",
-                                         {{"element_id", result->id}});
+        tsl::profiler::TraceMe traceme([&] {
+          return tsl::profiler::TraceMeEncode("ParseExampleProduce",
+                                              {{"element_id", result->id}});
         });
         // Get the next input element.
         std::vector<Tensor> input_element;
@@ -653,8 +653,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         std::vector<tstring> slice_vec;
         for (const Tensor& t : input) {
           auto serialized_t = t.flat<tstring>();
-          gtl::ArraySlice<tstring> slice(serialized_t.data(),
-                                         serialized_t.size());
+          absl::Span<const tstring> slice(serialized_t.data(),
+                                          serialized_t.size());
           for (auto it = slice.begin(); it != slice.end(); it++)
             slice_vec.push_back(*it);
         }

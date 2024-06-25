@@ -34,13 +34,13 @@ class ProfilerInterface {
   virtual ~ProfilerInterface() = default;
 
   // Starts profiling.
-  virtual Status Start() = 0;
+  virtual absl::Status Start() = 0;
 
   // Stops profiling.
-  virtual Status Stop() = 0;
+  virtual absl::Status Stop() = 0;
 
   // Saves collected profile data into XSpace.
-  virtual Status CollectData(tensorflow::profiler::XSpace* space) = 0;
+  virtual absl::Status CollectData(tensorflow::profiler::XSpace* space) = 0;
 };
 
 }  // namespace profiler

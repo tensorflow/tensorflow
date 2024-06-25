@@ -37,8 +37,8 @@ namespace m = xla::match;
 class ReshapeMoverTest : public HloTestBase {
  protected:
   // ReshapeMover relies on algsimp for cleanup.
-  Status RunPass(HloModule* module, bool change_expected,
-                 ReshapeMoverOptions options = ReshapeMoverOptions{}) {
+  absl::Status RunPass(HloModule* module, bool change_expected,
+                       ReshapeMoverOptions options = ReshapeMoverOptions{}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         RunHloPass(ReshapeMover(options), module));
     SCOPED_TRACE(module->ToString());
@@ -48,7 +48,7 @@ class ReshapeMoverTest : public HloTestBase {
                                 AlgebraicSimplifierOptions()),
                             module)
                      .status());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

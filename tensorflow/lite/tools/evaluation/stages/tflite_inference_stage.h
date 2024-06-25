@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tflite {
 namespace evaluation {

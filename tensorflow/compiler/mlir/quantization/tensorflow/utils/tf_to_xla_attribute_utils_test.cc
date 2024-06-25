@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
@@ -51,7 +52,8 @@ void PackOperandTestHelper(
   DenseIntElementsAttr packed_value_attr;
   ASSERT_TRUE(matchPattern(packed_value, m_Constant(&packed_value_attr)));
 
-  ShapedType packed_shape_type = packed_value.getType().dyn_cast<ShapedType>();
+  ShapedType packed_shape_type =
+      mlir::dyn_cast<ShapedType>(packed_value.getType());
   llvm::SmallVector<int64_t> packed_shape(packed_shape_type.getShape().begin(),
                                           packed_shape_type.getShape().end());
   EXPECT_THAT(packed_shape, testing::ElementsAreArray(expected_packed_shape));

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -137,7 +138,7 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
     // SymbolUserOpInterface doesn't tell us which attributes contain
     // the symbols, so we have to scan through all of them.
     for (auto attr : op->getAttrs()) {
-      if (auto sym = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
+      if (auto sym = mlir::dyn_cast<FlatSymbolRefAttr>(attr.getValue())) {
         Operation* func = mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
         if (func) {
           do_not_touch.insert(func);

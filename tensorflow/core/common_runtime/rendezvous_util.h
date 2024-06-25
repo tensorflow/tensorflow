@@ -33,7 +33,7 @@ typedef std::function<void(const Status&)> StatusCallback;
 Status SendTensorsToRendezvous(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send);
+    const std::vector<string>& keys, absl::Span<const Tensor> tensors_to_send);
 
 // Uses `rendezvous` to obtain tensors. `device_context` should be the
 // DeviceContext associated with the receiving device. `alloc_attrs` contains

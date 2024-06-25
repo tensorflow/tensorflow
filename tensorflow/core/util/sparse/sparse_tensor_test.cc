@@ -558,7 +558,7 @@ TEST(SparseTensorTest, Concat) {
 
   SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
-  gtl::InlinedVector<int64_t, 8> expected_shape{40, 10, 10};
+  absl::InlinedVector<int64_t, 8UL> expected_shape{40, 10, 10};
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
   TF_EXPECT_OK(concatted.IndicesValid());
@@ -637,7 +637,7 @@ TEST(SparseTensorTest, Split) {
   TF_ASSERT_OK(SparseTensor::Split<int64_t>(st, 0, 2, &st_list));
 
   EXPECT_EQ(st_list.size(), 2);
-  auto expected_shape = gtl::InlinedVector<int64_t, 8>{2, 3};
+  auto expected_shape = absl::InlinedVector<int64_t, 8UL>{2, 3};
 
   EXPECT_EQ(st_list[0].shape(), expected_shape);
   EXPECT_EQ(st_list[0].values().NumElements(), 3);

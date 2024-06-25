@@ -492,7 +492,7 @@ class MulNoNanGradientTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientWithRhsIsZero(self):
-    x_vals = [0, 1.0, np.nan, np.inf, np.NINF]
+    x_vals = [0, 1.0, np.nan, np.inf, -np.inf]
     x = constant_op.constant(x_vals, dtype=dtypes.float32)
     y = array_ops.zeros_like(x, dtype=dtypes.float32)
     outputs = math_ops.mul_no_nan(x, y)

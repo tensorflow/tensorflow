@@ -35,14 +35,14 @@ namespace toco {
   auto op_it = model->operators.begin() + op_index;
   auto src_op = op_it->get();
   if (src_op->type != OperatorType::kLstmCell) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Already a compact LstmCell. Do not need to merge cell inputs.
   const auto* src_lstm_op = static_cast<LstmCellOperator*>(src_op);
   if (src_lstm_op->kernel_type != LstmCellOperator::KERNEL_FULL ||
       src_lstm_op->inputs.size() != kExtendedLstmInputCount) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Identify prev_activ_input, prev_state_input as required Op inputs,
@@ -50,12 +50,12 @@ namespace toco {
   std::string prev_activ_input;
   if (!GetMatchingRnnArray(model, src_op->outputs[kOutputTensor],
                            &prev_activ_input)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   std::string prev_state_input;
   if (!GetMatchingRnnArray(model, src_op->outputs[kCellStateTensor],
                            &prev_state_input)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Get LstmCell's cell, input, output size.
@@ -175,7 +175,7 @@ namespace toco {
   DeleteOpAndArrays(model, src_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

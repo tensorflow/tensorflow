@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
+#include "absl/log/log.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 

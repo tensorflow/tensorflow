@@ -29,10 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
-    TFE_InputTensorHandles;
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2>
-    TFE_OutputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 4UL> TFE_InputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 2UL> TFE_OutputTensorHandles;
 
 // Execute a TensorFlow operation.
 //

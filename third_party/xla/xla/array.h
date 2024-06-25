@@ -29,9 +29,10 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -314,32 +315,32 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T*)> f) {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), &values_[i]);
+      absl::Status s = f(index.span(), &values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T)> f) const {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), values_[i]);
+      absl::Status s = f(index.span(), values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the value at the cell specified by the indexes. The number of
@@ -432,17 +433,30 @@ class Array {
 
   // Performs the equivalent of a slice operation on this array.
   Array<T> Slice(absl::Span<const int64_t> starts,
-                 absl::Span<const int64_t> limits) const {
+                 absl::Span<const int64_t> limits,
+                 bool out_of_bounds_ok = false) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
       CHECK_GE(starts[i], 0);
-      CHECK_LE(limits[i], dim(i));
+      if (!out_of_bounds_ok) {
+        CHECK_LE(limits[i], dim(i));
+      }
       sizes[i] = limits[i] - starts[i];
     }
     Array<T> result(sizes.span());
+    if (result.num_elements() == 0) {
+      return result;
+    }
+    // Initializes the slice to the first value if out of bounds access are ok.
+    if (out_of_bounds_ok) {
+      CHECK_GT(num_elements(), 0);
+      for (int64_t i = 0; i < result.num_elements(); ++i) {
+        result.values_[i] = values_[0];
+      }
+    }
 
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     int64_t slice_i = 0;

@@ -193,6 +193,18 @@ class Device : public DeviceBase {
   // Informs if this Device can be used as a caller in RemoteCall operation.
   virtual bool IsRemoteCallAllowed() const;
 
+  // Whether to merge the host_to_device copy stream with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_host_to_device_stream() const { return false; }
+
+  // Whether to merge the device_to_host copy stream with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_device_to_host_stream() const { return false; }
+
+  // Whether to merge the device_to_device copy streams with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_device_to_device_stream() const { return false; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;

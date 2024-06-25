@@ -63,10 +63,10 @@ GpuEventType ParseMemcpyName(absl::string_view memcpy_name) {
 }
 
 void SetNodeTimes(const XEventVisitor& event, NodeExecStats* ns) {
-  ns->set_all_start_micros(NanoToMicro(event.TimestampNs()));
+  ns->set_all_start_micros(tsl::profiler::NanoToMicro(event.TimestampNs()));
   ns->set_op_start_rel_micros(0);
-  ns->set_op_end_rel_micros(NanoToMicro(event.DurationNs()));
-  ns->set_all_end_rel_micros(NanoToMicro(event.DurationNs()));
+  ns->set_op_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
+  ns->set_all_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
 }
 
 }  // namespace
@@ -136,7 +136,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           if (it != correlation_info_map.end()) {
             const CorrelationInfo& correlation_info = it->second;
             ns->set_scheduled_micros(
-                NanoToMicro(correlation_info.enqueue_time_ns));
+                tsl::profiler::NanoToMicro(correlation_info.enqueue_time_ns));
             ns->set_thread_id(correlation_info.thread_id);
           }
         }

@@ -45,7 +45,7 @@ Status PartitionFunctionGraph(
 // Note that, the returned graph is intended to be used by TF MLIR importer.
 // The dependencies between send/recv pairs ensure the importer will generate TF
 // MLIR ops in a valid order.
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph);
 
 // This function performs bookkeeping to track which `Arg` and `Retval` nodes

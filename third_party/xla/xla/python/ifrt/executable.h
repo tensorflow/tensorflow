@@ -16,27 +16,38 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_EXECUTABLE_H_
 #define XLA_PYTHON_IFRT_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/statusor.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 class Client;
+class CompileOptions;
+struct DeserializeExecutableOptions;
 
 // Wraps a computation that has been partially compiled and can be loaded.
 class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
  public:
+  using DeserializeOptions = DeserializeExecutableOptions;
+
   // Unique name for this executable.
   virtual absl::string_view name() const = 0;
 
@@ -48,8 +59,8 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
-  // prototyping. TODO(hyeontaek): Factor some of them out as
-  // `XlaCompatibleExecutable`.
+  // prototyping.
+  // TODO(hyeontaek): Factor some of them out as `XlaCompatibleExecutable`.
   virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()
@@ -63,13 +74,22 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
       const = 0;
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
-  // Returns a list of parameter `xla::Layout`s.
-  virtual absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
-  // Returns a list of output/result `xla::Layout`s.
-  virtual absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
+  // Returns a list of parameter layouts.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  GetParameterLayouts() const = 0;
+  // Returns a list of output/result layouts.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
+
+  // Returns a list of lists of memory kind strings for output. The returned
+  // value is `[num_programs, num_output]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetOutputMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const = 0;
 
   using CostAnalysisValue = xla::PjRtValueType;
 
@@ -78,6 +98,11 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // differ for different implementations and platforms.
   virtual absl::StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
   GetCostAnalysis() const = 0;
+
+  // Returns the compile options used to compile this executable.
+  // TODO(phawkins): consider removing this API and having the client remember
+  // the compile options used to create the executable.
+  virtual const CompileOptions* GetCompileOptions() const = 0;
 
   static char ID;  // NOLINT
 };
@@ -110,7 +135,7 @@ class LoadedExecutable
   // compilation work in the background. Implementations must still ensure that
   // all other methods can be used even without explicitly waiting for the ready
   // future (e.g., via blocking).
-  virtual Future<absl::Status> GetReadyFuture() const = 0;
+  virtual Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -131,10 +156,12 @@ class LoadedExecutable
       const = 0;
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
-  // Returns a list of parameter `xla::Layout`s.
-  virtual absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
-  // Returns a list of output/result `xla::Layout`s.
-  virtual absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
+  // Returns a list of parameter layouts.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  GetParameterLayouts() const = 0;
+  // Returns a list of output/result layouts.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
@@ -160,7 +187,7 @@ class LoadedExecutable
   // Result from an execution.
   struct ExecuteResult {
     // Resulting status of the execution.
-    Future<Status> status;
+    Future<> status;
     // Output arrays.
     std::vector<tsl::RCReference<Array>> outputs;
   };
@@ -190,7 +217,7 @@ class LoadedExecutable
   // The returned future will have the result of the deletion on the devices.
   // Implementations that do not track the completion of the deletion operation
   // may make the future immediately ready with an OK status.
-  virtual Future<Status> Delete() = 0;
+  virtual Future<> Delete() = 0;
   // Returns whether the executable has been enqueued for deletion from the
   // devices.
   virtual bool IsDeleted() const = 0;

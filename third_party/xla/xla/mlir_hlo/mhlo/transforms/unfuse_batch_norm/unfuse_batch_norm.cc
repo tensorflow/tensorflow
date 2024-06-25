@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -53,7 +54,8 @@ Value broadcastToFeatureDim(Location loc, RankedTensorType resultType,
 // Get the shape of operand, assuming it is a dynamic shape with static rank.
 Value getShapeValue(Location loc, Value operand,
                     PatternRewriter &rewriter) {  // NOLINT
-  RankedTensorType resultType = operand.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType resultType =
+      mlir::dyn_cast<RankedTensorType>(operand.getType());
   return rewriter.create<mlir::shape::ShapeOfOp>(
       loc,
       RankedTensorType::get({resultType.getRank()}, rewriter.getIndexType()),
@@ -84,7 +86,7 @@ Value materializeEpsilon(Operation *op, FloatAttr epsilonAttr, FloatType fpType,
 
   auto scalarType = RankedTensorType::get({}, fpType);
   auto epsilonTensorAttr =
-      DenseElementsAttr::get(scalarType, {epsilonAttr.cast<Attribute>()});
+      DenseElementsAttr::get(scalarType, {mlir::cast<Attribute>(epsilonAttr)});
   Value epsilon = b.create<mhlo::ConstantOp>(epsilonTensorAttr);
   auto dimsType = RankedTensorType::get({0}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
@@ -108,13 +110,14 @@ class UnfuseBatchNormInferencePattern
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
-    auto inputType = bnOp.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto inputType =
+        mlir::dyn_cast<RankedTensorType>(bnOp.getOperand().getType());
     auto varianceType =
-        bnOp.getVariance().getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(bnOp.getVariance().getType());
     if (!inputType || !varianceType) {
       return failure();
     }
-    auto fpType = varianceType.getElementType().dyn_cast<FloatType>();
+    auto fpType = mlir::dyn_cast<FloatType>(varianceType.getElementType());
     if (!fpType) {
       return failure();
     }
@@ -168,7 +171,7 @@ class UnfuseBatchNormInferencePattern
 Value createReduce(Location loc, Value operand, Value zero,
                    SmallVector<int64_t>& reduceDims, int64_t featureIndex,
                    PatternRewriter& rewriter) {
-  auto operandType = operand.getType().cast<RankedTensorType>();
+  auto operandType = mlir::cast<RankedTensorType>(operand.getType());
   Type reduceResultType = RankedTensorType::get(
       {operandType.getDimSize(featureIndex)}, operandType.getElementType());
   mhlo::ReduceOp reduce =
@@ -233,7 +236,7 @@ Value calculateReduceSize(Operation *op, Value operand,
   llvm::APFloat floatValue(static_cast<double>(reduceDimsSize));
   bool losesInfo;
   floatValue.convert(
-      scaleType.getElementType().cast<FloatType>().getFloatSemantics(),
+      mlir::cast<FloatType>(scaleType.getElementType()).getFloatSemantics(),
       APFloat::rmNearestTiesToEven, &losesInfo);
   if (losesInfo) {
     op->emitWarning("Conversion of reduce_dims_size loses precision");
@@ -252,12 +255,14 @@ class UnfuseBatchNormTrainingPattern
 
   LogicalResult matchAndRewrite(mhlo::BatchNormTrainingOp bnOp,
                                 PatternRewriter& rewriter) const override {
-    auto operandType = bnOp.getOperand().getType().dyn_cast<RankedTensorType>();
-    auto scaleType = bnOp.getScale().getType().dyn_cast<RankedTensorType>();
+    auto operandType =
+        mlir::dyn_cast<RankedTensorType>(bnOp.getOperand().getType());
+    auto scaleType =
+        mlir::dyn_cast<RankedTensorType>(bnOp.getScale().getType());
     if (!operandType || !scaleType) {
       return failure();
     }
-    auto fpType = operandType.getElementType().dyn_cast<FloatType>();
+    auto fpType = mlir::dyn_cast<FloatType>(operandType.getElementType());
     if (!fpType) {
       return failure();
     }

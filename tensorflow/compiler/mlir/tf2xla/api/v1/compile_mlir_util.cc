@@ -110,7 +110,7 @@ Status MaybeRewriteLayoutWithShardedShape(
     mlir::StringAttr sharding,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* shape) {
-  if (!sharding) return OkStatus();
+  if (!sharding) return absl::OkStatus();
 
   xla::OpSharding op_sharding;
   if (tensorflow::DecodeShardingAttribute(sharding, op_sharding).failed()) {
@@ -121,7 +121,7 @@ Status MaybeRewriteLayoutWithShardedShape(
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
   TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
       hlo_sharding, /*use_fast_memory=*/false, shape_determination_fns, shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
@@ -168,20 +168,20 @@ Status GetXlaInputShapes(
   } else {
     *xla_input_shapes = individual_arg_shapes;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns a static ranked tensor type corresponding to the given static or
 // bounded type by using the bounds as dimension sizes. Returns null if is
 // neither.
 mlir::RankedTensorType GetBufferType(mlir::Type ty) {
-  auto ranked_ty = ty.dyn_cast_or_null<mlir::RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast_or_null<mlir::RankedTensorType>(ty);
   if (!ranked_ty) return {};
 
   int64_t rank = ranked_ty.getRank();
   llvm::SmallVector<int64_t, 4> dims = llvm::to_vector<4>(ranked_ty.getShape());
-  auto encoding = ranked_ty.getEncoding()
-                      .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+      ranked_ty.getEncoding());
   if (encoding && !encoding.getBounds().empty()) {
     for (int64_t dim = 0; dim < rank; ++dim) {
       if (dims[dim] == mlir::ShapedType::kDynamic) {
@@ -234,7 +234,7 @@ Status GetOutputInfo(
   auto return_op = main_func.begin()->getTerminator();
   for (const auto& type_and_idx : llvm::enumerate(func_type.getResults())) {
     size_t idx = type_and_idx.index();
-    auto result_ty = type_and_idx.value().cast<mlir::RankedTensorType>();
+    auto result_ty = mlir::cast<mlir::RankedTensorType>(type_and_idx.value());
 
     // If the result type isn't static, then the owner of the result may be a
     // cast op from a more specific bounded type to an unbounded dynamic type.
@@ -275,7 +275,8 @@ Status GetOutputInfo(
     TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
         sharding, shape_determination_fns, &shape));
 
-    auto tensor_type = type_and_idx.value().dyn_cast<mlir::RankedTensorType>();
+    auto tensor_type =
+        mlir::dyn_cast<mlir::RankedTensorType>(type_and_idx.value());
     shapes.push_back(shape);
 
     auto it = output_to_input_alias.find(type_and_idx.index());
@@ -307,7 +308,7 @@ Status GetOutputInfo(
 
   // XLA computation always uses Tuple shape.
   *xla_output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a vector that maps from the parameters of the XLA computation to
@@ -666,7 +667,7 @@ Status ConvertMLIRWithOptionalXlaComputation(
         module_op, &hlo_proto, use_tuple_args, return_tuple, options));
     *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Wraps the optional lowering version to keep the api the same for clients.
@@ -692,7 +693,7 @@ Status CompileMlirSetup(mlir::ModuleOp module_op,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("compile_mlir_shape_refiner", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -715,7 +716,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
@@ -729,7 +730,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
           kGroupSizeAttrName.data(), kGroupSizeAttrName.size()));
   if (group_key_attr == nullptr && group_size_attr == nullptr) {
     // No CollectiveInfo is present.
-    return OkStatus();
+    return absl::OkStatus();
   }
   DCHECK(group_key_attr != nullptr)
       << "module attribute " << kGroupKeyAttrName
@@ -742,7 +743,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
   VLOG(2) << "Populating CollectiveInfo: group_key=" << group_key
           << " group_size=" << group_size;
   compilation_result->collective_info = {group_key, group_size, 0};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PopulateResultIOInfo(
@@ -872,7 +873,7 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
       auto resource_type =
           mlir::TF::ResourceType::get({resource_subtype}, builder.getContext());
 
-      auto tensor_type = mlir_arg.getType().cast<mlir::TensorType>();
+      auto tensor_type = mlir::cast<mlir::TensorType>(mlir_arg.getType());
       if (tensor_type.hasRank()) {
         mlir_arg.setType(
             GetTypeFromTFTensorShape(tensor_type.getShape(), resource_type));
@@ -945,7 +946,7 @@ Status CompileGraphSetup(
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("compile_graph_setup_after", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -989,7 +990,8 @@ Status CompileGraphToXlaHlo(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
-    const Graph& graph, llvm::ArrayRef<std::string> control_rets,
+    bool unconditionally_use_set_output_shapes, const Graph& graph,
+    llvm::ArrayRef<std::string> control_rets,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
@@ -1004,41 +1006,29 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   config.enable_shape_inference = false;
+  // Some graphs may require _output_shapes (an unregistered attribute)
+  // to override shapes. It is unfortunately not always set correctly so only
+  // do it optionally.
+  config.unconditionally_use_set_output_shapes =
+      unconditionally_use_set_output_shapes;
   return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
 Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
-    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
+    llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
+    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      GraphToModule(graph, control_rets, flib_def, debug_info, &mlir_context));
+      GraphToModule(unconditionally_use_output_shapes, graph, control_rets,
+                    flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
-}
-
-Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, bool enable_op_fallback,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    XlaCompilationResult* compilation_result,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes) {
-  mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> module,
-      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
-  return CompileGraphToXlaHlo(
-      module.get(), args, device_type, use_tuple_args, enable_op_fallback,
-      /*use_return_tuple=*/true, shape_determination_fns, compilation_result,
-      custom_legalization_passes);
 }
 
 void RegisterConvertMlirToXlaHloPipelineWithDefaults() {

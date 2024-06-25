@@ -167,7 +167,7 @@ Status PythonAPIInfo::Initialize(const OpDef& op_def,
       },
       &inputs_with_number_attrs_);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PythonAPIInfo::CheckParamNames() const {
@@ -190,7 +190,7 @@ Status PythonAPIInfo::CheckParamNames() const {
           api_name_, ": missing specification for parameter ", param_names_[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PythonAPIInfo::InitializeFromRegisteredOp(const std::string& op_name) {
@@ -201,7 +201,7 @@ Status PythonAPIInfo::InitializeFromRegisteredOp(const std::string& op_name) {
   Safe_PyObjectPtr defaults_tuple;
   GetOpDefNamesAndDefaults(*op_def, param_names, defaults_tuple);
   TF_RETURN_IF_ERROR(Initialize(*op_def, param_names, defaults_tuple.get()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PythonAPIInfo::InitializeFromParamSpecs(
@@ -223,7 +223,7 @@ Status PythonAPIInfo::InitializeFromParamSpecs(
   TF_RETURN_IF_ERROR(
       Initialize(op_reg_data.op_def, param_names, defaults_tuple));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PythonAPIInfo::InitializeAttribute(
@@ -293,7 +293,7 @@ Status PythonAPIInfo::InitializeAttribute(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PythonAPIInfo::InitializeInput(
@@ -360,7 +360,7 @@ Status PythonAPIInfo::InitializeInput(
     input->tensor_list_params.push_back(param_index);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 PythonAPIInfo::InputsWithTypeAttr* PythonAPIInfo::FindInputsWithTypeAttr(

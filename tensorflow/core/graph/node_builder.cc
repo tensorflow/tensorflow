@@ -72,7 +72,7 @@ NodeBuilder& NodeBuilder::Input(NodeOut src) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
+NodeBuilder& NodeBuilder::Input(absl::Span<const NodeOut> src_list) {
   std::vector<NodeDefBuilder::NodeOut> srcs;
   srcs.reserve(src_list.size());
   for (const auto& node_out : src_list) {
@@ -83,7 +83,7 @@ NodeBuilder& NodeBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
       inputs_.emplace_back(node_out.node, node_out.index);
     }
   }
-  def_builder_.Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
+  def_builder_.Input(absl::Span<const NodeDefBuilder::NodeOut>(srcs));
   return *this;
 }
 
@@ -93,7 +93,7 @@ NodeBuilder& NodeBuilder::ControlInput(Node* src_node) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
+NodeBuilder& NodeBuilder::ControlInputs(absl::Span<Node* const> src_nodes) {
   control_inputs_.insert(control_inputs_.end(), src_nodes.begin(),
                          src_nodes.end());
   for (const Node* src_node : src_nodes) {
@@ -153,7 +153,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
 
   if (created_node != nullptr) *created_node = node;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void NodeBuilder::AddIndexError(const Node* node, int i) {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -131,7 +131,7 @@ std::vector<int64_t> GatherOperandDimsByPriority(
   }
   const auto operand_passthrough_dims =
       hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-          operand.base_shape(), operand.sharding(), *gather, slice_sizes);
+          operand.base_shape(), *gather, slice_sizes);
   absl::c_copy(operand_passthrough_dims,
                std::back_inserter(priority_dims_for_operand));
   return priority_dims_for_operand;
@@ -168,8 +168,7 @@ std::vector<int64_t> GatherOutputDimsByPriority(
   std::vector<int64_t> priority_dims_for_output;
   auto operand_passthrough_output_dims =
       hlo_sharding_util::GetGatherOperandPassthroughOutputDims(
-          output_shape, operand.base_shape(), operand.sharding(), *gather,
-          slice_sizes);
+          output_shape, operand.base_shape(), *gather, slice_sizes);
   for (int i = 0; i != output_shape.rank(); ++i) {
     if (!absl::c_linear_search(operand_passthrough_output_dims, i)) {
       priority_dims_for_output.push_back(i);
@@ -354,7 +353,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
               operand.base_shape(), operand.sharding(), *gather, slice_sizes)) {
     const auto operand_grouping_dims =
         hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-            operand.base_shape(), operand.sharding(), *gather, slice_sizes);
+            operand.base_shape(), *gather, slice_sizes);
     const int64_t num_groups =
         operand.sharding().NumTiles(operand_grouping_dims);
     const int64_t num_tiles = operand.sharding().TotalNumTiles();
@@ -826,7 +825,7 @@ absl::StatusOr<HloInstruction*> PartitionGather(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
@@ -847,7 +846,7 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
                       gather->gather_slice_sizes(), this));
   SetPartitionedHlo(gather, PartitionedHlo(pgather, gather->shape(),
                                            MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1614,7 +1613,7 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
@@ -1695,7 +1694,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   }
   SetPartitionedHlo(scatter, PartitionedHlo(pscatter, scatter->shape(),
                                             MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

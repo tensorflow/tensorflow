@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/client/padding.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -41,7 +41,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   explicit ReductionRewriterVisitor(int64_t reduce_window_size)
       : reduce_window_size_(reduce_window_size) {}
 
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     HloInstruction *reduced_op = hlo->mutable_operand(0);
     HloInstruction *initial_value = hlo->mutable_operand(1);
     const Shape &input_shape = reduced_op->shape();
@@ -51,7 +51,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       // TODO(b/210786051): Implement tree reduction rewrite for variadic
       // reductions on CPU as well.
       VLOG(1) << "Skipping rewrite for variadic reduction";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // All of the reduced dimensions is smaller than the window size,
@@ -62,7 +62,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
                  "smaller than "
               << reduce_window_size_;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::vector<int64_t> window_dimensions;
@@ -109,7 +109,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   int64_t reduce_window_size_;
 };
 
-StatusOr<bool> TreeReductionRewriter::Run(
+absl::StatusOr<bool> TreeReductionRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   ReductionRewriterVisitor visitor(reduce_window_size_);

@@ -52,7 +52,7 @@ class CopyToDeviceNode : public EagerNode {
 
   Status Run() override {
     tensorflow::Tensor tensor;
-    profiler::ScopedMemoryDebugAnnotation op_annotation(
+    tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
         "eager::CopyToDeviceNode", "dynamic", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));

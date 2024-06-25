@@ -1,0 +1,8 @@
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+
+// CHECK: module @check_imported_configs attributes {{.*}} mhlo.num_partitions = 4 : i32, mhlo.num_replicas = 2 : i32
+HloModule check_imported_configs, replica_count=2, num_partitions=4
+
+ENTRY %main.2 (Arg_0.1: f32[1]) -> f32[1] {
+  ROOT %Arg_0.1 = f32[1] parameter(0)
+}

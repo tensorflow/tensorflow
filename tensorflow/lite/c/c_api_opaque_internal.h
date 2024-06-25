@@ -31,32 +31,31 @@ class CommonOpaqueConversionUtil {
  public:
   CommonOpaqueConversionUtil() = delete;
 
-  // Obtain (or create) a 'TfLiteRegistrationExternal' object that corresponds
+  // Obtain (or create) a 'TfLiteOperator' object that corresponds
   // to the provided 'registration' argument, and return the address of the
   // external registration.  We loosely define that a
-  // 'TfLiteRegistrationExternal' object "corresponds" to a 'TfLiteRegistration'
+  // 'TfLiteOperator' object "corresponds" to a 'TfLiteRegistration'
   // object when calling any function pointer (like 'prepare') on the
-  // 'TfLiteRegistrationExternal' object calls into the corresponding function
+  // 'TfLiteOperator' object calls into the corresponding function
   // pointer of the 'TfLiteRegistration' object.
   //
   // The specified 'context' or 'op_resolver' object is used to store the
-  // 'TfLiteRegistrationExternal*' pointers. The 'TfLiteRegistrationExternal*'
+  // 'TfLiteOperator*' pointers. The 'TfLiteOperator*'
   // pointer will be deallocated when that object gets destroyed.  I.e., the
   // caller of this function should not deallocate the object pointed to by the
-  // return value of 'ObtainRegistrationExternal'.
+  // return value of 'ObtainOperator'.
   //
   // We also need to provide the 'node_index' that the 'registration'
-  // corresponds to, so that the 'TfLiteRegistrationExternal' can store that
+  // corresponds to, so that the 'TfLiteOperator' can store that
   // index within its fields.  If the registration does not yet correspond
   // to a specific node index, then 'node_index' should be -1.
-  static TfLiteRegistrationExternal* ObtainRegistrationExternal(
-      TfLiteContext* context, const TfLiteRegistration* registration,
-      int node_index);
+  static TfLiteOperator* ObtainOperator(TfLiteContext* context,
+                                        const TfLiteRegistration* registration,
+                                        int node_index);
 
  private:
-  static TfLiteRegistrationExternal* CachedObtainRegistrationExternal(
-      ::tflite::internal::RegistrationExternalsCache*
-          registration_externals_cache,
+  static TfLiteOperator* CachedObtainOperator(
+      ::tflite::internal::OperatorsCache* registration_externals_cache,
       const TfLiteRegistration* registration, int node_index);
 };
 

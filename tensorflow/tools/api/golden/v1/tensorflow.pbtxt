@@ -1370,7 +1370,7 @@ tf_module {
   }
   member_method {
     name: "gather_nd"
-    argspec: "args=[\'params\', \'indices\', \'name\', \'batch_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
+    argspec: "args=[\'params\', \'indices\', \'name\', \'batch_dims\', \'bad_indices_policy\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'\'], "
   }
   member_method {
     name: "get_collection"
@@ -2062,7 +2062,7 @@ tf_module {
   }
   member_method {
     name: "scatter_nd"
-    argspec: "args=[\'indices\', \'updates\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'indices\', \'updates\', \'shape\', \'bad_indices_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "scatter_nd_add"

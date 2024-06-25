@@ -34,7 +34,7 @@ class TransposeFolding : public HloModulePass {
   using TransposableConvOperandsFn = std::function<OperandIndices(
       const HloInstruction&, const OperandIndices&)>;
 
-  using CanFoldTransposeOperand = std::function<StatusOr<bool>(
+  using CanFoldTransposeOperand = std::function<absl::StatusOr<bool>(
       const HloInstruction&, int64_t /*operand_idx*/)>;
 
   // Helper function to explicitly not fold transposes.
@@ -63,11 +63,11 @@ class TransposeFolding : public HloModulePass {
   absl::string_view name() const override { return "transpose-folding"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  static StatusOr<bool> IsRowColumnTransposeDotOperand(
+  static absl::StatusOr<bool> IsRowColumnTransposeDotOperand(
       const HloInstruction& dot, int64_t operand_idx);
 
  private:

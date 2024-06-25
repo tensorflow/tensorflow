@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/registration/registration.h"
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

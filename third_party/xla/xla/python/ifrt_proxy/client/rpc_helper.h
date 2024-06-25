@@ -69,7 +69,7 @@ class RpcHelper {
   }
 
   template <typename T>
-  using ResponseFuture = Future<absl::StatusOr<std::shared_ptr<T>>>;
+  using ResponseFuture = Future<std::shared_ptr<T>>;
 
   // Wrapper function for various logical RPCs defined in ifrt_service.proto.
   // Whenever the RPC finishes, `on_done` will be called with the result or the
@@ -87,19 +87,23 @@ class RpcHelper {
 
   ResponseFuture<CheckFutureResponse> CheckFuture(
       std::unique_ptr<CheckFutureRequest> req);
+  ResponseFuture<CheckValueReadyResponse> CheckValueReady(
+      std::unique_ptr<CheckValueReadyRequest> req);
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
+  ResponseFuture<RemapArraysResponse> RemapArrays(
+      std::unique_ptr<RemapArraysRequest> req);
   ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>
   DisassembleIntoSingleDeviceArrays(
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);
   ResponseFuture<CopyToHostBufferResponse> CopyToHostBuffer(
       std::unique_ptr<CopyToHostBufferRequest> req);
-  ResponseFuture<CheckArrayReadyResponse> CheckArrayReady(
-      std::unique_ptr<CheckArrayReadyRequest> req);
+  ResponseFuture<CopyArraysResponse> CopyArrays(
+      std::unique_ptr<CopyArraysRequest> req);
   ResponseFuture<ReshardResponse> Reshard(std::unique_ptr<ReshardRequest> req);
   ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
       std::unique_ptr<FullyReplicatedShardRequest> req);
@@ -130,7 +134,7 @@ class RpcHelper {
 
   // Utility functions for common functions.
 
-  Future<absl::Status> CheckFuture(uint64_t handle);
+  Future<> CheckFuture(uint64_t handle);
 
  private:
   RequestMetadata ManufactureRequestMetadata() ABSL_LOCKS_EXCLUDED(mu_);

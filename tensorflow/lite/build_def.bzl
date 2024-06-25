@@ -170,10 +170,7 @@ def tflite_linkopts_no_undefined():
             # since undefined symbols in shared libraries (references to symbols
             # that will be defined in the main executable) are normal and
             # expected in those cases.
-            "//tools/cpp:asan_build": [],
-            "//tools/cpp:hwasan_build": [],
-            "//tools/cpp:msan_build": [],
-            "//tools/cpp:tsan_build": [],
+            "//tools/cpp:sanitizer_build": [],
             "//tensorflow:ios": [
                 "-Wl,-undefined,error",
             ],
@@ -876,7 +873,7 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
     build_tests = []
     for hdr in hdrs:
         label = _label(hdr)
-        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        basename = "%s__test_self_contained_c__%s__%s" % (name, label.package, label.name)
         compatible_with = kwargs.pop("compatible_with", [])
         native.genrule(
             name = "%s_gen" % basename,

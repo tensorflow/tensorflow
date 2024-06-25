@@ -123,6 +123,14 @@ CUptiResult CuptiErrorManager::ActivityRegisterCallbacks(
   return error;
 }
 
+CUptiResult CuptiErrorManager::ActivityUsePerThreadBuffer() {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityUsePerThreadBuffer();
+  // Don't disable cupti just because the gpu driver or cuda don't support
+  // per-thread activity buffer.
+  return error;
+}
+
 CUptiResult CuptiErrorManager::GetDeviceId(CUcontext context,
                                            uint32_t* device_id) {
   IGNORE_CALL_IF_DISABLED;

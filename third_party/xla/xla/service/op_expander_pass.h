@@ -34,8 +34,14 @@ class OpExpanderPass : public HloModulePass {
 
   // extra_filter: Optional extra filtering criteria for matching instructions,
   // used in conjunction with InstructionMatchesPattern.
-  explicit OpExpanderPass(HloPredicate extra_filter = nullptr)
-      : extra_filter_(std::move(extra_filter)) {}
+  // preserve_sharding and relay_control_dependency: If we preserve sharding and
+  // relay control dependency when replacing the matched instructions.
+  explicit OpExpanderPass(HloPredicate extra_filter = nullptr,
+                          bool preserve_sharding = false,
+                          bool relay_control_dependency = false)
+      : extra_filter_(std::move(extra_filter)),
+        preserve_sharding_(preserve_sharding),
+        relay_control_dependency_(relay_control_dependency) {}
 
  protected:
   // Returns `true` if `instruction` should be expanded by this pass.
@@ -48,6 +54,8 @@ class OpExpanderPass : public HloModulePass {
       HloInstruction* instruction) = 0;
 
   HloPredicate extra_filter_;
+  const bool preserve_sharding_;
+  const bool relay_control_dependency_;
 };
 
 }  // namespace xla

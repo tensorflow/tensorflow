@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPUTATION_PLACER_H_
 #define XLA_SERVICE_COMPUTATION_PLACER_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <utility>
-#include <vector>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
@@ -36,11 +36,11 @@ namespace xla {
 // computations. For R replicas and C computations, R * C devices are required
 // execute the computation in parallel. The assigned device ids can be accessed
 // by assignment(replica, computation).
-class DeviceAssignment : public Array2D<int> {
+class DeviceAssignment : public Array2D<int64_t> {
  public:
   DeviceAssignment() {}
   DeviceAssignment(int replica_count, int computation_count)
-      : Array2D<int>(replica_count, computation_count, -1) {
+      : Array2D<int64_t>(replica_count, computation_count, -1) {
     CHECK_GT(replica_count, 0);
     CHECK_GT(computation_count, 0);
   }
@@ -58,17 +58,19 @@ class DeviceAssignment : public Array2D<int> {
   absl::StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
   absl::StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
+  // Finds the partition ID for the given device.
+  absl::StatusOr<int> PartitionIdForDevice(GlobalDeviceId device_id) const;
   // Returns a map from device ID to logical ID. Querying this map is much more
   // efficient than `LogicalIdForDevice` if queried repeatedly.
   absl::flat_hash_map<GlobalDeviceId, LogicalID> GetDeviceToLogicalIdMap()
       const;
 
   // Protocol buffer serialization and deserialization.
-  Status Serialize(DeviceAssignmentProto* proto) const;
+  void Serialize(DeviceAssignmentProto* proto) const;
 
   // Return a std::unique_ptr<DeviceAssignment> instead of a DeviceAssignment
   // directly because one of the supported TF platforms (mac) does not compile
-  // due to a StatusOr of an incomplete type (DeviceAssignment).
+  // due to a absl::StatusOr of an incomplete type (DeviceAssignment).
   static absl::StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
 

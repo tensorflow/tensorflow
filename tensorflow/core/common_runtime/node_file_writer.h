@@ -37,7 +37,7 @@ class NodeFileWriter {
   // TF_NODE_FILE_WRITER_DIRECTORY is set, which specifies the directory where
   // the node file will be created in. Otherwise, returns nullptr. When called
   // with the same device_name, the same NodeFileWriter will be returned.
-  static StatusOr<NodeFileWriter*> GetNodeFileWriterIfEnabled(
+  static absl::StatusOr<NodeFileWriter*> GetNodeFileWriterIfEnabled(
       const std::string& device_name, Env* env);
 
   // Records the execution of a node, if eligible, by writing the node to the

@@ -37,6 +37,8 @@ from typing import (
 
 import numpy as np
 
+from . import ifrt_programs
+from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
@@ -59,21 +61,23 @@ class XlaRuntimeError(RuntimeError):
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
+  S2: PrimitiveType
   S4: PrimitiveType
   S8: PrimitiveType
   S16: PrimitiveType
   S32: PrimitiveType
   S64: PrimitiveType
+  U2: PrimitiveType
   U4: PrimitiveType
   U8: PrimitiveType
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
-  F8_E4M3FN: PrimitiveType
-  F8_E4M3B11FNUZ: PrimitiveType
-  F8_E4M3FNUZ: PrimitiveType
-  F8_E5M2: PrimitiveType
-  F8_E5M2FNUZ: PrimitiveType
+  F8E4M3FN: PrimitiveType
+  F8E4M3B11FNUZ: PrimitiveType
+  F8E4M3FNUZ: PrimitiveType
+  F8E5M2: PrimitiveType
+  F8E5M2FNUZ: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -265,7 +269,8 @@ def register_custom_call_partitioner(
     prop_user_sharding: Callable,
     partition: Callable,
     infer_sharding_from_operands: Callable,
-    can_side_effecting_have_replicated_sharding: bool,
+    can_side_effecting_have_replicated_sharding: bool = ...,
+    c_api: Optional[Any] = ...,
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 
@@ -300,17 +305,12 @@ class DebugOptions:
   xla_dump_hlo_as_long_text: bool
   xla_dump_disable_metadata: bool
   xla_dump_hlo_pipeline_re: str
-  xla_gpu_enable_async_all_reduce: bool
-  xla_gpu_enable_async_all_gather: bool
-  xla_gpu_enable_async_collective_broadcast: bool
-  xla_gpu_enable_async_collective_permute: bool
-  xla_gpu_enable_async_all_to_all: bool
-  xla_gpu_enable_async_reduce_scatter: bool
   xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
+  xla_gpu_dump_autotune_logs_to: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -498,14 +498,16 @@ class Client:
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...,
   ) -> ArrayImpl: ...
-  def make_cross_host_receive_buffers(
-      self, shapes: Sequence[Shape], device: Device
-  ) -> List[Tuple[ArrayImpl, bytes]]: ...
   def compile(
       self,
       computation: Union[str, bytes],
       compile_options: CompileOptions = ...,
       host_callbacks: Sequence[Any] = ...,
+  ) -> LoadedExecutable: ...
+  def compile_ifrt_program(
+      self,
+      program: ifrt_programs.Program,
+      program_options: ifrt_programs.CompileOptions,
   ) -> LoadedExecutable: ...
   def serialize_executable(self, executable: LoadedExecutable) -> bytes: ...
   def deserialize_executable(
@@ -531,6 +533,9 @@ class Client:
       recv_channel_ids: Sequence[int],
       serializer: Optional[Callable] = ...,
   ) -> Any: ...
+  def get_default_layout(
+      self, dtype: np.dtype, shard_shape: Sequence[int], device: Device
+  ) -> PjRtLayout: ...
   def __getattr__(self, name: str) -> Any: ...
 
 class CpuCollectives: ...
@@ -540,6 +545,12 @@ def make_gloo_tcp_collectives(
     hostname: Optional[str] = ...,
     interface: Optional[str] = ...,
 ) -> CpuCollectives: ...
+
+class MpiCollectives(CpuCollectives):
+  def Init(self): ...
+  def Finalize(self): ...
+
+def make_mpi_collectives() -> MpiCollectives: ...
 
 def get_tfrt_cpu_client(
     asynchronous: bool = ...,
@@ -595,8 +606,6 @@ ArrayImpl = Any
 #                _skip_checks: bool = ...): ...
 #   def block_until_ready(self) -> ArrayImpl: ...
 #   def is_deleted(self) -> bool: ...
-#   # TODO(yashkatariya): remove this once the transition completes.
-#   def _init_with_fastpath_disabled(self) -> None: ...
 #   def is_ready(self) -> bool: ...
 #   def delete(self): ...
 #   def unsafe_buffer_pointer(self) -> Any: ...
@@ -613,9 +622,11 @@ ArrayImpl = Any
 #   traceback: Traceback
 #   _HAS_DYNAMIC_ATTRIBUTES: bool = ...
 
-def copy_array_to_devices_with_sharding(
-    self: ArrayImpl, devices: List[Device], sharding: Any
-) -> ArrayImpl: ...
+def batched_copy_array_to_devices_with_sharding(
+    arrays: Sequence[ArrayImpl],
+    devices: Sequence[List[Device]],
+    sharding: Sequence[Any],
+) -> Sequence[ArrayImpl]: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
 
@@ -722,8 +733,8 @@ def cuda_array_interface_to_buffer(
       List[Tuple[str, str, Tuple[int, ...]]]]
     ],
     gpu_backend: Optional[Client] = ...,
+    device_id: int | None = None,
 ) -> ArrayImpl: ...
-
 
 # === BEGIN py_traceback.cc
 
@@ -765,10 +776,14 @@ class DistributedRuntimeClient:
   ) -> _Status: ...
   def key_value_dir_get(self, key: str) -> _Status: ...
   def key_value_dir_get_bytes(self, key: str) -> _Status: ...
-  def key_value_set(self, key: str, value: str) -> _Status: ...
-  def key_value_set_bytes(self, key: str, value: bytes) -> _Status: ...
+  def key_value_set(self, key: str, value: str,
+                    allow_overwrite: bool = False) -> _Status: ...
+  def key_value_set_bytes(self, key: str, value: bytes,
+                          allow_overwrite: bool = False) -> _Status: ...
   def key_value_delete(self, key: str) -> _Status: ...
-  def wait_at_barrier(self, barrier_id: str, timeout_in_ms: int) -> _Status: ...
+  def wait_at_barrier(
+      self, barrier_id: str, timeout_in_ms: int, process_ids: Optional[List[int]]
+  ) -> _Status: ...
 
 def get_distributed_runtime_service(
     address: str,
@@ -799,7 +814,6 @@ def collect_garbage() -> None: ...
 def is_optimized_build() -> bool: ...
 def json_to_pprof_profile(json: str) -> bytes: ...
 def pprof_profile_to_json(proto: bytes) -> str: ...
-
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
@@ -835,9 +849,8 @@ class DeviceList:
   def memory_kinds(self) -> Tuple[str, ...]: ...
 
 class Sharding: ...
-class XLACompatibleSharding(Sharding): ...
 
-class NamedSharding(XLACompatibleSharding):
+class NamedSharding(Sharding):
   def __init__(
       self,
       mesh: Any,
@@ -854,13 +867,13 @@ class NamedSharding(XLACompatibleSharding):
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
 
-class SingleDeviceSharding(XLACompatibleSharding):
+class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
   _device: Device
   _memory_kind: Optional[str]
   _internal_device_list: DeviceList
 
-class PmapSharding(XLACompatibleSharding):
+class PmapSharding(Sharding):
   def __init__(
       self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec
   ): ...
@@ -868,7 +881,7 @@ class PmapSharding(XLACompatibleSharding):
   sharding_spec: pmap_lib.ShardingSpec
   _internal_device_list: DeviceList
 
-class GSPMDSharding(XLACompatibleSharding):
+class GSPMDSharding(Sharding):
   def __init__(
       self,
       devices: Sequence[Device],

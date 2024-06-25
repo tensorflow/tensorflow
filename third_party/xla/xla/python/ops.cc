@@ -312,7 +312,9 @@ void BuildOpsSubmodule(nb::module_& m) {
       .value("API_VERSION_STATUS_RETURNING",
              CustomCallApiVersion::API_VERSION_STATUS_RETURNING)
       .value("API_VERSION_STATUS_RETURNING_UNIFIED",
-             CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED);
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED)
+      .value("API_VERSION_TYPED_FFI",
+             CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   ops.def("AfterAll", &AfterAll, nb::arg("builder"), nb::arg("tokens"));
   ops.def("AllGather", &AllGather, nb::arg("operand"),
