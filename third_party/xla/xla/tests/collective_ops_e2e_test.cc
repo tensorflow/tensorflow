@@ -650,7 +650,8 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
-  void CollectiveOpsCompareWindowedNonWindowed(absl::string_view hlo_text) {
+  void CollectiveOpsCompareWindowedNonWindowed(
+      absl::string_view hlo_text, bool disable_dot_merger = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
 
@@ -661,6 +662,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
     opts.set_xla_gpu_graph_min_graph_size(200);
     opts.set_xla_gpu_enable_triton_gemm(false);
+    if (disable_dot_merger) {
+      opts.add_xla_disable_hlo_passes("dot-merger");
+    }
     config.set_debug_options(opts);
     config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -689,6 +693,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     auto ref_opts = GetDebugOptionsForTest();
     ref_opts.set_xla_gpu_graph_min_graph_size(200);
     ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    if (disable_dot_merger) {
+      ref_opts.add_xla_disable_hlo_passes("dot-merger");
+    }
     ref_config.set_debug_options(ref_opts);
     ref_config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
@@ -779,7 +786,10 @@ ENTRY main.12 {
 } // main.12
 )";
 
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,

@@ -1727,14 +1727,14 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
   }
 #if GOOGLE_CUDA || TF_HIPBLASLT
   if (IsCublasLtMatmul(*wrapped)) {
-    auto status = EmitGemmThunk(custom_call);
+    auto status = EmitCublasLtMatmulThunk(custom_call);
     if (status.ok()) {
       thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
     }
     return status;
   }
   if (IsCublasLtMatmulF8(*wrapped)) {
-    auto status = EmitGemmThunk(custom_call);
+    auto status = EmitCublasLtMatmulThunkF8(custom_call);
     if (status.ok()) {
       thunk_sequence_.back()->set_execution_stream_id(execution_stream_id);
     }
