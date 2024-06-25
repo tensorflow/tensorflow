@@ -2578,11 +2578,9 @@ static absl::Status TransformLoopBackward(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> CollectivePipeliner::Run(
+absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  CHECK(config_.acceptable_formatting);
-  CHECK(config_.should_process);
   bool changed = false;
   std::vector<HloInstruction*> while_loop_instructions;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
@@ -2685,6 +2683,32 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
   }
 
   return changed;
+}
+
+absl::StatusOr<bool> CollectivePipeliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  CHECK(config_.acceptable_formatting);
+  CHECK(config_.should_process);
+
+  if (config_.pipelining_direction != PipeliningDirection::kForwardSink) {
+    return RunPipeliner(module, execution_threads);
+  }
+
+  // If the pipelining direction is kForwardSink, run the pipeliner until it
+  // does not change the module anymore. The maximum number of iterations should
+  // be equal to the maximum number of pipelineable collectives in a chain of
+  // users plus one. In each iteration, we pipeline the last pipelineable
+  // collectives, which do not have any other pipelineable collectives in their
+  // user subtree.
+  bool changed = true;
+  int64_t iter = 0;
+  while (changed) {
+    TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+    VLOG(1) << "Finished running pipeliner's iteration: " << iter;
+    iter++;
+  }
+  return iter > 1;
 }
 
 }  // namespace xla

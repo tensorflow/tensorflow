@@ -2861,6 +2861,12 @@ bool HloPredicateIsOp(const HloInstruction* instruction) {
          ((instruction->opcode() == rest) || ...);
 }
 
+template <HloOpcode op, HloOpcode... rest>
+bool HloPredicateIsNotOp(const HloInstruction* instruction) {
+  return (instruction->opcode() != op) &&
+         ((instruction->opcode() != rest) && ...);
+}
+
 /* static */ inline bool HloInstruction::MightHaveCalledComputations(
     HloOpcode opcode) {
   switch (opcode) {
