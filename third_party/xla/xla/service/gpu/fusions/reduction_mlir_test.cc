@@ -362,7 +362,7 @@ TEST_F(MlirRowReductionTest, NonPowerOfTwoRowReduction) {
       ROOT fusion = f64[100] fusion(a, c), kind=kInput, calls=fused_computation
     })";
   TF_EXPECT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1)[s0] -> (d0 + s0 * 128 + (d1 mod 64) * 2)>
+    // CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1)[s0] -> ((d1 mod 64) * 2 + s0 * 128 + d0)>
     // CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1) -> ((d1 mod 64) * 2 + d0 + 512)>
     // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
     // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index

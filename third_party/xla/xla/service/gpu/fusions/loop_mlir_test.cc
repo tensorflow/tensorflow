@@ -54,8 +54,8 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 15000) mod 100,
-    ((bl_x * 128 + th_x + chunk_id * 129024) floordiv 75) mod 200,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000) mod 100,
+    ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
     (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:

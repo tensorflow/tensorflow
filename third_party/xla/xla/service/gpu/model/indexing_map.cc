@@ -80,10 +80,38 @@ using mlir::MLIRContext;
 
 AffineExpr GetLhs(AffineExpr e) {
   return mlir::cast<AffineBinaryOpExpr>(e).getLHS();
-};
+}
+
 AffineExpr GetRhs(AffineExpr e) {
   return mlir::cast<AffineBinaryOpExpr>(e).getRHS();
-};
+}
+
+// Rewrites summands in arbitrarily nested sums (e.g, ((a+b)+c)) by applying
+// `fn` to each one. In the example, the result is fn(a)+fn(b)+fn(c).
+AffineExpr MapSummands(AffineExpr expr,
+                       const std::function<AffineExpr(AffineExpr)>& fn) {
+  if (expr.getKind() == AffineExprKind::Add) {
+    auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
+    auto lhs = MapSummands(add.getLHS(), fn);
+    auto rhs = MapSummands(add.getRHS(), fn);
+    if (lhs == add.getLHS() && rhs == add.getRHS()) {
+      return add;
+    }
+    return lhs + rhs;
+  }
+  return fn(expr);
+}
+
+// Calls `visit` for each summand in an arbitrarily nested sum.
+void VisitSummands(mlir::AffineExpr expr,
+                   const std::function<void(mlir::AffineExpr)>& visit) {
+  if (expr.getKind() == AffineExprKind::Add) {
+    VisitSummands(GetLhs(expr), visit);
+    VisitSummands(GetRhs(expr), visit);
+  } else {
+    visit(expr);
+  }
+}
 
 class AffineExprSimplifier {
  public:
@@ -123,13 +151,6 @@ class AffineExprSimplifier {
 
   // Rewrites `a // b` where a may be a sum.
   AffineExpr SimplifySumDiv(AffineExpr dividend, int64_t divisor);
-
-  // Rewrites summands in arbitrarily nested sums (e.g, ((a+b)+c)) by applying
-  // `fn` to each one. In the example, the result is fn(a)+fn(b)+fn(c).
-  AffineExpr MapSummands(AffineExpr expr,
-                         const std::function<AffineExpr(AffineExpr)>& fn);
-  void VisitSummands(mlir::AffineExpr expr,
-                     const std::function<void(mlir::AffineExpr)>& visit);
 
   // Attempts to simplify the expression, but doesn't attempt to simplify the
   // result further.
@@ -371,30 +392,6 @@ std::optional<int64_t> AffineExprSimplifier::GetConstantRhs(
   return bound.lower;
 }
 
-AffineExpr AffineExprSimplifier::MapSummands(
-    AffineExpr expr, const std::function<AffineExpr(AffineExpr)>& fn) {
-  if (expr.getKind() == AffineExprKind::Add) {
-    auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-    auto lhs = MapSummands(add.getLHS(), fn);
-    auto rhs = MapSummands(add.getRHS(), fn);
-    if (lhs == add.getLHS() && rhs == add.getRHS()) {
-      return add;
-    }
-    return lhs + rhs;
-  }
-  return fn(expr);
-}
-
-void AffineExprSimplifier::VisitSummands(
-    mlir::AffineExpr expr, const std::function<void(mlir::AffineExpr)>& visit) {
-  if (expr.getKind() == AffineExprKind::Add) {
-    VisitSummands(GetLhs(expr), visit);
-    VisitSummands(GetRhs(expr), visit);
-  } else {
-    visit(expr);
-  }
-}
-
 // Compares the two expression by their AST. The ordering is arbitrary but
 // similar to what MLIR's simplifier does.
 int CompareExprs(AffineExpr a, AffineExpr b) {
@@ -443,14 +440,25 @@ int CompareExprs(AffineExpr a, AffineExpr b) {
 }
 
 AffineExpr CanonicalizeOrder(AffineExpr in) {
+  if (in.getKind() == AffineExprKind::Add) {
+    // If we have nested adds, canonicalize all of them together.
+    llvm::SmallVector<AffineExpr, 4> summands;
+    VisitSummands(in, [&](AffineExpr summand) {
+      summands.push_back(CanonicalizeOrder(summand));
+    });
+    llvm::sort(summands, [](AffineExpr a, AffineExpr b) {
+      return CompareExprs(a, b) < 0;
+    });
+    auto result = mlir::getAffineConstantExpr(0, in.getContext());
+    for (auto summand : summands) {
+      result = result + summand;
+    }
+    return result;
+  }
+
   if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(in)) {
     auto lhs = CanonicalizeOrder(binop.getLHS());
     auto rhs = CanonicalizeOrder(binop.getRHS());
-    if ((binop.getKind() == AffineExprKind::Add ||
-         binop.getKind() == AffineExprKind::Mul) &&
-        CompareExprs(lhs, rhs) > 0) {
-      std::swap(lhs, rhs);
-    }
     return getAffineBinaryOpExpr(binop.getKind(), lhs, rhs);
   }
   return in;

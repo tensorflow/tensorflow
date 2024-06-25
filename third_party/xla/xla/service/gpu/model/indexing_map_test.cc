@@ -562,6 +562,18 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
                                                 )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression) {
+  // This is a regression test for a bug where we didn't canonicalize the order
+  // of summands correctly, leading to `Simplify` not being idempotent.
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (((((d0 + (d0 mod 3)) floordiv 3) + "
+                     "(s0 + ((s0 + s0) mod 3))) + (((d0 + s0) mod 3) + 0)))",
+                     &mlir_context_),
+      {10, 20}, {30, 40});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_FALSE(indexing_map.Simplify());
+}
+
 TEST_F(IndexingMapTest,
        AffineMapSimplification_DivsAndModsIfSmallerThanDivisor) {
   auto serialized_map = "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)";
