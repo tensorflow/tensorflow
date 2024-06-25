@@ -829,18 +829,14 @@ lit_test_suite(
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
-        "dot_bf16.hlo" : ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "scatter_bf16.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "kernel_reuse.hlo" : ["no_rocm"],
-        "reduce_atomic_min.hlo" : ["no_rocm"],  
         "reduce_column_layout_change.hlo" : ["no_rocm"],
         "reduce_f64_column.hlo" : ["no_rocm"],
-        "reduce_large_row_to_scalar.hlo" : ["no_rocm"],
-        "reduce_row_vectorized.hlo" : ["no_rocm"],
         "triton_naming.hlo" : ["no_rocm"],
     },
     tools = [
