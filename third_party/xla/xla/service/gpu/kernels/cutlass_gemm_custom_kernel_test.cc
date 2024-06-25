@@ -70,8 +70,8 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *gemm, arr));
+  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
@@ -120,8 +120,8 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *gemm, arr));
+  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);

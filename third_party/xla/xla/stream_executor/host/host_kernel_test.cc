@@ -168,8 +168,7 @@ TEST(HostKernelTest, Addition3D) {
                           KernelFactory::Create(executor.get(), spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(executor->Launch(stream.get(), ThreadDim(2, 2, 3), BlockDim(1),
-                                *add, kargs));
+  TF_ASSERT_OK(stream->Launch(ThreadDim(2, 2, 3), BlockDim(1), *add, kargs));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};
@@ -196,8 +195,7 @@ TEST(HostKernelTest, JitAddition) {
                           KernelFactory::Create(executor.get(), spec));
 
   const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
-  TF_ASSERT_OK(
-      executor->Launch(stream.get(), ThreadDim(4), BlockDim(1), *add, kargs));
+  TF_ASSERT_OK(stream->Launch(ThreadDim(4), BlockDim(1), *add, kargs));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
   EXPECT_EQ(out, expected);

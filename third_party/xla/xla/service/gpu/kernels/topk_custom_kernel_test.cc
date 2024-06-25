@@ -120,8 +120,8 @@ TEST_P(TopKKernelTest, TopKFloat) {
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *kernel, arr));
+  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());
@@ -175,8 +175,8 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *kernel, arr));
+  TF_ASSERT_OK(stream->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());

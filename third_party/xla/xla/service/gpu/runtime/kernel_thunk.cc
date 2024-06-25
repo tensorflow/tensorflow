@@ -223,12 +223,12 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
                                        custom_kernel_.shared_memory_bytes());
 
   if (auto cluster = custom_kernel_.cluster_dims(); cluster.has_value()) {
-    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
-                            custom_kernel_.block_dims(), *cluster, *kernel,
-                            args);
+    return params.stream->Launch(custom_kernel_.thread_dims(),
+                                 custom_kernel_.block_dims(), *cluster, *kernel,
+                                 args);
   } else {
-    return executor->Launch(params.stream, custom_kernel_.thread_dims(),
-                            custom_kernel_.block_dims(), *kernel, args);
+    return params.stream->Launch(custom_kernel_.thread_dims(),
+                                 custom_kernel_.block_dims(), *kernel, args);
   }
 }
 

@@ -92,6 +92,9 @@ class StreamCommon : public Stream {
   }
   absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
                       const Kernel &k, const KernelArgs &args) override;
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const ClusterDim &cluster_dims, const Kernel &k,
+                      const KernelArgs &args) override;
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {

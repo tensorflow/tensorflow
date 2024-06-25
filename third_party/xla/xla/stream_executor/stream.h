@@ -265,6 +265,14 @@ class Stream {
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims, const Kernel &k,
                               const KernelArgs &args) = 0;
+
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
+  virtual absl::Status Launch(const ThreadDim &thread_dims,
+                              const BlockDim &block_dims,
+                              const ClusterDim &cluster_dims, const Kernel &k,
+                              const KernelArgs &args) = 0;
 };
 
 template <typename... Params, typename... Args>
