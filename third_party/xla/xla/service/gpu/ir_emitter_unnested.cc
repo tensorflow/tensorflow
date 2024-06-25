@@ -1138,6 +1138,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
+  bool force_deterministic = config.force_deterministic();
   GpufMHABackwardDescriptor descriptor = {
       kind,
       config,
@@ -1158,7 +1159,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
       fwd_output_shape,
       mask_shape,
       d_bias_shape,
-      bias_shape};
+      bias_shape,
+      force_deterministic};
 
   TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_backward_config,
                       GpufMHABackwardConfig::For(descriptor));

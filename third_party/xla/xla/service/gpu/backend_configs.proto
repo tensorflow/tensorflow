@@ -253,6 +253,9 @@ message CudnnfMHABackendConfig {
     ALIBI = 4;
   }
   MaskType mask_type = 22;
+
+  // Whether force deterministic for bwd
+  bool force_deterministic = 23;
 }
 
 // Generic backend config for XLA:GPU

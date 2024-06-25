@@ -280,7 +280,7 @@ DnnSupport::FusedMHABackwardRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    dnn::FMHAMaskKind mask_type) {
+    dnn::FMHAMaskKind mask_type, bool force_deterministic) {
   return absl::UnimplementedError(
       "FusedMHABackwardRunnerFromDesc not implemented.");
 }

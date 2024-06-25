@@ -52,8 +52,7 @@ namespace {
 
 // create cuDNN graphs from HloCustomCall
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
-    se::dnn::DnnSupport& dnn_support,
-    const HloCustomCallInstruction* custom_call) {
+    se::dnn::DnnSupport& dnn_support, HloCustomCallInstruction* custom_call) {
   if (IsFwdCustomCallTofMHA(*custom_call)) {
     TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                         xla::gpu::GetCudnnfMHAKind(custom_call));
@@ -118,10 +117,10 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     return std::move(graph);
   } else {
     TF_ASSIGN_OR_RETURN(
-        const auto gpu_config,
+        auto gpu_config,
         custom_call->backend_config<xla::gpu::GpuBackendConfig>());
-    const xla::gpu::CudnnfMHABackendConfig& config =
-        gpu_config.cudnn_fmha_backend_config();
+    xla::gpu::CudnnfMHABackendConfig& config =
+        *gpu_config.mutable_cudnn_fmha_backend_config();
 
     int input_index = 0;
     Shape bmm1_grad_gemm1_rhs_shape =
@@ -174,6 +173,16 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
                  custom_call->shape().tuple_shapes().size() - 1);
     TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                         AsCudnnFmhaMaskKind(config.mask_type()));
+
+    const DebugOptions& debug_options =
+        custom_call->GetModule()->config().debug_options();
+    bool force_deterministic =
+        debug_options.xla_gpu_deterministic_ops() ||
+        debug_options.xla_gpu_exclude_nondeterministic_ops();
+    // set the correct force_deterministic attribute here
+    config.set_force_deterministic(force_deterministic);
+    TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
+
     GpufMHABackwardDescriptor descriptor = {
         kind,
         config,
@@ -194,13 +203,15 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         fwd_output_shape,
         mask_shape,
         d_bias_shape,
-        bias_shape};
+        bias_shape,
+        force_deterministic};
 
     TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_config,
                         GpufMHABackwardConfig::For(descriptor));
     TF_ASSIGN_OR_RETURN(
         se::dnn::FMHAMaskKind dnn_mask_type,
         GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(fmha_config.mask_type));
+
     TF_ASSIGN_OR_RETURN(
         se::gpu::CudnnGraph graph,
         se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
@@ -211,7 +222,8 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             fmha_config.d_bmm2_rhs, fmha_config.bias, fmha_config.dropout_rate,
             fmha_config.seed, *fmha_config.fmha_scale,
             fmha_config.dropout_rate && *fmha_config.dropout_rate > 0.0,
-            fmha_config.bias != std::nullopt, dnn_mask_type));
+            fmha_config.bias != std::nullopt, dnn_mask_type,
+            force_deterministic));
     return std::move(graph);
   }
 }
