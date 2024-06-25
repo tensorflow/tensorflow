@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -74,6 +75,10 @@ struct ReconfigBatchOpPassOptions {
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
+
+// Create a pass that sets the BatchFunction.batch_padding_policy attr.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateBatchPaddingPolicyPass(const std::string& batch_padding_policy);
 
 // Create a pass to fuse the TPU Ops for TFRT.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
