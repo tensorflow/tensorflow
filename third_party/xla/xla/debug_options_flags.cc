@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -168,6 +171,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
   opts.set_xla_gpu_enable_pipelined_p2p(false);
+
+  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
       std::numeric_limits<int64_t>::max());
@@ -1432,6 +1437,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_p2p),
       debug_options->xla_gpu_enable_pipelined_p2p(),
       "Enable pipelinling of P2P instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_run_post_layout_collective_pipeliner",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_run_post_layout_collective_pipeliner),
+      debug_options->xla_gpu_run_post_layout_collective_pipeliner(),
+      "Move collective pipeliner after the post-layout optimization."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_collective_permute_decomposer_threshold",
       int64_setter_for(

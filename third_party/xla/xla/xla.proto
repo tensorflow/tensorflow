@@ -584,6 +584,7 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
   bool xla_gpu_enable_pipelined_p2p = 246;
+  bool xla_gpu_run_post_layout_collective_pipeliner = 313;
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -838,7 +839,7 @@ message DebugOptions {
   // which is good for cuda-graph perf.
   bool xla_gpu_temp_buffer_use_separate_color = 312;
 
-  // Next id: 313
+  // Next id: 314
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
