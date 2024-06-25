@@ -4584,20 +4584,21 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying transform [sqrt(x) * sqrt(x) => x], for x >= 0 "
            << multiply->ToString();
-  if (Match(multiply, m::Multiply(m::Sqrt(m::Op(&a)), m::Sqrt(m::Op(&a)))) &&
-      IsNonNegative(a, options_)) {
-    return ReplaceInstruction(multiply, a);
+  if (Match(multiply,
+            m::Multiply(m::Sqrt(m::Op(&lhs)), m::Sqrt(m::Op(&rhs)))) &&
+      lhs == rhs && IsNonNegative(lhs, options_)) {
+    return ReplaceInstruction(multiply, lhs);
   }
 
-  VLOG(10) << "trying transform [rsqrt(B) * rsqrt(B) => 1/B], for B >= 0 "
+  VLOG(10) << "trying transform [rsqrt(x) * rsqrt(x) => 1/x], for x >= 0 "
            << multiply->ToString();
-  HloInstruction* b;
-  if (Match(multiply, m::Multiply(m::Rsqrt(m::Op(&b)), m::Rsqrt(m::Op(&b)))) &&
-      IsNonNegative(b, options_)) {
+  if (Match(multiply,
+            m::Multiply(m::Rsqrt(m::Op(&lhs)), m::Rsqrt(m::Op(&rhs)))) &&
+      lhs == rhs && IsNonNegative(lhs, options_)) {
     return ReplaceWithNewInstruction(
         multiply,
         HloInstruction::CreateBinary(multiply->shape(), HloOpcode::kDivide,
-                                     MakeScalarLike(b, 1), b));
+                                     MakeScalarLike(lhs, 1), lhs));
   }
 
   return absl::OkStatus();
