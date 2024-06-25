@@ -102,6 +102,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -2493,8 +2494,23 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
   llvm::SmallVector<int32_t> order;
   llvm::SmallVector<int32_t> boundary_checks;
 
+  const std::vector<int64_t>& tile_strides = tiled_hlo.tile_strides();
+  const Shape& shape = tiled_hlo.hlo()->shape();
+
+  // Compute physical strides of the tile. `tile_strides` contains strides for
+  // individual dimensions. We need to convert them to strides in the buffer
+  // taking into account physical layout.
+  // TODO(b/331332678): Compute indexing maps to physical layout indexing in
+  // SymbolicTileAnalysis.
+  llvm::SmallVector<int64_t> physical_strides(tile_strides.size(), 1);
+  int64_t current_stride = 1;
+  for (int64_t cur_dim : LayoutUtil::MinorToMajor(shape)) {
+    physical_strides[cur_dim] = tile_strides[cur_dim] * current_stride;
+    current_stride *= shape.dimensions(cur_dim);
+  }
+
   for (auto [size, stride] :
-       llvm::zip(tiled_hlo.tile_sizes(), tiled_hlo.tile_strides())) {
+       llvm::zip(tiled_hlo.tile_sizes(), physical_strides)) {
     if (size == 1) continue;
 
     int dimension_index = sizes.size();

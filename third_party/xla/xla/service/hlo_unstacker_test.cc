@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -29,6 +30,62 @@ namespace xla {
 namespace {
 
 using UnstackerTest = HloTestBase;
+
+TEST_F(UnstackerTest, UnstackLoopSingleFusionUser) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[3,128,128], p1: s32[]) ->
+  s8[128,128] {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128]
+    %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694),
+    dynamic_slice_sizes={1,128,128} ROOT %bitcast.31250 = s8[128,128]
+    bitcast(s8[1,128,128] %dynamic-slice.22040)
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> (s32[],
+  bf16[8,128], s8[3,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop,
+    calls=%fused_computation.slice conv = bf16[8,128] convolution(bf16[8,128]
+    p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf ROOT out = (s32[],
+    bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[]
+    %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[3,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input),
+    condition=%while.cond , body=%while.body while_use = s8[3,128,128]
+    get-tuple-element(while.out), index=2 ROOT out = bf16[8,128]
+    get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_TRUE(unstacked);
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
+                                      std::nullopt));
+}
 
 TEST_F(UnstackerTest, UnstackLoopSingleNestedFusionUser) {
   std::string hlo_string = R"(
@@ -412,7 +469,7 @@ TEST_F(UnstackerTest, UnstackMultipleLoops) {
       while.input = (s32[], bf16[8,128], s8[4,128,128]) tuple(init, p1, weight)
       while.out = (s32[], bf16[8,128], s8[4,128,128]) while(while.input), condition=%while.cond1 , body=%while.body1
       second.while.input = (s32[], bf16[8,128], s8[4,128,128]) tuple(init, p1, weight)
-      second.while.output = (s32[], bf16[8,128], s8[4,128,128]) while(second.while.input), condition=%while.cond2 , body=%while.body2
+      second.while.out = (s32[], bf16[8,128], s8[4,128,128]) while(second.while.input), condition=%while.cond2 , body=%while.body2
       ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
     }
   )";

@@ -161,7 +161,7 @@ TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(3, 4));
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(0));
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1, 1));
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
@@ -170,7 +170,7 @@ TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(4, 4));
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_TRUE(ptr.boundary_checks.empty());
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1, 1));
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
@@ -199,7 +199,7 @@ TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(3, 4));
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(0));
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1, 1));
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
@@ -212,7 +212,8 @@ TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(3, 4, 6));
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4, 8));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(0, 2));
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1, 1, 1));
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()),
+                ElementsAre(3000, 150, 1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(2, 1, 0));
   }

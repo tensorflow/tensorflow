@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -33,9 +32,66 @@ using ::testing::ElementsAre;
 
 class TritonFusionTest : public HloTestBase {};
 
-TEST_F(TritonFusionTest, TritonSoftmaxFusion) {
+TEST_F(TritonFusionTest,
+       TritonFusionWithBlockLevelFusionConfig_LaunchDimensionsAreCorrect) {
 #ifndef GOOGLE_CUDA
-  GTEST_SKIP() << "Triton fusion only enable for CUDA devices.";
+  GTEST_SKIP() << "Triton fusion only enabled for CUDA devices.";
+#endif
+
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule t
+
+    add {
+      Arg_0 = f32[] parameter(0)
+      Arg_1 = f32[] parameter(1)
+      ROOT add = f32[] add(Arg_0, Arg_1)
+    }
+
+    auxiliary_computation {
+      parameter_0 = f32[125]{0} parameter(0)
+      ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+    }
+
+    triton_softmax_computation {
+      parameter_0 = f32[125,127]{1,0} parameter(0)
+      multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+      constant_0 = f32[] constant(0)
+      reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+      broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+      ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+    }
+
+    ENTRY main {
+      param_0 = f32[125]{0} parameter(0)
+      auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
+      ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["3","127"],"num_warps":"4"}}}
+      })")
+                    .value();
+
+  stream_executor::GpuDeviceInfoProto device_info_proto;
+  stream_executor::DeviceDescription device_info(device_info_proto);
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis_fused =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+
+  auto emitter_fused =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
+  auto triton_fusion = dynamic_cast<TritonFusion*>(emitter_fused.get());
+  ASSERT_NE(triton_fusion, nullptr);
+  auto launch_config = triton_fusion->launch_config();
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(125 / 3)=*/42);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
+            /*32 * num_warps=*/128);
+  EXPECT_THAT(launch_config->output_tile_sizes, ElementsAre(3, 127));
+}
+
+TEST_F(TritonFusionTest,
+       TritonFusionWithoutBlockLevelFusionConfig_LaunchFromSoftMaxHeuristic) {
+#ifndef GOOGLE_CUDA
+  GTEST_SKIP() << "Triton fusion only enabled for CUDA devices.";
 #endif
 
   auto module = ParseAndReturnVerifiedModule(R"(
