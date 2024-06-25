@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -286,8 +287,9 @@ Future<> BasicStringArray::CopyToHostBuffer(
   return Future<>(absl::UnimplementedError("Not implemented"));
 }
 
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Reshard(
-    std::shared_ptr<const Sharding> new_sharding,
+absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
+    std::optional<xla::ifrt::DeviceList> devices,
+    std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
   absl::MutexLock lock(&mu_);
@@ -295,6 +297,8 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Reshard(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
+  TF_ASSIGN_OR_RETURN(auto new_sharding,
+                      sharding().WithDeviceAssignment(devices, memory_kind));
   if (new_sharding->devices().size() != sharding_->devices().size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Number of devices in new sharding: ", new_sharding->devices().size(),

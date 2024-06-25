@@ -127,9 +127,11 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
+  // This will be deleted once the client requires the minimum version of 3.
+  ABSL_DEPRECATED("Use `Client::CopyArrays` instead")
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
-      ArrayCopySemantics semantics) override;
+      ArrayCopySemantics semantics);
 
   static char ID;  // NOLINT
 
