@@ -11,6 +11,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
@@ -22,14 +23,6 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    includes = [
-        "//xla:friends",
-    ],
-    packages = ["//platforms/testing/tests/..."],
-)
-
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -38,6 +31,8 @@ filegroup(
         "**/*.h",
     ]),
 )
+
+xla_tests_package_groups()
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()

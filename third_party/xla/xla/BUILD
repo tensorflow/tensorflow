@@ -7,6 +7,7 @@ load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # Placeholder: load py_proto_library
+load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -17,45 +18,11 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    includes = ["//xla:internal"],
-    packages = [
-        # copybara:uncomment "//learning/...",
-        "//third_party/australis/...",
-        "//third_party/iree/...",
-        "//third_party/libxc/...",
-        "//third_party/mira/...",
-        "//third_party/mlcompass/...",
-        "//third_party/mlir_edge/model_curriculum/...",
-        "//third_party/openxla/shardonnay/...",
-        "//third_party/py/enzyme_ad/...",
-        "//third_party/py/jax/...",
-        "//third_party/py/t5x/...",
-        "//third_party/py/tpu_graphs/...",
-        "//tensorflow/compiler/...",
-        "//tensorflow/python/tpu/...",
-    ],
-)
-
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/...",
-    ],
-)
-
-package_group(
-    name = "runtime",
-    packages = [
-        "//xla/runtime/...",
-        "//xla/service/gpu/runtime/...",
-    ],
-)
-
 exports_files([
     "lit.cfg.py",
 ])
+
+xla_package_groups()
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
