@@ -93,6 +93,7 @@ _JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 _XLA_SHARDING_FOR_RESOURCE_VARIABLES = (
     os.getenv("TF_XLA_SHARDING_FOR_RESOURCE_VARIABLES") == "1"
 )
+_OPTIONALS = os.getenv("TF_OPTIONALS") != "0"
 
 
 def run_eager_op_as_function_enabled():
@@ -150,6 +151,26 @@ def xla_sharding_for_resource_variables_enabled():
   if context_safe() is not None:
     return context_safe().xla_sharding_for_resource_variables
   return _XLA_SHARDING_FOR_RESOURCE_VARIABLES
+
+
+def enable_optionals():
+  global _OPTIONALS
+  _OPTIONALS = True
+  if context_safe() is not None:
+    context_safe().optionals = True
+
+
+def disable_optionals():
+  global _OPTIONALS
+  _OPTIONALS = False
+  if context_safe() is not None:
+    context_safe().optionals = False
+
+
+def optionals_enabled():
+  if context_safe() is not None:
+    return context_safe().optionals
+  return _OPTIONALS
 
 
 @contextlib.contextmanager
@@ -553,6 +574,7 @@ class Context:
     self._xla_sharding_for_resource_variables = (
         xla_sharding_for_resource_variables_enabled()
     )
+    self._optionals = optionals_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -2231,6 +2253,14 @@ class Context:
   @xla_sharding_for_resource_variables.setter
   def xla_sharding_for_resource_variables(self, enable):
     self._xla_sharding_for_resource_variables = enable
+
+  @property
+  def optionals(self):
+    return self._optionals
+
+  @optionals.setter
+  def optionals(self, enable):
+    self._optionals = enable
 
   @property
   def device_policy(self):
