@@ -781,9 +781,6 @@ class CublasLtCmd : public TracedCommandBufferCmd {
                       se::gpu::BlasLt::MatmulAlgorithm>
       matmul_algorithm_cache_;
 
-  se::gpu::BlasLt::MatmulPlan* plan_;
-  se::gpu::BlasLt::MatmulAlgorithm algorithm_;
-
   const GemmConfig gemm_config_;
   const se::gpu::BlasLt::Epilogue epilogue_;
   const int64_t algorithm_idx_;

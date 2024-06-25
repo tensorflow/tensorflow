@@ -1194,15 +1194,20 @@ absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
   if (!params.stream->parent()->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
   }
-  TF_ASSIGN_OR_RETURN(plan_, GetMatmulPlan(params.stream));
-  TF_ASSIGN_OR_RETURN(algorithm_,
-                      GetMatmulAlgorithm(plan_, workspace_buffer_.size()));
+  // Populate plan and algorithm cache;
+  TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
+  TF_RETURN_IF_ERROR(
+      GetMatmulAlgorithm(plan, workspace_buffer_.size()).status());
   return absl::OkStatus();
 }
 
 absl::Status CublasLtCmd::Record(const Thunk::ExecuteParams& execute_params,
                                  const RecordParams& record_params,
                                  se::CommandBuffer* command_buffer) {
+  TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(execute_params.stream));
+  TF_ASSIGN_OR_RETURN(auto algorithm,
+                      GetMatmulAlgorithm(plan, workspace_buffer_.size()));
+
   const BufferAllocations& allocs = *execute_params.buffer_allocations;
 
   se::DeviceMemoryBase bias, a_scale, b_scale, c_scale, d_scale, aux, d_amax;
@@ -1247,12 +1252,12 @@ absl::Status CublasLtCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
-        return plan_->ExecuteOnStream(
+        return plan->ExecuteOnStream(
             stream, allocs.GetDeviceAddress(a_buffer_),
             allocs.GetDeviceAddress(b_buffer_),
             allocs.GetDeviceAddress(c_buffer_),
             allocs.GetDeviceAddress(d_buffer_), bias, aux, a_scale, b_scale,
-            c_scale, d_scale, d_amax, algorithm_,
+            c_scale, d_scale, d_amax, algorithm,
             allocs.GetDeviceAddress(workspace_buffer_));
       });
 }

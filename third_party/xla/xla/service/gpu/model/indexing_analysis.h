@@ -64,8 +64,6 @@ struct HloInstructionIndexing {
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
 
-std::string ToString(const mlir::AffineMap& affine_map);
-
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
