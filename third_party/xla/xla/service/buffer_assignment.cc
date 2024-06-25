@@ -1201,7 +1201,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       // If a buffer maybe live out, the allocation cannot contain any node
       // where must_not_live_out_ returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if ((*must_not_live_out_)(value->instruction(), value->index())) {
+        if ((*must_not_live_out_)(assignment->alias_analysis(),
+                                  value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1216,7 +1217,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
         const HloValue* value = buffer_offset_size.first;
-        if ((*must_not_live_out_)(value->instruction(), value->index())) {
+        if ((*must_not_live_out_)(assignment->alias_analysis(),
+                                  value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()
                   << " cannot live out of the module";
           return false;
