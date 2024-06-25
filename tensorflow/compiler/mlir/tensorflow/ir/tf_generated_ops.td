@@ -5459,7 +5459,42 @@ def TF_FakeQuantWithMinMaxArgsGradientOp : TF_Op<"FakeQuantWithMinMaxArgsGradien
 
   let results = (outs
     Res<TF_Float32Tensor, [{Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
-`gradients * (inputs >= min && inputs <= max)`.}]>:$backprops
+`gradients * (inputs >= min && inputs <= max)`.
+
+```
+import tensorflow as tf
+
+# Define some sample data
+gradients = tf.random.uniform((2, 3), minval=-5.0, maxval=5.0, dtype=tf.float32)
+inputs = tf.random.uniform((2, 3), minval=-10.0, maxval=10.0, dtype=tf.float32)
+
+# Define quantization parameters (adjust as needed)
+min_val = -2.0
+max_val = 8.0
+num_bits = 4  # Number of bits for quantization
+
+# Calculate gradients for fake quantization with specified parameters
+output_gradients = tf.quantization.fake_quant_with_min_max_args_gradient(
+    gradients=gradients, inputs=inputs, min=min_val, max=max_val, num_bits=num_bits, narrow_range = False, name=None
+)
+
+# Print the original gradients and the gradients after the fake-quant operation
+print("Original Gradients:")
+print(gradients)
+print("\nGradients after Fake-Quantization:")
+print(output_gradients)
+
+```
+#Original Gradients:
+#tf.Tensor(
+#[[ 1.242547    3.217492    3.568469  ]
+#[-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+
+#Gradients after Fake-Quantization:
+#tf.Tensor(
+#[[ 0.          3.217492    3.568469  ]
+# [-0.55371046  0.23130894  2.608243  ]], shape=(2, 3), dtype=float32)
+}]>:$backprops
   );
 
   let extraClassDeclaration = [{
