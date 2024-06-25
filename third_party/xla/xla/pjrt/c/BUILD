@@ -13,6 +13,10 @@ load(
     "xla_cc_test",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+)
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -350,6 +354,9 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
+    tags = if_google([
+        "config-cuda-only",
+    ]),
     deps = [
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",
