@@ -2458,6 +2458,9 @@ ENTRY e {
 
 TEST_F(TritonGemmTestAny,
        DoNotFuseConcatenationOfSplitNonContractingDimension) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Not using autotuner on ROCM yet.";
+  }
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -3609,6 +3612,9 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, UsingOptinSharedMemoryOnAmpereProducesSameResult) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "No Optin Shared Memory on AMD.";
+  }
   const se::DeviceDescription dev_info =
       backend().default_stream_executor()->GetDeviceDescription();
   constexpr int kBytesOfSharedMemoryTested = 64 * 1024;
@@ -5061,6 +5067,9 @@ CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> 
 }
 
 TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on ROCM.";
+  }
   const char* kHloText = R"(
 HloModule t
 
@@ -5404,6 +5413,9 @@ CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> 
 }
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X3 not supported on ROCM.";
+  }
   const char* kHloText = R"(
 HloModule t
 

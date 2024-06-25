@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // TODO(ROCm): Enable and include ROCm Triton passes when ROCm Triton is
 // included in build.
-// #include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
+#include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
+#include "third_party/amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
@@ -56,9 +57,10 @@ absl::Status CreateTritonPipeline(
   const int ccAsInt = 0;
   // TODO(ROCm): Check why some test fail when threadsPerWarp is set to 64.
   const int threadsPerWarp = 32;
+  auto ccRocm = std::get<se::RocmComputeCapability>(cc);
 
   // Based on make_ttir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
+  // @triton//:third_party/amd/backend/compiler.py
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -69,47 +71,50 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 
   // Based on make_ttgir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
+  // @triton//:third_party/amd/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      absl::StrFormat("cuda:%u", ccAsInt), block_level_parameters.num_warps,
-      threadsPerWarp, block_level_parameters.num_ctas));
+      absl::StrCat("hip:", ccRocm.gfx_version()),
+      block_level_parameters.num_warps, threadsPerWarp,
+      block_level_parameters.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(createSparseBlockedToMMAPass());
   pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
+  pm.addPass(mlir::createTritonAMDGPUOptimizeEpiloguePass());
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(
-      mt::gpu::createTritonGPUPipeline({block_level_parameters.num_stages}));
-  pm.addPass(mt::gpu::createTritonGPUPrefetch());
-
-  // TODO ROCm Check if we want to compare MI100 and greater
+  if (block_level_parameters.num_stages == 0 && ccRocm.has_amd_matrix_core()) {
+    pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+  }
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
-  pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
+  if (block_level_parameters.num_stages == 0) {
+    pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
+  }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
 
   // Based on make_llir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
-  // pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
+  // @triton//:third_party/amd/backend/compiler.py
+  pm.addPass(mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(
+      ccRocm.gfx_version()));
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
-  // pm.addPass(mt::createConvertTritonAMDGPUToLLVMPass());
+  pm.addPass(
+      mt::createConvertTritonAMDGPUToLLVMPass(ccRocm.gfx_version(), true));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
+  pm.addPass(mlir::createConvertControlFlowToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
-  pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(mlir::createConvertControlFlowToLLVMPass());
-
+  pm.addPass(mt::createConvertBuiltinFuncToLLVMPass());
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;
   out_cluster_info.clusterDimY = 1;

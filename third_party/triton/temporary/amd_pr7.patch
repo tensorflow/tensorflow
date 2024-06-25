@@ -1,0 +1,46 @@
+==== triton/BUILD#46 - /google/src/cloud/csigg/triton_amd/triton/BUILD ====
+# action=edit type=text
+--- triton/BUILD	2024-04-11 02:00:21.000000000 -0700
++++ triton/BUILD	2024-04-21 23:52:01.000000000 -0700
+@@ -725,12 +725,12 @@
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:ControlFlowDialect",
+         "@llvm-project//mlir:GPUDialect",
++        "@llvm-project//mlir:GPUToROCDLTransforms",
+         "@llvm-project//mlir:IR",
+-        "@llvm-project//mlir:LLVMCommonConversion",
+         "@llvm-project//mlir:LLVMDialect",
+         "@llvm-project//mlir:NVVMDialect",
+         "@llvm-project//mlir:Pass",
+         "@llvm-project//mlir:Support",
+-        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:ROCDLDialect",
+         "@llvm-project//mlir:Transforms",
+     ],
+ )
+diff --git a/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp b/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp
+index f59efd6..cf601f0 100644
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -1132,6 +1132,21 @@ struct FpToFpOpConversion
+     for (unsigned i = 0; i < std::min(numElements, operands.size()); i++) {
+       inVals.push_back(operands[i][0]);
+     }
++
++    bool isSrcFP16 = srcElementType.isF16();
++    bool isSrcBF16 = srcElementType.isBF16();
++
++    if ((isSrcFP16 || isSrcBF16)
++          && isDstFP32) {
++      SmallVector<Value> outVals;
++      for (Value &v : inVals) {
++        if(isSrcFP16)
++          outVals.push_back(convertFp16ToFp32(loc, rewriter, v));
++        else
++          outVals.push_back(convertBf16ToFp32(loc, rewriter, v));
++      }
++      return outVals;
++    }
+     if (useFP16IntermediateSrc)
+       for (Value &v : inVals)
+         v = cvtFp32ToFp16(loc, rewriter, v,
