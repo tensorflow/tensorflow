@@ -125,16 +125,21 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
         auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
         value = b.create<mlir::arith::BitcastOp>(int_ty, value);
         value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
-        auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
-        value = b.create<ml::BitcastOp>(vector_type, value);
-        mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
-        for (int i = 0; i < n_shuffles; ++i) {
-          auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
-          result_vec = b.create<ml::InsertElementOp>(
-              result_vec,
-              shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+        if (n_shuffles > 1) {
+          // Don't generate vectors if the size is 1.
+          auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
+          value = b.create<ml::BitcastOp>(vector_type, value);
+          mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
+          for (int i = 0; i < n_shuffles; ++i) {
+            auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
+            result_vec = b.create<ml::InsertElementOp>(
+                result_vec,
+                shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+          }
+          value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
+        } else {
+          value = shuffle_32(value);
         }
-        value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
         value = b.create<mlir::arith::TruncIOp>(int_ty, value);
         value = b.create<ml::BitcastOp>(ty, value);
         return value;
