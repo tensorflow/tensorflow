@@ -2465,7 +2465,7 @@ def _reset_jit_compiler_flags():
   pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
-def context() -> Context:
+def context():
   """Returns a singleton context object."""
   if _context is None:
     _create_context()
