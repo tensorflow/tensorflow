@@ -41,7 +41,8 @@ namespace xla::cpu {
 ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
                              std::vector<NodeDef> nodes_defs)
     : thunk_sequence_(std::move(thunk_sequence)),
-      nodes_defs_(std::move(nodes_defs)) {
+      nodes_defs_(std::move(nodes_defs)),
+      is_sequential_(true) {
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
     // Mark nodes with empty in-edges as source nodes.
     if (nodes_defs_[i].in_edges.empty()) {
@@ -57,10 +58,17 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
   // Erase redundant edges between nodes.
   int64_t num_erased_edges = TransitiveReduction();
 
+  // Check if constructed execution DAG is sequential: every node depends on the
+  // completion of the previous node.
+  for (NodeId i = 1; i < nodes_defs_.size() && is_sequential_; ++i) {
+    is_sequential_ &= (absl::c_count(nodes_defs_[i].in_edges, i - 1) != 0);
+  }
+
   VLOG(2) << absl::StreamFormat(
       "Constructed ThunkExecutor with %d nodes: #source_nodes=%d "
-      "#sink_nodes=%d, #erased_edges=%d",
-      nodes_defs_.size(), source_.size(), sink_.size(), num_erased_edges);
+      "#sink_nodes=%d, #erased_edges=%d, is_sequential=%v",
+      nodes_defs_.size(), source_.size(), sink_.size(), num_erased_edges,
+      is_sequential_);
 
   // Sanity check that all vectors are empty or all vectors are non-empty.
   DCHECK((!source_.empty() && !sink_.empty() && !thunk_sequence_.empty()) ||
@@ -123,6 +131,13 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     return thunk_sequence_[0]->Execute(params);
   }
 
+  // If thunk sequence dependencies form a sequential execution graph, we skip
+  // expensive async execution and simply run thunks one by one.
+  if (is_sequential_) {
+    return ExecuteSequential(params);
+  }
+
+  // Create async execution state on heap and kick-off execution.
   auto state = std::make_unique<ExecuteState>(this, std::move(runner));
   Execute(state.get(), params, ReadyQueue(source_.begin(), source_.end()));
 
@@ -136,6 +151,70 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   });
 
   return execute_event;
+}
+
+tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent>
+ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
+  for (int64_t i = 0; i < thunk_sequence_.size(); ++i) {
+    Thunk& thunk = *thunk_sequence_[i];
+    auto execute_event = thunk.Execute(params);
+
+    // If thunk execution is not completed yet, attach a continuation to
+    // resume sequential execution starting from the next thunk.
+    if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
+      auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
+      execute_event.AndThen([this, &params, i, event](absl::Status status) {
+        if (ABSL_PREDICT_FALSE(!status.ok())) {
+          event.SetError(std::move(status));
+        } else {
+          ResumeExecuteSequential(i + 1, params, std::move(event));
+        }
+      });
+      return event;
+    }
+
+    // Abort execution if any of the thunks failed.
+    if (ABSL_PREDICT_FALSE(execute_event.IsError())) {
+      return execute_event;
+    }
+  }
+
+  // If we got to the end of the sequence it means that all thunks have
+  // succeeded.
+  return Thunk::OkExecuteEvent();
+}
+
+void ThunkExecutor::ResumeExecuteSequential(
+    int64_t index, const Thunk::ExecuteParams& params,
+    tsl::AsyncValueRef<ExecuteEvent> event) {
+  for (int64_t i = index; i < thunk_sequence_.size(); ++i) {
+    Thunk& thunk = *thunk_sequence_[i];
+    auto execute_event = thunk.Execute(params);
+
+    // If thunk execution is not completed yet, attach a continuation to
+    // resume sequential execution starting from the next thunk.
+    if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
+      execute_event.AndThen(
+          [this, &params, i, event = std::move(event)](absl::Status status) {
+            if (ABSL_PREDICT_FALSE(!status.ok())) {
+              event.SetError(std::move(status));
+            } else {
+              ResumeExecuteSequential(i + 1, params, std::move(event));
+            }
+          });
+      return;
+    }
+
+    // Abort execution if any of the thunks failed.
+    if (ABSL_PREDICT_FALSE(execute_event.IsError())) {
+      event.SetError(execute_event.GetError());
+      return;
+    }
+  }
+
+  // If we got to the end of the sequence it means that all thunks have
+  // succeeded.
+  event.SetStateConcrete();
 }
 
 void ThunkExecutor::Execute(ExecuteState* state,

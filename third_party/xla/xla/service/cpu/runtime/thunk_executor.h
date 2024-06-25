@@ -85,6 +85,8 @@ class ThunkExecutor {
 
   std::string ToString() const;
 
+  bool is_sequential() const { return is_sequential_; }
+
  private:
   using ReadyQueue = absl::InlinedVector<NodeId, 8>;
 
@@ -121,6 +123,15 @@ class ThunkExecutor {
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
   };
 
+  // Executes thunks sequentially starting from the first thunk in the sequence.
+  tsl::AsyncValueRef<ExecuteEvent> ExecuteSequential(
+      const Thunk::ExecuteParams& params);
+
+  // Resumes sequential thunk execution starting from the given index.
+  void ResumeExecuteSequential(int64_t index,
+                               const Thunk::ExecuteParams& params,
+                               tsl::AsyncValueRef<ExecuteEvent> event);
+
   // Executes nodes in the ready queue with given thunk parameters.
   void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
                ReadyQueue ready_queue);
@@ -143,6 +154,11 @@ class ThunkExecutor {
 
   std::vector<NodeId> source_;
   std::vector<NodeId> sink_;
+
+  // If NodeDef graph dependency structure is sequential and does not have any
+  // opportunities for executing thunks concurrently, we skip the expensive
+  // async execution and simply run thunks in the `thunk_sequence_` one by one.
+  bool is_sequential_;
 };
 
 }  // namespace xla::cpu

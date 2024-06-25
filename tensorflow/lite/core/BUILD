@@ -294,13 +294,10 @@ cc_library(
     deps = [
         ":macros",
         "//tensorflow/lite:allocation",
-        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
