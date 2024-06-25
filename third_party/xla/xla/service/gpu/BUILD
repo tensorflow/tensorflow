@@ -3643,6 +3643,7 @@ cc_library(
         ":prepare_hlo_for_ir_emitting_pipeline",
         ":rename_fusions",
         ":stream_executor_util",
+        "//xla/hlo/experimental/auto_sharding",
         "//xla/service:all_reduce_splitter",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:dnn",
