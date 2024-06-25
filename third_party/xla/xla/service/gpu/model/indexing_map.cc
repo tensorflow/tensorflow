@@ -271,22 +271,12 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
   // The gcd of all multipliers and the divisor.
   int64_t multiplier_divisor_gcd = divisor;
   Interval no_multiplier_range{0, 0};
-  std::optional<int64_t> min_inner_divisor = std::nullopt;
-  std::optional<int64_t> inner_divisor_gcd = std::nullopt;
   VisitSummands(new_dividend, [&](AffineExpr summand) {
     if (auto multiplier = GetConstantRhs(summand, AffineExprKind::Mul)) {
       multiplier_divisor_gcd = std::gcd(multiplier_divisor_gcd, *multiplier);
     } else {
       no_multiplier_range = no_multiplier_range +
                             range_evaluator_->ComputeExpressionRange(summand);
-    }
-
-    if (auto inner_divisor =
-            GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
-      min_inner_divisor =
-          std::min(min_inner_divisor.value_or(*inner_divisor), *inner_divisor);
-      inner_divisor_gcd =
-          std::gcd(inner_divisor_gcd.value_or(*inner_divisor), *inner_divisor);
     }
   });
 
@@ -304,24 +294,6 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
       return zero;
     });
     divisor /= multiplier_divisor_gcd;
-  }
-
-  // If we have an inner divisor whose value is equal to the GCD of all the
-  // divisors, we can remove a division:
-  //   `(a0 / c + a1 / cd + ...) / e` -> `(a0 + a1 / d + (...) * c) / ce`
-  // This potentially increases the number of multiplications, but it's
-  // generally a win. It also matches what the MLIR simplifier does better, so
-  // we can get more simplifications.
-  if (min_inner_divisor && *min_inner_divisor > 0 &&
-      min_inner_divisor == inner_divisor_gcd) {
-    new_dividend = MapSummands(new_dividend, [&](AffineExpr summand) {
-      if (auto inner_divisor =
-              GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
-        return GetLhs(summand).floorDiv(*inner_divisor / *inner_divisor_gcd);
-      }
-      return summand * *inner_divisor_gcd;
-    });
-    divisor *= *inner_divisor_gcd;
   }
 
   return new_dividend.floorDiv(divisor) + extracted;
@@ -509,13 +481,18 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
           if (!div) continue;  // Already erased.
           if ((div_mul % mod_mul) || (div_mul / mod_mul) != mod_c) continue;
 
-          // In many cases, we could just compare the LHSes of the mod and the
-          // div, but if x is a floorDiv itself, we need to check a bit more
-          // carefully:
-          //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)`
-          // `x // (c0 * c1)` will be simplified, so we we may not even have
-          // `c0 * c1` in the expression, if `x` contains a multiplier.
-          if (Simplify(GetLhs(mod).floorDiv(*mod_c)) != Simplify(div)) continue;
+          auto mod_lhs = GetLhs(mod);
+          if (GetConstantRhs(mod_lhs, AffineExprKind::FloorDiv)) {
+            // If x is a floorDiv itself, we need to check a bit more carefully:
+            //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)`
+            // `x // (c0 * c1)` will be simplified, so we we may not even have
+            // `c0 * c1` in the expression, if `x` contains a multiplier.
+            if (Simplify(mod_lhs.floorDiv(*mod_c)) != Simplify(div)) continue;
+          } else {
+            if (mod_lhs != GetLhs(div)) continue;
+            auto div_c = GetConstantRhs(div, AffineExprKind::FloorDiv);
+            if (mod_c != div_c) continue;
+          }
 
           others.push_back(GetLhs(mod) * mod_mul);
           divs[div_i].first = nullptr;
