@@ -826,7 +826,12 @@ message DebugOptions {
 
   string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
-  // Next id: 311
+  // The command buffer trace cache size, increasing the cache size may
+  // sometimes reduces the chances of doing command buffer tracing for
+  // updating command buffer instance.
+  int64 xla_cmd_buffer_trace_cache_size = 311;
+
+  // Next id: 312
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

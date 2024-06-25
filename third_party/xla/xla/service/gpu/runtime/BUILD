@@ -63,6 +63,7 @@ cc_library(
         ":nccl_collective_broadcast_thunk",
         ":nccl_collective_thunk",
         ":thunk",
+        "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:types",
         "//xla:util",

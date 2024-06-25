@@ -115,6 +115,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
+  opts.set_xla_cmd_buffer_trace_cache_size(16);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -1217,7 +1218,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_graph_enable_concurrent_region(),
                 "Identify concurrent regions in gpu graphs and execute them "
                 "concurrently."));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_cmd_buffer_trace_cache_size",
+      int64_setter_for(&DebugOptions::set_xla_cmd_buffer_trace_cache_size),
+      debug_options->xla_cmd_buffer_trace_cache_size(),
+      "Set the command buffer trace cache size, increasing the cache size may "
+      "sometimes reduces the chances of doing command buffer tracing for "
+      "updating command buffer instance."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
