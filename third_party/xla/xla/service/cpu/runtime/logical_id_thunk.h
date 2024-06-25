@@ -13,33 +13,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_RUNTIME_REPLICA_ID_THUNK_H_
-#define XLA_SERVICE_CPU_RUNTIME_REPLICA_ID_THUNK_H_
+#ifndef XLA_SERVICE_CPU_RUNTIME_LOGICAL_ID_THUNK_H_
+#define XLA_SERVICE_CPU_RUNTIME_LOGICAL_ID_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
 
-class ReplicaIdThunk final : public Thunk {
+enum class LogicalIdKind {
+  kPartitionId,
+  kReplicaId,
+};
+
+template <LogicalIdKind type>
+class LogicalIdThunk : public Thunk {
  public:
-  static absl::StatusOr<std::unique_ptr<ReplicaIdThunk>> Create(
-      Info info, BufferAllocation::Slice replica_id_buffer);
+  static absl::StatusOr<std::unique_ptr<LogicalIdThunk>> Create(
+      Info info, BufferAllocation::Slice logical_id_buffer);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 
  private:
-  ReplicaIdThunk(Info info, BufferAllocation::Slice replica_id_buffer);
+  LogicalIdThunk(Info info, BufferAllocation::Slice logical_id_buffer);
 
-  BufferAllocation::Slice replica_id_buffer_;
+  absl::StatusOr<int32_t> GetIdForDevice(
+      const DeviceAssignment* device_assignment,
+      GlobalDeviceId device_id) const;
+
+  BufferAllocation::Slice logical_id_buffer_;
 };
+
+class ReplicaIdThunk final : public LogicalIdThunk<LogicalIdKind::kReplicaId> {
+};
+
+class PartitionIdThunk final
+    : public LogicalIdThunk<LogicalIdKind::kPartitionId> {};
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_RUNTIME_REPLICA_ID_THUNK_H_
+#endif  // XLA_SERVICE_CPU_RUNTIME_LOGICAL_ID_THUNK_H_

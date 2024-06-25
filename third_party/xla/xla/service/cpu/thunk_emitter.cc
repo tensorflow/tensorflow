@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/service/cpu/runtime/fft_thunk.h"
 #include "xla/service/cpu/runtime/infeed_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
+#include "xla/service/cpu/runtime/logical_id_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
 #include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
-#include "xla/service/cpu/runtime/replica_id_thunk.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
@@ -216,6 +216,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // a logical grid of communicating devices.
     case HloOpcode::kReplicaId:
       return EmitReplicaIdThunk(instruction);
+    case HloOpcode::kPartitionId:
+      return EmitPartitionIdThunk(instruction);
 
     case HloOpcode::kAllGather:
       return EmitAllGatherThunk(instruction);
@@ -691,6 +693,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaIdThunk(
                       GetAllocationSlice(instruction));
   return ThunkSequence::Of<ReplicaIdThunk>(ThunkInfo(instruction),
                                            replica_id_buffer);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPartitionIdThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice partition_id_buffer,
+                      GetAllocationSlice(instruction));
+  return ThunkSequence::Of<PartitionIdThunk>(ThunkInfo(instruction),
+                                             partition_id_buffer);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
