@@ -715,6 +715,22 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_DivGcdGreater1) {
+  auto serialized_map =
+      "()[s0, s1, s2] -> (s0 * 512 + s1 * 4 + s2 - ((s0 * 2 + s1 floordiv 64) "
+      "floordiv 3) * 768 + ((s0 * 128 + s1) floordiv 192) * 768)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {}, {1234, 128, 4});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      ()[s0, s1, s2] -> (s0 * 512 + s1 * 4 + s2)
+      domain:
+      s0 in [0, 1233]
+      s1 in [0, 127]
+      s2 in [0, 3]
+    )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_NegativeDiv) {
   // (s0 floordiv 2) floordiv -7 is not s0 floordiv -14:
   // 15 // 2 // -7 = -1
