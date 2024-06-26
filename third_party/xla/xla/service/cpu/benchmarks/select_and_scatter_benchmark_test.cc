@@ -76,7 +76,6 @@ BENCHMARK(BM_SelectAndScatterF32)
     ->Arg(64)
     ->Arg(128)
     ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024);
+    ->Arg(512);
 
 }  // namespace xla::cpu

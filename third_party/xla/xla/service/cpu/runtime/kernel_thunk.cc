@@ -87,40 +87,46 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args;
-  kernel_args.reserve(arguments_buffers_.size() + results_buffers_.size());
+  int64_t num_args = arguments_buffers_.size() + results_buffers_.size();
+  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args(num_args);
+
+  // We initialize `kernel_args` array using pointer to the first argument,
+  // because individual elements access adds up measurable overhead, and this
+  // code is on the critical path.
+  SE_HOST_KernelArg* kernel_args_ptr = kernel_args.data();
+  int64_t kernel_arg_idx = 0;
 
   int64_t arg_num = 0;
   for (BufferAllocation::Slice& buffer : arguments_buffers_) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
-    kernel_args.push_back(
-        SE_HOST_KernelArg{arg_data.opaque(), arg_data.size()});
     VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", arg_num++,
-                                  buffer.ToString(), kernel_args.back().data);
+                                  buffer.ToString(), arg_data.opaque());
+    kernel_args_ptr[kernel_arg_idx++] =
+        SE_HOST_KernelArg{arg_data.opaque(), arg_data.size()};
   }
 
   int64_t res_num = 0;
   for (BufferAllocation::Slice& buffer : results_buffers_) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
-    kernel_args.push_back(
-        SE_HOST_KernelArg{result_data.opaque(), result_data.size()});
     VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)", res_num++,
-                                  buffer.ToString(), kernel_args.back().data);
+                                  buffer.ToString(), result_data.opaque());
+    kernel_args_ptr[kernel_arg_idx++] =
+        SE_HOST_KernelArg{result_data.opaque(), result_data.size()};
   }
 
   // Check that all buffers are aligned to the minimum alignment. We codegen
   // with the assumption that all buffers are aligned, and if they are not, we
   // will crash with a segmentation fault, or worse, produce incorrect results.
   if (min_alignment_.has_value()) {
-    for (int64_t i = 0; i < kernel_args.size(); ++i) {
-      auto ptr = reinterpret_cast<uintptr_t>(kernel_args[i].data);
+    for (int64_t i = 0; i < num_args; ++i) {
+      auto ptr = reinterpret_cast<uintptr_t>(kernel_args_ptr[i].data);
       if (ABSL_PREDICT_FALSE((ptr & (*min_alignment_ - 1)) != 0)) {
         return Internal(
             "Host kernel %s buffer argument #%d (%p) is not aligned to a "
             "required minimum alignment of %d bytes",
-            info().op_name, i, kernel_args[i].data, *min_alignment_);
+            info().op_name, i, kernel_args_ptr[i].data, *min_alignment_);
       }
     }
   }
@@ -136,7 +142,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
                         params.host_kernels->Find(kernel_name_));
 
     absl::MutexLock lock(&mutex_);
-    kernel_.emplace(kernel_args.size(), kernel_fn, nullptr);
+    kernel_.emplace(num_args, kernel_fn, nullptr);
     kernel_ptr_.store(kernel = &kernel_.value());
   }
 

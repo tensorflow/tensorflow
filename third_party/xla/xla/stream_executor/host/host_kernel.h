@@ -113,10 +113,12 @@ class HostKernel : public Kernel {
             std::enable_if_t<std::is_base_of_v<KernelFunction, T>>* = nullptr>
   void SetKernelFunction(std::unique_ptr<T> function) {
     function_ = std::move(function);
+    kernel_ = function_->kernel();
   }
 
  private:
   std::unique_ptr<KernelFunction> function_;
+  SE_HOST_Kernel* kernel_;  // pointer to the kernel owned by `function_`
 
   unsigned arity_;
   std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
