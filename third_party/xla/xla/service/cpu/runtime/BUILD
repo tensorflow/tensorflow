@@ -772,6 +772,29 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "resource_use",
+    srcs = ["resource_use.cc"],
+    hdrs = ["resource_use.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "resource_use_test",
+    srcs = ["resource_use_test.cc"],
+    deps = [
+        ":resource_use",
+        "//xla/service:buffer_assignment",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "rng_state_thunk",
     srcs = ["rng_state_thunk.cc"],
     hdrs = ["rng_state_thunk.h"],
