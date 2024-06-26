@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -573,6 +574,16 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       .set_dim(dimensions)
       .set_stride(strides)
       .set_uid(se::gpu::CuDnnTensorUID(fusion.operand_count()));
+  if (!fusion.GetModule()->config().debug_options().xla_dump_to().empty()) {
+    json dump;
+    graph.serialize(dump);
+    DumpToFileInDirOrStdout(
+        /*module=*/*fusion.GetModule(),
+        /*file_prefix=*/"",
+        /*file_suffix=*/
+        absl::StrCat("cudnn_fusion_", fusion.name(), ".json"),
+        /*contents=*/dump.dump(1));
+  }
   if (cudnn_frontend::error_t result = graph.validate(); result.is_bad()) {
     VLOG(3) << result.get_message();
     return std::nullopt;
@@ -589,7 +600,6 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  VLOG(6) << graph->Graph().print();
   TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare(dnn_support));
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
