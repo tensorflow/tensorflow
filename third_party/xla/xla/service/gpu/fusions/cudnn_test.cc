@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -82,6 +84,79 @@ class CuDnnFusionTest : public GpuCodegenTest {
     }
   }
 };
+
+TEST_F(CuDnnFusionTest, DumpingWorks) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsForTest();
+  std::string output_directory;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
+    output_directory = tsl::testing::TmpDir();
+  }
+  options.set_xla_dump_to(output_directory);
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fd0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d = f32[64,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d0 = f32[64,64] fusion(p0, p1), kind=kCustom, calls=fd0,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+})",
+                                                       config));
+  Thunk::BinaryMap dnn_compiled_graphs;
+  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+                                     dnn_compiled_graphs);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  std::string dump;
+  TF_EXPECT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(output_directory,
+                        FilenameFor(*module, /*prefix=*/"",
+                                    /*suffix=*/"cudnn_fusion_d0.json")),
+      &dump));
+  EXPECT_TRUE(*RunFileCheck(dump, R"(
+CHECK: "nodes": [
+CHECK:   "inputs": {
+CHECK:     "A": "p0",
+CHECK:     "B": "p1"
+CHECK:    },
+CHECK:    "outputs": {
+CHECK:     "C": "d"
+CHECK:    },
+CHECK:    "tag": "MATMUL"
+CHECK:   }
+CHECK:  ],
+CHECK:  "tensors": {
+CHECK:   "d": {
+CHECK:    "data_type": "FLOAT",
+CHECK:    "dim": [1,64,64],
+CHECK:    "stride": [1,64,1],
+CHECK:    "uid": 3,
+CHECK:    "uid_assigned": true
+CHECK:   },
+CHECK:   "p0": {
+CHECK:    "data_type": "FLOAT",
+CHECK:    "dim": [1,64,64],
+CHECK:    "stride": [1,64,1],
+CHECK:    "uid": 1,
+CHECK:    "uid_assigned": true
+CHECK:   },
+CHECK:   "p1": {
+CHECK:    "data_type": "FLOAT",
+CHECK:    "dim": [1,64,64],
+CHECK:    "stride": [1,64,1],
+CHECK:    "uid": 2,
+CHECK:    "uid_assigned": true
+CHECK:   }
+)"));
+}
 
 using CuDnnFusionExecutionTest = CuDnnFusionTest;
 
