@@ -35,9 +35,17 @@ def SHLOSimplifyPass: Pass<"shlo-simplify", "ModuleOp"> {
   let description = [{
     Applies various internally defined patterns.
   }];
-
-  let options = [
-
-  ];
+  let options = [];
   let constructor = "CreateSHLOSimplifyPass()";
+}
+
+def LegalizeShloToTflPass: Pass<"legalize-shlo-to-tfl", "func::FuncOp"> {
+  let summary = "Direct legalizations from stablehlo to tflite dialect.";
+  let description = [{
+    Apply legalizations directly from stablehlo to tflite. Meant to replace
+    MHLO -> TF -> TFL lowering path. Experimental and subject to change.
+  }];
+  let options = [];
+  let constructor = "CreateLegalizeShloToTflPass()";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "mlir::TFL::TensorFlowLiteDialect"];
 }

@@ -99,6 +99,44 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "legalize_shlo_to_tfl",
+    srcs = [
+        "transforms/legalize_shlo_to_tfl.cc",
+    ],
+    hdrs = ["passes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":legalize_shlo_to_tfl_inc_gen",
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+gentbl_cc_library(
+    name = "legalize_shlo_to_tfl_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_legalize_shlo_to_tfl.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/legalize_shlo_to_tfl.td",
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
+    ],
+)
+
+cc_library(
     name = "folders",
     srcs = ["folders.cc"],
     hdrs = ["folders.h"],
