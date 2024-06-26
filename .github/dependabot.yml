@@ -27,12 +27,18 @@ updates:
     directory: /ci/devinfra/docker_windows
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: docker
     directory: /ci/official/containers/linux_arm64
     schedule:
       interval: monthly
-
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    
   - package-ecosystem: docker
     directory: /tensorflow/tools/gcs_test
     schedule:
@@ -42,3 +48,6 @@ updates:
     directory: /tensorflow/tools/tf_sig_build_dockerfiles
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
