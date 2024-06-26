@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/test_util.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 
 #include <gtest/gtest.h>
 
-namespace tflite {
-namespace optimize {
+namespace mlir {
+namespace lite {
 namespace internal {
 const char* kConvModelWithMinus128Plus127Weights =
     "single_conv_weights_min_minus_127_max_plus_127.bin";
@@ -89,5 +89,5 @@ int FailOnErrorReporter::Report(const char* format, va_list args) {
   return 0;
 }
 }  // namespace internal
-}  // namespace optimize
-}  // namespace tflite
+}  // namespace lite
+}  // namespace mlir

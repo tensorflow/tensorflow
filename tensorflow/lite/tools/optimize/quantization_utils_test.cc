@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {
 tensorflow::string* g_test_model_dir = nullptr;
@@ -46,7 +46,7 @@ std::unique_ptr<FlatBufferModel> ReadModel(const char* model) {
 }
 
 std::unique_ptr<FlatBufferModel> ReadConvModel() {
-  return ReadModel(internal::kConvModelWith0Plus10Weights);
+  return ReadModel(mlir::lite::internal::kConvModelWith0Plus10Weights);
 }
 
 using ::testing::ElementsAreArray;

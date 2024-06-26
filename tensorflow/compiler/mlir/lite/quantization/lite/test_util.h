@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_TEST_UTIL_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_TEST_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TEST_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TEST_UTIL_H_
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 
-namespace tflite {
-namespace optimize {
+namespace mlir {
+namespace lite {
 namespace internal {
 // Test model with a single convolution.
 // Floating point weights of the model are all integers and lie in
@@ -132,12 +132,12 @@ extern const char* kQatModelWithFc;
 extern const char* kModelWithResourceVarsCalibrated;
 
 // An error reporter that fails on testing.
-class FailOnErrorReporter : public ErrorReporter {
+class FailOnErrorReporter : public tflite::ErrorReporter {
  public:
   int Report(const char* format, va_list args) override;
 };
 }  // namespace internal
-}  // namespace optimize
-}  // namespace tflite
+}  // namespace lite
+}  // namespace mlir
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_TEST_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_TEST_UTIL_H_
