@@ -201,7 +201,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[512,911]{1,0} parameter(0)
   param_1 = f32[911]{0} parameter(1)
-  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","911"],"num_warps":"2"}}}
 }
 )"));
   TF_ASSERT_OK_AND_ASSIGN(auto runtime_data,
@@ -252,7 +252,7 @@ ENTRY main {
   param_0 = f32[512,911] parameter(0)
   param_1 = f32[911] parameter(1)
   fusion.1 = f32[512,911] fusion(param_0, param_1), kind=kLoop, calls=fusion
-  ROOT triton_softmax = f32[512,911] fusion(fusion.1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  ROOT triton_softmax = f32[512,911] fusion(fusion.1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","911"],"num_warps":"2"}}}
 }
 )"));
   auto consumer = module->entry_computation()->root_instruction();

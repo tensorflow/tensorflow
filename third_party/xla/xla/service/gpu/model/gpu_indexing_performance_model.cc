@@ -358,9 +358,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
         "Could not get launch config for Triton fusion.");
   }
 
-  return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
-                                       launch_config->launch_dimensions,
-                                       launch_config->output_tile_sizes);
+  return EstimateRunTimeForTiledFusion(
+      fusion_analysis.fusion(), launch_config->launch_dimensions,
+      launch_config->block_level_parameters.output_tile_sizes);
 }
 
 // Returns the number of warps to use based on the tile size. The numbers were

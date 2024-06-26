@@ -18,12 +18,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -31,8 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -53,92 +54,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-// Derives the number of blocks and threads to use for processing a Triton
-// Softmax fusion.
-std::optional<TritonFusion::LaunchConfig> CalculateSoftMaxLaunchConfig(
-    const HloFusionAdaptor& fusion) {
-  // Assumptions we make about the matcher:
-  //   * matches Softmax "diamonds" on the last axis, along with any number of
-  //     elementwise operations/bitcasts on any edge
-  //   * within a given fusion, every argument to a Softmax diamond has the same
-  //     shape
-  //   * every reduction is on the last axis
-  //   * the last axis of every reduction parameter has the same length
-  //   * reductions only reduce a single operand
-  //   * all the shapes have canonical layout (logical layout = physical layout)
-  //   * the computation has a single output
-  //   * we tile along a single dimension
-
-  std::optional<HloInstructionAdaptor> reduce_adaptor =
-      HloFindIf(fusion.GetRoots(), fusion,
-                [](auto node) { return node.opcode() == HloOpcode::kReduce; });
-
-  if (!reduce_adaptor.has_value()) {
-    LOG(ERROR) << "No reduce instruction found.";
-    return std::nullopt;
-  }
-
-  const HloInstruction& reduce = reduce_adaptor->instruction();
-
-  const Shape& reduce_input_shape = reduce.operand(0)->shape();
-
-  if (reduce.dimensions().size() != 1 ||
-      reduce.dimensions(0) != reduce_input_shape.rank() - 1) {
-    LOG(ERROR) << "Reduce instruction must reduce inner-most dimension. "
-               << reduce.ToString();
-    return std::nullopt;
-  }
-
-  auto roots = fusion.GetRoots();
-  if (roots.size() != 1) {
-    LOG(ERROR) << "Multi-output fusions are not supported. "
-               << fusion.ToString();
-    return std::nullopt;
-  }
-
-  const HloInstruction& root = roots[0].instruction();
-  const Shape& root_shape = root.shape();
-  if (!root_shape.IsArray() ||
-      LayoutUtil::IsMonotonicWithDim0Minor(root_shape.layout())) {
-    LOG(ERROR) << "Root shape is not supported. " << root_shape.ToString();
-    return std::nullopt;
-  }
-
-  TritonFusion::LaunchConfig launch_config;
-
-  int row_len = reduce_input_shape.dimensions_minor(0);
-  launch_config.output_tile_sizes.resize(root_shape.rank(), 1);
-  launch_config.output_tile_sizes.back() = row_len;
-
-  unsigned num_rows = 1;
-  for (unsigned minor_axis = 1; minor_axis < reduce_input_shape.rank();
-       ++minor_axis) {
-    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
-  }
-
-  unsigned num_warps = 32;
-
-  if (row_len <= 512) {
-    num_warps = 1;
-  } else if (row_len <= 1024) {
-    num_warps = 2;
-  } else if (row_len <= 16384) {
-    num_warps = 4;
-  } else if (row_len <= 32768) {
-    num_warps = 8;
-  } else if (row_len <= 65536) {
-    num_warps = 16;
-  }
-
-  launch_config.launch_dimensions =
-      LaunchDimensions(num_rows, static_cast<uint64_t>(num_warps * WarpSize()));
-
-  return launch_config;
-}
-
-}  // namespace
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
@@ -168,23 +83,21 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonFusionKind) {
-      auto launch_config = *this->launch_config();
-      launch_dimensions = launch_config.launch_dimensions;
+      std::optional<LaunchConfig> launch_config = *this->launch_config();
+      if (!launch_config.has_value()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Block level fusion config is required for Triton fusions: ",
+            fusion.ToString()));
+      }
 
-      BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes =
-          launch_config.output_tile_sizes;
-      block_level_parameters.num_warps =
-          launch_dimensions.num_threads_per_block() / WarpSize();
-      block_level_parameters.num_ctas = 1;
-      block_level_parameters.num_stages = 1;
+      launch_dimensions = std::move(launch_config->launch_dimensions);
 
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(impl_fn_name, &fusion,
                         ir_emitter_context.gpu_compute_capability(),
                         ir_emitter_context.gpu_device_info(),
-                        block_level_parameters,
+                        launch_config->block_level_parameters,
                         ir_emitter_context.llvm_module(),
                         *ir_emitter_context.mlir_context()));
     } else {  // Must be a MatMul
@@ -289,25 +202,11 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     }
 
     LaunchConfig launch_config;
-    launch_config.launch_dimensions = LaunchDimensions(
+    launch_config.launch_dimensions = LaunchDimensions{
         static_cast<uint64_t>(num_blocks),
-        static_cast<uint64_t>(block_level_parameters.num_warps * WarpSize()));
-    launch_config.output_tile_sizes = block_level_parameters.output_tile_sizes;
+        static_cast<uint64_t>(block_level_parameters.num_warps * WarpSize())};
+    launch_config.block_level_parameters = std::move(block_level_parameters);
     return launch_config;
-  }
-
-  // TODO(shyshkov): Remove the SoftMax heuristic once the block-level fusion
-  // config is fully rolled out. All tiles size should be set before reaching
-  // this point.
-  if (analysis_.fusion_backend_config().kind() == kTritonFusionKind) {
-    // TODO(b/332649307): Change the line below to something more generic that
-    // can handle different instructions (not just Reduce) and different
-    // dimensions.
-    //
-    // One rough idea is to have a grid where:
-    // - 1 grid dimension corresponds to all batch dimensions in the HLO.
-    // - 1-2 grid dimension corresponds to block-able dimensions from the HLO.
-    return CalculateSoftMaxLaunchConfig(analysis_.fusion());
   }
 
   // MatMul is not yet supported.
