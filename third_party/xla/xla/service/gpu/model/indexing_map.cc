@@ -492,7 +492,7 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
         if (lhs.getKind() == AffineExprKind::Mod) {
           mods.push_back({lhs, multiplier});
         } else if (lhs.getKind() == AffineExprKind::FloorDiv) {
-          divs.push_back({lhs, multiplier});
+          divs.push_back({CanonicalizeOrder(lhs), multiplier});
         } else {
           others.push_back(simplified);
         }
@@ -525,7 +525,10 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
           //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)`
           // `x // (c0 * c1)` will be simplified, so we we may not even have
           // `c0 * c1` in the expression, if `x` contains a multiplier.
-          if (Simplify(GetLhs(mod).floorDiv(*mod_c)) != Simplify(div)) continue;
+          if (CanonicalizeOrder(Simplify(GetLhs(mod).floorDiv(*mod_c))) !=
+              div) {
+            continue;
+          }
 
           others.push_back(GetLhs(mod) * mod_mul);
           divs[div_i].first = nullptr;
@@ -614,6 +617,8 @@ AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
 }
 
 AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
+  // TODO(jreiffers): This calls Simplify way too often for multi-result maps.
+  // Rewrite this to get rid of the recursion.
   affine_map = SimplifyWithMlir(affine_map);
   SmallVector<AffineExpr, 4> results;
   results.reserve(affine_map.getNumResults());

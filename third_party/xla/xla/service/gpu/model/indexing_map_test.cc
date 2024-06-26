@@ -667,6 +667,21 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
   )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape3) {
+  auto serialized_map =
+      "(d0, d1) -> (((d1 * 2 + d0 floordiv 64) mod 3) * 256 + (d0 mod 64) * 4 "
+      "+ ((d1 * 128 + d0) floordiv 192) * 768)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {128, 3072}, {});
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0, d1) -> (d0 * 4 + d1 * 512)
+      domain:
+      d0 in [0, 128)
+      d1 in [0, 3072)
+  )"));
+}
+
 TEST_F(IndexingMapTest,
        AffineMapSimplification_ModWithNegativeMultiplerDoesNotGetSimplified) {
   auto serialized_map = "(d0) -> ((-d0) mod 2)";
