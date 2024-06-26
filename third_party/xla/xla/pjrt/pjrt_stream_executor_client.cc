@@ -3278,7 +3278,7 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes_size());
-  for (auto element_shape : shape.tuple_shapes()) {
+  for (const auto& element_shape : shape.tuple_shapes()) {
     TF_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
@@ -3292,11 +3292,16 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
   TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  if (addressable_devices().empty()) {
+    return Unimplemented(
+        "GetOutputMemoryKinds is not supported when there are no addressable "
+        "devices in PjRtStreamExecutorLoadedExecutable.");
+  }
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
                       addressable_devices()[0]->default_memory_space());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
-  for (auto shape : shapes) {
+  for (const auto& shape : shapes) {
     TF_ASSIGN_OR_RETURN(
         std::vector<absl::string_view> memory_kind,
         MemoryKindsFromShape(shape, default_memory_space->kind()));
