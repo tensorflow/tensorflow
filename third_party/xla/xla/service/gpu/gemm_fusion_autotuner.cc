@@ -312,11 +312,6 @@ absl::StatusOr<TileSizeLimit> GetLimits(const HloDotInstruction& dot) {
   const int max_k = tsl::NextPowerOfTwoS64(
       dot.operand(1)->shape().dimensions(contracting_index));
 
-  // TODO(b/337839570): block_k = 16 is bugged in Triton for dots with 8-bit
-  // input. Setting minimum to 32 instead of 16 for these cases.
-  // TODO(b/337838200): Write the restriction on the minimum tile size to be
-  // generic. Currently we only handle the 8-bit case as this was the bug we
-  // ran into.
   return TileSizeLimit{
       /*block_m=*/std::max(max_m, kMinTileSize),
       /*block_n=*/std::max(max_n, kMinTileSize),
@@ -634,13 +629,20 @@ absl::StatusOr<std::vector<Config>> GemmFusionAutotunerImpl::GenerateConfigs(
 
 absl::StatusOr<std::vector<TritonGemmConfig>>
 GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
-  bool has_8_bit_operand = HloAnyOf({&dot}, [&](const HloInstruction* node) {
-    if (node->opcode() != HloOpcode::kConvert) {
-      return false;
-    }
-    auto in_type = node->operand(0)->shape().element_type();
-    return primitive_util::BitWidth(in_type) == 8;
-  });
+  // Retrieve the minimum bit-width participating in the dot. This is needed
+  // to avoid autotuning configurations that are not supported by Triton. This
+  // is used to restrict the values for tile_k.
+  std::vector<const HloInstruction*> converts =
+      HloFindAll({&dot}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kConvert;
+      });
+  int minBitWidth = primitive_util::BitWidth(dot.shape().element_type());
+  for (auto convert : converts) {
+    auto in_type = convert->operand(0)->shape().element_type();
+    auto out_type = convert->shape().element_type();
+    minBitWidth = std::min({minBitWidth, primitive_util::BitWidth(in_type),
+                            primitive_util::BitWidth(out_type)});
+  }
 
   std::vector<TritonGemmConfig> result_configs;
   TF_ASSIGN_OR_RETURN(TileSizeLimit limits, GetLimits(dot));
@@ -690,14 +692,12 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     }
     config.split_k = std::min(config.split_k, max_split_k);
 
-    // TODO(b/337839570): block_k = 16 is bugged in Triton for dots with 8-bit
-    // input. Setting minimum to 32 instead of 16 for these cases.
-    // TODO(b/337838200): Write the restriction on the minimum tile size to be
-    // generic. Currently we only handle the 8-bit case as this was the bug we
-    // ran into.
-    if (has_8_bit_operand && config.block_k == kMinTileSize) {
-      config.block_k *= 2;
-    }
+    // TODO(b/337839570): Triton currently has a limitation where it crashes
+    // on small block_k values depending on the bit-width of the inputs to the
+    // dot. The logic below accounts for this limitation.
+    constexpr int kLdmatrixGranularity = 256;
+    config.block_k =
+        std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
 
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
@@ -706,8 +706,9 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
         config.block_m = std::max(config.block_m, 64);
         config.num_warps = std::max(config.num_warps, 4);
       }
-      config.block_k =
-          std::max(config.block_k, kMinTileSize * (has_8_bit_operand ? 4 : 2));
+      config.block_k = std::max(
+          config.block_k,
+          2 * std::max(kMinTileSize, kLdmatrixGranularity / minBitWidth));
       int meta_elements = config.block_m * config.block_k / 16;
       config.num_warps =
           std::min<int>(config.num_warps, meta_elements / WarpSize());
