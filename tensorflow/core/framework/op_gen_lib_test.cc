@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_gen_lib.h"
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
