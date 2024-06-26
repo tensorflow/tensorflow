@@ -5933,6 +5933,9 @@ xla_test(
         "gpu_a100",
         "gpu_amd_any",
     ],
+    tags = [
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
