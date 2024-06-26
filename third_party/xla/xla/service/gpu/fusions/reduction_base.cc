@@ -125,11 +125,11 @@ int GetVectorSizeForMlir(const HloFusionAnalysis& analysis,
     }
   }
   // 16 byte vector loads are often slower than 8 byte loads.
-  if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
-    return 2;
-  }
   if (analysis.input_output_info().smallest_input_dtype_bits >= 64) {
     return 1;
+  }
+  if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
+    return 2;
   }
   // Like above, if the size of the minor dimension is not sufficiently large,
   // the vectorization is not helpful.
