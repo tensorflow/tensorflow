@@ -1804,47 +1804,22 @@ std::vector<HloGraphNode*> HloScheduleGraph::FindTopRoots() const {
 
 void HloScheduleGraph::InitializeGraphAnalysis(
     const AsyncTracker* async_tracker) {
-  absl::flat_hash_map<HloGraphNode*, int> current_rank;
-  std::vector<HloGraphNode*> stack;
   for (const HloInstruction* instr : original_order_) {
     HloGraphNode& node = GetNode(instr);
-    current_rank[&node] = node.GetIndegree();
     node.SetAsyncDepth(0.0);
     node.SetDepth(0.0);
     node.SetGraphDepth(0);
-    if (node.GetIndegree() == 0) {
-      stack.push_back(&node);
-    }
-  }
-  while (!stack.empty()) {
-    auto* node = stack.back();
-    stack.pop_back();
-    if (async_tracker->IsSupportedAsyncDone(node->GetInstr())) {
-      for (auto& pred : node->GetPredecessors()) {
-        node->SetAsyncDepth(
-            std::max(pred.Target().GetAsyncDepth() + pred.Latency(),
-                     node->GetAsyncDepth()));
-        node->SetDepth(std::max(
-            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
-            node->GetDepth()));
-        node->SetGraphDepth(
-            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
-      }
-    } else {
-      for (auto& pred : node->GetPredecessors()) {
-        node->SetAsyncDepth(
-            std::max(pred.Target().GetAsyncDepth(), node->GetAsyncDepth()));
-        node->SetDepth(std::max(
-            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
-            node->GetDepth()));
-        node->SetGraphDepth(
-            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
-      }
-    }
-    for (auto& succ : node->GetSuccessors()) {
-      if (--current_rank[&succ.Target()] == 0) {
-        stack.push_back(&succ.Target());
-      }
+
+    bool is_async_done = async_tracker->IsSupportedAsyncDone(*instr);
+    for (auto& pred : node.GetPredecessors()) {
+      node.SetAsyncDepth(std::max(
+          pred.Target().GetAsyncDepth() + (is_async_done ? pred.Latency() : 0),
+          node.GetAsyncDepth()));
+      node.SetDepth(std::max(
+          pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+          node.GetDepth()));
+      node.SetGraphDepth(
+          std::max(pred.Target().GetGraphDepth() + 1, node.GetGraphDepth()));
     }
   }
 }
