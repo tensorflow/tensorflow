@@ -208,11 +208,9 @@ cc_library(
     srcs = ["cpu_feature_guard.cc"],
     hdrs = ["cpu_feature_guard.h"],
     deps = [
-        ":byte_order",
         ":logging",
         ":platform_port",
         "@com_google_absl//absl/base",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -305,19 +303,26 @@ tf_cc_test(
     srcs = ["env_test.cc"],
     deps = [
         ":cord",
-        ":env",
-        ":env_impl",
-        ":null_file_system",
         ":path",
-        ":protobuf",
-        ":str_util",
-        ":strcat",
         ":stringpiece",
         ":test",
         ":test_main",
         "//tensorflow/core:protos_all_cc",
-        "@eigen_archive//:eigen3",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:file_statistics",
+        "@local_tsl//tsl/platform:null_file_system",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -1142,7 +1147,9 @@ cc_library(
     hdrs = ["enable_tf2_utils.h"],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/util:env_var",
+        "@local_tsl//tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -1152,8 +1159,10 @@ cc_library(
     srcs = ["error_payloads.cc"],
     hdrs = ["error_payloads.h"],
     deps = [
+        ":status",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1234,9 +1243,11 @@ tf_cc_test(
     ],
     deps = [
         ":enable_tf2_utils",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/util:env_var",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -1285,7 +1296,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
     ],
 )
@@ -1297,10 +1307,11 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
