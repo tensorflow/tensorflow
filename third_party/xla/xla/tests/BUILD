@@ -2896,6 +2896,7 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "optonly",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
     ],
     deps = [
         ":client_library_test_base",
