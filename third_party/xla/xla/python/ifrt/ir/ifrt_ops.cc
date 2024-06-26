@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -236,8 +237,22 @@ mlir::LogicalResult VerifyIoAliases(mlir::Operation* op,
 }  // namespace
 
 mlir::LogicalResult ReshardOp::verify() {
-  return VerifySameGlobalShape(*this, "Input", getInput(), "Output",
-                               getOutput());
+  if (getInputs().empty()) {
+    return emitOpError() << "requires at least one input array";
+  }
+  if (getInputs().size() != getOutputs().size()) {
+    return emitOpError()
+           << "requires the same number of input and output arrays";
+  }
+  for (const auto [idx, pair] :
+       llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
+    if (mlir::failed(VerifySameGlobalShape(
+            *this, absl::StrCat("input #", idx), std::get<0>(pair),
+            absl::StrCat("output #", idx), std::get<1>(pair)))) {
+      return mlir::failure();
+    }
+  }
+  return mlir::success();
 }
 
 mlir::LogicalResult AssembleOp::verify() {

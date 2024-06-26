@@ -63,7 +63,6 @@ class IfrtVerifyDonationPass
 
 void IfrtVerifyDonationPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
-  xla::ifrt::ReshardOp reshard_op;
   llvm::DenseSet<mlir::Value> donated_values;
   mlir::WalkResult result = module_op.walk([&](mlir::Operation* op)
                                                -> mlir::WalkResult {
@@ -90,36 +89,22 @@ void IfrtVerifyDonationPass::runOnOperation() {
                   }
                   return mlir::success();
                 })
-            .Case<xla::ifrt::ReshardOp>([&](auto& op) {
+            .Case<xla::ifrt::CopyArraysOp, xla::ifrt::RemapArraysOp,
+                  xla::ifrt::ReshardOp>([&](auto& op) {
               if (op.getDonated()) {
-                auto donated_value = op.getInput();
-                if (!donated_values.insert(donated_value).second) {
-                  op.emitOpError() << "input already donated.";
-                  return mlir::failure();
-                }
-                if (mlir::failed(VerifyIfInputAndDonated(op, donated_value))) {
-                  return mlir::failure();
+                for (const auto [idx, input] :
+                     llvm::enumerate(op.getInputs())) {
+                  if (!donated_values.insert(input).second) {
+                    op.emitOpError() << "input #" << idx << " already donated.";
+                    return mlir::failure();
+                  }
+                  if (mlir::failed(VerifyIfInputAndDonated(op, input))) {
+                    return mlir::failure();
+                  }
                 }
               }
               return mlir::success();
             })
-            .Case<xla::ifrt::CopyArraysOp, xla::ifrt::RemapArraysOp>(
-                [&](auto& op) {
-                  if (op.getDonated()) {
-                    for (const auto [idx, input] :
-                         llvm::enumerate(op.getInputs())) {
-                      if (!donated_values.insert(input).second) {
-                        op.emitOpError()
-                            << "input #" << idx << " already donated.";
-                        return mlir::failure();
-                      }
-                      if (mlir::failed(VerifyIfInputAndDonated(op, input))) {
-                        return mlir::failure();
-                      }
-                    }
-                  }
-                  return mlir::success();
-                })
             .Default(mlir::success());
 
     if (mlir::failed(result)) {

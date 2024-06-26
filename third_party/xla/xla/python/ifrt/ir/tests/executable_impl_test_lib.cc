@@ -101,16 +101,12 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, Reshard) {
   std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2xi32>,
-                                     #ifrt.sharding_param<1 to [0] on 1>, [0]>)
-      -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
-      attributes {ifrt.function} {
-    %0 = "ifrt.Reshard"(%arg0)
-        : (!ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>)
-        -> !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
-    return %0 : !ifrt.array<tensor<2xi32>,
-                            #ifrt.sharding_param<1 to [0] on 1>, [1]>
+  func.func @main(%arg0: !array0) -> !array1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+    return %0 : !array1
   }
 }
   )";
@@ -139,7 +135,7 @@ module {
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({2}), {{1, 2}}, DeviceList({devices[1]})));
+      xla::ifrt::Shape({1}), {{1}, {2}}, devices));
 }
 
 TEST_F(IfrtIrExecutableImplTest, ZeroInput) {
