@@ -21,7 +21,10 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -32,8 +35,6 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/coordination_config.pb.h"
@@ -53,7 +54,7 @@ class FakePreemptionNotifier : public PreemptionNotifier {
 
   ~FakePreemptionNotifier() override {
     NotifyRegisteredListeners(
-        errors::Cancelled("~FakePreemptionNotifier() was called."));
+        absl::CancelledError("~FakePreemptionNotifier() was called."));
   }
 
   void AnnounceDeath(absl::Time death_time) {
@@ -73,14 +74,14 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     // Create preempt sync manager for task 1.
     auto preempt_notifier = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier_ = preempt_notifier.get();
-    TF_CHECK_OK(preempt_sync_mgr_->Initialize(coord_agent_.get(),
-                                              std::move(preempt_notifier)));
+    CHECK_OK(preempt_sync_mgr_->Initialize(coord_agent_.get(),
+                                           std::move(preempt_notifier)));
 
     // Create preempt sync manager for task 2.
     auto preempt_notifier2 = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier2_ = preempt_notifier2.get();
-    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(coord_agent2_.get(),
-                                               std::move(preempt_notifier2)));
+    CHECK_OK(preempt_sync_mgr2_->Initialize(coord_agent2_.get(),
+                                            std::move(preempt_notifier2)));
   }
   ~PreemptionSyncManagerTest() override {
     // Tear down coordination service objects in order.
@@ -109,13 +110,13 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         absl::ToInt64Microseconds(absl::Seconds(1)));
   }
 
-  // Report to coordiation service that task two is unhealthy.
+  // Report to coordination service that task two is unhealthy.
   void SimulateUnhealthyTaskTwo() {
     CoordinatedTask task2;
     task2.set_job_name(kJobName);
     task2.set_task_id(1);
-    TF_CHECK_OK(
-        coord_service_->ReportTaskError(task2, errors::Internal("test_error")));
+    CHECK_OK(coord_service_->ReportTaskError(
+        task2, absl::InternalError("test_error")));
   }
 
   // Allow access to objects under test.
@@ -163,14 +164,14 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     };
     CoordinationServiceConfig coord_config;
     coord_config.set_service_leader("test_leader");
-    TF_CHECK_OK(coord_agent_->Initialize(Env::Default(), kJobName,
-                                         /*task_id=*/0, coord_config,
-                                         std::move(coord_client), error_fn));
-    TF_CHECK_OK(coord_agent2_->Initialize(Env::Default(), kJobName,
-                                          /*task_id=*/1, coord_config,
-                                          std::move(coord_client2), error_fn));
-    TF_CHECK_OK(coord_agent_->Connect());
-    TF_CHECK_OK(coord_agent2_->Connect());
+    CHECK_OK(coord_agent_->Initialize(Env::Default(), kJobName,
+                                      /*task_id=*/0, coord_config,
+                                      std::move(coord_client), error_fn));
+    CHECK_OK(coord_agent2_->Initialize(Env::Default(), kJobName,
+                                       /*task_id=*/1, coord_config,
+                                       std::move(coord_client2), error_fn));
+    CHECK_OK(coord_agent_->Connect());
+    CHECK_OK(coord_agent2_->Connect());
   }
 
   // Coordination service.
@@ -242,9 +243,9 @@ TEST_F(PreemptionSyncManagerTest, ShutdownTasksWithoutPreemption) {
   EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 
   // Shutdown coordination service agents.
-  TF_CHECK_OK(coord_agent_->Shutdown());
-  TF_CHECK_OK(coord_agent2_->Shutdown());
-  // Protocol is not triggerred, so there should be no sync point.
+  CHECK_OK(coord_agent_->Shutdown());
+  CHECK_OK(coord_agent2_->Shutdown());
+  // Protocol is not triggered, so there should be no sync point.
   EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
