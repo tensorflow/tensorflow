@@ -76,12 +76,29 @@ option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
-if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
+
+if(${CMAKE_CROSSCOMPILING})
   set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
   if(TFLITE_HOST_TOOLS_DIR STREQUAL "")
-    message(FATAL_ERROR "Path to the natively compiled 'flatc' compiler binary has not been provided!\
-                        Please specify it using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> launch argument.")
+    message(FATAL_ERROR "When cross-compiling, some tools need to be available to run on the host (current required tools: flatc). Please specify where those binaries can be found by using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path>.")
   endif()
+
+  # Setup the host FlatBuffers compiler.
+  set(FLATC_PATHS
+      ${TFLITE_HOST_TOOLS_DIR}
+      ${TFLITE_HOST_TOOLS_DIR}/bin
+      ${TFLITE_HOST_TOOLS_DIR}/flatbuffers-flatc/bin
+      )
+  find_program(FLATC_BIN flatc PATHS ${FLATC_PATHS})
+  if(${FLATC_BIN} STREQUAL "FLATC_BIN-NOTFOUND")
+    message(FATAL_ERROR "Host 'flatc' compiler has not been found in the following locations: ${FLATC_PATHS}")
+  else()
+    message(STATUS "Pre-built 'flatc' compiler for cross-compilation purposes found: ${FLATC_BIN}")
+    set(FLATBUFFERS_FLATC_EXECUTABLE "${FLATC_BIN}")
+  endif()
+else()
+  set(FLATBUFFERS_FLATC_EXECUTABLE "${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc")
+  set(FLATC_TARGET "flatbuffers-flatc")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -495,19 +512,14 @@ if(TFLITE_ENABLE_XNNPACK)
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
-  if(FLATBUFFERS_FLATC_EXECUTABLE)
-    set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
-  else()
-    set(FLATC flatc)
-  endif()
   add_custom_command(
-         OUTPUT "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
-         COMMAND "${FLATC}" -c
-           -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
-           --gen-mutable --gen-object-api
-           "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
-         DEPENDS "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
-         )
+    OUTPUT "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+    COMMAND "${FLATBUFFERS_FLATC_EXECUTABLE}" -c
+      -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
+      --gen-mutable --gen-object-api
+      "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+    DEPENDS "${FLATC_TARGET}" "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+  )
 
   add_library(xnnpack-delegate STATIC
     "${TFLITE_DELEGATES_XNNPACK_SRCS}"
