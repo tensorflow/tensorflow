@@ -201,9 +201,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_block_k(64);
         triton_config.set_block_n(64);
         triton_config.set_split_k(1);
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(2);
-        triton_config.set_num_ctas(1);
 
         block_level_parameters.num_ctas = 1;
         block_level_parameters.num_stages = 1;
