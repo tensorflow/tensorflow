@@ -40,8 +40,8 @@ class AddF32HostKernels : public Thunk::HostKernels {
  public:
   absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) override {
     return +[](const SE_HOST_KernelCallFrame* call_frame) {
-      SE_HOST_KernelArg& in = call_frame->args[0];
-      SE_HOST_KernelArg& out = call_frame->args[1];
+      const SE_HOST_KernelArg& in = call_frame->args[0];
+      const SE_HOST_KernelArg& out = call_frame->args[1];
 
       float* in_ptr = reinterpret_cast<float*>(in.data);
       float* out_ptr = reinterpret_cast<float*>(out.data);

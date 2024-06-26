@@ -53,9 +53,9 @@ static auto ToCopyableTask(HostKernel::Task task) {
 }
 
 static SE_HOST_KernelError* AddI32(const SE_HOST_KernelCallFrame* call_frame) {
-  SE_HOST_KernelArg& lhs = call_frame->args[0];
-  SE_HOST_KernelArg& rhs = call_frame->args[1];
-  SE_HOST_KernelArg& out = call_frame->args[2];
+  const SE_HOST_KernelArg& lhs = call_frame->args[0];
+  const SE_HOST_KernelArg& rhs = call_frame->args[1];
+  const SE_HOST_KernelArg& out = call_frame->args[2];
 
   int32_t* lhs_ptr = reinterpret_cast<int32_t*>(lhs.data);
   int32_t* rhs_ptr = reinterpret_cast<int32_t*>(rhs.data);
@@ -217,7 +217,9 @@ TEST(HostKernelTest, LaunchAsync) {
   };
 
   HostKernel host_kernel(/*arity=*/0, no_op);
-  auto event = host_kernel.Launch(ThreadDim(4, 4, 4), {}, std::move(runner));
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4),
+                                  absl::Span<const SE_HOST_KernelArg>(),
+                                  std::move(runner));
 
   tsl::BlockUntilReady(event);
   EXPECT_TRUE(event.IsConcrete());
@@ -245,7 +247,9 @@ TEST(HostKernelTest, LaunchAsyncError) {
   };
 
   HostKernel host_kernel(/*arity=*/0, maybe_error);
-  auto event = host_kernel.Launch(ThreadDim(4, 4, 4), {}, std::move(runner));
+  auto event = host_kernel.Launch(ThreadDim(4, 4, 4),
+                                  absl::Span<const SE_HOST_KernelArg>(),
+                                  std::move(runner));
 
   tsl::BlockUntilReady(event);
   ASSERT_TRUE(event.IsError());
@@ -269,7 +273,8 @@ static void BM_HostKernelSyncLaunch(benchmark::State& state) {
 
   HostKernel kernel(/*arity=*/0, NoOp);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(tdim_x), /*buffers=*/{}));
+    benchmark::DoNotOptimize(kernel.Launch(
+        ThreadDim(tdim_x), absl::Span<const SE_HOST_KernelArg>()));
   }
 }
 
@@ -281,9 +286,11 @@ static void BM_HostKernelAsyncLaunch(benchmark::State& state) {
 
   HostKernel kernel(/*arity=*/0, NoOp);
   for (auto _ : state) {
-    auto event = kernel.Launch(ThreadDim(tdim_x), {}, [&](auto task) {
-      thread_pool->Schedule(ToCopyableTask(std::move(task)));
-    });
+    auto event =
+        kernel.Launch(ThreadDim(tdim_x), absl::Span<const SE_HOST_KernelArg>(),
+                      [&](auto task) {
+                        thread_pool->Schedule(ToCopyableTask(std::move(task)));
+                      });
     tsl::BlockUntilReady(event);
   }
 }
