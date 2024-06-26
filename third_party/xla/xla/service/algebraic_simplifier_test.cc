@@ -736,6 +736,95 @@ TEST_F(AlgebraicSimplifierTest, SelectPredPred2) {
               GmockMatch(m::Not(m::Parameter(0))));
 }
 
+// select(compare(a, b, GT/GE), a, b) => or(a, b),   a,b ∈ PRED
+TEST_F(AlgebraicSimplifierTest, SelectGtCompare) {
+  for (const auto cmp_dir : {"GT", "GE"}) {
+    const auto kModuleStr = absl::StrFormat(R"(
+      HloModule m
+      test {
+        p0 = pred[8]{0} parameter(0)
+        p1 = pred[8]{0} parameter(1)
+        compare = pred[8]{0} compare(p0, p1), direction=%s
+        ROOT select = pred[8]{0} select(compare, p0, p1)
+      }
+    )",
+                                            cmp_dir);
+    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+    ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+    EXPECT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::Or(m::Parameter(0), m::Parameter(1))));
+  }
+}
+
+// select(compare(a, b, LT/LE), a, b) => and(a, b),   a,b ∈ PRED
+TEST_F(AlgebraicSimplifierTest, SelectLtCompare) {
+  for (const auto cmp_dir : {"LT", "LE"}) {
+    const auto kModuleStr = absl::StrFormat(R"(
+      HloModule m
+      test {
+        p0 = pred[8]{0} parameter(0)
+        p1 = pred[8]{0} parameter(1)
+        compare = pred[8]{0} compare(p0, p1), direction=%s
+        ROOT select = pred[8]{0} select(compare, p0, p1)
+      }
+    )",
+                                            cmp_dir);
+    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+    ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+    EXPECT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::And(m::Parameter(0), m::Parameter(1))));
+  }
+}
+
+// select(compare(a, b, EQ), a, b) => b,   a,b ∈ PRED
+TEST_F(AlgebraicSimplifierTest, SelectEqCompare) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[8]{0} parameter(0)
+      p1 = pred[8]{0} parameter(1)
+      compare = pred[8]{0} compare(p0, p1), direction=EQ
+      ROOT select = pred[8]{0} select(compare, p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+// select(compare(a, b, NE), a, b) => a,   a,b ∈ PRED
+TEST_F(AlgebraicSimplifierTest, SelectNeCompare) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[8]{0} parameter(0)
+      p1 = pred[8]{0} parameter(1)
+      compare = pred[8]{0} compare(p0, p1), direction=NE
+      ROOT select = pred[8]{0} select(compare, p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+// select(compare(a, b, NE), b, a) ≠> a - wrong operands order
+TEST_F(AlgebraicSimplifierTest, SelectNeCompare_NegativeTestCase) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = pred[8]{0} parameter(0)
+      p1 = pred[8]{0} parameter(1)
+      compare = pred[8]{0} compare(p0, p1), direction=NE
+      ROOT select = pred[8]{0} select(compare, p1, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 // Test that select(pred, xs, dynamic_update_slice(xs, x, i)) is simplified
 // to dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
 TEST_F(AlgebraicSimplifierTest, SelectDUSWithShapedPred) {

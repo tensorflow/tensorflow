@@ -8188,6 +8188,33 @@ absl::Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
                       select->mutable_operand(0)->shape(), HloOpcode::kNot,
                       select->mutable_operand(0)));
     }
+    // select(compare(a, b, GT/GE), a, b) => or(a, b)
+    // select(compare(a, b, LT/LE), a, b) => and(a, b)
+    // select(compare(a, b, EQ), a, b) => b
+    // select(compare(a, b, NE), a, b) => a
+    HloInstruction *compare, *lhs, *rhs;
+    if (Match(select, m::Select(m::Op(&compare), m::Op(&lhs), m::Op(&rhs))) &&
+        Match(compare, m::Compare(m::Op().Is(lhs), m::Op().Is(rhs)))) {
+      auto cmp_dir = compare->comparison_direction();
+      if (cmp_dir == ComparisonDirection::kGt ||
+          cmp_dir == ComparisonDirection::kGe) {
+        return ReplaceWithNewInstruction(
+            select, HloInstruction::CreateBinary(select->shape(),
+                                                 HloOpcode::kOr, lhs, rhs));
+      }
+      if (cmp_dir == ComparisonDirection::kLt ||
+          cmp_dir == ComparisonDirection::kLe) {
+        return ReplaceWithNewInstruction(
+            select, HloInstruction::CreateBinary(select->shape(),
+                                                 HloOpcode::kAnd, lhs, rhs));
+      }
+      if (cmp_dir == ComparisonDirection::kEq) {
+        return ReplaceInstruction(select, rhs);
+      }
+      if (cmp_dir == ComparisonDirection::kNe) {
+        return ReplaceInstruction(select, lhs);
+      }
+    }
   }
 
   // select(pred, xs, dynamic_update_slice(xs, x, i))
