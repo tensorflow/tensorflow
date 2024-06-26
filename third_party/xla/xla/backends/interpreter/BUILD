@@ -1,8 +1,8 @@
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -68,7 +68,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = ["//xla/stream_executor"] + if_static(
+    deps = ["//xla/stream_executor"] + if_google(
         ["@com_google_protobuf//:any_cc_proto"],
         ["@com_google_protobuf//:protobuf_headers"],
     ),
