@@ -93,11 +93,11 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda([
+        # keep sorted
         "//xla/stream_executor:cuda_platform",
+        if_google("//third_party/py/jax/jaxlib:gpu_kernels"),  # fixdeps: keep
     ]) + if_rocm([
         "//xla/stream_executor:rocm_platform",
-    ]) + if_google([
-        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
     ]),
 )
 
