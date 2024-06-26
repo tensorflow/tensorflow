@@ -795,10 +795,8 @@ void JaxPmapFunction_tp_dealloc(PyObject* self) {
 
 int JaxPmapFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-#if PY_VERSION_HEX >= 0x03090000
   // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
   Py_VISIT(Py_TYPE(self));
-#endif
   Py_VISIT(o->dict);
   Py_VISIT(o->fun.fun().ptr());
   Py_VISIT(o->fun.cache_miss().ptr());
