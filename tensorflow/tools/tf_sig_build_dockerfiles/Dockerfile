@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-base-ubuntu22.04@sha256:6a7febf317514458233b87819ce47d5441357dd7763e91800c35f6745f34bbbd as devel
+FROM nvidia/cuda:12.5.0-base-ubuntu22.04@sha256:a89cae4e5e208e62bb188851fa881be73967128e2e5b49b6846b9a2859cb6b82 as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 
