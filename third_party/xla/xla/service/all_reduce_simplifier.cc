@@ -19,14 +19,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_replication_analysis.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
@@ -42,22 +46,33 @@ absl::StatusOr<bool> AllReduceSimplifier::Run(
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
   std::vector<std::pair<HloInstruction*, int64_t>> all_reduces_to_replace;
 
-  // Returns the size of a replica group if all groups have the same size, or -1
-  // if they have different sizes.
-  auto get_replica_group_size =
-      [this](const HloInstruction* all_reduce) -> int64_t {
-    if (all_reduce->replica_groups().empty()) {
-      return replica_count_;
+  // Returns the number of participants in a replica group if all groups have
+  // the same size, or -1 if they have different sizes.
+  // Number of participants depends on the mode of the collective operation.
+  auto get_participant_counts_for_replica_group =
+      [](const HloInstruction* all_reduce) -> absl::StatusOr<int64_t> {
+    const HloModuleConfig& config = all_reduce->GetModule()->config();
+    TF_ASSIGN_OR_RETURN(
+        CollectiveOpGroupMode group_mode,
+        GetCollectiveOpGroupMode(all_reduce->channel_id().has_value(),
+                                 Cast<HloAllReduceInstruction>(all_reduce)
+                                     ->use_global_device_ids()));
+
+    int64_t num_devices = config.num_partitions();
+    int64_t num_replicas = config.replica_count();
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+                        GetPariticipantCountsForReplicaGroups(
+                            num_replicas, num_devices,
+                            all_reduce->replica_groups(), group_mode));
+    if (participant_counts.empty()) {
+      return -1;
     }
-    int64_t replica_group_size = -1;
-    for (const auto& group : all_reduce->replica_groups()) {
-      if (replica_group_size == -1) {
-        replica_group_size = group.replica_ids_size();
-      } else if (replica_group_size != group.replica_ids_size()) {
-        return -1;
-      }
+    if (!absl::c_all_of(participant_counts, [&](int64_t participant_count) {
+          return participant_count == participant_counts[0];
+        })) {
+      return -1;
     }
-    return replica_group_size;
+    return participant_counts[0];
   };
 
   bool changed = false;
@@ -83,11 +98,24 @@ absl::StatusOr<bool> AllReduceSimplifier::Run(
         // optimize out (being fed within a tuple input).
         continue;
       }
-      if (!inst->IsCrossReplicaAllReduce()) {
+      if (!inst->IsCrossReplicaAllReduce() && !inst->IsCrossModuleAllReduce()) {
         continue;
       }
-      int64_t group_size = get_replica_group_size(inst);
-      if (group_size == -1) {
+      TF_ASSIGN_OR_RETURN(int64_t group_size,
+                          get_participant_counts_for_replica_group(inst));
+
+      // We will not simplify this all reduce if any of the following is true:
+      // 1. All group do not have the same size.
+      //
+      // 2. The AllReduce is not cross replica and the group size is not 1.
+      // Since the replication analysis performed earlier is only for cross
+      // replica spmd.
+      //
+      // 3. The AllReduce is not cross replica and the module is not using spmd.
+      if (group_size == -1 ||
+          (!inst->IsCrossReplicaAllReduce() && group_size != 1) ||
+          (!inst->IsCrossReplicaAllReduce() &&
+           !module->config().use_spmd_partitioning())) {
         continue;
       }
       if (replication->HloInstructionIsReplicatedAt(inst->operand(0), {}) ||
