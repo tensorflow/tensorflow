@@ -13,6 +13,4 @@ solely modify the BUILD files of Google's Triton fork - you are welcome to add
 those to this list.
 """
 
-temporary_patch_list = [
-    "//third_party/triton/temporary:linear_layout_rank_fix.patch",
-]
+temporary_patch_list = []

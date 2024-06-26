@@ -7,6 +7,4 @@ IMPORTANT: This list is reserved for Google's LLVM + MLIR update process. If you
 LLVM nor MLIR integrator, please do not add any patches to this list.
 """
 
-llvm_patch_list = [
-    "//third_party/triton/llvm_integration:cl644752548.patch",
-]
+llvm_patch_list = []
