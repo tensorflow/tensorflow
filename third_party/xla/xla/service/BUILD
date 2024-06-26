@@ -5661,7 +5661,6 @@ xla_test(
     ],
     # TODO(b/332870133): Enable when it passes on H100.
     disabled_backends = ["gpu_h100"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "no_windows",  # TODO(b/152037541)
     ],
@@ -5685,9 +5684,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
