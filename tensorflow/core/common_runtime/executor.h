@@ -112,8 +112,8 @@ class Executor {
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
     int64_t start_time_usecs = 0;
     // The deadline for the kernel to complete by. Empty if unspecified.
-    absl::optional<absl::Time> deadline;
-    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
+    std::optional<absl::Time> deadline;
+    std::optional<ManagedStackTrace> stack_trace = std::nullopt;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

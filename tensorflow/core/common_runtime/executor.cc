@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -363,7 +364,7 @@ class ExecutorState {
   int64_t trace_id_;  // for profiler.
   int64_t start_time_usecs_ = 0;
   // The deadline for the session to complete by. Empty if unspecified.
-  absl::optional<absl::Time> deadline_;
+  std::optional<absl::Time> deadline_;
 
   // Maximum number of kernels that can be scheduled inline. If lots of kernels
   // are ready at the same time, scheduling them in one thread can be very slow.
@@ -392,7 +393,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   tsl::CoordinationServiceAgent* coordination_service_agent_;
-  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
+  std::optional<ManagedStackTrace> stack_trace_ = std::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
