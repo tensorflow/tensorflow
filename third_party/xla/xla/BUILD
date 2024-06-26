@@ -1183,6 +1183,34 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "autotune_result_wrapper",
+    srcs = ["autotune_result_wrapper.cc"],
+    hdrs = ["autotune_result_wrapper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_results_proto_cc",
+        ":autotuning_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/lib/strings:proto_serialization",
+    ],
+)
+
+xla_cc_test(
+    name = "autotune_result_wrapper_test",
+    srcs = ["autotune_result_wrapper_test.cc"],
+    deps = [
+        ":autotune_result_wrapper",
+        ":autotuning_proto_cc",
+        ":test",
+        ":test_helpers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "printer",
     srcs = ["printer.cc"],
     hdrs = ["printer.h"],
