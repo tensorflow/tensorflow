@@ -15,6 +15,7 @@ limitations under the License.
 
 // The kept headers are provided for the included file `passes.h.inc`.
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -43,8 +44,6 @@ namespace mlir {
 namespace odml {
 namespace {
 
-// This file is generated from `passes.td` and provides the implementation base
-// class.
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
@@ -104,6 +103,10 @@ class ConvertReduceOpToTFLiteArgmin
   }
 };
 
+std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
+  return !op.getType().getElementType().isF32();
+}
+
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext& context = getContext();
@@ -118,6 +121,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
   // Converted MHLO ops should be marked illegal here.
   // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
+  target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

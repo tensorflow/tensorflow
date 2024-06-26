@@ -18,7 +18,12 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
+include "mlir/IR/CommonAttrConstraints.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
+
+
 
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
@@ -30,8 +35,18 @@ def LegalizeTranspose : Pat<(MHLO_TransposeOp $arg, $perm),
 
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
                                                "$0.getDefiningOp())">;
+
 def LegalizeDotGeneral: Pat<(MHLO_DotGeneralOp:$old_value
                $lhs,
                $rhs,
                $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
+
+def LowerCbrt : Pat<(MHLO_CbrtOp $opr), 
+  (TFL_PowOp $opr,
+    (TFL_DivOp
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_None)),
+      [(F32Tensor $opr)]>;
+

@@ -3,6 +3,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 
 package(
@@ -94,8 +95,10 @@ cc_library(
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
         "@com_google_absl//absl/log:check",
-        "@com_google_ortools//ortools/linear_solver",
-    ],
+    ] + if_google(
+        ["@com_google_ortools//ortools/linear_solver:linear_solver_wrapper"],
+        ["@com_google_ortools//ortools/linear_solver"],
+    ),
 )
 
 cc_library(
@@ -120,7 +123,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@com_google_ortools//ortools/linear_solver",
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:hash",
@@ -129,6 +131,12 @@ cc_library(
     ] + xla_internal(
         ["experimental/auto_sharding:auto_sharding_solver_impl_internal"],
         otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"],
+    ) + if_google(
+        [
+            "@com_google_ortools//ortools/linear_solver:linear_solver_sat",
+            "@com_google_ortools//ortools/linear_solver:linear_solver_wrapper",
+        ],
+        ["@com_google_ortools//ortools/linear_solver:linear_solver"],
     ),
 )
 
@@ -149,8 +157,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_ortools//ortools/linear_solver",
-    ],
+    ] + if_google(
+        ["@com_google_ortools//ortools/linear_solver:linear_solver_wrapper"],
+        ["@com_google_ortools//ortools/linear_solver"],
+    ),
 )
 
 cc_library(
@@ -378,5 +388,5 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
-    ],
+    ] + if_google(["@com_google_ortools//ortools/linear_solver:linear_solver_scip"]),
 )
