@@ -4055,6 +4055,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], model
     )
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -4089,11 +4094,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     converter._experimental_default_to_single_batch_in_tensor_list_ops = (
         default_to_single_batch
     )
-    if not default_to_single_batch:
-      converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
-      ]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -4118,6 +4123,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -4171,11 +4181,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     converter._experimental_default_to_single_batch_in_tensor_list_ops = (
         default_to_single_batch
     )
-    if not default_to_single_batch:
-      converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
-      ]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -4202,11 +4212,11 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     converter._experimental_default_to_single_batch_in_tensor_list_ops = (
         default_to_single_batch
     )
-    if not default_to_single_batch:
-      converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS,
-          tf.lite.OpsSet.SELECT_TF_OPS,
-      ]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
