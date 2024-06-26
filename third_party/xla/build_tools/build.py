@@ -286,7 +286,7 @@ _JAX_GPU_BUILD = Build(
     configs=(
         "avx_posix",
         "mkl_open_source_only",
-        "rbe_linux_cuda12.3_nvcc_py3.9",
+        "rbe_linux_cuda12.3_nvcc_py3.10",
         "tensorflow_testing_rbe_linux",
     ),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
