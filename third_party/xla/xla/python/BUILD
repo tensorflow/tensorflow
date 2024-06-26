@@ -46,8 +46,10 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_extension",  # buildcleaner: keep
+    ] + if_google([
         "@ml_dtypes",
-    ],
+        "//third_party/py/numpy",
+    ]),
 )
 
 exports_files([
@@ -76,7 +78,10 @@ py_strict_test(
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/testing:absltest",
-    ] + xla_py_test_deps(),
+    ] + if_google([
+        "//third_party/py/numpy",
+        "//third_party/py/portpicker",
+    ]) + xla_py_test_deps(),
 )
 
 py_strict_library(
@@ -91,7 +96,7 @@ py_strict_library(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-    ],
+    ] + if_google(["//third_party/py/numpy"]),
 )
 
 py_strict_test(
@@ -113,7 +118,7 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-    ] + xla_py_test_deps(),
+    ] + if_google(["//third_party/py/numpy"]) + xla_py_test_deps(),
 )
 
 py_strict_test(
@@ -150,7 +155,11 @@ py_strict_test(
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ] + if_google(
-        [":xla_gpu_extension"],
+        [
+            ":xla_gpu_extension",
+            "//third_party/py/numpy",
+            "//xla/service:gpu_plugin",
+        ],
         [],
     ) + xla_py_test_deps(),
 )
