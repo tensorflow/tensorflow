@@ -17,18 +17,33 @@ package_group(
 
 cc_library(
     name = "buffer_allocations",
-    srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
     deps = [
+        "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service:maybe_owning_device_memory",
         "//xla/stream_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_allocations_test",
+    srcs = ["buffer_allocations_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        "//xla/service:buffer_assignment",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
