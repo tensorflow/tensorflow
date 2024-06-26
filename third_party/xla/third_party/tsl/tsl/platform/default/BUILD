@@ -550,6 +550,12 @@ cc_library(
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
+    # copybara:uncomment_begin
+    # test_tags = [
+    # "manual",
+    # "notap",
+    # ],
+    # copybara:uncomment_end
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
 )
 
