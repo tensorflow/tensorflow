@@ -118,14 +118,17 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
+        # keep sorted
         ":nccl_id_store",
-        "//xla/service/gpu:gpu_compiler",
-    ]) + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla:debug_options_flags",
+        "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_memory_space_assignment",
+    ]) + if_cuda([
+        # keep sorted
+        "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+        "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
+        # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
