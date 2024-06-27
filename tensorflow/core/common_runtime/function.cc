@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/statusor.h"
 
 // See core/kernels/function_ops.cc for related kernels.
@@ -988,7 +989,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
     Executor::Args* exec_args) {
   // Inherit the step_id from the caller.
   exec_args->step_id = run_opts.step_id;
-  exec_args->function_trace_id = random::New64();
+  exec_args->function_trace_id = tsl::random::ThreadLocalNew64();
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
