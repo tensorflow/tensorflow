@@ -59,6 +59,7 @@ bazel \
     --test_timeout=920,2400,7200,9600 \
     --test_sharding_strategy=disabled \
     --test_output=errors \
+    --flaky_test_attempts=3 \
     --keep_going \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
