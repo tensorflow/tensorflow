@@ -10732,6 +10732,58 @@ ENTRY entry {
           "{{devices=[1,8]0,1,2,3,4,5,6,7}, {devices=[1,8]0,1,2,3,4,5,6,7}}"));
 }
 
+TEST_F(ShardingPropagationTest, ConditionalManual) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%true_comp {
+  %tp = (f32[3,5], f32[]) parameter(0)
+  %tgte.0 = f32[3,5] get-tuple-element(%tp), index=0
+  %tgte.1 = f32[] get-tuple-element(%tp), index=1
+  %ttr = f32[5,3] transpose(%tgte.0), dimensions={1,0}
+
+  %broadcast.1 = f32[5,3] broadcast(%tgte.1), dimensions={}
+  %add.1 = f32[5,3] add(%broadcast.1, %ttr)
+
+  ROOT %tr = (f32[5,3], f32[]) tuple(%add.1, %tgte.1)
+}
+
+%false_comp {
+  %fp = (f32[5,3], f32[5,3], f32[]) parameter(0)
+  %fgte.0 = f32[5,3] get-tuple-element(%fp), index=0
+  %fgte.1 = f32[] get-tuple-element(%fp), index=2
+  ROOT %fr = (f32[5,3], f32[]) tuple(%fgte.0, %fgte.1)
+}
+
+ENTRY entry {
+  %cond = pred[] parameter(0), sharding={devices=[2,2]<=[4] last_tile_dims={manual, replicated}}
+  %tp.0 = f32[3,5] parameter(1), sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual, replicated}}
+  %fp.0 = f32[5,3] parameter(2), sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual, replicated}}
+  %const0 = f32[] constant(0)
+  %const1 = f32[] constant(1)
+  %true_param = (f32[3,5], f32[]) tuple(%tp.0, %const0)
+  %false_param = (f32[5,3], f32[5,3], f32[]) tuple(%fp.0, fp.0, %const1)
+  ROOT %conditional = (f32[5,3], f32[]) conditional(
+      %cond, %true_param, %false_param),
+    true_computation=%true_comp,
+    false_computation=%false_comp
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tp = FindInstruction(module.get(), "tp");
+  auto* true_param = FindInstruction(module.get(), "true_param");
+  EXPECT_EQ(tp->sharding(), true_param->sharding());
+  auto* fp = FindInstruction(module.get(), "fp");
+  auto* false_param = FindInstruction(module.get(), "false_param");
+  EXPECT_EQ(fp->sharding(), false_param->sharding());
+}
+
 TEST_F(ShardingPropagationTest, PropagateToOutput) {
   const char* const hlo_string = R"(
 HloModule module
