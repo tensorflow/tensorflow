@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_KERNEL_THUNK_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -57,6 +58,9 @@ class KernelThunk final : public Thunk {
 
   std::vector<BufferAllocation::Slice> arguments_buffers_;
   std::vector<BufferAllocation::Slice> results_buffers_;
+
+  size_t num_kernel_args_;
+
   std::string kernel_name_;
   se::ThreadDim thread_dim_;
   std::optional<uint64_t> min_alignment_;

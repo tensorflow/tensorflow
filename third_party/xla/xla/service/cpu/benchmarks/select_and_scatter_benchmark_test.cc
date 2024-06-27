@@ -73,7 +73,6 @@ static void BM_SelectAndScatterF32(benchmark::State& state) {
 
 BENCHMARK(BM_SelectAndScatterF32)
     ->MeasureProcessCPUTime()
-    ->Arg(64)
     ->Arg(128)
     ->Arg(256)
     ->Arg(512);

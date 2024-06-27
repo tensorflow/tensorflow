@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,13 +25,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/optimization.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "llvm/ADT/SmallVector.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/task.h"
@@ -71,6 +72,7 @@ KernelThunk::KernelThunk(
     : Thunk(Kind::kKernel, std::move(info)),
       arguments_buffers_(arguments_buffers.begin(), arguments_buffers.end()),
       results_buffers_(results_buffers.begin(), results_buffers.end()),
+      num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
       min_alignment_(min_alignment),
@@ -87,32 +89,29 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  int64_t num_args = arguments_buffers_.size() + results_buffers_.size();
-  absl::InlinedVector<SE_HOST_KernelArg, 8> kernel_args(num_args);
+  // We use `llvm::SmallVector` instead of `absl::InlinedVector` because
+  // it allows to resize a vector without zero-initializing storage.
+  llvm::SmallVector<SE_HOST_KernelArg, 8> kernel_args;
+  kernel_args.resize_for_overwrite(num_kernel_args_);
 
-  // We initialize `kernel_args` array using pointer to the first argument,
-  // because individual elements access adds up measurable overhead, and this
-  // code is on the critical path.
-  SE_HOST_KernelArg* kernel_args_ptr = kernel_args.data();
   int64_t kernel_arg_idx = 0;
 
-  int64_t arg_num = 0;
   for (BufferAllocation::Slice& buffer : arguments_buffers_) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
-    VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", arg_num++,
+    VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", kernel_arg_idx,
                                   buffer.ToString(), arg_data.opaque());
-    kernel_args_ptr[kernel_arg_idx++] =
+    kernel_args[kernel_arg_idx++] =
         SE_HOST_KernelArg{arg_data.opaque(), arg_data.size()};
   }
 
-  int64_t res_num = 0;
   for (BufferAllocation::Slice& buffer : results_buffers_) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result_data,
                         params.buffer_allocations->GetDeviceAddress(buffer));
-    VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)", res_num++,
+    VLOG(3) << absl::StreamFormat("  res #%d: %s (%p)",
+                                  kernel_arg_idx - arguments_buffers_.size(),
                                   buffer.ToString(), result_data.opaque());
-    kernel_args_ptr[kernel_arg_idx++] =
+    kernel_args[kernel_arg_idx++] =
         SE_HOST_KernelArg{result_data.opaque(), result_data.size()};
   }
 
@@ -120,13 +119,13 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
   // with the assumption that all buffers are aligned, and if they are not, we
   // will crash with a segmentation fault, or worse, produce incorrect results.
   if (min_alignment_.has_value()) {
-    for (int64_t i = 0; i < num_args; ++i) {
-      auto ptr = reinterpret_cast<uintptr_t>(kernel_args_ptr[i].data);
+    for (int64_t i = 0; i < num_kernel_args_; ++i) {
+      auto ptr = reinterpret_cast<uintptr_t>(kernel_args[i].data);
       if (ABSL_PREDICT_FALSE((ptr & (*min_alignment_ - 1)) != 0)) {
         return Internal(
             "Host kernel %s buffer argument #%d (%p) is not aligned to a "
             "required minimum alignment of %d bytes",
-            info().op_name, i, kernel_args_ptr[i].data, *min_alignment_);
+            info().op_name, i, kernel_args[i].data, *min_alignment_);
       }
     }
   }
@@ -142,7 +141,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
                         params.host_kernels->Find(kernel_name_));
 
     absl::MutexLock lock(&mutex_);
-    kernel_.emplace(num_args, kernel_fn, nullptr);
+    kernel_.emplace(num_kernel_args_, kernel_fn, nullptr);
     kernel_ptr_.store(kernel = &kernel_.value());
   }
 
