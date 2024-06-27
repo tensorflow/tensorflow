@@ -343,7 +343,12 @@ mlir::LogicalResult CopyArraysOp::verify() {
       return emitOpError() << "requires input #" << idx << " and output #"
                            << idx << " to have the same shape and dtype";
     }
-    if (input_array.getShardingAttr() != output_array.getShardingAttr()) {
+    // If the sharding is specified, then it should be the same.
+    if (!mlir::isa<xla::ifrt::IfrtUnspecifiedShardingAttr>(
+            input_array.getShardingAttr()) &&
+        !mlir::isa<xla::ifrt::IfrtUnspecifiedShardingAttr>(
+            output_array.getShardingAttr()) &&
+        input_array.getShardingAttr() != output_array.getShardingAttr()) {
       return emitOpError() << "requires input #" << idx << " and output #"
                            << idx << " to have the same sharding";
     }
