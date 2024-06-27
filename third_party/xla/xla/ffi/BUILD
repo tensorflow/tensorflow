@@ -25,10 +25,25 @@ cc_library(
         "//xla/ffi/api:c_api_internal",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "call_frame_test",
+    srcs = ["call_frame_test.cc"],
+    deps = [
+        ":call_frame",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

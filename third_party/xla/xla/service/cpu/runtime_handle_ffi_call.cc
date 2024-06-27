@@ -129,7 +129,7 @@ static absl::Status BuildAndCallFfi(
     }
   }
 
-  ffi::CallFrameBuilder builder;
+  ffi::CallFrameBuilder builder(inputs.size(), outputs.size());
 
   // Forward the constructed attributes to the call frame
   ffi::CallFrameBuilder::AttributesBuilder attrs;

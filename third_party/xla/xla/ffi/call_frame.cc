@@ -26,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/dynamic_annotations.h"
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/api.h"
@@ -78,26 +78,35 @@ void CallFrameBuilder::AttributesBuilder::Append(FlatAttributesMap attrs) {
   for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
 }
 
-CallFrameBuilder::CallFrameBuilder() = default;
+CallFrameBuilder::CallFrameBuilder(size_t num_args, size_t num_rets) {
+  args_.reserve(num_args);
+  rets_.reserve(num_rets);
+}
+
 CallFrameBuilder::~CallFrameBuilder() = default;
 
 void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
+  DCHECK(args_.capacity() > args_.size())
+      << "CallFrame builder `num_args` argument was too small";
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-      args_.back().dims.data(), sizeof(int64_t) * args_.back().dims.size());
 }
 
 void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
+  DCHECK(rets_.capacity() > rets_.size())
+      << "CallFrame builder `num_rets` argument was too small";
   rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
-      rets_.back().dims.data(), sizeof(int64_t) * rets_.back().dims.size());
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
+  if (ABSL_PREDICT_TRUE(attrs_.empty())) {
+    attrs_ = std::move(attrs);
+    return;
+  }
+
   for (auto& [name, attr] : attrs) {
     attrs_.try_emplace(std::move(name), std::move(attr));
   }

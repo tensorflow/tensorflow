@@ -94,14 +94,14 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
 }
 
 TEST(FfiTest, ForwardError) {
-  auto call_frame = CallFrameBuilder().Build();
+  auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });
   auto status = Call(*handler, call_frame);
   ASSERT_EQ(status.message(), "Ooops!");
 }
 
 TEST(FfiTest, WrongNumArgs) {
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(se::DeviceMemoryBase(nullptr), PrimitiveType::F32, {});
   auto call_frame = builder.Build();
 
@@ -119,7 +119,7 @@ TEST(FfiTest, WrongNumAttrs) {
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -143,7 +143,7 @@ TEST(FfiTest, BuiltinAttributes) {
   attrs.Insert("f64", 42.0);
   attrs.Insert("str", "foo");
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -182,7 +182,7 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
   attrs.Insert("f32", 42.0f);
   attrs.Insert("str", "foo");
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -212,7 +212,7 @@ TEST(FfiTest, ArrayAttr) {
   attrs.Insert("arr4", std::vector<float>({1, 2, 3, 4}));
   attrs.Insert("arr5", std::vector<double>({1, 2, 3, 4}));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -251,7 +251,7 @@ TEST(FfiTest, PointerAttr) {
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert("ptr", static_cast<int64_t>(ptr));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -272,7 +272,7 @@ TEST(FfiTest, AttrsAsDictionary) {
   attrs.Insert("f32", 42.0f);
   attrs.Insert("str", "foo");
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -319,7 +319,7 @@ TEST(FfiTest, DictionaryAttr) {
   attrs.Insert("dict0", dict0);
   attrs.Insert("dict1", dict1);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -368,7 +368,7 @@ TEST(FfiTest, StructAttr) {
   attrs.Insert("str", "foo");
   attrs.Insert("i32_and_f32", dict);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -394,7 +394,7 @@ TEST(FfiTest, AttrsAsStruct) {
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -417,7 +417,7 @@ TEST(FfiTest, DecodingErrors) {
   attrs.Insert("f32", 42.0f);
   attrs.Insert("str", "foo");
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -460,7 +460,7 @@ TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -488,7 +488,7 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), storage.size() * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -517,7 +517,7 @@ TEST(FfiTest, ComplexBufferArgument) {
   se::DeviceMemoryBase memory(storage.data(),
                               storage.size() * sizeof(std::complex<float>));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::C64, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -533,7 +533,7 @@ TEST(FfiTest, ComplexBufferArgument) {
 }
 
 TEST(FfiTest, TokenArgument) {
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
                        /*dims=*/{});
   auto call_frame = builder.Build();
@@ -553,7 +553,7 @@ TEST(FfiTest, WrongRankBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -570,7 +570,7 @@ TEST(FfiTest, WrongTypeBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -588,7 +588,7 @@ TEST(FfiTest, RemainingArgs) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -609,7 +609,7 @@ TEST(FfiTest, RemainingRets) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/2);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
@@ -628,7 +628,7 @@ TEST(FfiTest, RemainingRets) {
 }
 
 TEST(FfiTest, RunOptionsCtx) {
-  auto call_frame = CallFrameBuilder().Build();
+  auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto* expected = reinterpret_cast<se::Stream*>(0x01234567);
 
   auto fn = [&](const se::Stream* run_options) {
@@ -654,7 +654,7 @@ TEST(FfiTest, UserData) {
   ExecutionContext execution_context;
   TF_ASSERT_OK(execution_context.Emplace<StrUserData>("foo"));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
   auto fn = [&](StrUserData* data) {

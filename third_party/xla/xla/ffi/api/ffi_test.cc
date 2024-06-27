@@ -137,7 +137,7 @@ TEST(FfiTest, ErrorEnumValue) {
 }
 
 TEST(FfiTest, ReturnError) {
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().To(
@@ -151,7 +151,7 @@ TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -169,7 +169,7 @@ TEST(FfiTest, BufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -188,7 +188,7 @@ TEST(FfiTest, AnyBufferResult) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -203,7 +203,7 @@ TEST(FfiTest, AnyBufferResult) {
 }
 
 TEST(FfiTest, MissingBufferArgument) {
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Arg<BufferR1<DataType::F32>>().To(
@@ -218,7 +218,7 @@ TEST(FfiTest, WrongRankBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -235,7 +235,7 @@ TEST(FfiTest, WrongTypeBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
@@ -250,7 +250,7 @@ TEST(FfiTest, WrongTypeBufferArgument) {
 }
 
 TEST(FfiTest, TokenArgument) {
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
                        /*dims=*/{});
   auto call_frame = builder.Build();
@@ -280,7 +280,7 @@ TEST(FfiTest, AutoBinding) {
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert(kI32, 42);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
@@ -293,7 +293,7 @@ TEST(FfiTest, AutoBindingResult) {
   auto handler =
       Ffi::BindTo(+[](Result<AnyBuffer> buffer) { return Error::Success(); });
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
   auto call_frame = builder.Build();
 
@@ -320,7 +320,7 @@ TEST(FfiTest, AutoBindingStructs) {
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -339,7 +339,7 @@ TEST(FfiTest, AutoBindingDictionary) {
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -371,7 +371,7 @@ TEST(FfiTest, ArrayAttr) {
   attrs.Insert("arr4", std::vector<float>({1, 2, 3, 4}));
   attrs.Insert("arr5", std::vector<double>({1, 2, 3, 4}));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -410,7 +410,7 @@ TEST(FfiTest, PointerAttr) {
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert("ptr", static_cast<int64_t>(ptr));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -436,7 +436,7 @@ TEST(FfiTest, EnumAttr) {
   attrs.Insert("i64_two", static_cast<std::underlying_type_t<Int64BasedEnum>>(
                               Int64BasedEnum::kTwo));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -469,7 +469,7 @@ TEST(FfiTest, WrongEnumAttrType) {
   attrs.Insert("i32_enum1", dict);
   attrs.Insert("i32_enum0", 42u);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
@@ -515,7 +515,7 @@ TEST(FfiTest, UserData) {
   TF_ASSERT_OK(execution_context.Insert(
       ExecutionContext::TypeId(MyData::id.type_id), &data));
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
   auto fn = [&](MyData* data) {
@@ -565,7 +565,8 @@ TEST(FfiTest, ScratchAllocator) {
 
   auto handler = Ffi::Bind().Ctx<ScratchAllocator>().To(fn);
 
-  CallFrame call_frame = CallFrameBuilder().Build();
+  CallFrame call_frame =
+      CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
 
   CallOptions options;
   options.allocator = &allocator;
@@ -583,7 +584,7 @@ static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
   se::DeviceMemoryBase memory;
   std::vector<int64_t> dims(4, 1);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/num_args, /*num_rets=*/0);
   for (size_t i = 0; i < num_args; ++i) {
     builder.AddBufferArg(memory, PrimitiveType::F32, dims);
   }
@@ -704,7 +705,7 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
   attrs.Insert("i32_2", 3);
   attrs.Insert("i32_3", 4);
 
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 

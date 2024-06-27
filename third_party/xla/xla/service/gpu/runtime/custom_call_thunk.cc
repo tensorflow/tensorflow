@@ -123,7 +123,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
-  CallFrameBuilder builder;
+  CallFrameBuilder builder(operands_.size(), results_.size());
 
   for (auto& operand : operands_) {
     if (!operand.has_value())

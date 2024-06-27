@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_CALL_FRAME_H_
 #define XLA_FFI_CALL_FRAME_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -52,7 +53,7 @@ class CallFrameBuilder {
   };
 
  public:
-  CallFrameBuilder();
+  CallFrameBuilder(size_t num_args, size_t num_rets);
   ~CallFrameBuilder();
 
   CallFrameBuilder(CallFrameBuilder&&);

@@ -1455,7 +1455,7 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
-  ffi::CallFrameBuilder builder;
+  ffi::CallFrameBuilder builder(operands_.size(), results_.size());
 
   ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
   VLOG(5) << "CustomCallCmd: execution_scope_id=" << execution_scope_id.value();

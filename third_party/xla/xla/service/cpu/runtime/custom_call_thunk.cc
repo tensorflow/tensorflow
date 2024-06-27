@@ -92,7 +92,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   }
 
   // Build the FFI call frame.
-  ffi::CallFrameBuilder builder;
+  ffi::CallFrameBuilder builder(
+      /*num_args=*/op_buffers_.arguments_buffers.size(),
+      /*num_rets=*/op_buffers_.results_buffers.size());
 
   // Add input buffers.
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
