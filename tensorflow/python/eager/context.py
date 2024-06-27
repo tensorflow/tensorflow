@@ -93,6 +93,7 @@ _JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 _XLA_SHARDING_FOR_RESOURCE_VARIABLES = (
     os.getenv("TF_XLA_SHARDING_FOR_RESOURCE_VARIABLES") == "1"
 )
+_OPTIONALS_IN_GRADIENTS = os.getenv("TF_OPTIONALS_IN_GRADIENTS") != "0"
 
 
 def run_eager_op_as_function_enabled():
@@ -152,6 +153,26 @@ def xla_sharding_for_resource_variables_enabled():
   return _XLA_SHARDING_FOR_RESOURCE_VARIABLES
 
 
+def enable_optionals_in_gradients():
+  global _OPTIONALS_IN_GRADIENTS
+  _OPTIONALS_IN_GRADIENTS = True
+  if context_safe() is not None:
+    context_safe().optionals_in_gradients = True
+
+
+def disable_optionals_in_gradients():
+  global _OPTIONALS_IN_GRADIENTS
+  _OPTIONALS_IN_GRADIENTS = False
+  if context_safe() is not None:
+    context_safe().optionals_in_gradients = False
+
+
+def optionals_in_gradients_enabled():
+  if context_safe() is not None:
+    return context_safe().optionals_in_gradients
+  return _OPTIONALS_IN_GRADIENTS
+
+
 @contextlib.contextmanager
 def temporarily_disable_xla_sharding_for_resource_variables():
   """Temporarily disables XLA sharding for resource variables.
@@ -169,6 +190,25 @@ def temporarily_disable_xla_sharding_for_resource_variables():
   finally:
     if previously_enabled:
       enable_xla_sharding_for_resource_variables()
+
+
+@contextlib.contextmanager
+def temporarily_disable_optionals_in_gradients():
+  """Temporarily disables generation of optionals in gradients.
+
+  Should be a no-op if it is already disabled.
+
+  Yields:
+    None.
+  """
+  previously_enabled = optionals_in_gradients_enabled()
+
+  try:
+    disable_optionals_in_gradients()
+    yield
+  finally:
+    if previously_enabled:
+      enable_optionals_in_gradients()
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -553,6 +593,7 @@ class Context:
     self._xla_sharding_for_resource_variables = (
         xla_sharding_for_resource_variables_enabled()
     )
+    self._optionals_in_gradients = optionals_in_gradients_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -2231,6 +2272,14 @@ class Context:
   @xla_sharding_for_resource_variables.setter
   def xla_sharding_for_resource_variables(self, enable):
     self._xla_sharding_for_resource_variables = enable
+
+  @property
+  def optionals_in_gradients(self):
+    return self._optionals_in_gradients
+
+  @optionals_in_gradients.setter
+  def optionals_in_gradients(self, enable):
+    self._optionals_in_gradients = enable
 
   @property
   def device_policy(self):

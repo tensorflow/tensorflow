@@ -23,6 +23,7 @@ import collections
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
@@ -138,7 +139,10 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(skyewm): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -1032,7 +1036,10 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
           tensor_util.constant_value(tensor), dtype=tensor.dtype)
       return self._captured_constants[tensor_id]
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
       if all(tensor is not capture for capture in self.external_captures):
@@ -1163,7 +1170,10 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(bjp): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(bjp,jpienaar): can XLA support optionals?
