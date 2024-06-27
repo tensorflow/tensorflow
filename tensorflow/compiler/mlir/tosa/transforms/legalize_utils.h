@@ -283,10 +283,10 @@ inline bool IsTFLDoubleRoundingMode() {
 #endif  // TFLITE_SINGLE_ROUNDING
 }
 
+Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value);
+
 LogicalResult broadcastLowRankTensor(PatternRewriter &rewriter, Operation* op,
                                      Value &input1, Value &input2);
-
-Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value);
 
 }  // namespace tosa
 }  // namespace mlir

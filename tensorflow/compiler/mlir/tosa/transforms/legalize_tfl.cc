@@ -2071,12 +2071,21 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   auto result_ty = mlir::cast<ShapedType>(tfl_mm_op.getType());
   Value lhs = tfl_mm_op.getX();
   Value rhs = tfl_mm_op.getY();
+
+  if (broadcastLowRankTensor(rewriter, op, lhs, rhs).failed()) {
+    return rewriter.notifyMatchFailure(
+        op, "failed to broadcast low rank input tensor");
+  }
+
   RankedTensorType lhs_ty = dyn_cast<RankedTensorType>(lhs.getType());
   RankedTensorType rhs_ty = dyn_cast<RankedTensorType>(rhs.getType());
   bool transpose_lhs = tfl_mm_op.getAdjX();
   bool transpose_rhs = tfl_mm_op.getAdjY();
 
-  if (!lhs_ty || !rhs_ty) return failure();
+  if (!lhs_ty || !rhs_ty) {
+    return rewriter.notifyMatchFailure(op,
+                                       "lhs/rhs tensor should be all ranked");
+  }
 
   bool lhs_is_qtype =
       mlir::isa<mlir::quant::QuantizedType>(lhs_ty.getElementType());
