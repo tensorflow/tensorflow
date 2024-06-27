@@ -84,6 +84,18 @@ TEST_F(MutexTest, SharedMutexLockTest) {
   EXPECT_TRUE(test_try_lock());
 }
 
+TEST(MutexTest, AssertHeld) {
+  mutex mu;
+  mutex_lock lock(mu);
+  mu.assert_held();
+}
+
+TEST(MutexTest, AssertSharedHeld) {
+  mutex mu;
+  tf_shared_lock lock(mu);
+  mu.assert_shared_held();
+}
+
 TEST(ConditionVariableTest, WaitWithPredicate) {
   constexpr int kNumThreads = 4;
   mutex mu;

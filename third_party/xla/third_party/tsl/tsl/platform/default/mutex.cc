@@ -44,6 +44,8 @@ bool mutex::try_lock() { return nsync::nsync_mu_trylock(mu_cast(&mu_)) != 0; };
 
 void mutex::unlock() { nsync::nsync_mu_unlock(mu_cast(&mu_)); }
 
+void mutex::assert_held() { nsync::nsync_mu_assert_held(mu_cast(&mu_)); }
+
 void mutex::lock_shared() { nsync::nsync_mu_rlock(mu_cast(&mu_)); }
 
 bool mutex::try_lock_shared() {
@@ -51,6 +53,10 @@ bool mutex::try_lock_shared() {
 };
 
 void mutex::unlock_shared() { nsync::nsync_mu_runlock(mu_cast(&mu_)); }
+
+void mutex::assert_shared_held() {
+  nsync::nsync_mu_assert_rheld(mu_cast(&mu_));
+}
 
 // A callback suitable for nsync_mu_wait() that calls Condition::Eval().
 static int EvaluateCondition(const void *vcond) {
