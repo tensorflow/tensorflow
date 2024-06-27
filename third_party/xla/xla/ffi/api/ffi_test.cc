@@ -136,6 +136,17 @@ TEST(FfiTest, ErrorEnumValue) {
             encoded(ErrorCode::kUnauthenticated));
 }
 
+TEST(FfiTest, ReturnError) {
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().To(
+      []() { return Error(ErrorCode::kInternal, "Test error"); });
+
+  auto status = Call(*handler, call_frame);
+  EXPECT_EQ(status, absl::InternalError("Test error"));
+}
+
 TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
