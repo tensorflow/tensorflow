@@ -28,12 +28,14 @@ namespace xla::cpu {
 class AllToAllThunk final : public CollectiveThunk {
  public:
   static absl::StatusOr<std::unique_ptr<AllToAllThunk>> Create(
-      Info info, OpParams op_params, OpBuffers op_buffers);
+      Info info, OpParams op_params, OpBuffers op_buffers,
+      OpResources op_resources);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
  private:
-  AllToAllThunk(Info info, OpParams op_params, OpBuffers op_buffers);
+  AllToAllThunk(Info info, OpParams op_params, OpBuffers op_buffers,
+                OpResources op_resources);
 };
 
 }  // namespace xla::cpu

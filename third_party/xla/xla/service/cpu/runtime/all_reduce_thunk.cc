@@ -45,22 +45,23 @@ namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::Create(
     Info info, ReductionKind reduction_kind, OpParams op_params,
-    OpBuffers op_buffers, bool single_replica) {
+    OpBuffers op_buffers, OpResources op_resources, bool single_replica) {
   auto datatype = op_buffers.source_shapes[0].element_type();
   if (!IsDataTypeSupportedByCollectiveReduce(datatype)) {
     return Unimplemented("AllReduce for datatype '%s' is not supported",
                          primitive_util::LowercasePrimitiveTypeName(datatype));
   }
 
-  return absl::WrapUnique(new AllReduceThunk(std::move(info), reduction_kind,
-                                             op_params, std::move(op_buffers),
-                                             single_replica));
+  return absl::WrapUnique(new AllReduceThunk(
+      std::move(info), reduction_kind, std::move(op_params),
+      std::move(op_buffers), std::move(op_resources), single_replica));
 }
 
 AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
                                OpParams op_params, OpBuffers op_buffers,
-                               bool single_replica)
-    : CollectiveThunk(Kind::kAllReduce, info, op_params, std::move(op_buffers)),
+                               OpResources op_resources, bool single_replica)
+    : CollectiveThunk(Kind::kAllReduce, std::move(info), std::move(op_params),
+                      std::move(op_buffers), std::move(op_resources)),
       reduction_kind_(reduction_kind),
       single_replica_(single_replica) {}
 

@@ -59,6 +59,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":buffer_allocations",
+        ":resource_use",
         "//xla:executable_run_options",
         "//xla/ffi:execution_context",
         "//xla/runtime:buffer_use",
@@ -109,6 +110,7 @@ cc_library(
     srcs = ["thunk_executor.cc"],
     hdrs = ["thunk_executor.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/tsl/concurrency:async_value",
@@ -134,6 +136,7 @@ xla_cc_test(
     srcs = ["thunk_executor_test.cc"],
     deps = [
         ":buffer_allocations",
+        ":resource_use",
         ":task",
         ":thunk",
         ":thunk_executor",
@@ -435,6 +438,7 @@ cc_library(
     srcs = ["collective_thunk.cc"],
     hdrs = ["collective_thunk.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         "//xla:shape_util",
         "//xla:status_macros",

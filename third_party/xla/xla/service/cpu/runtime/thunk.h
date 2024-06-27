@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -106,6 +107,14 @@ class Thunk {
   // information to execute thunks concurrently and to avoid data races.
   using BufferUses = absl::InlinedVector<BufferUse, 4>;
   virtual BufferUses buffer_uses() const = 0;
+
+  // Returns the list of resources used by a thunk. Thunk executor relies on
+  // this information to execute thunks concurrently and to avoid data races. In
+  // contrast to buffer uses, only a handful of thunks are expected to use
+  // resources, so we define a default implementation for `resource_uses()`
+  // that returns an empty vector.
+  using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
+  virtual ResourceUses resource_uses() const { return {}; }
 
   //===--------------------------------------------------------------------===//
   // HostKernels

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_CPU_THUNK_EMITTER_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_module_config.h"
@@ -154,6 +156,8 @@ class ThunkEmitter {
 
   const TargetMachineFeatures& target_machine_features_;
   const HloModuleConfig& hlo_module_config_;
+
+  std::shared_ptr<Resource> communicator_resource_;
 };
 
 }  // namespace xla::cpu

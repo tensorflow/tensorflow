@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/logging.h"
@@ -79,8 +80,8 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     ThunkSequence thunk_sequence) {
   std::vector<NodeDef> defs(thunk_sequence.size());
 
-  std::vector<BufferUse::ReadWriteSet> rwsets(thunk_sequence.size());
-  std::vector<Thunk::BufferUses> buffer_uses(thunk_sequence.size());
+  std::vector<BufferUse::ReadWriteSet> buffer_rwsets(thunk_sequence.size());
+  std::vector<ResourceUse::ReadWriteSet> resource_rwsets(thunk_sequence.size());
 
   // TODO(ezhulenev): This is very inefficient O(N^2) complexity algorithm
   // that will create a lot of redundant edges. We can do much better by
@@ -91,11 +92,13 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     defs[i].id = i;
 
     Thunk& thunk = *thunk_sequence[i];
-    rwsets[i].AddAll(thunk.buffer_uses());
+    buffer_rwsets[i].AddAll(thunk.buffer_uses());
+    resource_rwsets[i].AddAll(thunk.resource_uses());
 
     for (NodeId j = i - 1; j >= 0; --j) {
-      // Node `i` must be executed after node `j`.
-      if (rwsets[j].HasConflicts(rwsets[i])) {
+      // Check if node `i` must be executed after node `j`.
+      if (buffer_rwsets[j].HasConflicts(buffer_rwsets[i]) ||
+          resource_rwsets[j].HasConflicts(resource_rwsets[i])) {
         defs[j].out_edges.push_back(i);
         defs[i].in_edges.push_back(j);
       }

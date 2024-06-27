@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/logical_id_thunk.h"
 #include "xla/service/cpu/runtime/outfeed_thunk.h"
 #include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/rng_state_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/while_thunk.h"
@@ -77,7 +78,9 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
     : ir_emitter_(ir_emitter),
       buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
-      hlo_module_config_(hlo_module_config) {}
+      hlo_module_config_(hlo_module_config),
+      communicator_resource_(
+          Resource::Create(Resource::kCollectiveCommunicator)) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -375,9 +378,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllGatherThunk(
                       GetCollectiveOpParams(all_gather));
   TF_ASSIGN_OR_RETURN(AllGatherThunk::OpBuffers op_buffers,
                       GetCollectiveOpBuffers(all_gather, buffer_assignment_));
+  AllGatherThunk::OpResources op_resources = {communicator_resource_};
 
   return ThunkSequence::Of<AllGatherThunk>(
-      ThunkInfo(all_gather), std::move(op_params), std::move(op_buffers));
+      ThunkInfo(all_gather), std::move(op_params), std::move(op_buffers),
+      std::move(op_resources));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
@@ -390,13 +395,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllReduceThunk(
                       GetCollectiveOpParams(all_reduce));
   TF_ASSIGN_OR_RETURN(AllReduceThunk::OpBuffers op_buffers,
                       GetCollectiveOpBuffers(all_reduce, buffer_assignment_));
+  AllReduceThunk::OpResources op_resources = {communicator_resource_};
 
   bool single_replica = hlo_module_config_.replica_count() == 1 &&
                         hlo_module_config_.num_partitions() == 1;
 
   return ThunkSequence::Of<AllReduceThunk>(
       ThunkInfo(all_reduce), reduction_kind, std::move(op_params),
-      std::move(op_buffers), single_replica);
+      std::move(op_buffers), std::move(op_resources), single_replica);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllToAllThunk(
@@ -407,9 +413,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAllToAllThunk(
                       GetCollectiveOpParams(all_to_all));
   TF_ASSIGN_OR_RETURN(AllToAllThunk::OpBuffers op_buffers,
                       GetCollectiveOpBuffers(all_to_all, buffer_assignment_));
+  AllToAllThunk::OpResources op_resources = {communicator_resource_};
 
   return ThunkSequence::Of<AllToAllThunk>(
-      ThunkInfo(all_to_all), std::move(op_params), std::move(op_buffers));
+      ThunkInfo(all_to_all), std::move(op_params), std::move(op_buffers),
+      std::move(op_resources));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermuteThunk(
@@ -421,10 +429,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermuteThunk(
   TF_ASSIGN_OR_RETURN(
       CollectivePermuteThunk::OpBuffers op_buffers,
       GetCollectiveOpBuffers(collective_permute, buffer_assignment_));
+  CollectivePermuteThunk::OpResources op_resources = {communicator_resource_};
 
   return ThunkSequence::Of<CollectivePermuteThunk>(
       ThunkInfo(collective_permute), std::move(op_params),
-      std::move(op_buffers), collective_permute->source_target_pairs());
+      std::move(op_buffers), std::move(op_resources),
+      collective_permute->source_target_pairs());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
@@ -438,10 +448,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReduceScatterThunk(
   TF_ASSIGN_OR_RETURN(
       ReduceScatterThunk::OpBuffers op_buffers,
       GetCollectiveOpBuffers(reduce_scatter, buffer_assignment_));
+  ReduceScatterThunk::OpResources op_resources = {communicator_resource_};
 
   return ThunkSequence::Of<ReduceScatterThunk>(
       ThunkInfo(reduce_scatter), reduction_kind, std::move(op_params),
-      std::move(op_buffers));
+      std::move(op_buffers), std::move(op_resources));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
