@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"

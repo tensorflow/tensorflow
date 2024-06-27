@@ -31,6 +31,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/tsl/util/onednn_threadpool.h"

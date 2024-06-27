@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_function.h"
+#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
