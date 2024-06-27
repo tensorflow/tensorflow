@@ -184,8 +184,10 @@ struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
     x = b.create<ma::MinimumFOp>(x, c(kErfInvOneMinusHalfULP));
     Value x2 = b.create<ma::MulFOp>(x, x);
 
-    rewriter.replaceOpWithNewOp<ma::DivFOp>(
-        op, b.create<ma::MulFOp>(x, poly(x2, kAlpha)), poly(x2, kBeta));
+    Value result = b.create<ma::DivFOp>(
+        b.create<ma::MulFOp>(x, poly(x2, kAlpha)), poly(x2, kBeta));
+    result = b.create<ma::MaximumFOp>(result, c(-1.0));
+    rewriter.replaceOpWithNewOp<ma::MinimumFOp>(op, result, c(1.0));
 
     return mlir::success();
   }

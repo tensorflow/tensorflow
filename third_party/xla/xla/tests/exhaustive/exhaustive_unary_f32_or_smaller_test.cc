@@ -560,7 +560,12 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tan, {
       });
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
+  auto range_checker = +[](NativeInputs in, NativeT actual) {
+    return !(actual < -1 || actual > 1);
+  };
+  Run(Erf, std::erf, range_checker);
+})
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, {
   auto error_spec_gen = +[](NativeT x) {
     NativeT min = std::numeric_limits<NativeT>::min();
@@ -574,7 +579,10 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, {
       return ErrorSpec{.abs_err = 2 * min, .rel_err = 100 * eps};
     };
   }
-  Run(Erfc, std::erfc, error_spec_gen);
+  auto range_checker = +[](NativeInputs in, NativeT actual) {
+    return !(actual < 0 || actual > 2);
+  };
+  Run(Erfc, std::erfc, error_spec_gen, range_checker);
 })
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(ErfInv, {
   auto error_spec_gen = +[](NativeT x) {

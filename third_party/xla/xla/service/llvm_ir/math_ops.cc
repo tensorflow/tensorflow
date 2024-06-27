@@ -143,9 +143,15 @@ llvm::Value* EmitErfF32(llvm::IRBuilder<>* b, llvm::Value* x) {
     return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign, {mag, sign},
                                         {mag->getType()}, b);
   };
-  auto* result =
-      b->CreateSelect(clamp, call_copysign(llvm::ConstantFP::get(type, 1.0), x),
-                      b->CreateFDiv(p, q));
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto minus_one = llvm::ConstantFP::get(type, -1.0);
+  llvm::Value* result =
+      b->CreateSelect(clamp, call_copysign(one, x), b->CreateFDiv(p, q));
+  auto too_big = fcmp_le(one, result);
+  auto too_small = fcmp_le(result, minus_one);
+  result = b->CreateSelect(too_big, llvm::ConstantFP::get(type, 1.0), result);
+  result =
+      b->CreateSelect(too_small, llvm::ConstantFP::get(type, -1.0), result);
   return result;
 }
 

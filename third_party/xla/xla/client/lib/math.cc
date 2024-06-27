@@ -343,8 +343,10 @@ static XlaOp ErfImpl32(XlaOp x) {
   x = Clamp(ScalarLike(x, -kErfInvOneMinusHalfULP), x,
             ScalarLike(x, kErfInvOneMinusHalfULP));
   auto x2 = x * x;
-  return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
-         EvaluatePolynomial<float>(x2, kBeta);
+  auto result = (x * EvaluatePolynomial<float>(x2, kAlpha)) /
+                EvaluatePolynomial<float>(x2, kBeta);
+  result = Clamp(ScalarLike(result, -1.0), result, ScalarLike(result, 1.0));
+  return result;
 }
 
 namespace {
