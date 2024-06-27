@@ -511,6 +511,30 @@ TEST_F(MlirLoopFusionTest, DynamicSliceWith64BitInput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, DynamicUpdateSlice) {
+  constexpr auto kHloString = R"(
+    %fused_computation {
+      in = c64[2,3] parameter(0)
+      updates = c64[2,2] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      updated = c64[2,3] dynamic-update-slice(in, updates, i0, i1)
+      ROOT transpose = c64[3,2] transpose(updated), dimensions={1,0}
+    }
+
+    ENTRY main {
+      p0 = c64[2,3] parameter(0)
+      p1 = c64[2,2] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT %fusion = c64[3,2] fusion(p0, p1, p2, p3), kind=kLoop, calls=%fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: scf.if
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
