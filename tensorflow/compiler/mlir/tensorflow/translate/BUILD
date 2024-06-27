@@ -13,7 +13,6 @@ cc_library(
         "import_model.cc",
     ],
     hdrs = [
-        "export_graphdef.h",
         "import_model.h",
     ],
     deps = [
@@ -186,55 +185,11 @@ cc_library(
 )
 
 cc_library(
-    name = "export_graphdef",
-    srcs = [
-        "export_graphdef.cc",
-    ],
-    hdrs = [
-        "export_graphdef.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":export_tf_dialect_op",
-        ":mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_utils",
-        "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/mlir/tensorflow:verify_suitable_for_graph_export",
-        "//tensorflow/compiler/mlir/utils:name_utils",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/graph/regularization:util",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
-    ],
-)
-
-cc_library(
     name = "translate_registration",
     srcs = [
         "tf_mlir_translate_registration.cc",
     ],
     deps = [
-        ":export_graphdef",
         ":mlir_roundtrip_flags",
         ":translate_cl_options",
         ":translate_lib",
