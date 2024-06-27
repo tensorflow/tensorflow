@@ -561,3 +561,27 @@ func.func @convert_pytorch_argmax(%arg0: tensor<1x9xi32>) -> tensor<1xi32> {
   // CHECK:  return %5 : tensor<1xi32>
 }
 
+// CHECK-LABEL: lower_cbrt_f32
+func.func @lower_cbrt_f32(%arg0: tensor<1x32x1xf32>) -> tensor<1x32x1xf32> {
+  %0 = "mhlo.cbrt"(%arg0) : (tensor<1x32x1xf32>) -> tensor<1x32x1xf32>
+  func.return %0 : tensor<1x32x1xf32>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK: %cst_0 = arith.constant dense<3.000000e+00> : tensor<f32>
+// CHECK: %0 = tfl.div %cst, %cst_0 {fused_activation_function = "NONE"} : tensor<f32>
+// CHECK: %1 = tfl.pow(%arg0, %0) : (tensor<1x32x1xf32>, tensor<f32>) -> tensor<1x32x1xf32>
+// CHECK: return %1 : tensor<1x32x1xf32>
+
+// CHECK-LABEL: no_lower_cbrt_f64
+func.func @no_lower_cbrt_f64(%arg0: tensor<1x32x1xf64>) -> tensor<1x32x1xf64> {
+  %0 = "mhlo.cbrt"(%arg0) : (tensor<1x32x1xf64>) -> tensor<1x32x1xf64>
+  func.return %0 : tensor<1x32x1xf64>
+}
+
+// CHECK-NOT: tfl
+
+
+
+
+
