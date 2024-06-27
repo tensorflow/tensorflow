@@ -86,6 +86,9 @@ class BuildType(enum.Enum):
   JAX_CPU = enum.auto()
   JAX_GPU = enum.auto()
 
+  TENSORFLOW_CPU = enum.auto()
+  TENSORFLOW_GPU = enum.auto()
+
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class DockerImage:
@@ -315,6 +318,48 @@ _JAX_GPU_BUILD = Build(
     ),
 )
 
+_TENSORFLOW_CPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_CPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=("release_cpu_linux", "rbe_linux_cpu"),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "//tensorflow/python/...",
+        "//tensorflow/core/...",
+        "-//tensorflow/python/compiler/tensorrt/test:unary_test_gpu",
+    ),
+    build_tag_filters=("-no_oss", "-gpu"),
+    test_tag_filters=("-no_oss", "-gpu"),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
+_TENSORFLOW_GPU_BUILD = Build(
+    type_=BuildType.TENSORFLOW_GPU,
+    repo="tensorflow/tensorflow",
+    docker_image=_DEFAULT_IMAGE,
+    configs=("release_gpu_linux", "rbe_linux_cuda"),
+    target_patterns=(
+        "//tensorflow/compiler/...",
+        "//tensorflow/python/...",
+        "//tensorflow/core/...",
+        "-//tensorflow/python/compiler/tensorrt/test:unary_test_gpu",
+    ),
+    build_tag_filters=("-no_oss", "+gpu"),
+    test_tag_filters=("-no_oss", "+gpu"),
+    options=dict(
+        verbose_failures=True,
+        test_output="errors",
+        override_repository="xla=/github/xla",
+        profile="profile.json.gz",
+    ),
+)
+
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
@@ -324,6 +369,8 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
+    "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
+    "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
 }
 
 
