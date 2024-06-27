@@ -114,11 +114,11 @@ static absl::Status BuildAndCallFfi(
   }
 
   // For FFI handlers backend config must be a compatible MLIR dictionary.
-  mlir::MLIRContext mlir_context;
   ffi::CallFrameBuilder::FlatAttributesMap attributes;
-  if (!backend_config.empty()) {
+  if (!backend_config.empty() && backend_config != "{}") {
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.
+    mlir::MLIRContext mlir_context;
     mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
     if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
       TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
