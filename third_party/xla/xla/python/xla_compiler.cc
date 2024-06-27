@@ -401,12 +401,37 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   // Shapes
   nb::class_<Layout> layout_class(m, "Layout");
   layout_class.def(nb::init<absl::Span<const int64_t>>())
+      .def("__init__",
+           [](Layout* self, nb::sequence minor_to_major, nb::sequence tiling,
+              int64_t element_size_in_bits) {
+             std::vector<Tile> xla_tiles;
+             xla_tiles.reserve(nb::len(tiling.ptr()));
+             for (auto tile : tiling) {
+               xla_tiles.push_back(Tile(
+                   SequenceToVector<int64_t>(nb::cast<nb::sequence>(tile))));
+             }
+             std::vector<int64_t> xla_minor_to_major =
+                 SequenceToVector<int64_t>(minor_to_major);
+             new (self)
+                 Layout(xla_minor_to_major, xla_tiles, element_size_in_bits);
+           })
       .def("minor_to_major",
            [](Layout layout) { return SpanToNbTuple(layout.minor_to_major()); })
+      .def("element_size_in_bits", &Layout::element_size_in_bits)
+      .def("tiling",
+           [](Layout layout) {
+             std::vector<nb::tuple> result;
+             result.reserve(layout.tiles().size());
+             for (auto& t : layout.tiles()) {
+               result.push_back(SpanToNbTuple(t.dimensions()));
+             }
+             return result;
+           })
       .def("__eq__", [](const Layout& layout,
                         const Layout& other) { return layout == other; })
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
+      .def("__str__", &Layout::ToString)
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString)

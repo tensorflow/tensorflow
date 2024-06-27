@@ -224,6 +224,7 @@ NB_MODULE(xla_extension, m_nb) {
            [](const PjRtLayout& layout) { return absl::HashOf(layout); });
 
   nb::class_<PjRtXlaLayout, PjRtLayout>(m_nb, "PjRtXlaLayout")
+      .def("_xla_layout", &PjRtXlaLayout::xla_layout)
       .def("__getstate__",
            [](const PjRtXlaLayout& layout) -> nb::tuple {
              absl::StatusOr<std::string> serialized = layout.Serialize();
