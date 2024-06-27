@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/statusor.h"
@@ -27,7 +28,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(InfeedThunkTest, BufferUses) {
+TEST(InfeedThunkTest, BufferAndResourceUses) {
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice infeed_slice(&alloc, 10, 40);
 
@@ -36,14 +37,19 @@ TEST(InfeedThunkTest, BufferUses) {
       ShapeUtil::MakeShape(F32, {10}),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          InfeedThunk::Create({"infeed"}, {infeed_buffer}));
+  auto consume_token = Resource::Create(Resource::kToken);
+  auto produce_token = Resource::Create(Resource::kToken);
 
-  EXPECT_EQ(thunk->buffer_uses().size(), 2);
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
+                          InfeedThunk::Create({"infeed"}, {infeed_buffer},
+                                              {consume_token, produce_token}));
+
+  EXPECT_EQ(thunk->buffer_uses().size(), 1);
   EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Write(infeed_slice));
 
-  BufferAllocation::Slice side_effect_slice(&alloc, 0, 1);
-  EXPECT_EQ(thunk->buffer_uses()[1], BufferUse::Write(side_effect_slice));
+  EXPECT_EQ(thunk->resource_uses().size(), 2);
+  EXPECT_EQ(thunk->resource_uses()[0], ResourceUse::Read(consume_token));
+  EXPECT_EQ(thunk->resource_uses()[1], ResourceUse::Write(produce_token));
 }
 
 }  // namespace

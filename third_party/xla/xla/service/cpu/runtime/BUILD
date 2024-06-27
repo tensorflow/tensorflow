@@ -85,6 +85,7 @@ cc_library(
     testonly = 1,
     hdrs = ["thunk_testlib.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/tsl/concurrency:async_value",
@@ -181,6 +182,7 @@ cc_library(
     srcs = ["conditional_thunk.cc"],
     hdrs = ["conditional_thunk.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         ":thunk_executor",
         "//xla:util",
@@ -205,6 +207,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":conditional_thunk",
+        ":resource_use",
         ":thunk",
         ":thunk_testlib",
         "//xla:shape_util",
@@ -591,6 +594,7 @@ cc_library(
     srcs = ["outfeed_thunk.cc"],
     hdrs = ["outfeed_thunk.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
@@ -617,6 +621,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":outfeed_thunk",
+        ":resource_use",
         ":thunk",
         ":thunk_testlib",
         "//xla:shape_util",
@@ -680,6 +685,7 @@ cc_library(
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
     deps = [
+        ":resource_use",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
@@ -706,6 +712,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":infeed_thunk",
+        ":resource_use",
         ":thunk",
         ":thunk_testlib",
         "//xla:shape_util",
@@ -849,6 +856,7 @@ xla_cc_test(
     srcs = ["while_thunk_test.cc"],
     deps = [
         ":buffer_allocations",
+        ":resource_use",
         ":thunk",
         ":thunk_testlib",
         ":while_thunk",

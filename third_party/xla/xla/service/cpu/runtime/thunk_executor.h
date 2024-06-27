@@ -41,6 +41,7 @@ namespace xla::cpu {
 class ThunkExecutor {
  public:
   using BufferUses = Thunk::BufferUses;
+  using ResourceUses = Thunk::ResourceUses;
   using ExecuteEvent = Thunk::ExecuteEvent;
 
   // It's up to the caller to provide the task runner that will execute tasks
@@ -82,6 +83,7 @@ class ThunkExecutor {
   absl::Span<const NodeId> sink() const { return sink_; }
 
   BufferUses buffer_uses() const { return thunk_sequence_.buffer_uses(); }
+  ResourceUses resource_uses() const { return thunk_sequence_.resource_uses(); }
 
   std::string ToString() const;
 

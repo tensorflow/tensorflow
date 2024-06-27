@@ -179,4 +179,13 @@ ThunkSequence::BufferUses ThunkSequence::buffer_uses() const {
   return buffer_uses;
 }
 
+ThunkSequence::ResourceUses ThunkSequence::resource_uses() const {
+  ResourceUses resource_uses;
+  for (auto& thunk : *this) {
+    ResourceUses uses = thunk->resource_uses();
+    resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
+  }
+  return resource_uses;
+}
+
 }  // namespace xla::cpu

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/thunk_emitter.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -99,6 +100,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
 absl::StatusOr<BufferAllocation::Slice> ThunkEmitter::GetAllocationSlice(
     const HloInstruction* instruction, const ShapeIndex& index) {
   return buffer_assignment_.GetUniqueSlice(instruction, index);
+}
+
+absl::StatusOr<std::shared_ptr<Resource>> ThunkEmitter::GetTokenResource(
+    const HloInstruction* instruction, const ShapeIndex& index) {
+  DCHECK(ShapeUtil::GetSubshape(instruction->shape(), index).IsToken());
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      GetAllocationSlice(instruction, index));
+  if (auto it = token_resources_.find(slice); it != token_resources_.end()) {
+    return it->second;
+  }
+  return token_resources_[slice] = Resource::Create(Resource::kToken);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
@@ -593,7 +605,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitInfeedThunk(
     });
   }
 
-  return ThunkSequence::Of<InfeedThunk>(ThunkInfo(instruction), infeed_buffers);
+  // Collect resources for consumed and produced tokens.
+  InfeedThunk::InfeedResources infeed_resources;
+  TF_ASSIGN_OR_RETURN(infeed_resources.consume_token,
+                      GetTokenResource(infeed->operand(0)));
+  TF_ASSIGN_OR_RETURN(infeed_resources.produce_token,
+                      GetTokenResource(infeed, {1}));
+
+  return ThunkSequence::Of<InfeedThunk>(ThunkInfo(instruction), infeed_buffers,
+                                        std::move(infeed_resources));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeedThunk(
@@ -615,8 +635,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeedThunk(
     });
   }
 
-  return ThunkSequence::Of<OutfeedThunk>(ThunkInfo(instruction),
-                                         outfeed_buffers);
+  // Collect resources for consumed and produced tokens.
+  OutfeedThunk::OutfeedResources outfeed_resources;
+  TF_ASSIGN_OR_RETURN(outfeed_resources.consume_token,
+                      GetTokenResource(outfeed->operand(1)));
+  TF_ASSIGN_OR_RETURN(outfeed_resources.produce_token,
+                      GetTokenResource(outfeed));
+
+  return ThunkSequence::Of<OutfeedThunk>(
+      ThunkInfo(instruction), outfeed_buffers, std::move(outfeed_resources));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditionThunk(

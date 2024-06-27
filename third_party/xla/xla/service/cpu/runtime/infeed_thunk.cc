@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
@@ -25,9 +26,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/resource_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -36,14 +39,18 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunk::Create(
-    Info info, absl::Span<const InfeedBuffer> infeed_buffers) {
-  return absl::WrapUnique(new InfeedThunk(info, infeed_buffers));
+    Info info, absl::Span<const InfeedBuffer> infeed_buffers,
+    InfeedResources infeed_resources) {
+  return absl::WrapUnique(
+      new InfeedThunk(info, infeed_buffers, std::move(infeed_resources)));
 }
 
 InfeedThunk::InfeedThunk(Info info,
-                         absl::Span<const InfeedBuffer> infeed_buffers)
+                         absl::Span<const InfeedBuffer> infeed_buffers,
+                         InfeedResources infeed_resources)
     : Thunk(Kind::kInfeed, info),
-      infeed_buffers_(infeed_buffers.begin(), infeed_buffers.end()) {}
+      infeed_buffers_(infeed_buffers.begin(), infeed_buffers.end()),
+      infeed_resources_(std::move(infeed_resources)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
     const ExecuteParams& params) {
@@ -96,16 +103,12 @@ InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
   for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
     buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
   }
-
-  // TODO(ezhulenev): It is a hack to make sure that we execute all xfeed
-  // operations in the same order as in HLO schedule, because otherwise racing
-  // xfeeds lead to undefined behavior. Instead we should correctly model
-  // side effects of Thunks.
-  static auto* fake_alloc = new BufferAllocation(0, 1, 0);
-  buffer_uses.push_back(
-      BufferUse::Write(BufferAllocation::Slice(fake_alloc, 0, 1)));
-
   return buffer_uses;
+}
+
+InfeedThunk::ResourceUses InfeedThunk::resource_uses() const {
+  return {ResourceUse::Read(infeed_resources_.consume_token),
+          ResourceUse::Write(infeed_resources_.produce_token)};
 }
 
 }  // namespace xla::cpu

@@ -35,6 +35,7 @@ class CallThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+  ResourceUses resource_uses() const final;
 
  private:
   CallThunk(Info info, ThunkExecutor called_executor);

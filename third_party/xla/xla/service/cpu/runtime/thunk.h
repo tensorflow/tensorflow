@@ -239,6 +239,9 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   using BufferUses = Thunk::BufferUses;
   BufferUses buffer_uses() const;
 
+  using ResourceUses = Thunk::ResourceUses;
+  ResourceUses resource_uses() const;
+
   void Append(ThunkSequence other);
 
  private:

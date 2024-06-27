@@ -92,4 +92,16 @@ WhileThunk::BufferUses WhileThunk::buffer_uses() const {
   return buffer_uses;
 }
 
+WhileThunk::ResourceUses WhileThunk::resource_uses() const {
+  ResourceUses resource_uses;
+
+  ResourceUses cond_uses = cond_executor_.resource_uses();
+  resource_uses.insert(resource_uses.end(), cond_uses.begin(), cond_uses.end());
+
+  ResourceUses body_uses = body_executor_.resource_uses();
+  resource_uses.insert(resource_uses.end(), body_uses.begin(), body_uses.end());
+
+  return resource_uses;
+}
+
 }  // namespace xla::cpu
