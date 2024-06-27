@@ -182,7 +182,9 @@ def LowerToLLVMPass :
   }];
 
   let dependentDialects = [
-    "mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"
+    "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
   ];
 
   let constructor = "CreateLowerToLLVMPass()";

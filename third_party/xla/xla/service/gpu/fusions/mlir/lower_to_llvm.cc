@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
