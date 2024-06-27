@@ -60,6 +60,7 @@ void BuildArgBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
                      absl::Span<void* const> address_space,
                      ffi::CallFrameBuilder& builder) {
   int64_t dim_pos = 0;
+  builder.ReserveBufferArgs(types.size());
   for (int64_t i = 0; i < types.size(); ++i) {
     auto dtype = static_cast<xla::PrimitiveType>(types[i]);
     auto dims = DecodeDims(encoded_dims + dim_pos);
@@ -79,6 +80,7 @@ void BuildRetBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
                      absl::Span<void* const> address_space,
                      ffi::CallFrameBuilder& builder) {
   int64_t dim_pos = 0;
+  builder.ReserveBufferRets(types.size());
   for (int64_t i = 0; i < types.size(); ++i) {
     auto dtype = static_cast<xla::PrimitiveType>(types[i]);
     auto dims = DecodeDims(encoded_dims + dim_pos);

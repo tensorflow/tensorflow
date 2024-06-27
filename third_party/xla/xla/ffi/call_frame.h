@@ -35,6 +35,8 @@ namespace xla::ffi {
 // CallFrame library encodes C++ arguments using XLA FFI C API structs in a form
 // compatible with the decoding defined in `ffi/api.h`.
 
+struct CallFrameBuffer;
+
 //===----------------------------------------------------------------------===//
 // CallFrameBuilder
 //===----------------------------------------------------------------------===//
@@ -106,9 +108,11 @@ class CallFrameBuilder {
 
   CallFrame Build();
 
+  void ReserveBufferArgs(int64_t num_args);
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
+  void ReserveBufferRets(int64_t num_rets);
   void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
@@ -117,11 +121,10 @@ class CallFrameBuilder {
  private:
   friend class CallFrame;
 
-  struct Buffer;
-
-  std::vector<Buffer> args_;
-  std::vector<Buffer> rets_;
+  std::vector<CallFrameBuffer> args_;
+  std::vector<CallFrameBuffer> rets_;
   AttributesMap attrs_;
+  bool built_ = false;
 };
 
 //===----------------------------------------------------------------------===//
@@ -144,7 +147,6 @@ class CallFrame {
   struct Arguments;
   struct Array;
   struct Attributes;
-  struct Buffer;
   struct Dictionary;
   struct NamedAttribute;
   struct Results;
@@ -153,20 +155,17 @@ class CallFrame {
 
   using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
-  CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
-            absl::Span<const CallFrameBuilder::Buffer> rets,
+  CallFrame(std::vector<CallFrameBuffer>&& args,
+            std::vector<CallFrameBuffer>&& rets,
             const CallFrameBuilder::AttributesMap& attrs);
 
   static std::unique_ptr<Arguments> InitArgs(
-      absl::Span<const CallFrameBuilder::Buffer> args);
+      std::vector<CallFrameBuffer>&& args);
 
-  static std::unique_ptr<Results> InitRets(
-      absl::Span<const CallFrameBuilder::Buffer> rets);
+  static std::unique_ptr<Results> InitRets(std::vector<CallFrameBuffer>&& rets);
 
   static std::unique_ptr<Attributes> InitAttrs(
       const CallFrameBuilder::AttributesMap& attrs);
-
-  static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
 
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Results> results_;
