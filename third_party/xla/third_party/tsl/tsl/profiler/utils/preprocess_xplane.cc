@@ -21,9 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_builder.h"
+#include "tsl/profiler/utils/xplane_mutators.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tsl {
