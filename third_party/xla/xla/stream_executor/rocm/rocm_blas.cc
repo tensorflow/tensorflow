@@ -1259,16 +1259,16 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-#if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
+#if TF_ROCM_VERSION > 60100  // Not available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
-  if (auto res = rocblas_get_version_string_size(&len);
+  if (auto res = wrap::rocblas_get_version_string_size(&len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));
   }
   std::vector<char> buf(len + 1);
-  if (auto res = rocblas_get_version_string(buf.data(), len);
+  if (auto res = wrap::rocblas_get_version_string(buf.data(), len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));
