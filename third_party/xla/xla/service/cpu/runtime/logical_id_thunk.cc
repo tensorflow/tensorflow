@@ -34,7 +34,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla::cpu {
+namespace xla::cpu::internal {
 
 static Thunk::Kind ToThunkKind(LogicalIdKind logical_id_kind) {
   switch (logical_id_kind) {
@@ -45,41 +45,42 @@ static Thunk::Kind ToThunkKind(LogicalIdKind logical_id_kind) {
   }
 }
 
-template <LogicalIdKind type>
-absl::StatusOr<std::unique_ptr<LogicalIdThunk<type>>>
-LogicalIdThunk<type>::Create(Info info,
-                             BufferAllocation::Slice logical_id_buffer) {
+template <LogicalIdKind logical_id_kind>
+absl::StatusOr<std::unique_ptr<LogicalIdThunk<logical_id_kind>>>
+LogicalIdThunk<logical_id_kind>::Create(
+    Info info, BufferAllocation::Slice logical_id_buffer) {
   return absl::WrapUnique(
       new LogicalIdThunk(std::move(info), logical_id_buffer));
 }
 
-template <LogicalIdKind type>
-LogicalIdThunk<type>::LogicalIdThunk(Info info,
-                                     BufferAllocation::Slice logical_id_buffer)
-    : Thunk(ToThunkKind(type), info), logical_id_buffer_(logical_id_buffer) {}
+template <LogicalIdKind logical_id_kind>
+LogicalIdThunk<logical_id_kind>::LogicalIdThunk(
+    Info info, BufferAllocation::Slice logical_id_buffer)
+    : Thunk(ToThunkKind(logical_id_kind), info),
+      logical_id_buffer_(logical_id_buffer) {}
 
-template <LogicalIdKind type>
+template <LogicalIdKind logical_id_kind>
 static constexpr auto ToString() {
-  if constexpr (type == LogicalIdKind::kPartitionId) {
+  if constexpr (logical_id_kind == LogicalIdKind::kPartitionId) {
     return "Partition";
-  } else if constexpr (type == LogicalIdKind::kReplicaId) {
+  } else if constexpr (logical_id_kind == LogicalIdKind::kReplicaId) {
     return "Replica";
   }
 }
 
-template <LogicalIdKind type>
-absl::StatusOr<int32_t> LogicalIdThunk<type>::GetIdForDevice(
+template <LogicalIdKind logical_id_kind>
+absl::StatusOr<int32_t> LogicalIdThunk<logical_id_kind>::GetIdForDevice(
     const DeviceAssignment* device_assignment, GlobalDeviceId device_id) const {
-  if constexpr (type == LogicalIdKind::kPartitionId) {
+  if constexpr (logical_id_kind == LogicalIdKind::kPartitionId) {
     return device_assignment->PartitionIdForDevice(device_id);
-  } else if constexpr (type == LogicalIdKind::kReplicaId) {
+  } else if constexpr (logical_id_kind == LogicalIdKind::kReplicaId) {
     return device_assignment->ReplicaIdForDevice(device_id);
   }
 }
 
-template <LogicalIdKind type>
-tsl::AsyncValueRef<typename LogicalIdThunk<type>::ExecuteEvent>
-LogicalIdThunk<type>::Execute(const ExecuteParams& params) {
+template <LogicalIdKind logical_id_kind>
+tsl::AsyncValueRef<typename LogicalIdThunk<logical_id_kind>::ExecuteEvent>
+LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
   tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   TF_ASSIGN_OR_RETURN(
@@ -90,14 +91,15 @@ LogicalIdThunk<type>::Execute(const ExecuteParams& params) {
       << "Logical id buffer must be able to fit logical id value";
 
   TF_RET_CHECK(params.collective_params)
-      << ToString<type>() << " id requires collective params";
+      << ToString<logical_id_kind>() << " id requires collective params";
 
   TF_ASSIGN_OR_RETURN(
       int32_t logical_id,
       GetIdForDevice(params.collective_params->device_assignment,
                      params.collective_params->global_device_id));
 
-  VLOG(3) << absl::StreamFormat("%s id: %d", ToString<type>(), logical_id);
+  VLOG(3) << absl::StreamFormat("%s id: %d", ToString<logical_id_kind>(),
+                                logical_id);
   VLOG(3) << absl::StreamFormat("  logical_id: slice %s (%p)",
                                 logical_id_buffer_.ToString(),
                                 logical_id_data.opaque());
@@ -106,15 +108,16 @@ LogicalIdThunk<type>::Execute(const ExecuteParams& params) {
   return OkExecuteEvent();
 }
 
-template <LogicalIdKind type>
-using BufferUses = typename LogicalIdThunk<type>::BufferUses;
+template <LogicalIdKind logical_id_kind>
+using BufferUses = typename LogicalIdThunk<logical_id_kind>::BufferUses;
 
-template <LogicalIdKind type>
-BufferUses<type> LogicalIdThunk<type>::buffer_uses() const {
+template <LogicalIdKind logical_id_kind>
+BufferUses<logical_id_kind> LogicalIdThunk<logical_id_kind>::buffer_uses()
+    const {
   return {BufferUse::Write(logical_id_buffer_)};
 }
 
 template class LogicalIdThunk<LogicalIdKind::kReplicaId>;
 template class LogicalIdThunk<LogicalIdKind::kPartitionId>;
 
-}  // namespace xla::cpu
+}  // namespace xla::cpu::internal

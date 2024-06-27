@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/logical_id_thunk.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -51,7 +52,7 @@ absl::StatusOr<DeviceAssignment> CreateDeviceAssignment(
 }
 
 TEST(LogicalIdThunkTest, GetReplicaId) {
-  std::vector<int32_t> dst(1, -1);
+  std::vector<int32_t> dst(1, std::numeric_limits<int32_t>::min());
 
   std::vector<MaybeOwningDeviceMemory> buffers;
   buffers.emplace_back(se::DeviceMemoryBase(dst.data(), sizeof(int32_t)));
@@ -86,7 +87,7 @@ TEST(LogicalIdThunkTest, GetReplicaId) {
 }
 
 TEST(LogicalIdThunkTest, GetPartitionId) {
-  std::vector<int32_t> dst(2, -1);
+  std::vector<int32_t> dst(2, std::numeric_limits<int32_t>::min());
 
   std::vector<MaybeOwningDeviceMemory> buffers;
   static constexpr auto kDataSize = 2 * sizeof(int32_t);
@@ -119,7 +120,7 @@ TEST(LogicalIdThunkTest, GetPartitionId) {
   tsl::BlockUntilReady(execute_event);
   ASSERT_FALSE(execute_event.IsError());
 
-  EXPECT_EQ(dst[0], -1);
+  EXPECT_EQ(dst[0], std::numeric_limits<int32_t>::min());
   EXPECT_EQ(dst[1], 0);
 }
 

@@ -28,12 +28,13 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace internal {
 enum class LogicalIdKind {
   kPartitionId,
   kReplicaId,
 };
 
-template <LogicalIdKind type>
+template <LogicalIdKind logical_id_kind>
 class LogicalIdThunk : public Thunk {
  public:
   static absl::StatusOr<std::unique_ptr<LogicalIdThunk>> Create(
@@ -53,11 +54,17 @@ class LogicalIdThunk : public Thunk {
   BufferAllocation::Slice logical_id_buffer_;
 };
 
-class ReplicaIdThunk final : public LogicalIdThunk<LogicalIdKind::kReplicaId> {
-};
+// Template is defined and explicitly instantiated in logical_id_thunk.cc.
+extern template class LogicalIdThunk<LogicalIdKind::kReplicaId>;
+extern template class LogicalIdThunk<LogicalIdKind::kPartitionId>;
+
+}  // namespace internal
+
+class ReplicaIdThunk final
+    : public internal::LogicalIdThunk<internal::LogicalIdKind::kReplicaId> {};
 
 class PartitionIdThunk final
-    : public LogicalIdThunk<LogicalIdKind::kPartitionId> {};
+    : public internal::LogicalIdThunk<internal::LogicalIdKind::kPartitionId> {};
 
 }  // namespace xla::cpu
 
