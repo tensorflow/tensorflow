@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "grpcpp/channel.h"
-#include "grpcpp/completion_queue.h"
-#include "grpcpp/generic/generic_stub.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/generic/generic_stub.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"

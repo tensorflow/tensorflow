@@ -74,6 +74,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/core/light_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -98,7 +99,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -625,7 +625,7 @@ StatusOr<Operation*> ConvertOp(
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
+    const std::unique_ptr<mlir::LightFlatBufferModel>& model_ptr) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
@@ -1116,7 +1116,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     bool experimental_prune_unreachable_nodes_unconditionally,
     const tflite::SignatureDefT* signature,
     const tflite::ControlEdges& control_edges,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr,
+    const std::unique_ptr<mlir::LightFlatBufferModel>& model_ptr,
     bool use_stablehlo_constant) {
   // Populate from metadata.
   ControlNodes control_nodes;
@@ -1518,8 +1518,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
       mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
       mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 
-  auto model_ptr =
-      FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
+  auto model_ptr = mlir::LightFlatBufferModel::VerifyAndBuildFromBuffer(
+      buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
     return emitError(base_loc, "couldn't parse flatbuffer"), nullptr;
   }

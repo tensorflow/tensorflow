@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -103,6 +104,29 @@ TEST(FfiTest, ForwardError) {
   auto handler = Ffi::Bind().To([] { return absl::AbortedError("Ooops!"); });
   auto status = Call(*handler, call_frame);
   ASSERT_EQ(status.message(), "Ooops!");
+}
+
+TEST(FfiTest, CatchException) {
+  auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+  XLA_FFI_DEFINE_HANDLER(
+      handler,
+      []() {
+        throw std::runtime_error("Ooops!");
+        return absl::OkStatus();
+      },
+      Ffi::Bind());
+  auto status = Call(*handler, call_frame);
+  ASSERT_EQ(status.message(), "XLA FFI call failed: Ooops!");
+}
+
+TEST(FfiTest, CatchExceptionExplicit) {
+  auto call_frame = CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+  auto handler = Ffi::Bind().To([]() {
+    throw std::runtime_error("Ooops!");
+    return absl::OkStatus();
+  });
+  auto status = Call(*handler, call_frame);
+  ASSERT_EQ(status.message(), "XLA FFI call failed: Ooops!");
 }
 
 TEST(FfiTest, WrongNumArgs) {
