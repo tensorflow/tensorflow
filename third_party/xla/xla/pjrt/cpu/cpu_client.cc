@@ -282,8 +282,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
-    cpu_devices.push_back(CpuTopology::CpuDevice{device->process_index(),
-                                                 device->local_hardware_id()});
+    cpu_devices.push_back(CpuTopology::CpuDevice{
+        device->process_index(), device->local_hardware_id().value()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
                                     platform_version, cpu_devices,
@@ -322,12 +322,12 @@ TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
           /*capacity=*/max_inflight_computations) {}
 
 absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
+  return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
 }
 
 absl::Status TfrtCpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  return TransferLiteralFromOutfeedOnCpu(local_hardware_id(), literal);
+  return TransferLiteralFromOutfeedOnCpu(local_hardware_id().value(), literal);
 }
 
 void TfrtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
@@ -442,7 +442,7 @@ TfrtCpuClient::TfrtCpuClient(
 
     device->SetClient(this);
     if (device->IsAddressable()) {
-      int idx = device->local_hardware_id();
+      int idx = device->local_hardware_id().value();
       if (idx >= addressable_devices_.size()) {
         addressable_devices_.resize(idx + 1);
       }
@@ -678,7 +678,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id());
+          addressable_devices.front()->local_hardware_id().value());
     }
   }
 
@@ -800,7 +800,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id());
+          addressable_devices.front()->local_hardware_id().value());
     }
   }
 

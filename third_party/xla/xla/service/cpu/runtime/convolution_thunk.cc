@@ -30,9 +30,9 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/runtime/conv_impl.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime_conv2d_acl.h"
-#include "xla/service/cpu/runtime_conv_impl.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"

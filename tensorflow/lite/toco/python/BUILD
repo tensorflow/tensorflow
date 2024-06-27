@@ -39,6 +39,7 @@ cc_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
@@ -60,7 +61,6 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_convert",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
@@ -125,8 +125,8 @@ tf_py_strict_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_py",
         "//tensorflow/lite/toco:model_flags_proto_py",
-        "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco:types_proto_py",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/platform:test",

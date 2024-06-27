@@ -149,12 +149,13 @@ class PjRtDevice {
   virtual PjRtLocalDeviceId local_device_id() const {
     // By default, local_device_id is the same as local_hardware_id when there
     // is only one PJRT device on a physical device.
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+    return PjRtLocalDeviceId(local_hardware_id().value());
   }
 
-  // TODO(b/314368788): Remove `int local_hardware_id()` and rename this
-  // function to `local_hardware_id()`.
-  virtual PjRtLocalHardwareId local_hardware_id_typed() const = 0;
+  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
+  // which GPU when interacting with non-JAX code. In general, not guaranteed to
+  // be dense, and -1 if undefined.
+  virtual PjRtLocalHardwareId local_hardware_id() const = 0;
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
@@ -162,14 +163,6 @@ class PjRtDevice {
   // processes, but only a subset of them are addressable and have the same
   // process_index as the client.
   virtual int process_index() const { return description().process_index(); }
-
-  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
-  // which GPU when interacting with non-JAX code. In general, not guaranteed to
-  // be dense, and -1 if undefined.
-  ABSL_DEPRECATED("Use local_hardware_id_typed() instead")
-  virtual int local_hardware_id() const {
-    return local_hardware_id_typed().value();
-  }
 
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are

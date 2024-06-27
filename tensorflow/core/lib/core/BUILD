@@ -10,6 +10,7 @@ package(
     default_visibility = [
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/lite/toco:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
     ],
     licenses = ["notice"],

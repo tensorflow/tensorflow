@@ -1452,7 +1452,7 @@ tf_cc_shared_library(
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_convert",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/compiler/lite:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",

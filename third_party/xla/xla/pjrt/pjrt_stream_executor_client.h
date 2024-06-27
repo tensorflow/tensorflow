@@ -166,15 +166,11 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   bool IsAddressable() const override { return local_device_id_ != -1; }
 
-  int local_hardware_id() const override {
-    return local_hardware_id_typed().value();
-  }
-
   PjRtLocalDeviceId local_device_id() const override {
     return local_device_id_;
   }
 
-  PjRtLocalHardwareId local_hardware_id_typed() const override {
+  PjRtLocalHardwareId local_hardware_id() const override {
     return local_hardware_id_;
   }
 

@@ -1,6 +1,8 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,6 +15,18 @@ package_group(
     includes = [
         "//xla:friends",
     ],
+)
+
+filegroup(
+    name = "runtime_srcs",
+    srcs = ["conv_impl.cc"],
+    visibility = internal_visibility([":friends"]),
+)
+
+filegroup(
+    name = "runtime_hdrs",
+    srcs = ["conv_impl.h"],
+    visibility = internal_visibility([":friends"]),
 )
 
 cc_library(
@@ -257,11 +271,26 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_impl",
+    srcs = ["conv_impl.cc"],
+    hdrs = ["conv_impl.h"],
+    copts = runtime_copts(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "//xla/tsl/framework/convolution:eigen_helpers",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
+    ],
+)
+
+cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
     copts = runtime_copts(),
     deps = [
+        ":conv_impl",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -270,7 +299,6 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:runtime_conv2d_acl",
-        "//xla/service/cpu:runtime_conv_impl",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/container:inlined_vector",

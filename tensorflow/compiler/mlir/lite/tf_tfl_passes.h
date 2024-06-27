@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco_flags.pb.h"
 
 namespace tensorflow {
 

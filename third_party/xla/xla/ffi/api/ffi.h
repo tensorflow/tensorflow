@@ -17,7 +17,8 @@ limitations under the License.
 #define XLA_FFI_API_FFI_H_
 
 #ifdef XLA_FFI_FFI_H_
-#error Two different XLA FFI implementations cannot be included together
+#error Two different XLA FFI implementations cannot be included together. \
+       See README.md for more details.
 #endif  // XLA_FFI_FFI_H_
 
 #include <algorithm>
