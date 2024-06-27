@@ -108,7 +108,8 @@ class TraceEventsContainerBase {
   void AddCompleteEvent(absl::string_view name, uint32_t resource_id,
                         uint32_t device_id, tsl::profiler::Timespan timespan,
                         RawData* raw_data = nullptr,
-                        std::optional<int64_t> group_id = std::nullopt) {
+                        std::optional<int64_t> group_id = std::nullopt,
+                        std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_resource_id(resource_id);
@@ -125,6 +126,9 @@ class TraceEventsContainerBase {
     if (group_id) {
       event->set_group_id(*group_id);
     }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
@@ -136,7 +140,8 @@ class TraceEventsContainerBase {
                     tsl::profiler::ContextType flow_category =
                         tsl::profiler::ContextType::kGeneric,
                     RawData* raw_data = nullptr,
-                    std::optional<int64_t> group_id = std::nullopt) {
+                    std::optional<int64_t> group_id = std::nullopt,
+                    std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_resource_id(resource_id);
@@ -155,6 +160,9 @@ class TraceEventsContainerBase {
     }
     if (group_id) {
       event->set_group_id(*group_id);
+    }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
     }
     AddArenaEvent(event);
   }
@@ -169,7 +177,8 @@ class TraceEventsContainerBase {
                      tsl::profiler::ContextType flow_category =
                          tsl::profiler::ContextType::kGeneric,
                      RawData* raw_data = nullptr,
-                     std::optional<int64_t> group_id = std::nullopt) {
+                     std::optional<int64_t> group_id = std::nullopt,
+                     std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     MaybeInternEventName(event, name);
     event->set_device_id(device_id);
@@ -188,6 +197,9 @@ class TraceEventsContainerBase {
     if (group_id) {
       event->set_group_id(*group_id);
     }
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<int32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
@@ -195,7 +207,8 @@ class TraceEventsContainerBase {
   // and value in RawData.args. Counter events are per device, so no resource_id
   // is passed.
   void AddCounterEvent(absl::string_view name, uint32_t device_id,
-                       uint64_t timestamp_ps, const RawData& raw_data) {
+                       uint64_t timestamp_ps, const RawData& raw_data,
+                       std::optional<int64_t> serial = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
     event->set_name(name.data(), name.size());
     event->set_device_id(device_id);
@@ -205,6 +218,9 @@ class TraceEventsContainerBase {
     DCHECK_EQ(raw_data.args().arg_size(), 1);
     DCHECK(raw_data.args().arg(0).has_uint_value());
     raw_data.SerializePartialToString(event->mutable_raw_data());
+    if (serial && *serial > 0) {
+      event->set_serial(static_cast<uint32_t>(*serial));
+    }
     AddArenaEvent(event);
   }
 
