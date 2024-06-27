@@ -15,11 +15,10 @@
 """TensorFlow Lite Python Interface: Sanity check."""
 from unittest import mock
 import numpy as np
-
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper
 from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
 from tensorflow.python.client import session
