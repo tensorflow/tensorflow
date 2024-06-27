@@ -14,9 +14,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:interpreter",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/training:saver",
     ],
