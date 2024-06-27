@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/collective_permute_cycle_decomposer.h"
+#include "xla/service/gpu/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/command_buffer_scheduling.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
@@ -601,6 +602,11 @@ absl::Status RunSPMDPasses(
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE
+    if (hlo_module->config()
+            .debug_options()
+            .xla_gpu_unsafe_pipelined_loop_annotator()) {
+      spmd_pipeline.AddPass<CollectivePermuteValidIterationAnnotator>();
+    }
     return spmd_pipeline.Run(hlo_module).status();
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
