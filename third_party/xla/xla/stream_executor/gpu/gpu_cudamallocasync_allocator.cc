@@ -241,6 +241,22 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   if (!create_new_pool_) {
     DCHECK(all_pools_->size() == all_ids_->size());
+
+    // If the pool_ is found in all_pools_, it means it has been initialized
+    // before. This can happen in some cases, such as when multiple virtual
+    // devices are created from one physical GPU, the virtual devices will
+    // actually share the same CUDA memory pool. So the following pool
+    // initialization steps should be skipped to avoid duplicated initialization
+    // of the same pool.
+    for (auto& pool_item_ : *all_pools_) {
+      if (*pool_item_ == pool_) {
+        VLOG(2) << Name()
+                << " GpuCudaMallocAsyncAllocator pool already initialized. "
+                   "PoolSize "
+                << pool_size;
+        return;
+      }
+    }
     for (int i = 0; i < all_pools_->size(); ++i) {
       // Set the current pool access to the previous GPUs.
       CUmemAccessDesc map;
@@ -273,9 +289,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
       // Set the previous pools access to the current GPU.
       map.location.id = platform_device_id.value();
 
-      VLOG(2) << "Set access to the pool id: " << i
+      int previous_pool_id = (*all_ids_)[i].value();
+      VLOG(2) << "Set access to the pool id: " << previous_pool_id
               << " location id: " << map.location.id;
-      if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i,
+      if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, previous_pool_id,
                                               platform_device_id.value())) {
         pool_ = nullptr;
         LOG(FATAL)  // Crash OK.
@@ -285,8 +302,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         if (auto status = cuMemPoolSetAccess(*(*all_pools_)[i], &map, 1)) {
           pool_ = nullptr;
           LOG(FATAL)  // Crash OK.
-              << "Error when setting access to the pool id: " << i
-              << " location id: " << map.location.id
+              << "Error when setting access to the pool id: "
+              << previous_pool_id << " location id: " << map.location.id
               << " error: " << GetCudaErrorMessage(status);
         }
       }

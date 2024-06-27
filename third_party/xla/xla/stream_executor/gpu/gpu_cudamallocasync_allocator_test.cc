@@ -47,6 +47,39 @@ static se::StreamExecutor* GpuExecutor() {
 
 namespace stream_executor {
 
+TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
+#if CUDA_VERSION < 11030
+  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
+                  "version less than 11030";
+#endif
+
+  se::StreamExecutor* executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
+  auto allocator1 = GpuCudaMallocAsyncAllocator(
+      /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
+      /*pool_size*/ 2048,
+      /*new_pool_size*/ true,
+      /*release_threshold*/ true);
+  allocator1.SetStreamAndPreallocateMemory(
+      se::gpu::AsGpuStreamValue(stream1.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto stream2, executor->CreateStream());
+  auto allocator2 = GpuCudaMallocAsyncAllocator(
+      /*platform_device_id*/ tsl::PlatformDeviceId(executor->device_ordinal()),
+      /*pool_size*/ 2048,
+      /*new_pool_size*/ true,
+      /*release_threshold*/ true);
+  allocator2.SetStreamAndPreallocateMemory(
+      se::gpu::AsGpuStreamValue(stream2.get()));
+  void* addr1 = allocator1.AllocateRaw(128, 127);
+  void* addr2 = allocator2.AllocateRaw(128, 129);
+  CHECK_EQ((reinterpret_cast<uintptr_t>(addr1) & 127), 0);
+  CHECK_EQ((reinterpret_cast<uintptr_t>(addr2) & 127), 0);
+  allocator1.DeallocateRaw(addr1);
+  allocator2.DeallocateRaw(addr2);
+  EXPECT_TRUE(stream1->ok());
+  EXPECT_TRUE(stream2->ok());
+}
+
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
 #if CUDA_VERSION < 11030
   GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
