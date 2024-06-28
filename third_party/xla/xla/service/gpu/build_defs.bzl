@@ -181,6 +181,6 @@ def gen_gpu_hlo_compile_tests(
                     "--use_spmd_partitioning=true",
                     hlo_path,
                 ] + xla_flags,
-                data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu", data_label],
-                tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn"] + tags,
+                data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main", data_label],
+                tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn", "config-cuda-only"] + tags,
             )

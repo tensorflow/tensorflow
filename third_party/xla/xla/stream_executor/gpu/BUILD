@@ -597,72 +597,53 @@ xla_test(
     ],
 )
 
-# TODO(tlongeri): Remove gpu_cudamallocasync_allocator header/impl split
-tsl_gpu_library(
-    name = "gpu_cudamallocasync_allocator_header",
-    hdrs = ["gpu_cudamallocasync_allocator.h"],
-    deps = [
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/framework:allocator",
-        "//xla/tsl/framework:device_id",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:mutex",
-    ],
-)
-
-tsl_gpu_library(
+cc_library(
     name = "gpu_cudamallocasync_allocator",
-    srcs = [
-        "gpu_cudamallocasync_allocator.cc",
-    ],
+    srcs = ["gpu_cudamallocasync_allocator.cc"],
     hdrs = ["gpu_cudamallocasync_allocator.h"],
-    cuda_deps = [
-        "//xla/stream_executor/cuda:cuda_activation",
-        "//xla/stream_executor/cuda:cuda_executor",
-    ],
+    tags = ["gpu"],
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_activation",
+        "//xla/stream_executor/cuda:cuda_executor",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
 xla_test(
     name = "gpu_cudamallocasync_allocator_test",
-    srcs = if_cuda(["gpu_cudamallocasync_allocator_test.cc"]),
+    srcs = ["gpu_cudamallocasync_allocator_test.cc"],
     backends = ["gpu_any"],
-    local_defines = if_cuda(["GOOGLE_CUDA=1"]),
-    tags = ["config-cuda-only"],
+    tags = [
+        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
+        "gpu",
+        "no_rocm",
+    ],
     deps = [
+        ":gpu_cudamallocasync_allocator",
         ":gpu_stream",
-        "//xla:types",
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/framework:device_id",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda([
-        # copybara:uncomment ":gpu_cudamallocasync_allocator",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]),
+    ],
 )
 
 cc_library(

@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,9 +36,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "xla/client/xla_computation.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -57,6 +61,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -1106,6 +1111,54 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
   EXPECT_EQ(first_param_layout, Layout({0, 2, 1}));
+}
+
+TEST(StreamExecutorGpuClientTest, GetPlatformVersion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  // This is just a smoke test. Refactoring of includes can easily break
+  // the platform version logic since it's all based on macros.
+  EXPECT_THAT(client->platform_version(),
+              ::testing::AnyOf(::testing::StartsWith("rocm "),
+                               ::testing::StartsWith("cuda ")));
+}
+
+TEST(StreamExecutorGpuClientTest, RequestDefaultPlatform) {
+  // We first create a client with the default options, just to determine
+  // the default platform name in this build.
+  TF_ASSERT_OK_AND_ASSIGN(auto auto_client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  // Then we create a client with the same platform name and see if that
+  // works as well.
+  GpuClientOptions client_options{};
+  client_options.platform_name = auto_client->platform_name();
+  EXPECT_THAT(GetStreamExecutorGpuClient(client_options), tsl::testing::IsOk());
+}
+
+TEST(StreamExecutorGpuClientTest, RequestInvalidPlatform) {
+  GpuClientOptions client_options{};
+  client_options.platform_name = "invalid";
+  EXPECT_THAT(GetStreamExecutorGpuClient(client_options),
+              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(StreamExecutorGpuClientTest, RequestValidButUnsupportedPlatform) {
+  TF_ASSERT_OK_AND_ASSIGN(auto auto_client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  GpuClientOptions client_options{};
+  // Since we currently only support building for a single platform at a time,
+  // we can keep this logic simple.
+  if (auto_client->platform_name() == "cuda") {
+    client_options.platform_name = "rocm";
+  } else {
+    client_options.platform_name = "cuda";
+  }
+
+  EXPECT_THAT(GetStreamExecutorGpuClient(client_options),
+              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

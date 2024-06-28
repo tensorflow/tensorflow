@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -52,7 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 
@@ -255,8 +253,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
-
-std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     std::string_view platform_name,

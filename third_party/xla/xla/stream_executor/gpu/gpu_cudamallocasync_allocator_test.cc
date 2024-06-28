@@ -30,10 +30,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif  // GOOGLE_CUDA
-
 namespace se = stream_executor;
 
 namespace {
@@ -48,11 +44,6 @@ static se::StreamExecutor* GpuExecutor() {
 namespace stream_executor {
 
 TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
-#if CUDA_VERSION < 11030
-  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
-                  "version less than 11030";
-#endif
-
   se::StreamExecutor* executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream1, executor->CreateStream());
   auto allocator1 = GpuCudaMallocAsyncAllocator(
@@ -81,11 +72,6 @@ TEST(GpuCudaMallocAsyncAllocator, TwoAllocatorsShareDefaultPool) {
 }
 
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
-#if CUDA_VERSION < 11030
-  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
-                  "version less than 11030";
-#endif
-
   se::StreamExecutor* executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(
@@ -105,10 +91,6 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedDefaultPool) {
 }
 
 TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
-#if CUDA_VERSION < 11030
-  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
-                  "version less than 11030";
-#endif
   se::StreamExecutor* executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(
@@ -131,10 +113,6 @@ TEST(GpuCudaMallocAsyncAllocator, AddressAlignedNewPool) {
 }
 
 TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
-#if CUDA_VERSION < 11030
-  GTEST_SKIP() << "Cuda async memory allocator is not supported for CUDA "
-                  "version less than 11030";
-#endif
   se::StreamExecutor* executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   auto allocator = GpuCudaMallocAsyncAllocator(

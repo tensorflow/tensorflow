@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
+#include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -67,9 +68,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/worker_thread.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
@@ -82,6 +86,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -94,18 +99,14 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
-#include "xla/debug_options_flags.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
-#include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
@@ -118,6 +119,21 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+
+static std::string MakeComputeCapabilityString(
+    const se::DeviceDescription* desc) {
+  se::GpuComputeCapability cc = desc->gpu_compute_capability();
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    auto nvcc = std::get<se::CudaComputeCapability>(cc);
+    return absl::StrCat(nvcc.major, ".", nvcc.minor);
+  } else if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    auto rocmcc = std::get<se::RocmComputeCapability>(cc);
+    return rocmcc.gfx_version();
+  } else {
+    return "unknown";
+  }
+}
+
 class AsyncHostToDeviceTransferManager
     : public xla::PjRtClient::AsyncHostToDeviceTransferManager {
  public:
@@ -250,7 +266,8 @@ class AsyncHostToDeviceTransferManager
       if (buffer->device_memory().empty()) {
         return InvalidArgument(
             "TransferLiteralToBuffer requested for buffer index %d which has "
-            "been donated. Async transfer of donated buffers is not supported "
+            "been donated. Async transfer of donated buffers is not "
+            "supported "
             "in SE:GPU",
             buffer_index);
       }
@@ -269,17 +286,18 @@ class AsyncHostToDeviceTransferManager
       ++transfers_in_flight_;
     }
 
-    // The host to device transfer is performed on a thread pool, mostly because
-    // it includes linearization that may be slow.
-    // TODO(misard) assess if it would be preferable to introduce a heuristic to
-    // put the transfer into the calling thread for small literals.
+    // The host to device transfer is performed on a thread pool, mostly
+    // because it includes linearization that may be slow.
+    // TODO(misard) assess if it would be preferable to introduce a heuristic
+    // to put the transfer into the calling thread for small literals.
     auto transfer_h2d = [this, buffer_index, stream, transfer_manager, literal,
                          device_buffer = buffer.get(), compact_shape,
                          local_device =
                              std::move(device_->local_device_state()),
                          on_done = std::move(on_done)]() mutable {
       tsl::profiler::TraceMe traceme(
-          "AsyncHostToDeviceTransferManager::TransferLiteralToBuffer::transfer_"
+          "AsyncHostToDeviceTransferManager::TransferLiteralToBuffer::"
+          "transfer_"
           "h2d");
 
       auto event = local_device->event_pool().AllocateEvent(stream->parent());
@@ -358,7 +376,8 @@ class AsyncHostToDeviceTransferManager
     DCHECK(buffer_ptrs_[buffer_index]);
     if (buffer_ptrs_[buffer_index]->device_memory().empty()) {
       return InvalidArgument(
-          "TransferRawDataToSubBuffer requested for buffer index %d which has "
+          "TransferRawDataToSubBuffer requested for buffer index %d which "
+          "has "
           "been donated. Async transfer of donated buffers is not supported "
           "in SE:GPU",
           buffer_index);
@@ -441,9 +460,9 @@ class AsyncHostToDeviceTransferManager
   // that the buffers can't be freed before all transfers complete.
   absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs_
       ABSL_GUARDED_BY(mu_);
-  // True if the last transfer for a buffer has been initiated. Used to prevent
-  // a client initiating another transfer after the last transfer has already
-  // been initiated.
+  // True if the last transfer for a buffer has been initiated. Used to
+  // prevent a client initiating another transfer after the last transfer has
+  // already been initiated.
   absl::InlinedVector<bool, 4> last_transfer_started_ ABSL_GUARDED_BY(mu_);
   // The buffer definition events on all the buffers, unblocked once the
   // corresponding buffer transfer has completed.
@@ -451,8 +470,9 @@ class AsyncHostToDeviceTransferManager
       definition_events_ ABSL_GUARDED_BY(mu_);
   // Count of buffers that have not yet been fully transferred.
   size_t remaining_buffer_count_ ABSL_GUARDED_BY(mu_);
-  // Count of transfers that have been started but have not yet called cleanup.
-  // Used to block in the destructor to avoid dangling pointers in cleanup.
+  // Count of transfers that have been started but have not yet called
+  // cleanup. Used to block in the destructor to avoid dangling pointers in
+  // cleanup.
   int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
 
   PjRtStreamExecutorDevice* device_;  // not owned.
@@ -598,13 +618,13 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   auto usage_event =
       std::make_shared<BufferSequencingEvent>(this->thread_pool());
 
-  // When using the ComputeSynchronized allocation model, retain a reference to
-  // the device_buffer until the copy completes, to ensure that the buffer isn't
-  // deleted or donated while it is still in use. The choice of retaining a
-  // reference at the host is a heuristic; the alternative is to ensure, before
-  // freeing the buffer, that the compute stream is synchronized past the
-  // transfer, but it seems better to hold onto the buffer too long than to
-  // stall the compute stream.
+  // When using the ComputeSynchronized allocation model, retain a reference
+  // to the device_buffer until the copy completes, to ensure that the buffer
+  // isn't deleted or donated while it is still in use. The choice of
+  // retaining a reference at the host is a heuristic; the alternative is to
+  // ensure, before freeing the buffer, that the compute stream is
+  // synchronized past the transfer, but it seems better to hold onto the
+  // buffer too long than to stall the compute stream.
   hold.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
   auto async_copy = [this, promise, offset, transfer_size, stream, local_device,
@@ -647,9 +667,10 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     if (transfer_size != 0) {
       if (should_stage_host_to_device_transfers()) {
         if (host_memory_allocator() == nullptr) {
-          promise.Set(InvalidArgument(
-              "host_memory_allocator should be initialized for staging buffer "
-              "transfer."));
+          promise.Set(
+              InvalidArgument("host_memory_allocator should be initialized "
+                              "for staging buffer "
+                              "transfer."));
           return;
         }
         void* ptr = host_memory_allocator()->AllocateRaw(
@@ -798,7 +819,7 @@ StreamExecutorGpuClient::Load(std::unique_ptr<PjRtExecutable> executable) {
 
 namespace {
 
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
+#if GOOGLE_CUDA
 
 absl::StatusOr<std::unique_ptr<se::GpuCudaMallocAsyncAllocator>>
 CreateCudaAsyncAllocator(const LocalDeviceState& device, double memory_fraction,
@@ -843,14 +864,15 @@ CreateCudaAsyncAllocator(const LocalDeviceState& device, double memory_fraction,
   return allocator;
 }
 
-#else  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
+#else  // GOOGLE_CUDA
+
 absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateCudaAsyncAllocator(
     const LocalDeviceState& device, double memory_fraction, bool reserve_memory,
     bool create_new_pool, bool sync_mode, bool compute_stats = true) {
-  return FailedPrecondition("CUDA async allocator requires CUDA >= 11.2");
+  return FailedPrecondition("CUDA async allocator requires CUDA");
 }
 
-#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
+#endif  // GOOGLE_CUDA
 
 // Builds a LocalDeviceState for each GPU present.
 absl::StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
@@ -912,7 +934,8 @@ GetStreamExecutorGpuDeviceAllocator(
       LOG(INFO) << "Using platform allocator.";
       if (allocator_config.collective_memory_size != 0) {
         LOG(WARNING)
-            << "collective_memory_size is non-zero, but allocator kind is set "
+            << "collective_memory_size is non-zero, but allocator kind is "
+               "set "
                "to \"platform\". Collective memory will not be allocated.";
       }
       // Returning null will cause the client to use the default backend
@@ -942,7 +965,7 @@ GetStreamExecutorGpuDeviceAllocator(
                             static_cast<int>(se::MemoryType::kHost));
   }
 
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
+#if GOOGLE_CUDA
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
     // Add memory allocator to allocate memory buffers with persistent temp
@@ -958,7 +981,7 @@ GetStreamExecutorGpuDeviceAllocator(
           /*memory_space=*/gpu::kTempBufferMemorySpaceColor);
     }
   }
-#endif
+#endif  // GOOGLE_CUDA
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }
@@ -1083,19 +1106,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   return std::make_pair(std::move(devices), gpu_topology);
 }
 
-std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
-  se::GpuComputeCapability cc = desc->gpu_compute_capability();
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    auto nvcc = std::get<se::CudaComputeCapability>(cc);
-    return absl::StrCat(nvcc.major, ".", nvcc.minor);
-  } else if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
-    auto rocmcc = std::get<se::RocmComputeCapability>(cc);
-    return rocmcc.gfx_version();
-  } else {
-    return "unknown";
-  }
-}
-
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
     std::string device_kind, std::string device_vendor,
@@ -1179,15 +1189,48 @@ StreamExecutorGpuHbmMemorySpace::StreamExecutorGpuHbmMemorySpace(
     int id, PjRtDevice* device)
     : PjRtStreamExecutorMemorySpace(id, device, kKind, kKindId) {}
 
+static bool IsSupportedGpuPlatform(absl::string_view platform_name) {
+#if TENSORFLOW_USE_ROCM
+  return platform_name == xla::RocmName();
+#endif
+#if TENSORFLOW_USE_SYCL
+  return platform_name == xla::SyclName();
+#endif
+#if GOOGLE_CUDA
+  return platform_name == xla::CudaName();
+#endif
+  return false;
+}
+
+static std::optional<std::string> GetDefaultGpuPlatformName() {
+#if TENSORFLOW_USE_ROCM
+  return xla::RocmName();
+#elif TENSORFLOW_USE_SYCL
+  return xla::SyclName();
+#elif GOOGLE_CUDA
+  return xla::CudaName();
+#else
+  return std::nullopt;
+#endif
+}
+
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options) {
-#if TENSORFLOW_USE_ROCM
-  auto pjrt_platform_name = xla::RocmName();
-#elif TENSORFLOW_USE_SYCL
-  auto pjrt_platform_name = xla::SyclName();
-#else   // TENSORFLOW_USE_ROCM
-  auto pjrt_platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
+  if (options.platform_name.has_value() &&
+      !IsSupportedGpuPlatform(*options.platform_name)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Unsupported GPU platform: %s. Supported GPU platforms are: [%s]",
+        options.platform_name.value(),
+        GetDefaultGpuPlatformName().value_or("")));
+  }
+
+  auto default_platform_name = GetDefaultGpuPlatformName();
+  if (!default_platform_name.has_value()) {
+    return absl::UnimplementedError("No GPU platform available");
+  }
+
+  auto pjrt_platform_name =
+      options.platform_name.value_or(*default_platform_name);
 
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
