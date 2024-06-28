@@ -3872,7 +3872,12 @@ cc_library(
     hdrs = ["tuple_simplifier.h"],
     deps = [
         ":hlo_pass",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3881,15 +3886,15 @@ xla_cc_test(
     srcs = ["tuple_simplifier_test.cc"],
     deps = [
         ":tuple_simplifier",
-        "//xla:literal",
         "//xla:shape_util",
         "//xla:test",
-        "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

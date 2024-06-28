@@ -16,23 +16,23 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 
 #include <memory>
-#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
 #include "tsl/lib/core/status_test_util.h"
-
-namespace op = xla::testing::opcode_matchers;
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 class TupleSimplifierTest : public HloTestBase {
  protected:
@@ -55,239 +55,269 @@ class TupleSimplifierTest : public HloTestBase {
 
 TEST_F(TupleSimplifierTest, TupleOfParameters) {
   // A Tuple constructed of a bunch of parameters should not be changed.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  HloInstruction* param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, scalar_shape_, "param2"));
-  builder.AddInstruction(HloInstruction::CreateTuple({param0, param1, param2}));
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(builder.Build());
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule TupleOfParameters, entry_computation_layout={(f32[], f32[], f32[])->(f32[], f32[], f32[])}
+
+    ENTRY %TupleOfParameters (param0: f32[], param1: f32[], param2: f32[]) -> (f32[], f32[], f32[]) {
+      %param0 = f32[] parameter(0)
+      %param1 = f32[] parameter(1)
+      %param2 = f32[] parameter(2)
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %param0, f32[] %param1, f32[] %param2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
   // A GTE of a tuple parameter should not be changed.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-  builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 1));
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(builder.Build());
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule GteOfTupleOfParameter, entry_computation_layout={((f32[], f32[], f32[]))->f32[]}
+
+    ENTRY %GteOfTupleOfParameter (param: (f32[], f32[], f32[])) -> f32[] {
+      %param = (f32[], f32[], f32[]) parameter(0)
+      ROOT %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTuple) {
   // A GTE of a Tuple should be short-circuited.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  HloInstruction* param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, scalar_shape_, "param2"));
-  HloInstruction* tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({param0, param1, param2}));
-  HloInstruction* gte = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple, 1));
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule GteOfTuple, entry_computation_layout={(f32[], f32[], f32[])->f32[]}
 
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+    ENTRY %GteOfTuple (param0: f32[], param1: f32[], param2: f32[]) -> f32[] {
+      %param0 = f32[] parameter(0)
+      %param1 = f32[] parameter(1)
+      %param2 = f32[] parameter(2)
+      %tuple = (f32[], f32[], f32[]) tuple(f32[] %param0, f32[] %param1, f32[] %param2)
+      ROOT %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple), index=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
-  EXPECT_THAT(computation->root_instruction(), gte);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement(op::Tuple()));
 
   Run(module.get(), /*change_expected=*/true);
 
-  EXPECT_THAT(computation->root_instruction(), param1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Parameter(1));
 }
 
 TEST_F(TupleSimplifierTest, GteOfTupleChain) {
   // Verify a chain of GTE/Tuple instructions is collapsed.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule GteOfTupleChain, entry_computation_layout={(f32[])->f32[]}
 
-  const int kChainLength = 10;
-  HloInstruction* element = param;
-  for (int i = 0; i < kChainLength; ++i) {
-    HloInstruction* tuple = builder.AddInstruction(
-        HloInstruction::CreateTuple({element, element, element}));
-    element = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, tuple, 1));
-  }
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kNegate, element));
+    ENTRY %GteOfTupleChain (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      %tuple = (f32[], f32[], f32[]) tuple(f32[] %param, f32[] %param, f32[] %param)
+      %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple), index=1
+      %tuple.1 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element, f32[] %get-tuple-element)
+      %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.1), index=1
+      %tuple.2 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.1, f32[] %get-tuple-element.1, f32[] %get-tuple-element.1)
+      %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.2), index=1
+      %tuple.3 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.2, f32[] %get-tuple-element.2, f32[] %get-tuple-element.2)
+      %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.3), index=1
+      %tuple.4 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.3, f32[] %get-tuple-element.3, f32[] %get-tuple-element.3)
+      %get-tuple-element.4 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.4), index=1
+      %tuple.5 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.4, f32[] %get-tuple-element.4, f32[] %get-tuple-element.4)
+      %get-tuple-element.5 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.5), index=1
+      %tuple.6 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.5, f32[] %get-tuple-element.5, f32[] %get-tuple-element.5)
+      %get-tuple-element.6 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.6), index=1
+      %tuple.7 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.6, f32[] %get-tuple-element.6, f32[] %get-tuple-element.6)
+      %get-tuple-element.7 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.7), index=1
+      %tuple.8 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.7, f32[] %get-tuple-element.7, f32[] %get-tuple-element.7)
+      %get-tuple-element.8 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.8), index=1
+      %tuple.9 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.8, f32[] %get-tuple-element.8, f32[] %get-tuple-element.8)
+      %get-tuple-element.9 = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple.9), index=1
+      ROOT %negate = f32[] negate(f32[] %get-tuple-element.9)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_THAT(computation->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Negate(op::GetTupleElement(op::Tuple())));
 
   Run(module.get(), /*change_expected=*/true);
 
-  EXPECT_THAT(computation->root_instruction(), op::Negate(op::Parameter()));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Negate(op::Parameter()));
 }
 
 TEST_F(TupleSimplifierTest, NestedGteOfTuples) {
   // Verify a nesting of GTE/Tuple instructions is collapsed. Tuples are nested
   // to some depth with a chain of Tuple instructions, then extracted with a
   // chain of GTE instructions.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule NestedGteOfTuples, entry_computation_layout={(f32[])->f32[]}
 
-  const int kNestingDepth = 5;
-  HloInstruction* nested_tuple = param;
-  for (int i = 0; i < kNestingDepth; ++i) {
-    nested_tuple = builder.AddInstruction(
-        HloInstruction::CreateTuple({nested_tuple, nested_tuple}));
-  }
+    ENTRY %NestedGteOfTuples (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      %tuple = (f32[], f32[]) tuple(f32[] %param, f32[] %param)
+      %tuple.1 = ((f32[], f32[]), (f32[], f32[])) tuple((f32[], f32[]) %tuple, (f32[], f32[]) %tuple)
+      %tuple.2 = (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))
+                   tuple(
+                     ((f32[], f32[]), (f32[], f32[])) %tuple.1,
+                     ((f32[], f32[]), (f32[], f32[])) %tuple.1
+                   )
+      %tuple.3 = ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                  (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))))
+                   tuple(
+                     (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))) %tuple.2,
+                     (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))) %tuple.2
+                   )
+      %tuple.4 = (((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                   (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))),
+                  ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                   (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))))
+                   tuple(
+                     ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                      (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))) %tuple.3,
+                     ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                      (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))) %tuple.3
+                   )
 
-  HloInstruction* element = nested_tuple;
-  for (int i = 0; i < kNestingDepth; ++i) {
-    element = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-        ShapeUtil::GetTupleElementShape(element->shape(), 0), element, 0));
-  }
+      %get-tuple-element = ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                            (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))))
+                             get-tuple-element(
+                               (((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                                (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))),
+                                ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                                (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))))) %tuple.4
+                             ), index=0
+      %get-tuple-element.1 = (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))
+                               get-tuple-element(
+                                 ((((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))),
+                                  (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[])))) %get-tuple-element
+                               ), index=0
+      %get-tuple-element.2 = ((f32[], f32[]), (f32[], f32[]))
+                               get-tuple-element(
+                                 (((f32[], f32[]), (f32[], f32[])), ((f32[], f32[]), (f32[], f32[]))) %get-tuple-element.1
+                               ), index=0
+      %get-tuple-element.3 = (f32[], f32[])
+                                get-tuple-element(
+                                  ((f32[], f32[]), (f32[], f32[])) %get-tuple-element.2
+                                ), index=0
+      ROOT %get-tuple-element.4 = f32[] get-tuple-element((f32[], f32[]) %get-tuple-element.3), index=0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_THAT(computation->root_instruction(), element);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement());
 
   Run(module.get(), /*change_expected=*/true);
 
-  EXPECT_THAT(computation->root_instruction(), param);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Parameter(0));
 }
 
 TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
   // Verify that a tuple constructed of GTE instructions operating on the same
   // tuple are collapsed.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* tuple_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-  HloInstruction* gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 0));
-  HloInstruction* gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 1));
-  HloInstruction* gte2 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 2));
-  HloInstruction* tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule TupleOfGteInstructions, entry_computation_layout={((f32[], f32[], f32[]))->(f32[], f32[], f32[])}
 
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+    ENTRY %TupleOfGteInstructions (param: (f32[], f32[], f32[])) -> (f32[], f32[], f32[]) {
+      %param = (f32[], f32[], f32[]) parameter(0)
+      %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=0
+      %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
+      %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=2
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.1, f32[] %get-tuple-element.2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
-  EXPECT_THAT(computation->root_instruction(), tuple);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
+                        op::GetTupleElement()));
 
   Run(module.get(), /*change_expected=*/true);
 
-  EXPECT_THAT(computation->root_instruction(), tuple_param);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Parameter(0));
 }
 
 TEST_F(TupleSimplifierTest, IncompatibleTuples) {
   // Verify that a tuple->GTE->tuple construct is not simplified if the input
   // and output tuple are not compatible shapes.
-  HloComputation::Builder builder(TestName());
-  HloInstruction* tuple_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-  HloInstruction* gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 0));
-  HloInstruction* gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 1));
-  // Output tuple has only two elements. Parameter tuple has three elements so
-  // simplification is not possible.
-  HloInstruction* tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule IncompatibleTuples, entry_computation_layout={((f32[], f32[], f32[]))->(f32[], f32[])}
 
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_THAT(computation->root_instruction(), tuple);
+    ENTRY %IncompatibleTuples (param: (f32[], f32[], f32[])) -> (f32[], f32[]) {
+      %param = (f32[], f32[], f32[]) parameter(0)
+      %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=0
+      %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
+      ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
-
-  EXPECT_THAT(computation->root_instruction(), tuple);
 }
 
 TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
   //  Verify that the root computation can be excluded
-  auto module = CreateNewVerifiedModule();
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule CanExcludeEntryComputation, entry_computation_layout={((f32[], f32[], f32[]))->(f32[], f32[])}
 
-  HloInstruction* p0;
-  HloInstruction* p1;
-  HloComputation* c0;
-  HloComputation* c1;
-  HloComputation* entry;
+    %c1 (param: (f32[], f32[], f32[])) -> (f32[], f32[], f32[]) {
+      %param = (f32[], f32[], f32[]) parameter(0)
+      %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=0
+      %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
+      %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=2
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.1, f32[] %get-tuple-element.2)
+    }
 
-  {
-    HloComputation::Builder builder(TestName() + "_1");
-    p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-    HloInstruction* gte0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 0));
-    HloInstruction* gte1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 1));
-    HloInstruction* gte2 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 2));
+    %c2 (param.1: (f32[], f32[], f32[])) -> (f32[], f32[], f32[]) {
+      %param.1 = (f32[], f32[], f32[]) parameter(0)
+      %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[], f32[]) %param.1), index=0
+      %get-tuple-element.4 = f32[] get-tuple-element((f32[], f32[], f32[]) %param.1), index=1
+      %get-tuple-element.5 = f32[] get-tuple-element((f32[], f32[], f32[]) %param.1), index=2
+      ROOT %tuple.1 = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element.3, f32[] %get-tuple-element.4, f32[] %get-tuple-element.5)
+    }
 
-    builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
-
-    c0 = module->AddEmbeddedComputation(builder.Build());
-  }
-  {
-    HloComputation::Builder builder(TestName() + "_2");
-    p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-    HloInstruction* gte0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 0));
-    HloInstruction* gte1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 1));
-    HloInstruction* gte2 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 2));
-
-    builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
-
-    c1 = module->AddEmbeddedComputation(builder.Build());
-  }
-  {
-    HloComputation::Builder builder(TestName() + "_Entry");
-    HloInstruction* tuple_param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-    HloInstruction* call0 = builder.AddInstruction(
-        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c0));
-    HloInstruction* call1 = builder.AddInstruction(
-        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c1));
-    HloInstruction* gte0 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, call0, 0));
-    HloInstruction* gte1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, call1, 1));
-    HloInstruction* tuple0 =
-        builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
-    HloInstruction* gte2 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, tuple0, 0));
-    HloInstruction* gte3 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_shape_, tuple0, 1));
-
-    builder.AddInstruction(HloInstruction::CreateTuple({gte2, gte3}));
-
-    entry = module->AddEntryComputation(builder.Build());
-  }
+    ENTRY %e (param.2: (f32[], f32[], f32[])) -> (f32[], f32[]) {
+      %param.2 = (f32[], f32[], f32[]) parameter(0)
+      %call = (f32[], f32[], f32[]) call((f32[], f32[], f32[]) %param.2), to_apply=%c1
+      %get-tuple-element.6 = f32[] get-tuple-element((f32[], f32[], f32[]) %call), index=0
+      %call.1 = (f32[], f32[], f32[]) call((f32[], f32[], f32[]) %param.2), to_apply=%c2
+      %get-tuple-element.7 = f32[] get-tuple-element((f32[], f32[], f32[]) %call.1), index=1
+      %tuple.2 = (f32[], f32[]) tuple(f32[] %get-tuple-element.6, f32[] %get-tuple-element.7)
+      %get-tuple-element.8 = f32[] get-tuple-element((f32[], f32[]) %tuple.2), index=0
+      %get-tuple-element.9 = f32[] get-tuple-element((f32[], f32[]) %tuple.2), index=1
+      ROOT %tuple.3 = (f32[], f32[]) tuple(f32[] %get-tuple-element.8, f32[] %get-tuple-element.9)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/true, /*exclude_entry=*/true);
 
-  EXPECT_THAT(c0->root_instruction(), p0);
-  EXPECT_THAT(c1->root_instruction(), p1);
-  EXPECT_THAT(entry->instruction_count(), 9);
+  EXPECT_THAT(FindComputation(module.get(), "c1")->root_instruction(),
+              op::Parameter(0));
+  EXPECT_THAT(FindComputation(module.get(), "c2")->root_instruction(),
+              op::Parameter(0));
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 9);
 }
 
-TEST_F(TupleSimplifierTest, ShardingLoss) {
-  const char* kModuleStr = R"(
+TEST_F(TupleSimplifierTest, ShardingInfoIsNotBeLost) {
+  // Guards against simplifications that would incorrectly drop or change
+  // sharding information.
+  constexpr absl::string_view kModuleStr = R"(
     HloModule m
 
     ENTRY test {
@@ -296,12 +326,16 @@ TEST_F(TupleSimplifierTest, ShardingLoss) {
       ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  Run(m.get(), /*change_expected=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Expect no change because the sharding in the root instruction is not the
+  // same as that of the parameter instruction.
+  Run(module.get(), /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, NestedTuple) {
-  const char* kModuleStr = R"(
+  constexpr absl::string_view kModuleStr = R"(
     HloModule m
 
     ENTRY test {
@@ -319,12 +353,13 @@ TEST_F(TupleSimplifierTest, NestedTuple) {
       ROOT to = (s32[10], s32[10]) tuple(gte2, gte3)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  Run(m.get(), /*change_expected=*/true);
-  auto* p1 = FindInstruction(m.get(), "p1");
-  auto* gte3 = FindInstruction(m.get(), "gte3");
-  EXPECT_THAT(m->entry_computation()->root_instruction()->operand(0), p1);
-  EXPECT_THAT(m->entry_computation()->root_instruction()->operand(1), gte3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  Run(module.get(), /*change_expected=*/true);
+  auto* p1 = FindInstruction(module.get(), "p1");
+  auto* gte3 = FindInstruction(module.get(), "gte3");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0), p1);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(1), gte3);
 }
 
 }  // namespace

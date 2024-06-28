@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_TUPLE_SIMPLIFIER_H_
 #define XLA_SERVICE_TUPLE_SIMPLIFIER_H_
 
-#include <utility>
-
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -33,8 +34,8 @@ class TupleSimplifier : public HloModulePass {
   ~TupleSimplifier() override {}
   absl::string_view name() const override { return "tuple-simplifier"; }
 
-  // Run tuple simplification on the given computation. Returns whether the
-  // computation was changed.
+  // Runs tuple simplification on the given module. Returns whether the module
+  // was changed.
   using HloPassInterface::Run;
   using HloPassInterface::RunOnModuleGroup;
   absl::StatusOr<bool> Run(
