@@ -147,6 +147,28 @@ class SummaryV2Test(test.TestCase):
     )
 
   @test_util.run_v2_only
+  def test_mesh_summary_v2(self):
+    """Tests mesh v2 invocation."""
+    with test.mock.patch.object(
+        summary_v2, 'mesh', autospec=True
+    ) as mock_mesh_v2:
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()
+      ).as_default(step=2):
+        i = array_ops.ones((5, 4, 4, 3))
+        with ops.name_scope_v2('outer'):
+          tensor = summary_lib.mesh('mesh', i, family='family')
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_mesh_v2.assert_called_once_with(
+        name='family/outer/family/mesh',
+        data=i,
+        step=2,
+        description=test.mock.ANY,
+    )
+
+  @test_util.run_v2_only
   def test_histogram_summary_v2(self):
     """Tests histogram v2 invocation."""
     with test.mock.patch.object(
