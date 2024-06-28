@@ -501,6 +501,9 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return IsNonNegative(hlo->operand(0), options) ||
              IsNonNegative(hlo->operand(1), options);
     }
+    case HloOpcode::kPower: {
+      return IsNonNegative(hlo->operand(0), options);
+    }
     case HloOpcode::kSelect: {
       return IsNonNegative(hlo->operand(1), options) &&
              IsNonNegative(hlo->operand(2), options);
