@@ -64,6 +64,12 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   struct EmitterState;
   friend struct EmitterState;
 
+  // Returns the init values for reductions, and the init values for the side
+  // outputs. Side output init values are tensors, while reduction init values
+  // are scalars.
+  HloValueMap GetInitsAndSideOutputTensors(int group_id,
+                                           EmitterState& state) const;
+
   absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
