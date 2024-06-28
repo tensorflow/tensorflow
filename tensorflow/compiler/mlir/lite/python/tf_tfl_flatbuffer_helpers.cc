@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -324,12 +325,12 @@ absl::Status PopulateQuantizationSpecs(
 
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, std::unique_ptr<SavedModelBundle> saved_model_bundle,
+    std::string* result, std::unique_ptr<SavedModelBundle>&& saved_model_bundle,
     const PyFunctionLibrary* quantization_py_function_lib) {
-
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
 
@@ -345,9 +346,10 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   });
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
+      std::move(context), std::move(module), toco_flags, pass_config_copy,
       saved_model_tags, model_flags.saved_model_dir(),
-      std::move(saved_model_bundle), result, /*serialize_stablehlo_ops=*/false,
+      std::move(saved_model_bundle), result,
+      /*serialize_stablehlo_ops=*/false, /*export_to_mlir=*/false,
       quantization_py_function_lib);
 
   return status;

@@ -34,20 +34,24 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "re2/re2.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tsl/lib/io/buffered_file.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+
 // IWYU pragma: no_include "util/regexp/re2/re2.h"
 
 namespace tensorflow {
@@ -342,6 +346,10 @@ void InitPassManager(mlir::PassManager& pm,
   if (options.enable_timing()) {
     pm.enableTiming();
   }
+
+  pm.addInstrumentation(
+      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
+          pm.getContext()));
 }
 
 }  // namespace tensorflow

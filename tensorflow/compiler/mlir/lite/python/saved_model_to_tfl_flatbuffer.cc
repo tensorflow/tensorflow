@@ -137,7 +137,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
@@ -177,10 +177,11 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   TF_ASSIGN_OR_RETURN(
       auto module,
-      ImportSavedModel(
-          model_flags.saved_model_dir(), model_flags.saved_model_version(),
-          tags, absl::MakeSpan(custom_opdefs), exported_names, specs,
-          !toco_flags.enable_tflite_resource_variables(), &context, &bundle));
+      ImportSavedModel(model_flags.saved_model_dir(),
+                       model_flags.saved_model_version(), tags,
+                       absl::MakeSpan(custom_opdefs), exported_names, specs,
+                       !toco_flags.enable_tflite_resource_variables(),
+                       context.get(), &bundle));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -240,8 +241,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(module), pass_config, tags, result,
-      std::move(bundle), quantization_py_function_lib);
+      model_flags, toco_flags, std::move(context), std::move(module),
+      pass_config, tags, result, std::move(bundle),
+      quantization_py_function_lib);
+
   return status;
 }
 

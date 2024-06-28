@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -44,7 +45,7 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
     const GraphDebugInfo& debug_info, const GraphDef& input,
     std::string* result) {
   using ::tflite::optimize::ReducedPrecisionSupport;
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   GraphImportConfig specs;
   mlir::quant::QuantizationSpecs quant_specs;
 
@@ -85,8 +86,8 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   // Register all custom ops, including user-specified custom ops.
   TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(toco_flags));
 
-  TF_ASSIGN_OR_RETURN(
-      auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
+  TF_ASSIGN_OR_RETURN(auto module, ConvertGraphdefToMlir(input, debug_info,
+                                                         specs, context.get()));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
@@ -112,7 +113,8 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   // StableHLO Quantizer is not supported for GraphDef inputs, so
   // quantization_py_function_lib is set to nullptr.
   return internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(module), pass_config,
+      model_flags, toco_flags, std::move(context), std::move(module),
+      pass_config,
       /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
       /*quantization_py_function_lib=*/nullptr);
 }

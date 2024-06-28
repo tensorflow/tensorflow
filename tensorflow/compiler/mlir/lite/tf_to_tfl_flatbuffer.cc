@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
+#include <stdlib.h>
+
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -33,10 +36,20 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -44,11 +57,14 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
@@ -59,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -69,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -78,12 +96,14 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -180,7 +200,7 @@ mlir::LogicalResult RunHloToTfConversion(
     QuantizationConfig* quantization_config,
     const PyFunctionLibrary* quantization_py_function_lib,
     const SavedModelBundle* saved_model_bundle, mlir::PassManager& pass_manager,
-    mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp& module) {
+    mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp module) {
   // TODO: b/194747383 - We need to valid that indeed the "main" func is
   // presented.
   AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
@@ -209,6 +229,78 @@ mlir::LogicalResult RunHloToTfConversion(
   pass_manager.clear();
 
   return mlir::success();
+}
+
+// This function estimates the size of the module in bytes. It does so by
+// iterating through all the constant-like attributes and tensors in the module
+// and summing up their sizes.
+//
+// This function is used to reserve space in the buffer before serializing the
+// module to avoid reallocating the buffer during serialization.
+//
+// This function may need to be improved to give more accurate size of the
+// module if the current estimate is not good enough and causes huge
+// reallocations during serialization.
+size_t GetApproximateModuleSize(mlir::ModuleOp module) {
+  size_t module_size_estimate = 0;
+  mlir::DenseMap<mlir::Attribute, size_t> unique_tensors;
+
+  module.walk([&](Operation* op) {
+    mlir::DenseElementsAttr attr;
+    if (mlir::detail::constant_op_binder<mlir::DenseElementsAttr>(&attr).match(
+            op)) {
+      auto it = unique_tensors.find(attr);
+
+      // If the tensor hasn't been seen before
+      if (it == unique_tensors.end()) {
+        size_t tensor_size =
+            mlir::TFL::GetSizeInBytes(op->getResult(0).getType());
+        unique_tensors[attr] = tensor_size;  // Store the size in the map
+        module_size_estimate += tensor_size;
+      }
+    }
+  });
+  return module_size_estimate;
+}
+
+// Cloning MLIR modules requires serializing the source and deserializing
+// into the target. We do this when we need Garbage collection of
+// types/attributes after running the pass pipeline.
+// This function-
+// 1. Get a rough estimate of the size of the source_module, in bytes.
+// 2. Serialize the source module into a buffer with size reserved.
+// 3. Deletes the existing source module and context.
+// 4. Parses the serialized buffer into the new module to create it in the
+// destination context
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleInto(
+    std::unique_ptr<mlir::MLIRContext> source_context,
+    mlir::OwningOpRef<mlir::ModuleOp> source_module,
+    mlir::MLIRContext& destination_context) {
+  // 1. Get the module size. Module size is a rough estimate of all the
+  // constant-like attributes and tensors in the module, plus the size of the
+  // module itself without the attributes and constants.
+  size_t module_size_estimate = GetApproximateModuleSize(source_module.get());
+
+  // 2. Serialize the module into a buffer with size reserved.
+  llvm::SmallString<1024> buffer;
+  buffer.reserve(module_size_estimate);
+
+  llvm::raw_svector_ostream out(buffer);
+  if (failed(mlir::writeBytecodeToFile(source_module.get(), out))) {
+    return absl::InternalError("Failed to serialize module");
+  }
+
+  // 3. Delete the existing source module and context.
+  source_module = nullptr;
+  source_context.reset();
+
+  // 4. Parse the serialized buffer into the new module to create it in the
+  // destination context.
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(
+      buffer.str(), mlir::ParserConfig(&destination_context));
+  buffer.clear();
+
+  return module;
 }
 
 }  // namespace
@@ -382,36 +474,35 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 }
 
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
+    std::unique_ptr<mlir::MLIRContext>&& context,
+    mlir::OwningOpRef<mlir::ModuleOp> module, toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    std::unique_ptr<SavedModelBundle> saved_model_bundle, std::string* result,
-    bool serialize_stablehlo_ops,
+    std::unique_ptr<SavedModelBundle>&& saved_model_bundle, std::string* result,
+    bool serialize_stablehlo_ops, bool export_to_mlir,
     const PyFunctionLibrary* quantization_py_function_lib) {
   // Explicitly disable dumping Op details on failures.
-  module.getContext()->printOpOnDiagnostic(false);
+  context->printOpOnDiagnostic(false);
 
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
-  module.getContext()->appendDialectRegistry(registry);
+  context->appendDialectRegistry(registry);
 
-  mlir::StatusScopedDiagnosticHandler status_handler(module.getContext(),
-                                                     /*propagate=*/true);
+  auto status_handler =
+      std::make_unique<mlir::StatusScopedDiagnosticHandler>(context.get(),
+                                                            /*propagate=*/true);
 
-  mlir::PassManager pass_manager(module.getContext());
+  auto pass_manager = std::make_unique<mlir::PassManager>(context.get());
+
   mlir::registerPassManagerCLOptions();
-  if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
+  if (mlir::failed(mlir::applyPassManagerCLOptions(*pass_manager))) {
     return absl::InternalError("Failed to apply MLIR pass manager CL options.");
   }
-  InitPassManager(pass_manager, toco_flags.debug_options());
+  InitPassManager(*pass_manager, toco_flags.debug_options());
 
-  pass_manager.addInstrumentation(
-      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
-          pass_manager.getContext()));
-
-  if (failed(IsValidGraph(module))) {
-    return status_handler.ConsumeStatus();
+  if (failed(IsValidGraph(module.get()))) {
+    return status_handler->ConsumeStatus();
   }
 
   Session* session = saved_model_bundle == nullptr
@@ -425,8 +516,9 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
 
     // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
-        pass_manager, module, export_to_mlir, status_handler, toco_flags,
-        pass_config, std::move(session_opt), result, saved_model_tags);
+        *pass_manager, module.get(), export_to_mlir, *status_handler,
+        toco_flags, pass_config, std::move(session_opt), result,
+        saved_model_tags);
   }
 
   if (pass_config.enable_hlo_to_tf_conversion) {
@@ -434,20 +526,21 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
             pass_config, saved_model_dir, saved_model_tags,
             toco_flags.mutable_quantization_config(),
             quantization_py_function_lib, saved_model_bundle.get(),
-            pass_manager, status_handler, module))) {
-      return status_handler.ConsumeStatus();
+            *pass_manager, *status_handler, module.get()))) {
+      return status_handler->ConsumeStatus();
     }
   }
 
-  AddPreVariableFreezingTFToTFLConversionPasses(pass_config, &pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return status_handler.ConsumeStatus();
+  AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
+                                                pass_manager.get());
+  if (failed(pass_manager->run(module.get()))) {
+    return status_handler->ConsumeStatus();
   }
 
   // Freeze variables if a session is provided.
   if (session != nullptr &&
-      failed(mlir::tf_saved_model::FreezeVariables(module, session))) {
-    return status_handler.Combine(absl::InvalidArgumentError(
+      failed(mlir::tf_saved_model::FreezeVariables(module.get(), session))) {
+    return status_handler->Combine(absl::InvalidArgumentError(
         "Variable constant folding is failed. Please consider using "
         "enabling `experimental_enable_resource_variables` flag in the "
         "TFLite converter object. For example, "
@@ -462,34 +555,86 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   // deleted along with the saved_model_bundle.
   session = nullptr;
 
-  pass_manager.clear();
+  pass_manager->clear();
 
-  AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
-                                                 pass_config, &pass_manager);
-  if (failed(pass_manager.run(module))) {
-    return status_handler.Combine(absl::InvalidArgumentError(
+  AddPostVariableFreezingTFToTFLConversionPasses(
+      saved_model_dir, toco_flags, pass_config, pass_manager.get());
+  if (failed(pass_manager->run(module.get()))) {
+    return status_handler->Combine(absl::InvalidArgumentError(
         "Variable constant folding is failed. Please consider using "
         "enabling `experimental_enable_resource_variables` flag in the "
         "TFLite converter object. For example, "
         "converter.experimental_enable_resource_variables = True"));
   }
 
-  if (failed(GraphContainsStatefulPartitionedOp(module))) {
-    return status_handler.ConsumeStatus();
+  if (failed(GraphContainsStatefulPartitionedOp(module.get()))) {
+    return status_handler->ConsumeStatus();
   }
 
+  pass_manager->clear();
+  pass_manager->addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+  pass_manager->addPass(mlir::createReconcileUnrealizedCastsPass());
+  if (failed(pass_manager->run(module.get()))) {
+    return status_handler->Combine(
+        absl::InvalidArgumentError("VHLO lowering failed"));
+  }
+
+  // Clear the pass manager and status handler to avoid any traces of the
+  // previous MLIRContext.
+  pass_manager.reset();
+  status_handler.reset();
+
+  // We can clone the module into a new context to avoid any issues with
+  // resource variables.
+  // TODO(b/349914241): Remove this once the resource variable are read as
+  // DenseResourceElementAttr.
+  mlir::DialectRegistry new_registry;
+  mlir::func::registerAllExtensions(new_registry);
+  new_registry
+      .insert<mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+              mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
+              mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::quant::QuantizationDialect,
+              mlir::quantfork::QuantizationForkDialect,
+              mlir::tf_saved_model::TensorFlowSavedModelDialect,
+              mlir::tf_type::TFTypeDialect,
+              mlir::tf_executor::TensorFlowExecutorDialect>();
+
+  auto new_context = std::make_unique<mlir::MLIRContext>(
+      new_registry, mlir::MLIRContext::Threading::DISABLED);
+
+  TF_ASSIGN_OR_RETURN(
+      auto new_module,
+      CloneModuleInto(std::move(context), std::move(module), *new_context));
+
+  module = std::move(new_module);
+  context = std::move(new_context);
+  new_module = nullptr;
+  new_context = nullptr;
+
+  pass_manager = std::make_unique<mlir::PassManager>(context.get());
+  mlir::registerPassManagerCLOptions();
+  if (mlir::failed(mlir::applyPassManagerCLOptions(*pass_manager))) {
+    return absl::InternalError("Failed to apply MLIR pass manager CL options.");
+  }
+  InitPassManager(*pass_manager, toco_flags.debug_options());
+
+  status_handler =
+      std::make_unique<mlir::StatusScopedDiagnosticHandler>(context.get(),
+                                                            /*propagate=*/true);
+
   if (export_to_mlir) {
-    pass_manager.clear();
+    pass_manager->clear();
     // Print out a detailed report of ops that are not converted to TFL ops.
-    pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+    pass_manager->addPass(mlir::odml::createPrintOpStatsPass(
         mlir::odml::GetAcceptedTFLiteDialects()));
-    if (failed(pass_manager.run(module))) {
-      return status_handler.ConsumeStatus();
+    if (failed(pass_manager->run(module.get()))) {
+      return status_handler->ConsumeStatus();
     }
 
     llvm::raw_string_ostream os(*result);
-    module.print(os);
-    return status_handler.ConsumeStatus();
+    module->print(os);
+    return status_handler->ConsumeStatus();
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
@@ -505,17 +650,10 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.metadata.insert(
         MetadataForReducedPrecisionSupport(quant_specs.support_mask));
   }
-  pass_manager.clear();
-  pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
-  pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
-  if (failed(pass_manager.run(module))) {
-    return status_handler.Combine(
-        absl::InvalidArgumentError("VHLO lowering failed"));
-  }
 
-  if (!tflite::MlirToFlatBufferTranslateFunction(
-          module, options, &translated_result, serialize_stablehlo_ops)) {
-    return status_handler.Combine(
+  if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
+                                                 &translated_result, false)) {
+    return status_handler->Combine(
         absl::InternalError("Could not translate MLIR to FlatBuffer."));
   }
 
@@ -529,16 +667,17 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     auto status = ApplyDynamicRangeQuantizationFromOldQuantizer(
         quant_specs, translated_result, result);
     if (!status.ok()) {
-      return status_handler.Combine(status);
+      return status_handler->Combine(status);
     }
   } else {
     *result = translated_result;
   }
 
-  if (mlir::failed(module.verifyInvariants())) {
-    return status_handler.Combine(
+  if (mlir::failed(module->verifyInvariants())) {
+    return status_handler->Combine(
         absl::InternalError("Final module is invalid."));
   }
+
   return absl::OkStatus();
 }
 

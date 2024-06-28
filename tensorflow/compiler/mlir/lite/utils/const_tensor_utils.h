@@ -18,12 +18,17 @@ limitations under the License.
 
 #include <stdbool.h>
 
+#include <cassert>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/meta/type_traits.h"
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -63,6 +68,41 @@ absl::StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
 tensorflow::TensorProto ConvertTfliteConstTensor(
     const tflite::TensorT& tensor, const std::vector<uint8_t>& buffer);
+
+// Get the size of the type in bits. The type can be ComplexType, FloatType,
+// IntegerType, QuantizedType, or ShapeType of other supported types.
+//
+// Sub-byte types, e.g. qu4 and i2, are treated as a full i8.
+int64_t GetSizeInBits(mlir::ShapedType shaped_type);
+int64_t GetSizeInBits(mlir::Type type);
+int64_t GetSizeInBits(mlir::quant::QuantizedType quant_type);
+
+// Get the size of the type in bytes.
+//
+// Sub-byte element types, e.g. qu4 and i2, are treated as a full i8.
+// e.g. GetSizeInBytes(tensor<4xi2>) == 4, instead of 1.
+int64_t GetSizeInBytes(mlir::Type type);
+
+// Performs an integer divide and checks that the remainder is zero.
+// It supports int64 version as well.
+template <typename Integer,
+          typename = std::enable_if_t<std::is_same<int32_t, Integer>::value ||
+                                      std::is_same<uint32_t, Integer>::value ||
+                                      std::is_same<int64_t, Integer>::value ||
+                                      std::is_same<uint64_t, Integer>::value>>
+ABSL_ATTRIBUTE_ALWAYS_INLINE Integer ExactIntegerDivide(Integer numerator,
+                                                        int64_t denominator) {
+  const Integer ratio = numerator / denominator;
+  assert((numerator % denominator) == 0);
+  return ratio;
+}
+
+template <typename IntType,
+          absl::enable_if_t<!std::is_unsigned<IntType>::value, int> = 0>
+ABSL_ATTRIBUTE_ALWAYS_INLINE bool IsPowerOfTwo(IntType n) {
+  static_assert(std::is_integral<IntType>::value, "");
+  return n > 0 && (n & (n - 1)) == 0;
+}
 
 }  // namespace TFL
 }  // namespace mlir

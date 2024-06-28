@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -88,9 +89,7 @@ int main(int argc, char **argv) {
 
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
-  MLIRContext context(registry);
-  llvm::SourceMgr source_mgr;
-  mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
+  auto context = std::make_unique<mlir::MLIRContext>(registry);
 
   if (input_mlir) {
     // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
@@ -99,7 +98,7 @@ int main(int argc, char **argv) {
     RegisterAllTensorFlowDialects(registry);
     registry
         .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>();
-    context.appendDialectRegistry(registry);
+    context->appendDialectRegistry(registry);
   }
 
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
@@ -146,7 +145,7 @@ int main(int argc, char **argv) {
                                           custom_opdefs.end());
     module = tensorflow::ImportSavedModel(
         input_file_name, saved_model_version, tags, extra_opdefs,
-        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        exported_names, specs, /*enable_variable_lifting=*/true, context.get(),
         &bundle);
   } else if (import_hlo) {
     // HLO import path.
@@ -161,19 +160,22 @@ int main(int argc, char **argv) {
 
     auto content = buffer->getBuffer();
     if (hlo_import_type == HloImportType::hlotxt) {
-      module = xla::HloTextToMlirHloTranslateFunction(content, &context, false);
+      module =
+          xla::HloTextToMlirHloTranslateFunction(content, context.get(), false);
     } else if (hlo_import_type == HloImportType::proto) {
-      module = xla::HloToMlirHloTranslateFunction(content, &context, false);
+      module =
+          xla::HloToMlirHloTranslateFunction(content, context.get(), false);
     } else {
       module = mlir::OwningOpRef<mlir::ModuleOp>(
-          mlir::parseSourceString<mlir::ModuleOp>(content, &context));
+          mlir::parseSourceString<mlir::ModuleOp>(content, context.get()));
     }
   } else {
     // Graphdef import path.
+    llvm::SourceMgr source_mgr;
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays, control_output_arrays, &source_mgr, &context);
+        output_arrays, control_output_arrays, &source_mgr, context.get());
   }
 
   // If errors occur, the library call in the above already logged the error
@@ -251,9 +253,10 @@ int main(int argc, char **argv) {
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.value().get(), output_mlir, toco_flags, pass_config, tags,
+      std::move(context), std::move(module.value()), toco_flags, pass_config,
+      tags,
       /*saved_model_dir=*/"", std::move(bundle), &result,
-      serialize_stablehlo_ops);
+      serialize_stablehlo_ops, /*output_mlir*/ output_mlir);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';
     return kTrFailure;
