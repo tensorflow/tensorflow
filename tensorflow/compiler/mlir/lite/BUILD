@@ -586,9 +586,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/lite/core/c:common",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
-        "//tensorflow/lite/c:common",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
