@@ -1593,6 +1593,7 @@ cc_library(
         ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/lite/stablehlo:build_stablehlo_composite",
@@ -1620,6 +1621,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
