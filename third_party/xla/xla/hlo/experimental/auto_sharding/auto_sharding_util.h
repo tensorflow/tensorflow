@@ -159,7 +159,9 @@ std::string ToString(absl::Span<T> span) {
 
 // Get the number of bytes of a shape.
 inline double GetBytes(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/8);
+  return static_cast<double>(
+      ShapeUtil::ByteSizeOf(shape,
+                            /*pointer_size=*/kAutoShardingPointerSize));
 }
 
 // Return whether two shapes are equal in dimension.
@@ -593,6 +595,11 @@ inline int64_t ByteSizeOfShape(const Shape& shape) {
   return ByteSizeOfShapeWithSharding(shape, /*sharding=*/std::nullopt);
 }
 
+// Compute the byte size of a shape recursively if it is sharded across a given
+// number of devices per an optionally provided sharding. If the sharding is
+// provided, this function behaves the same as ByteSizeOfShapeWithSharding
+// above. If not, it will give a lower bound on the bytes size of the shape if
+// sharded across `num_devices` devices.
 int64_t GetShardedInstructionSize(
     const Shape& shape, int64_t num_devices,
     std::optional<HloSharding> sharding = std::nullopt);
