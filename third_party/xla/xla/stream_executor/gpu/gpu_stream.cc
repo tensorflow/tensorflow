@@ -131,7 +131,7 @@ absl::Status GpuStream::WaitFor(Stream* other) {
 }
 
 absl::Status GpuStream::RecordEvent(Event* event) {
-  return static_cast<GpuEvent*>(event)->Record(this);
+  return static_cast<GpuEvent*>(event)->Record(gpu_stream_);
 }
 
 absl::Status GpuStream::WaitFor(Event* event) {
