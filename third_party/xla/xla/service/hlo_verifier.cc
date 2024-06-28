@@ -114,9 +114,10 @@ absl::Status CheckNestedComputationThreadNameEqual(
     for (const HloComputation* called_cmp : instr->called_computations()) {
       if (called_cmp->execution_thread() != comp->execution_thread()) {
         return Internal(
-            "Nested computations expects same computation's thread name (%s vs "
-            "%s).",
-            called_cmp->execution_thread(), comp->execution_thread());
+            "Nested computations expects same computation's thread name: %s vs "
+            "%s, in called computation `%s` vs caller computation `%s`",
+            called_cmp->execution_thread(), comp->execution_thread(),
+            called_cmp->name(), comp->name());
       }
       TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
           called_cmp, skip_nested_async_op_check));

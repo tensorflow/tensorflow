@@ -1998,9 +1998,10 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr("Nested computations expects same computation's thread name"));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Nested computations expects same computation's thread "
+                        "name: parallel_thread vs main, in called computation "
+                        "`add` vs caller computation `fused_computation`"));
 }
 
 TEST_F(HloVerifierTest, AllReduceVerifier) {
