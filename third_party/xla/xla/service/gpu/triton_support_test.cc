@@ -48,7 +48,7 @@ namespace {
 using ::testing::Not;
 using ::testing::status::IsOk;
 
-auto AllXlaDataTypes() {
+std::vector<xla::PrimitiveType> AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
   std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
                                                    TUPLE, OPAQUE_TYPE, TOKEN};
@@ -62,7 +62,72 @@ auto AllXlaDataTypes() {
       xla_data_types.push_back(xla_type);
     }
   }
-  return ::testing::ValuesIn(xla_data_types);
+  return xla_data_types;
+}
+
+// Returns true if the given `opcode` supports the given `type` with respect to
+// HLO semantics. This is completely independent of the what Triton supports or
+// what the hardware supports.
+//
+// This function is used to decide what test combinations are generated. Without
+// it we would need to generate all combinations and skip invalid ones. Because
+// there are a lot of invalid combinations the test output will be very noisy.
+// A slightly more robust alternative would be to call the HLO verifier
+// directly, but that works at the level of an HLO instruction, which we don't
+// have at the time we're deciding what tests to generate.
+bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
+  namespace pu = ::xla::primitive_util;
+
+  switch (opcode) {
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kNot:
+      return type == PRED || pu::IsIntegralType(type);
+    case HloOpcode::kCos:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
+    case HloOpcode::kTanh:
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
+    case HloOpcode::kLogistic:
+      return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kErf:
+    case HloOpcode::kFloor:
+    case HloOpcode::kCeil:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kReducePrecision:
+      return pu::IsFloatingPointType(type);
+    case HloOpcode::kClz:
+    case HloOpcode::kPopulationCount:
+      return pu::IsIntegralType(type);
+    case HloOpcode::kAbs:
+    case HloOpcode::kSign:
+      return pu::IsSignedIntegralType(type) || pu::IsFloatingPointType(type) ||
+             pu::IsComplexType(type);
+    case HloOpcode::kPower:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kDivide:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kNegate:
+      return type != PRED;
+    default:
+      // Returning true by default ensures that newly added ops are not skipped.
+      return true;
+  }
 }
 
 auto AllDevicesToTest() {
@@ -70,19 +135,29 @@ auto AllDevicesToTest() {
 #ifdef TENSORFLOW_USE_ROCM
   se::RocmComputeCapability example_rocm_compute_capability =
       TestGpuDeviceInfo::AMDMI210DeviceInfo().rocm_compute_capability();
-  return ::testing::Values(cc(example_rocm_compute_capability));
+  return std::vector<cc>{cc(example_rocm_compute_capability)};
 #else  // GOOGLE_CUDA
-  return ::testing::Values(cc(se::CudaComputeCapability::Ampere()),
-                           cc(se::CudaComputeCapability::Hopper()));
+  return std::vector<cc>{cc(se::CudaComputeCapability::Ampere()),
+                         cc(se::CudaComputeCapability::Hopper())};
 #endif
 }
 
 // Generates all the possible test combinations for a given opcodes. A test
 // combination is a tuple of the form (data_type, opcode, compute_capability).
 auto AllTestCombinationsForOpcodes(std::vector<HloOpcode>&& opcodes) {
-  return ::testing::Combine(AllXlaDataTypes(), ::testing::ValuesIn(opcodes),
-                            AllDevicesToTest());
-}
+  std::vector<std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>
+      test_combinations;
+  for (PrimitiveType data_type : AllXlaDataTypes()) {
+    for (HloOpcode opcode : opcodes) {
+      if (DoesOpSupportType(opcode, data_type)) {
+        for (se::GpuComputeCapability cc : AllDevicesToTest()) {
+          test_combinations.push_back({data_type, opcode, cc});
+        }
+      }
+    }
+  }
+  return ::testing::ValuesIn(test_combinations);
+};
 
 class TritonSupportTest : public TritonSupportTestBase {
  public:
@@ -111,17 +186,20 @@ class TritonSupportTest : public TritonSupportTestBase {
         std::holds_alternative<se::CudaComputeCapability>(cc)
             ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
             : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+    auto run_triton_codegen = [&]() {
+      return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
+                           block_level_parameters, &llvm_module_,
+                           mlir_context_);
+    };
+
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
-      EXPECT_THAT(
-          TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
-                        block_level_parameters, &llvm_module_, mlir_context_),
-          IsOk());
+      EXPECT_THAT(run_triton_codegen(), IsOk());
     } else {
-      if (!skip_failure_branch_to_avoid_crash) {
-        EXPECT_THAT(
-            TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
-                          block_level_parameters, &llvm_module_, mlir_context_),
-            Not(IsOk()));
+      if (skip_failure_branch_to_avoid_crash) {
+        EXPECT_DEATH(run_triton_codegen().IgnoreError(), "");
+
+      } else {
+        EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
       }
     }
   }
@@ -154,48 +232,83 @@ INSTANTIATE_TEST_SUITE_P(BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
 
 using UnaryElementwiseTest = TritonSupportTestWithParam;
 
-// TODO(b/331636835): updates elementwise op tests to directly emit single op
-// instead of relying on triton gemm kernel.
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
+  const std::string kDefaultHloTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[33,68]{1,0} parameter(0)
-  unary = $0[33,68]{1,0} $1(parameter_0)
-  ROOT convert = f32[33,68]{1,0} convert(unary)
+  ROOT unary = $0[33,68]{1,0} $1(parameter_0)
 })";
+
+  // Used for elementwise ops that return f64 regardless of the input type (e.g.
+  // Imag).
+  const std::string kF64OutputTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT unary = f64[33,68]{1,0} $1(parameter_0)
+})";
+
+  // Used for elementwise ops that return pred regardless of the input type
+  // (e.g. IsFinite).
+  const std::string kPredOutputTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT unary = pred[33,68]{1,0} $1(parameter_0)
+})";
+
+  // Used for the ReducePrecision op, since it requires extra attributes.
+  const std::string kReducePrecisionTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT unary = $0[33,68]{1,0} $1(parameter_0), exponent_bits=2, mantissa_bits=2
+})";
+
+  bool f64_output =
+      opcode == HloOpcode::kReal || opcode == HloOpcode::kImag ||
+      (opcode == HloOpcode::kAbs && primitive_util::IsComplexType(data_type));
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+      ParseTemplateAndGetInstruction(
+          f64_output ? kF64OutputTemplate
+                     : (opcode == HloOpcode::kIsFinite
+                            ? kPredOutputTemplate
+                            : (opcode == HloOpcode::kReducePrecision
+                                   ? kReducePrecisionTemplate
+                                   : kDefaultHloTemplate)),
+          data_type, opcode));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
-// TODO(b/345763510): make sure to test all the data types for the unary,
-// binary, and ternary elementwise ops.
 INSTANTIATE_TEST_SUITE_P(
     UnaryElementwiseTestSuite, UnaryElementwiseTest,
-    ::testing::Combine(::testing::Values(S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kConvert, HloOpcode::kAbs,
-                                         HloOpcode::kNegate),
-                       AllDevicesToTest()),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
-INSTANTIATE_TEST_SUITE_P(
-    UnaryPREDTestSuite, UnaryElementwiseTest,
-    ::testing::Combine(::testing::Values(PRED),
-                       ::testing::Values(HloOpcode::kConvert, HloOpcode::kNot),
-                       AllDevicesToTest()),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
-INSTANTIATE_TEST_SUITE_P(
-    UnaryMathTestSuite, UnaryElementwiseTest,
-    ::testing::Combine(::testing::Values(F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kCeil, HloOpcode::kCos,
-                                         HloOpcode::kExp, HloOpcode::kExpm1,
-                                         HloOpcode::kFloor, HloOpcode::kLog,
-                                         HloOpcode::kLog1p, HloOpcode::kRsqrt,
-                                         HloOpcode::kSin, HloOpcode::kSqrt,
-                                         HloOpcode::kCbrt, HloOpcode::kTan,
-                                         HloOpcode::kTanh, HloOpcode::kErf),
-                       AllDevicesToTest()),
+    AllTestCombinationsForOpcodes({HloOpcode::kAbs,
+                                   HloOpcode::kCbrt,
+                                   HloOpcode::kCeil,
+                                   HloOpcode::kClz,
+                                   HloOpcode::kConvert,
+                                   HloOpcode::kCos,
+                                   HloOpcode::kErf,
+                                   HloOpcode::kExp,
+                                   HloOpcode::kExpm1,
+                                   HloOpcode::kFloor,
+                                   HloOpcode::kImag,
+                                   HloOpcode::kIsFinite,
+                                   HloOpcode::kLog,
+                                   HloOpcode::kLog1p,
+                                   HloOpcode::kLogistic,
+                                   HloOpcode::kNegate,
+                                   HloOpcode::kNot,
+                                   HloOpcode::kPopulationCount,
+                                   HloOpcode::kReal,
+                                   HloOpcode::kReducePrecision,
+                                   HloOpcode::kRoundNearestAfz,
+                                   HloOpcode::kRoundNearestEven,
+                                   HloOpcode::kRsqrt,
+                                   HloOpcode::kSign,
+                                   HloOpcode::kSin,
+                                   HloOpcode::kSqrt,
+                                   HloOpcode::kTan,
+                                   HloOpcode::kTanh}),
     TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using BinaryElementwiseTest = TritonSupportTestWithParam;
@@ -208,67 +321,46 @@ ENTRY triton_computation {
   parameter_1 = $0[11,63]{1,0} parameter(1)
   ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
 
-  bool skip_failure_branch_to_avoid_crash = false;
-  if (primitive_util::BitWidth(data_type) == 16 &&
-      opcode == HloOpcode::kDivide) {
-    skip_failure_branch_to_avoid_crash = true;
-  }
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
-                 /*skip_failure_branch_to_avoid_crash=*/
-                 skip_failure_branch_to_avoid_crash);
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    BinaryElementwiseTestSuite, BinaryElementwiseTest,
-    ::testing::Combine(::testing::Values(S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kAdd, HloOpcode::kMultiply,
-                                         HloOpcode::kMaximum,
-                                         HloOpcode::kMinimum,
-                                         HloOpcode::kSubtract),
-                       AllDevicesToTest()),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
-
-INSTANTIATE_TEST_SUITE_P(BinaryPREDTestSuite, BinaryElementwiseTest,
-                         ::testing::Combine(::testing::Values(PRED),
-                                            ::testing::Values(HloOpcode::kAnd,
-                                                              HloOpcode::kOr,
-                                                              HloOpcode::kXor),
-                                            AllDevicesToTest()),
-                         TritonSupportTestTypeOpcodeAndDeviceToString);
-INSTANTIATE_TEST_SUITE_P(
-    BinaryMathTestSuite, BinaryElementwiseTest,
-    ::testing::Combine(::testing::Values(F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kAtan2, HloOpcode::kDivide,
-                                         HloOpcode::kPower),
-                       AllDevicesToTest()),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
-
-using CompareTest = TritonSupportTestWithParam;
-
-TEST_P(CompareTest, IsTritonSupportedCompare) {
-  auto [data_type, opcode, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
+  // TODO(b/345763510): Investigate why the convert below is needed. If removed
+  // the test fails because `pm.run(triton_module.get())` returns this error:
+  //
+  //    loc("compare"): error: 'tt.store' op failed to
+  //    verify that value type matches ptr type
+  const std::string kHloCompareTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
   ROOT convert = f32[11,63]{1,0} convert(compare)
 })";
+
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
+      ParseTemplateAndGetInstruction(opcode == HloOpcode::kCompare
+                                         ? kHloCompareTestTemplate
+                                         : kHloTestTemplate,
+                                     data_type, opcode));
+
+  bool skip_failure_branch_to_avoid_crash =
+      opcode == HloOpcode::kDivide &&
+      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+       data_type == PrimitiveType::F8E5M2 ||
+       data_type == PrimitiveType::F8E4M3FN);
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    CompareTestSuite, CompareTest,
-    ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kCompare),
-                       AllDevicesToTest()),
+    BinaryElementwiseTestSuite, BinaryElementwiseTest,
+    AllTestCombinationsForOpcodes(
+        {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor, HloOpcode::kAdd,
+         HloOpcode::kMultiply, HloOpcode::kMaximum, HloOpcode::kMinimum,
+         HloOpcode::kSubtract, HloOpcode::kAtan2, HloOpcode::kDivide,
+         HloOpcode::kRemainder, HloOpcode::kPower, HloOpcode::kShiftLeft,
+         HloOpcode::kShiftRightArithmetic, HloOpcode::kShiftRightLogical,
+         HloOpcode::kCompare}),
     TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using TernaryElementwiseTest = TritonSupportTestWithParam;
@@ -277,24 +369,27 @@ TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[13,63]{1,0} parameter(0)
+  parameter_0 = $2[13,63]{1,0} parameter(0)
   parameter_1 = $0[13,63]{1,0} parameter(1)
-  parameter_2 = pred[13,63]{1,0} parameter(2)
-  ternary = $0[13,63]{1,0} $1(parameter_2, parameter_0, parameter_1)
-  ROOT convert = f32[13,63]{1,0} convert(ternary)
+  parameter_2 = $0[13,63]{1,0} parameter(2)
+  ROOT ternary = $0[13,63]{1,0} $1(parameter_0, parameter_1, parameter_2)
 })";
+
+  auto type = primitive_util::LowercasePrimitiveTypeName(data_type);
+  const std::string hlo_text =
+      absl::Substitute(kHloTestTemplate, type, HloOpcodeString(opcode),
+                       opcode == HloOpcode::kSelect ? "pred" : type);
+
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+      ParseTemplateAndGetInstruction(hlo_text, data_type, opcode));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    TernaryElementwiseTestSuite, TernaryElementwiseTest,
-    ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32, BF16),
-                       ::testing::Values(HloOpcode::kSelect),
-                       AllDevicesToTest()),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+INSTANTIATE_TEST_SUITE_P(TernaryElementwiseTestSuite, TernaryElementwiseTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kSelect,
+                                                        HloOpcode::kClamp}),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using ReduceTest = TritonSupportTestWithParam;
 
