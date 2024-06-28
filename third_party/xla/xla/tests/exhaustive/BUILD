@@ -3,7 +3,6 @@
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load(":build_defs.bzl", "exhaustive_unary_test_f32_or_smaller_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,15 +42,16 @@ cc_library(
 )
 
 filegroup(
-    name = "exhaustive_unary_test_f32_or_smaller_lib_srcs",
-    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
+    name = "exhaustive_unary_f32_or_smaller_test_lib_srcs",
+    testonly = True,
+    srcs = ["exhaustive_unary_f32_or_smaller_test.cc"],
 )
 
 xla_test(
-    name = "exhaustive_unary_test_f32_or_smaller",
+    name = "exhaustive_unary_f32_or_smaller_test",
     srcs = [
         "exhaustive_test_main.cc",
-        ":exhaustive_unary_test_f32_or_smaller_lib_srcs",
+        "exhaustive_unary_f32_or_smaller_test.cc",
     ],
     backends = [
         "gpu",
@@ -65,15 +65,22 @@ xla_test(
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
-    deps = exhaustive_unary_test_f32_or_smaller_deps + [
+    deps = [
+        "//xla:types",
+        "//xla:util",
+        "//xla/client:xla_builder",
+        "//xla/client/lib:math",
+        "//xla/tests:client_library_test_base",
+        "//xla/tests/exhaustive:exhaustive_op_test_utils",
+        "@com_google_absl//absl/flags:flag",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:test",
     ],
 )
 
 xla_test(
-    name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test_f64.cc"],
+    name = "exhaustive_unary_f64_test",
+    srcs = ["exhaustive_unary_f64_test.cc"],
     backends = [
         "gpu",
         "cpu",
@@ -97,8 +104,8 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test_complex.cc"],
+    name = "exhaustive_unary_complex_test",
+    srcs = ["exhaustive_unary_complex_test.cc"],
     backends = [
         "gpu",
         "cpu",
