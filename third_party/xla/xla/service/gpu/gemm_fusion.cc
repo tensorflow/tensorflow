@@ -798,13 +798,14 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
 absl::StatusOr<bool> GemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(gpu_version_));
+  TF_RETURN_IF_ERROR(
+      EnsureTritonSupportsComputeCapability(compute_capability_));
 
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
-                        RunOnComputation(computation, gpu_version_));
+                        RunOnComputation(computation, compute_capability_));
     changed |= result;
   }
   return changed;
