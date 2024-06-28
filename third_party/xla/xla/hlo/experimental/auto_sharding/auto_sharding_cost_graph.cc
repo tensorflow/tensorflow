@@ -132,6 +132,9 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
   }
 }
 
+CostGraph::CostGraph(const std::vector<NodeIdx>& follow_idx)
+    : follow_idx_(follow_idx) {}
+
 EdgeReshardingCostMatrix CostGraph::CreateEdgeCost(
     const NodeIdx src_idx, const NodeIdx dst_idx, const size_t in_node_idx,
     StrategyGroup* strategy_group, const bool zero_cost) {

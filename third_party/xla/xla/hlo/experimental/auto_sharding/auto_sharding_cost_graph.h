@@ -62,6 +62,8 @@ class CostGraph {
   CostGraph(const StrategyGroups& strategy_groups,
             const AssociativeDotPairs& associative_dot_pairs);
 
+  explicit CostGraph(const std::vector<NodeIdx>& follow_idx);  // For testing.
+
   EdgeReshardingCostMatrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx,
                                           size_t in_node_idx,
                                           StrategyGroup* strategy_group,
