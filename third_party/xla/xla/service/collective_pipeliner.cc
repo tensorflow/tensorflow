@@ -1106,6 +1106,10 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
         continue;
       }
       index_per_dyn_update_slice[dyn_update] = move_infos_.size();
+      absl::c_sort(formatting_ops,
+                   [&](const HloInstruction* a, const HloInstruction* b) {
+                     return instruction_order[a] < instruction_order[b];
+                   });
       move_infos_.push_back({instr, dyn_update, std::move(formatting_ops),
                              sliced_dim, output_idx});
     } else {

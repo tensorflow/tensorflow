@@ -80,6 +80,7 @@ const char* non_neg_ops[] = {"abs(p0)",
                              "maximum(p0, a1)",
                              "maximum(a1, p0)",
                              "multiply(p0, p0)",
+                             "power(a0, p1)",
                              "select(pred0, a0, a1)",
                              "select(pred0, a1, a0)"};
 
@@ -93,6 +94,7 @@ const char* arb_sing_ops[] = {"constant(-0.1)",
                               "multiply(p0, a1)",
                               "multiply(a1, p0)",
                               "negate(p0)",
+                              "power(p0, p1)",
                               "select(pred0, a1, p0)",
                               "select(pred0, p0, a1)"};
 // clang-format on
