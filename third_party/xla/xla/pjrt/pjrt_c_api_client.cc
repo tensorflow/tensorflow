@@ -817,11 +817,7 @@ bool PjRtCApiDevice::IsAddressable() const {
   return args.is_addressable;
 }
 
-int PjRtCApiDevice::local_hardware_id() const {
-  return local_hardware_id_typed().value();
-}
-
-PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id_typed() const {
+PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id() const {
   PJRT_Device_LocalHardwareId_Args args;
   args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
   args.extension_start = nullptr;

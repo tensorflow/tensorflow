@@ -129,8 +129,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   bool IsAddressable() const override;
 
-  int local_hardware_id() const override;
-  PjRtLocalHardwareId local_hardware_id_typed() const override;
+  PjRtLocalHardwareId local_hardware_id() const override;
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(

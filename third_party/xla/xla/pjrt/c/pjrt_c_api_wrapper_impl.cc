@@ -866,7 +866,7 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Device_LocalHardwareId_Args",
       PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE, args->struct_size));
-  args->local_hardware_id = args->device->device->local_hardware_id();
+  args->local_hardware_id = args->device->device->local_hardware_id().value();
   return nullptr;
 }
 

@@ -89,7 +89,7 @@ std::optional<int> PyDevice::local_hardware_id() const {
   if (device == nullptr || !device->IsAddressable()) {
     return std::nullopt;
   }
-  int local_hardware_id = device->pjrt_device()->local_hardware_id();
+  int local_hardware_id = device->pjrt_device()->local_hardware_id().value();
   if (local_hardware_id == -1) {
     return std::nullopt;
   }

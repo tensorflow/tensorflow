@@ -257,7 +257,7 @@ absl::StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
 absl::StatusOr<DLDevice> DLDeviceForDevice(const PjRtDevice& device) {
   DLDevice context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
-  context.device_id = device.local_hardware_id();
+  context.device_id = device.local_hardware_id().value();
   return context;
 }
 
@@ -342,7 +342,7 @@ absl::StatusOr<nb::capsule> BufferToDLPackManagedTensor(
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.device, DLDeviceForDevice(*pjrt_buffer->device()));
-  dt.device.device_id = pjrt_buffer->device()->local_hardware_id();
+  dt.device.device_id = pjrt_buffer->device()->local_hardware_id().value();
   dt.ndim = pjrt_buffer->dimensions().size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(pjrt_buffer->element_type()));

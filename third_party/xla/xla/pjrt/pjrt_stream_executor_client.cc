@@ -3442,7 +3442,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 
     if (build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id());
+          addressable_devices.front()->local_hardware_id().value());
     }
   }
   return extras;
