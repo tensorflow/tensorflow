@@ -240,27 +240,6 @@ absl::Status GpuExecutor::Init() {
   return GpuDriver::GetGpuISAVersion(&version_, device_);
 }
 
-// Returns the path to the running executable.
-// N.B. Derived from //knowledge/smalltalk/background_kb.cc
-// Arg: strip_exe: if true, remove the name of the executable itself from the
-//                 returned string. Example: calling this from /usr/bin/foo
-//                 would return /usr/bin.
-static std::string GetBinaryDir(bool strip_exe) {
-  char exe_path[PATH_MAX] = {0};
-  CHECK_NE(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1), -1);
-  // Make sure it's null-terminated:
-  exe_path[sizeof(exe_path) - 1] = 0;
-
-  if (strip_exe) {
-    // The exe is the last component of the path, so remove one component.
-    std::string ret = exe_path;
-    std::vector<std::string> components = absl::StrSplit(exe_path, '/');
-    components.pop_back();
-    return absl::StrJoin(components, "/");
-  }
-  return exe_path;
-}
-
 absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                     Kernel* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);

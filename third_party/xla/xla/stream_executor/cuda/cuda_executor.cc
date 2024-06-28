@@ -147,22 +147,6 @@ absl::Status GpuExecutor::Init() {
   return absl::OkStatus();
 }
 
-// Returns the path to the running executable.
-// N.B. Derived from //knowledge/smalltalk/background_kb.cc
-// Arg: strip_exe: if true, remove the name of the executable itself from the
-//                 returned string. Example: calling this from /usr/bin/foo
-//                 would return /usr/bin.
-static std::string GetBinaryDir(bool strip_exe) {
-  std::string exe_path = tsl::Env::Default()->GetExecutablePath();
-  if (strip_exe) {
-    // The exe is the last component of the path, so remove one component.
-    std::vector<std::string> components = absl::StrSplit(exe_path, '/');
-    components.pop_back();
-    return absl::StrJoin(components, "/");
-  }
-  return exe_path;
-}
-
 absl::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
                                               CUmodule* module) {
   uint64_t module_refcount;
