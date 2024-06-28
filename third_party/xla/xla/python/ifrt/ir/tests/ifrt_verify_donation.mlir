@@ -23,6 +23,23 @@ module @donate_call_output_to_call_and_reshard {
 
 // -----
 
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [2]>
+!array2 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [3]>
+module @donate_to_reshard_duplicated_arg {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> (!array1, !array2)
+        attributes {ifrt.function} {
+    %0, %1, %ctrl_1 = ifrt.Reshard(%arg0, %arg0) {donated=true}
+        : (!array0, !array0) -> (!array1, !array2)
+    return %0, %1 : !array1, !array2
+  }
+}
+
+// -----
+
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
 module @donate_to_two_calls_error {
   func.func @main(%arg0: !array {ifrt.donated}) -> (!array, !array)
@@ -51,6 +68,26 @@ module @program_arg_not_donated_error {
     // expected-error @+1 {{'ifrt.Reshard' op input has not been donated to the program.}}
     %0, %ctrl_0 = ifrt.Reshard(%arg0) {donated=true} : (!array0) -> !array1
     return %0 : !array1
+  }
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
+module @arg_both_donated_and_not_donated_error {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array0
+      attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Call' op input #0 is both donated and not donated.}}
+    %0, %ctrl_0 = ifrt.Call @add_two_args(%arg0, %arg0) on devices [0,1]
+        {io_aliases=[array<i32: 1, 0>]} : (!array0, !array0) -> !array0
+    return %0 : !array0
+  }
+
+  func.func private @add_two_args(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
+        -> tensor<2xi32> {
+    %0 = mhlo.add %arg0, %arg1 : tensor<2xi32>
+    return %0 : tensor<2xi32>
   }
 }
 
