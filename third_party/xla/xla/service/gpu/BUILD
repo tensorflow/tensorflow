@@ -611,7 +611,6 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
-        "@triton//third_party/nvidia:NVGPUDialect",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
     ],
 )
