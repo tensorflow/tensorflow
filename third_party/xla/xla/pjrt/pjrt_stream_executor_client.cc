@@ -1839,14 +1839,15 @@ absl::StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
                          std::shared_ptr<BufferSequencingEvent>>>
 PjRtStreamExecutorBuffer::CopyToDeviceHelper(
     PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
-    LocalDeviceState* transfer_local_device, LocalDeviceState* src_local_device,
-    se::Stream* transfer_stream,
+    PjRtMemorySpace* dst_memory_space, LocalDeviceState* transfer_local_device,
+    LocalDeviceState* src_local_device, se::Stream* transfer_stream,
     std::shared_ptr<TrackedDeviceBuffer> src_device_buffer) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
                       AllocateDestinationBuffer(
                           ShapeUtil::DeviceShapeToHostShape(on_device_shape_),
                           dst_device, dst_local_device, transfer_stream,
-                          /*is_uninitialized_create=*/false, client_));
+                          /*is_uninitialized_create=*/false, client_,
+                          /*definition_event=*/nullptr, dst_memory_space));
 
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
@@ -1956,7 +1957,17 @@ PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
   }
+  return CopyToDeviceMemorySpace(dst_device, nullptr);
+}
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
+    PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
+  if (dst_device == device_ && dst_memory_space == memory_space()) {
+    return InvalidArgument(
+        "CopyToDeviceMemorySpace cannot accept the same source and destination "
+        "devices/memory");
+  }
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
@@ -2002,7 +2013,7 @@ PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
   absl::StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
                            std::shared_ptr<BufferSequencingEvent>>>
       buffer_and_event_or = CopyToDeviceHelper(
-          dst_device, dst_local_device, transfer_local_device,
+          dst_device, dst_local_device, dst_memory_space, transfer_local_device,
           device_->local_device_state(), transfer_stream,
           src_device_buffer.buffer());
   if (!buffer_and_event_or.ok()) {
@@ -2028,7 +2039,8 @@ PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
   if (dst_memory_space->devices().size() == 1) {
-    return CopyToDevice(dst_memory_space->devices()[0]);
+    return CopyToDeviceMemorySpace(dst_memory_space->devices()[0],
+                                   dst_memory_space);
   }
   return Unimplemented("CopyToMemorySpace is not supported");
 }

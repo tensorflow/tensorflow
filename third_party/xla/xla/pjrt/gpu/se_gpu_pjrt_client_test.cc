@@ -807,6 +807,36 @@ TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
                                      *literal));
 }
 
+TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  auto device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          device));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "device");
+
+  auto* pinned_memory_space = device->memory_spaces()[1];
+  EXPECT_EQ(pinned_memory_space->kind_id(), PinnedHostMemorySpace::kKindId);
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          buffer->CopyToMemorySpace(pinned_memory_space));
+
+  EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(result->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  std::vector<int32_t> expected{1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
 namespace {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(

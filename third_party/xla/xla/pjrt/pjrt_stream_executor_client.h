@@ -862,10 +862,13 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   absl::StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
                            std::shared_ptr<BufferSequencingEvent>>>
   CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
+                     PjRtMemorySpace* dst_memory_space,
                      LocalDeviceState* transfer_local_device,
                      LocalDeviceState* src_local_device,
                      se::Stream* transfer_stream,
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
+      PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
 
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
