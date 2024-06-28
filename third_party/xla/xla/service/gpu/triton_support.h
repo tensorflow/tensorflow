@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -102,6 +103,12 @@ CodegenDecision IsTritonSupportedInstruction(
 CodegenDecision IsTritonSupportedDynamicSlice(
     const HloDynamicSliceInstruction& instr);
 }  // namespace legacy_triton
+
+// Checks that Triton officially supports the provided compute capability.
+//
+// Currently does not perform any check for non-CUDA compute capabilities.
+absl::Status EnsureTritonSupportsComputeCapability(
+    const se::GpuComputeCapability& gpu_compute_capability);
 
 // Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
 // is supported by the Triton emitters for the given compute capability. Note

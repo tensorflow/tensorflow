@@ -1140,7 +1140,7 @@ ENTRY main {
                                "(compute capability 8.0) and up, but got")));
 }
 
-TEST_F(SoftmaxRewriterTritonTest, RewriterBailsOutOnNonCudaGpu) {
+TEST_F(SoftmaxRewriterTritonTest, RewriterSucceedsOnNonCudaGpu) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -1159,13 +1159,10 @@ ENTRY main {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  EXPECT_THAT(
-      SoftmaxRewriterTriton(TestGpuDeviceInfo::AMDMI210DeviceInfo(),
-                            ShapeSizeBytesFunction())
-          .Run(module.get()),
-      tsl::testing::StatusIs(
-          tsl::error::FAILED_PRECONDITION,
-          ::testing::StrEq("Triton support is only enabled for CUDA GPUs.")));
+  EXPECT_TRUE(SoftmaxRewriterTriton(TestGpuDeviceInfo::AMDMI210DeviceInfo(),
+                                    ShapeSizeBytesFunction())
+                  .Run(module.get())
+                  .ok());
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseConvertWithC64DataType) {

@@ -876,7 +876,7 @@ ENTRY e {
                                "(compute capability 8.0) and up, but got")));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutOnNonCudaGpu) {
+TEST_F(GemmFusionLevel2Test, GemmFusionSucceedsOnNonCudaGpu) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -887,11 +887,7 @@ ENTRY e {
   ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_THAT(
-      GemmFusion(se::RocmComputeCapability{}).Run(module.get()),
-      tsl::testing::StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          ::testing::StrEq("Triton support is only enabled for CUDA GPUs.")));
+  EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
 }
 
 TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {

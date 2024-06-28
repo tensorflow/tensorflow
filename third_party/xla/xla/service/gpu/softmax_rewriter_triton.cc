@@ -721,18 +721,8 @@ absl::Status SoftmaxRewriterTriton::FuseDiamondChain(
 absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto cuda_compute_capability = std::get_if<se::CudaComputeCapability>(
-      &device_info_.gpu_compute_capability());
-  if (!cuda_compute_capability) {
-    return absl::FailedPreconditionError(
-        "Triton support is only enabled for CUDA GPUs.");
-  } else if (!cuda_compute_capability->IsAtLeastAmpere()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
-                     "capability 8.0) and up, but got compute capability ",
-                     cuda_compute_capability->major, ".",
-                     cuda_compute_capability->minor, "."));
-  }
+  TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+      device_info_.gpu_compute_capability()));
 
   TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
                       FindAllFusibleDiamondChains(*module, execution_threads));
