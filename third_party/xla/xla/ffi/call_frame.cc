@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/api.h"
@@ -45,7 +46,7 @@ namespace xla::ffi {
 struct CallFrameBuilder::Buffer {
   se::DeviceMemoryBase memory;
   PrimitiveType type;
-  std::vector<int64_t> dims;
+  absl::InlinedVector<int64_t, 4> dims;
 };
 
 CallFrameBuilder::AttributesMap CallFrameBuilder::AttributesBuilder::Build() {
@@ -142,7 +143,7 @@ CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
 //----------------------------------------------------------------------------//
 
 struct CallFrame::Buffer {
-  std::vector<int64_t> dims;  // XLA_FFI_Buffer::dims
+  absl::InlinedVector<int64_t, 4> dims;  // XLA_FFI_Buffer::dims
 
   XLA_FFI_Buffer buffer = {XLA_FFI_Buffer_STRUCT_SIZE, nullptr};
 };

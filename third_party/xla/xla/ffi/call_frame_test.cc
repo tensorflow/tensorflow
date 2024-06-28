@@ -146,8 +146,8 @@ void BM_UpdateCallFrame(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_AddBufferArg)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
-BENCHMARK(BM_AddAttributes)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
-BENCHMARK(BM_UpdateCallFrame)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
+BENCHMARK(BM_AddBufferArg)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
+BENCHMARK(BM_AddAttributes)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
+BENCHMARK(BM_UpdateCallFrame)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
 
 }  // namespace xla::ffi
