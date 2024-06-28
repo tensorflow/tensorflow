@@ -18,13 +18,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "llvm/ADT/SmallSet.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/public/session.h"
 
 namespace mlir {
 namespace tf_saved_model {
