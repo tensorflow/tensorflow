@@ -445,6 +445,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
       const Shape& original_shape, const Shape& bitcast_shape,
       const std::vector<std::vector<int64_t>>& original_map);
 
+  // Checks if the output of a given instruction is guaranteed to be
+  // non-negative. e.g. abs
+  static bool IsNonNegative(const HloInstruction* hlo,
+                            const AlgebraicSimplifierOptions& options);
+
   // Modify the layout dimensions of result_shape, so that it becomes the
   // re-shaped result of applying bitcast to the original_shape, by using
   // dim_map to re-shape layout dimensions of original_shape. Returns the
