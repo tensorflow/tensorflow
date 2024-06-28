@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
-#include "xla/service/cpu/runtime_conv_impl.h"
+#include "xla/service/cpu/runtime/conv_impl.h"
 
 namespace tensorflow::xla {
 
