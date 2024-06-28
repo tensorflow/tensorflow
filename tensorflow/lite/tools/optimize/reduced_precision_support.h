@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 namespace optimize {
-
-static constexpr char kTfLiteReducedPrecisionKey[] =
-    "reduced_precision_support";
 
 static constexpr char kTfLiteFloat16String[] = "fp16";
 static constexpr char kTfLiteBfloat16String[] = "bf16";
