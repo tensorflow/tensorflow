@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -570,6 +571,32 @@ absl::StatusOr<CallFrame> CallFrame::Update(
 
   return CallFrame(UpdateArgs(*arguments_, args), UpdateRets(*results_, rets),
                    attributes_);
+}
+
+absl::Status CallFrame::UpdateInPlace(
+    absl::Span<const se::DeviceMemoryBase> args,
+    absl::Span<const se::DeviceMemoryBase> rets) {
+  if (ABSL_PREDICT_FALSE(args.size() != arguments_->args.size())) {
+    return InvalidArgument("Invalid number of updated arguments: %d vs %d",
+                           args.size(), arguments_->args.size());
+  }
+
+  if (ABSL_PREDICT_FALSE(rets.size() != results_->rets.size())) {
+    return InvalidArgument("Invalid number of updated results: %d vs %d",
+                           rets.size(), results_->rets.size());
+  }
+
+  size_t num_args = args.size();
+  for (size_t i = 0; i < num_args; ++i) {
+    arguments_->arguments[i].buffer.data = const_cast<void*>(args[i].opaque());
+  }
+
+  size_t num_rets = rets.size();
+  for (size_t i = 0; i < num_rets; ++i) {
+    results_->results[i].buffer.data = const_cast<void*>(rets[i].opaque());
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace xla::ffi

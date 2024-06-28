@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -81,6 +82,25 @@ TEST(CallFrameTest, UpdateCallFrame) {
     EXPECT_EQ(ffi_call_frame.rets.types[0], XLA_FFI_ArgType_BUFFER);
     EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.rets.rets[0])->data,
               mem0.opaque());
+
+    EXPECT_EQ(ffi_call_frame.attrs.size, 2);
+  }
+
+  TF_ASSERT_OK(updated_call_frame.UpdateInPlace({mem0}, {mem1}));
+
+  {  // Construct XLA_FFI_CallFrame from the call frame updated in place.
+    XLA_FFI_CallFrame ffi_call_frame = updated_call_frame.Build(
+        /*api=*/nullptr, /*ctx=*/nullptr, XLA_FFI_ExecutionStage_EXECUTE);
+
+    EXPECT_EQ(ffi_call_frame.args.size, 1);
+    EXPECT_EQ(ffi_call_frame.args.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.args.args[0])->data,
+              mem0.opaque());
+
+    EXPECT_EQ(ffi_call_frame.rets.size, 1);
+    EXPECT_EQ(ffi_call_frame.rets.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.rets.rets[0])->data,
+              mem1.opaque());
 
     EXPECT_EQ(ffi_call_frame.attrs.size, 2);
   }
@@ -146,8 +166,33 @@ void BM_UpdateCallFrame(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_AddBufferArg)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
-BENCHMARK(BM_AddAttributes)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
-BENCHMARK(BM_UpdateCallFrame)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
+void BM_UpdateCallFrameInPlace(benchmark::State& state) {
+  size_t num_args = state.range(0);
+
+  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
+  std::vector<int64_t> dims = {1, 2, 3, 4};
+
+  CallFrameBuilder builder(num_args, /*num_rets=*/0);
+  for (size_t i = 0; i < num_args; ++i) {
+    builder.AddBufferArg(se::DeviceMemoryBase(nullptr, 1024),
+                         PrimitiveType::F32, dims);
+  }
+  CallFrame call_frame = builder.Build();
+
+  std::vector<se::DeviceMemoryBase> updated_args(num_args, memory);
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+        call_frame.UpdateInPlace(updated_args, /*rets=*/{}));
+  }
+}
+
+#define BENCHMARK_SIZES(name) \
+  BENCHMARK(name)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)
+
+BENCHMARK_SIZES(BM_AddBufferArg);
+BENCHMARK_SIZES(BM_AddAttributes);
+BENCHMARK_SIZES(BM_UpdateCallFrame);
+BENCHMARK_SIZES(BM_UpdateCallFrameInPlace);
 
 }  // namespace xla::ffi

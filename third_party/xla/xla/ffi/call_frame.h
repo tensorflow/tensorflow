@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
@@ -143,9 +144,14 @@ class CallFrame {
   // attributes are defined at compile time. Also types and dimensions of all
   // array (buffer) arguments and results are known at compile time. Instead of
   // rebuilding the call frame from scratch on every execution, we can just
-  // update the arguments and results with new pointes to device memory.
+  // update the arguments and results with new pointers to device memory.
   absl::StatusOr<CallFrame> Update(absl::Span<const se::DeviceMemoryBase> args,
                                    absl::Span<const se::DeviceMemoryBase> rets);
+
+  // Updates *this call frame in place with new device memory pointers. It's up
+  // to the caller to ensure that access to the call frame is synchronized.
+  absl::Status UpdateInPlace(absl::Span<const se::DeviceMemoryBase> args,
+                             absl::Span<const se::DeviceMemoryBase> rets);
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
