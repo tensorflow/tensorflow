@@ -5367,6 +5367,7 @@ def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [
       Or<[TFL_OperandIsUnrankedPred<1>,
           TFL_OperandDimIsAtMost<1, 0, 8>]>>,
     QuantizableResult,
+    SameOperandsAndResultsScale,
     Pure]> {
   let summary = "Broadcast an array for a compatible shape.";
 
