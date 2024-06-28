@@ -403,7 +403,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Logistic, {
   Run(Logistic, fn, error_spec_gen, range_checker);
 })
 
-// It feels a litt<le overkill to exhaustively test sqrt and pow(x, 0.5), but
+// It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
 // this *did* find a bug, namely that some backends were assuming sqrt(x) ==
 // pow(x, 0.5), but this is not true for x == -inf.
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(PowOneHalf, {
@@ -526,9 +526,6 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cosh, {
     };
   }
   auto range_checker = +[](NativeT actual) { return !(actual < 1); };
-  if (IsPreV6Tpu(platform_)) {
-    range_checker = +[](NativeT actual) { return !(actual < 0.9999); };
-  }
   Run(Cosh, std::cosh, error_spec_gen, range_checker);
 })
 

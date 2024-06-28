@@ -296,6 +296,29 @@ cc_library(
 )
 
 cc_library(
+    name = "fp_util",
+    hdrs = ["fp_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":types",
+        ":util",
+    ],
+)
+
+xla_cc_test(
+    name = "fp_util_test",
+    srcs = ["fp_util_test.cc"],
+    deps = [
+        ":fp_util",
+        ":test",
+        ":util",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/numeric:bits",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = [
