@@ -356,11 +356,16 @@ class LiteralBase {
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
-  // Compute a hash for this literal. Always use this together with the Equal
-  // method and not operator== in order to handle layout sensitivity properly.
+  // This definition is here to ensure that nobody accidentally implements this
+  // function which would lead to inconsistencies. Use Hash instead.
   template <typename H>
   friend H AbslHashValue(H state, const LiteralBase& value) {
-    return LiteralBase::Hash(std::move(state), value);
+    static_assert(false,
+                  "Do not use Literal directly as a hash key, because it has "
+                  "multiple definitions of equality - layout sensitive or "
+                  "insensitive. Instead, provide an external hash function "
+                  "that uses Literal::Hash which allows you to specify layout "
+                  "sensitivity.");
   }
 
   // Always use this together with the Equal method and not operator== in order

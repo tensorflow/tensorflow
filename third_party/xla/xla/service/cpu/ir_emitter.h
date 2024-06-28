@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features.h"
@@ -699,20 +700,27 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   const TargetMachineFeatures& target_machine_features_;
 
-  struct LiteralPtrHashFunctor {
-    size_t operator()(const Literal* literal) const {
-      return absl::HashOf(*literal);
+  struct LayoutSensitiveLiteralWrapper {
+    const Literal& literal;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const LayoutSensitiveLiteralWrapper& wrapper) {
+      return Literal::Hash<H, /*layout_sensitive=*/true>(std::move(h),
+                                                         wrapper.literal);
+    }
+
+    bool operator==(const LayoutSensitiveLiteralWrapper& other) const {
+      return literal.Equal(other.literal, /*layout_sensitive=*/true);
+    }
+
+    // This is needed for InsertOrDie to work.
+    friend std::ostream& operator<<(
+        std::ostream& out, const LayoutSensitiveLiteralWrapper& wrapper) {
+      return out << wrapper.literal;
     }
   };
 
-  struct LiteralPtrEqualityFunctor {
-    bool operator()(const Literal* lhs, const Literal* rhs) const {
-      return lhs->Equal(*rhs, true);
-    }
-  };
-
-  absl::flat_hash_map<const Literal*, llvm::Constant*, LiteralPtrHashFunctor,
-                      LiteralPtrEqualityFunctor>
+  absl::flat_hash_map<LayoutSensitiveLiteralWrapper, llvm::Constant*>
       emitted_literals_;
 
   absl::flat_hash_map<BufferAllocation::Index, llvm::Constant*>
