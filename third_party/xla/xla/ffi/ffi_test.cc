@@ -731,7 +731,7 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
     auto handler = bind.To(fn1);
     TF_ASSERT_OK_AND_ASSIGN(
         CallFrame updated_call_frame,
-        std::move(call_frame)->Update({memory1}, {memory0}));
+        std::move(call_frame)->CopyWithBuffers({memory1}, {memory0}));
     auto status = Call(*handler, updated_call_frame);
     TF_ASSERT_OK(status);
   }

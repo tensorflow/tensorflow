@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla::ffi {
 
@@ -299,23 +300,13 @@ std::unique_ptr<CallFrame::Arguments> CallFrame::CreateArgs(
   return FixUpArgs(std::move(args));
 }
 
-std::unique_ptr<CallFrame::Arguments> CallFrame::UpdateArgs(
-    const Arguments& args, absl::Span<const se::DeviceMemoryBase> buffers) {
+std::unique_ptr<CallFrame::Arguments> CallFrame::CopyArgs(
+    const Arguments& args) {
   auto upd_args = std::make_unique<Arguments>();
 
-  size_t num_args = buffers.size();
-  DCHECK_EQ(num_args, args.arguments.size());
-  DCHECK_EQ(num_args, args.types.size());
-  DCHECK_EQ(num_args, args.args.size());
-
-  upd_args->types = args.types;
-  upd_args->args.resize(num_args, nullptr);  // fixed up below
-
-  // Update arguments with new device memory pointers.
   upd_args->arguments = args.arguments;
-  for (size_t i = 0; i < num_args; ++i) {
-    upd_args->arguments[i].buffer.data = const_cast<void*>(buffers[i].opaque());
-  }
+  upd_args->types = args.types;
+  upd_args->args.resize(args.args.size(), nullptr);  // fixed up below
 
   // Fix up XLA FFI structs with pointers to valid arguments storage.
   return FixUpArgs(std::move(upd_args));
@@ -365,23 +356,12 @@ std::unique_ptr<CallFrame::Results> CallFrame::CreateRets(
   return FixUpRets(std::move(rets));
 }
 
-std::unique_ptr<CallFrame::Results> CallFrame::UpdateRets(
-    const Results& rets, absl::Span<const se::DeviceMemoryBase> buffers) {
+std::unique_ptr<CallFrame::Results> CallFrame::CopyRets(const Results& rets) {
   auto upd_rets = std::make_unique<Results>();
 
-  size_t num_rets = buffers.size();
-  DCHECK_EQ(num_rets, rets.results.size());
-  DCHECK_EQ(num_rets, rets.types.size());
-  DCHECK_EQ(num_rets, rets.rets.size());
-
-  upd_rets->types = rets.types;
-  upd_rets->rets.resize(num_rets, nullptr);  // fixed up below
-
-  // Update results with new device memory pointers.
   upd_rets->results = rets.results;
-  for (size_t i = 0; i < num_rets; ++i) {
-    upd_rets->results[i].buffer.data = const_cast<void*>(buffers[i].opaque());
-  }
+  upd_rets->types = rets.types;
+  upd_rets->rets.resize(rets.rets.size(), nullptr);  // fixed up below
 
   // Fix up XLA FFI structs with pointers to valid results storage.
   return FixUpRets(std::move(upd_rets));
@@ -556,24 +536,7 @@ std::unique_ptr<CallFrame::Attributes> CallFrame::FixUpAttrs(
 // Call frame update
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<CallFrame> CallFrame::Update(
-    absl::Span<const se::DeviceMemoryBase> args,
-    absl::Span<const se::DeviceMemoryBase> rets) {
-  if (ABSL_PREDICT_FALSE(args.size() != arguments_->args.size())) {
-    return InvalidArgument("Invalid number of updated arguments: %d vs %d",
-                           args.size(), arguments_->args.size());
-  }
-
-  if (ABSL_PREDICT_FALSE(rets.size() != results_->rets.size())) {
-    return InvalidArgument("Invalid number of updated results: %d vs %d",
-                           rets.size(), results_->rets.size());
-  }
-
-  return CallFrame(UpdateArgs(*arguments_, args), UpdateRets(*results_, rets),
-                   attributes_);
-}
-
-absl::Status CallFrame::UpdateInPlace(
+absl::Status CallFrame::UpdateWithBuffers(
     absl::Span<const se::DeviceMemoryBase> args,
     absl::Span<const se::DeviceMemoryBase> rets) {
   if (ABSL_PREDICT_FALSE(args.size() != arguments_->args.size())) {
@@ -597,6 +560,14 @@ absl::Status CallFrame::UpdateInPlace(
   }
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
+    absl::Span<const se::DeviceMemoryBase> args,
+    absl::Span<const se::DeviceMemoryBase> rets) {
+  CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
+  TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  return clone;
 }
 
 }  // namespace xla::ffi

@@ -67,7 +67,7 @@ TEST(CallFrameTest, UpdateCallFrame) {
   }
 
   CallFrame updated_call_frame =
-      std::move(call_frame)->Update({mem1}, {mem0}).value();
+      std::move(call_frame)->CopyWithBuffers({mem1}, {mem0}).value();
 
   {  // Construct XLA_FFI_CallFrame from the updated call frame.
     XLA_FFI_CallFrame ffi_call_frame = updated_call_frame.Build(
@@ -86,7 +86,7 @@ TEST(CallFrameTest, UpdateCallFrame) {
     EXPECT_EQ(ffi_call_frame.attrs.size, 2);
   }
 
-  TF_ASSERT_OK(updated_call_frame.UpdateInPlace({mem0}, {mem1}));
+  TF_ASSERT_OK(updated_call_frame.UpdateWithBuffers({mem0}, {mem1}));
 
   {  // Construct XLA_FFI_CallFrame from the call frame updated in place.
     XLA_FFI_CallFrame ffi_call_frame = updated_call_frame.Build(
@@ -161,7 +161,8 @@ void BM_UpdateCallFrame(benchmark::State& state) {
   std::vector<se::DeviceMemoryBase> updated_args(num_args, memory);
 
   for (auto _ : state) {
-    auto updated_call_frame = call_frame.Update(updated_args, /*rets=*/{});
+    auto updated_call_frame =
+        call_frame.CopyWithBuffers(updated_args, /*rets=*/{});
     benchmark::DoNotOptimize(updated_call_frame);
   }
 }
@@ -183,12 +184,12 @@ void BM_UpdateCallFrameInPlace(benchmark::State& state) {
 
   for (auto _ : state) {
     benchmark::DoNotOptimize(
-        call_frame.UpdateInPlace(updated_args, /*rets=*/{}));
+        call_frame.UpdateWithBuffers(updated_args, /*rets=*/{}));
   }
 }
 
 #define BENCHMARK_SIZES(name) \
-  BENCHMARK(name)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)
+  BENCHMARK(name)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64)
 
 BENCHMARK_SIZES(BM_AddBufferArg);
 BENCHMARK_SIZES(BM_AddAttributes);

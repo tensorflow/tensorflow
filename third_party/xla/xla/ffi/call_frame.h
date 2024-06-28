@@ -138,20 +138,21 @@ class CallFrame {
 
   ~CallFrame();
 
-  // Creates a copy of the call frame with updated arguments and results.
+  // Updates *this call frame with new device memory pointers. It's up to the
+  // caller to ensure that access to the call frame is synchronized.
   //
   // For any particular instance of a custom call in the XLA program, all
   // attributes are defined at compile time. Also types and dimensions of all
   // array (buffer) arguments and results are known at compile time. Instead of
   // rebuilding the call frame from scratch on every execution, we can just
   // update the arguments and results with new pointers to device memory.
-  absl::StatusOr<CallFrame> Update(absl::Span<const se::DeviceMemoryBase> args,
-                                   absl::Span<const se::DeviceMemoryBase> rets);
+  absl::Status UpdateWithBuffers(absl::Span<const se::DeviceMemoryBase> args,
+                                 absl::Span<const se::DeviceMemoryBase> rets);
 
-  // Updates *this call frame in place with new device memory pointers. It's up
-  // to the caller to ensure that access to the call frame is synchronized.
-  absl::Status UpdateInPlace(absl::Span<const se::DeviceMemoryBase> args,
-                             absl::Span<const se::DeviceMemoryBase> rets);
+  // Creates a copy of the call frame with updated arguments and results.
+  absl::StatusOr<CallFrame> CopyWithBuffers(
+      absl::Span<const se::DeviceMemoryBase> args,
+      absl::Span<const se::DeviceMemoryBase> rets);
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
@@ -192,10 +193,8 @@ class CallFrame {
   static std::unique_ptr<Arguments> CreateArgs(
       absl::Span<const CallFrameBuilder::Buffer> args);
 
-  // Creates updated arguments from the original call frame arguments and
-  // new device memory pointers.
-  static std::unique_ptr<Arguments> UpdateArgs(
-      const Arguments& args, absl::Span<const se::DeviceMemoryBase> buffers);
+  // Copies call frame arguments.
+  static std::unique_ptr<Arguments> CopyArgs(const Arguments& args);
 
   // Fixes up call frame arguments by initializing XLA FFI structs with valid
   // pointers into storage objects.
@@ -207,10 +206,8 @@ class CallFrame {
   static std::unique_ptr<Results> CreateRets(
       absl::Span<const CallFrameBuilder::Buffer> rets);
 
-  // Creates updated arguments from the original call frame arguments and
-  // new device memory pointers.
-  static std::unique_ptr<Results> UpdateRets(
-      const Results& rets, absl::Span<const se::DeviceMemoryBase> buffers);
+  // Copies call frame results.
+  static std::unique_ptr<Results> CopyRets(const Results& rets);
 
   // Fixes up call frame results by initializing XLA FFI structs with valid
   // pointers into storage objects.
