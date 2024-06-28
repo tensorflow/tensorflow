@@ -134,6 +134,33 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         LiteralTestUtil::Near(expected_result, actual_result, mha_error_spec_));
   }
 
+  void VerifyBackwardDeterminism(absl::string_view hlo_string,
+                                 const std::vector<Literal *> &literals,
+                                 bool force_deterministic = false) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reference_module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
+    if (force_deterministic) {
+      debug_options.set_xla_gpu_deterministic_ops(true);
+    }
+    reference_module->mutable_config().set_debug_options(debug_options);
+    const Literal first_run_result =
+        ExecuteAndTransfer(reference_module->Clone(), literals);
+
+    const Literal second_run_result =
+        ExecuteAndTransfer(std::move(reference_module), literals);
+
+    ErrorSpec error_spec{1E-8, 1e-8};
+    if (force_deterministic) {
+      EXPECT_TRUE(LiteralTestUtil::Near(first_run_result, second_run_result,
+                                        error_spec));
+    } else {
+      EXPECT_FALSE(LiteralTestUtil::Near(first_run_result, second_run_result,
+                                         error_spec));
+    }
+  }
+
   template <typename T>
   Literal GetInput4DLiteral(std::vector<int64_t> dimensions,
                             std::vector<int64_t> minor_to_major) {
@@ -879,6 +906,37 @@ class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
         {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
         /*expected_num_fmha_calls=*/2);
   }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic() {
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    auto cc = GetCudaComputeCapability();
+    if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
+            se::dnn::VersionInfo(8, 9, 4) ||
+        !cc.IsAtLeastHopper() || cc.minor != 0) {
+      GTEST_SKIP() << "Flash Attention deterministic kernels requires cuDNN >= "
+                      "8.9.4 and Hopper arch.";
+    }
+    XlaBuilder builder(TestName());
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 64, 1024}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto do_literal = GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    std::string hlo_string = "";
+    hlo_string =
+        GetModuleFlash_Attention_Training_BMM1_Softmax_BMM2_HloString_BF16();  // NOLINT
+    VerifyBackwardDeterminism(
+        hlo_string,
+        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
+        /*force_deterministic=*/true);
+    VerifyBackwardDeterminism(
+        hlo_string,
+        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
+        /*force_deterministic=*/false);
+  }
 };
 
 class FlashAttentionBMMScalePaddingMaskSoftmaxBMM
@@ -1067,6 +1125,11 @@ XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
 XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
            Flash_Attention_Training_BMM1_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2<bfloat16>();
+}
+
+XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
+           Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic_BF16) {
+  TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic<bfloat16>();
 }
 
 // BMM1 - Scale - PaddingMask - Softmax - BMM2
