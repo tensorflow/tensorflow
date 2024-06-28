@@ -343,7 +343,7 @@ bool IsLoopInductionVar(const HloInstruction* instr,
 }
 
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
-    HloInstruction* instr, HloInstruction* input, HloOpcode opcode,
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config) {
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
@@ -355,7 +355,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   } else {
     return std::nullopt;
   }
-  HloInstruction* operand = instr->mutable_operand(0);
+  const HloInstruction* operand = instr->operand(0);
   if (operand != input) {
     return std::nullopt;
   }
@@ -363,7 +363,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   int64_t dynamic_index = -1;
   for (int64_t start_index = start_indices_offset;
        start_index < instr->operand_count(); ++start_index) {
-    HloInstruction* index = instr->mutable_operand(start_index);
+    const HloInstruction* index = instr->operand(start_index);
     // All constants must be zero in order to slice the entire shape.
     if (Match(index, match::ConstantScalar())) {
       std::optional<int64_t> offset =
