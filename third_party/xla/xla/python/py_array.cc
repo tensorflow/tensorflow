@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -149,6 +150,8 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   ifrt_arrays.reserve(py_arrays.size());
   ifrt::DeviceList::Devices devices;
   devices.reserve(py_arrays.size());
+  absl::flat_hash_set<ifrt::Device*> device_set;
+  device_set.reserve(py_arrays.size());
   std::vector<ifrt::Shape> shapes;
   shapes.reserve(py_arrays.size());
 
@@ -170,11 +173,14 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
               .c_str());
     }
     ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
-    devices.push_back(ifrt_arrays.back()->sharding().devices().front());
+    ifrt::Device* const device =
+        ifrt_arrays.back()->sharding().devices().front();
+    devices.push_back(device);
+    device_set.insert(device);
     shapes.push_back(ifrt_arrays.back()->shape());
     if (canonical_first_memory_kind !=
         ifrt::CanonicalizeMemoryKind(
-            ifrt_arrays.back()->sharding().memory_kind(), devices.back())) {
+            ifrt_arrays.back()->sharding().memory_kind(), device)) {
       throw nb::value_error(
           absl::StrFormat(
               "Memory kind mismatch between PjRtBuffers. Got one buffer with "
@@ -183,6 +189,15 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
               ifrt_arrays.back()->sharding().memory_kind().DebugString())
               .c_str());
     }
+  }
+  ifrt::DeviceList device_list(std::move(devices));
+  if (device_set.size() != device_list.size()) {
+    throw nb::value_error(
+        absl::StrFormat(
+            "When making an array from single-device arrays, the input arrays "
+            "must be from distinct devices, but got %s",
+            device_list.DebugString())
+            .c_str());
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
 
@@ -193,8 +208,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   }
   auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
       ifrt::Shape(shape),
-      ifrt::ConcreteSharding::Create(ifrt::DeviceList(std::move(devices)),
-                                     first_memory_kind,
+      ifrt::ConcreteSharding::Create(std::move(device_list), first_memory_kind,
                                      /*shape=*/ifrt::Shape(shape),
                                      /*shard_shapes=*/std::move(shapes)),
       absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
