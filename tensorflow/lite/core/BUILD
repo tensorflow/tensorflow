@@ -293,6 +293,7 @@ cc_library(
     visibility = internal_visibility_allowlist(),
     deps = [
         ":macros",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:string",
