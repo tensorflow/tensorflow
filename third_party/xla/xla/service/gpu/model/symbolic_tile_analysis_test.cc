@@ -55,8 +55,8 @@ using ::testing::IsEmpty;
 using ::testing::Matcher;
 using ::testing::Not;
 using ::testing::SizeIs;
-using ::testing::status::IsOkAndHolds;
-using ::testing::status::StatusIs;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 using TilingVector = std::vector<SymbolicTileAnalysis::Tiling>;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
