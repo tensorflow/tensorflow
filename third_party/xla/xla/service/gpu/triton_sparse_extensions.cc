@@ -19,8 +19,13 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -35,8 +40,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/Support/CommandLine.h"
+#include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/TritonGPUConversion.h"
@@ -303,11 +309,162 @@ class SparseBlockedToMMAPass
         std::make_unique<SparseBlockedToMMA>(context, compute_capability);
     RewritePatternSet patterns(context, std::move(pattern));
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
   }
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseBlockedToMMAPass)
+};
+
+namespace SharedToSparseDotOperand {
+namespace {
+constexpr int kThreadsPerWarp = 32;
+
+// Each 16x16 original sparse matrix tile requires 16 metadata values of 16-bit
+// size, where the first thread (T0) in each 4-thread group holds two such
+// values in a register (32-bit).
+// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
+constexpr int kTileSize = 16;
+constexpr int kThreadsInGroup = 4;
+constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
+constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
+}  // namespace
+
+Value convertLayout(ConversionPatternRewriter &rewriter, Location loc,
+                    Value tensor,
+                    triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
+                    const SharedMemoryObject &smemObj,
+                    const LLVMTypeConverter *typeConverter, Value thread) {
+  // Calculate tile size as number of mask elements (4xi4).
+  NvidiaMmaEncodingAttr mmaLayout =
+      cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
+  SmallVector<unsigned> warpsPerCTA = mmaLayout.getWarpsPerCTA();
+  SmallVector<unsigned> shapePerCTATile = {
+      kTileSize * warpsPerCTA[0], kTileSize / kMetadataElementsPerPackedValue};
+  Value strideM = smemObj.strides[0];
+  Value strideK = smemObj.strides[1];
+
+  // Calculate offset in the tile for the current thread.
+  Value threadsPerWarp = i32_val(kThreadsPerWarp);
+  Value warpId = udiv(thread, threadsPerWarp);
+  Value warpGroupId;
+  if (mmaLayout.isHopper()) {
+    warpGroupId = urem(warpId, i32_val(warpsPerCTA[0]));
+  } else {
+    assert(mmaLayout.isAmpere());
+    warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
+  }
+  Value laneId = urem(thread, threadsPerWarp);
+  Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
+  Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));
+  Value rowId = add(mul(warpGroupId, i32_val(kTileSize)), laneGroupId);
+
+  // Calculate number of tile repetitions.
+  auto shape = cast<MemDescType>(tensor.getType()).getShape();
+  int repM = shape[0] / shapePerCTATile[0];
+  int repK = shape[1] / shapePerCTATile[1];
+  assert(repM > 0 && repK > 0);
+
+  // Load sparse metadata from shared memory.
+  MLIRContext *ctx = tensor.getContext();
+  Type ptrTy = ptr_ty(ctx, 3);
+  Value base = gep(ptrTy, i16_ty, smemObj.base, i32_val(0));
+  SmallVector<Value> values;
+
+  for (int k = 0; k < repK; ++k) {
+    for (int m = 0; m < repM; ++m) {
+      Value row = add(rowId, i32_val(m * shapePerCTATile[0]));
+      Value column = add(columnId, i32_val(k * shapePerCTATile[1]));
+      Value offset1 = add(mul(row, strideM), mul(column, strideK));
+      Value offset2 = add(offset1, mul(i32_val(kMetadataLineOffset), strideM));
+      Value lower = load(i16_ty, gep(ptrTy, i16_ty, base, offset1));
+      Value upper = load(i16_ty, gep(ptrTy, i16_ty, base, offset2));
+      values.push_back(lower);
+      values.push_back(upper);
+    }
+  }
+
+  // Pack resulting values as LLVM struct.
+  Type structTy = struct_ty(SmallVector<Type>(values.size(), i16_ty));
+  return packLLElements(loc, typeConverter, values, rewriter, structTy);
+}
+}  // namespace SharedToSparseDotOperand
+
+struct LocalLoadOpConversion
+    : public ConvertOpToLLVMPattern<triton::gpu::LocalLoadOp> {
+ public:
+  using ConvertOpToLLVMPattern<
+      triton::gpu::LocalLoadOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      triton::gpu::LocalLoadOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    MemDescType srcTy = op.getSrc().getType();
+    RankedTensorType dstTy = op.getType();
+    Attribute srcLayout = srcTy.getEncoding();
+    Attribute dstLayout = dstTy.getEncoding();
+    if (isa<triton::gpu::SharedEncodingAttr>(srcLayout) &&
+        isa<triton::gpu::SparseDotMetaEncodingAttr>(dstLayout)) {
+      return lowerSharedToSparseMeta(op, adaptor, rewriter);
+    }
+    return failure();
+  }
+
+ private:
+  // shared -> sparse dot meta
+  LogicalResult lowerSharedToSparseMeta(
+      triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const {
+    auto loc = op.getLoc();
+    auto sparseEncoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
+        cast<RankedTensorType>(op.getResult().getType()).getEncoding());
+    auto llvmElemTy = getTypeConverter()->convertType(
+        cast<MemDescType>(op.getSrc().getType()).getElementType());
+    auto smemObj = LLVM::getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
+                                                         llvmElemTy, rewriter);
+    Value res = SharedToSparseDotOperand::convertLayout(
+        rewriter, loc, op.getSrc(), sparseEncoding, smemObj, getTypeConverter(),
+        getThreadId(rewriter, loc));
+
+    rewriter.replaceOp(op, res);
+    return success();
+  }
+};
+
+class SparseConvertLayoutOpToLLVMPass
+    : public PassWrapper<SparseConvertLayoutOpToLLVMPass,
+                         OperationPass<ModuleOp>> {
+ public:
+  SparseConvertLayoutOpToLLVMPass() = default;
+
+  StringRef getArgument() const override { return "sparse-convert-layout-op"; }
+
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+                    arith::ArithDialect>();
+  }
+
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    ConversionTarget target(*context);
+    target.addLegalDialect<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+                           arith::ArithDialect>();
+    target.addDynamicallyLegalOp<triton::gpu::LocalLoadOp>(
+        [](triton::gpu::LocalLoadOp op) {
+          return !isa<triton::gpu::SparseDotMetaEncodingAttr>(
+              op.getType().getEncoding());
+        });
+    mlir::LowerToLLVMOptions option(context);
+    TritonGPUToLLVMTypeConverter typeConverter(context, option);
+    auto pattern = std::make_unique<LocalLoadOpConversion>(typeConverter);
+    RewritePatternSet patterns(context, std::move(pattern));
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseConvertLayoutOpToLLVMPass)
 };
 
 }  // namespace
@@ -322,7 +479,12 @@ std::unique_ptr<mlir::Pass> xla::gpu::createSparseBlockedToMMAPass() {
   return std::make_unique<SparseBlockedToMMAPass>();
 }
 
+std::unique_ptr<mlir::Pass> xla::gpu::createSparseConvertLayoutOpToLLVMPass() {
+  return std::make_unique<SparseConvertLayoutOpToLLVMPass>();
+}
+
 void xla::gpu::registerSparsePasses() {
   registerPass([] { return std::make_unique<AddSparseDotEncodingPass>(); });
-  registerPass([] { return std::make_unique<SparseBlockedToMMAPass>(); });
+  registerPass(createSparseBlockedToMMAPass);
+  registerPass(createSparseConvertLayoutOpToLLVMPass);
 }

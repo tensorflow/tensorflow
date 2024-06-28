@@ -108,6 +108,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(createSparseConvertLayoutOpToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());

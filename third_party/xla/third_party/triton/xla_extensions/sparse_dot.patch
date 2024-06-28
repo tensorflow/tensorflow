@@ -521,158 +521,17 @@ index 1aba5f85b..5eb1d0811 100644
  class ConvertNVGPUToLLVM : public ConvertNVGPUToLLVMBase<ConvertNVGPUToLLVM> {
  
  public:
-@@ -714,10 +792,9 @@ public:
-     patterns.add<NVGPUOpGenericPattern<ttn::ClusterCTAIdOp>>(
-         context, Cluster_Cta_Id_Op, Constraints({"=r"}), Constraints());
- 
--    patterns
--        .add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
--             ClusterArriveOpPattern, WGMMAOpPattern, WGMMAWaitGroupOpPattern>(
--            context);
-+    patterns.add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
-+                 ClusterArriveOpPattern, WGMMAOpPattern,
-+                 WGMMAWaitGroupOpPattern, SparseWGMMAOpPattern>(context);
+@@ -598,7 +676,10 @@ public:
+     patterns
+         .add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
+              ClusterArriveOpPattern, WGMMAOpPattern, WGMMAWaitGroupOpPattern>(
+             context);
++    // This pattern is hard to move to OpenXLA because its base class is private
++    // to this translation unit.
++    patterns.add<SparseWGMMAOpPattern>(context);
  
      if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
        signalPassFailure();
-diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
-index f8ece0f1c..435610817 100644
---- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
-+++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM.cpp
-@@ -43,6 +43,14 @@ Value convertLayout(int opIdx, ConversionPatternRewriter &rewriter,
-                     const LLVMTypeConverter *typeConverter, Value thread);
- }
- 
-+namespace SharedToSparseDotOperand {
-+Value convertLayout(
-+    ConversionPatternRewriter &rewriter, Location loc, Value tensor,
-+    triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
-+    const SharedMemoryObject &smemObj, const LLVMTypeConverter *typeConverter,
-+    Value thread);
-+} // namespace SharedToSparseDotOperand
-+
- namespace {
- 
- using namespace mlir;
-@@ -67,6 +75,10 @@ public:
-             cast<DotOperandEncodingAttr>(dstLayout).getParent())) {
-       return lowerSharedToDotOperand(op, adaptor, getTypeConverter(), rewriter);
-     }
-+    if (isa<SharedEncodingAttr>(srcLayout) &&
-+        isa<triton::gpu::SparseDotMetaEncodingAttr>(dstLayout)) {
-+      return lowerSharedToSparseMeta(op, adaptor, getTypeConverter(), rewriter);
-+    }
-     return failure();
-   }
- 
-@@ -138,6 +150,26 @@ private:
-     rewriter.replaceOp(op, res);
-     return success();
-   }
-+
-+  // shared -> sparse dot meta
-+  LogicalResult lowerSharedToSparseMeta(
-+      triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
-+      const LLVMTypeConverter *typeConverter,
-+      ConversionPatternRewriter &rewriter) const {
-+    auto loc = op.getLoc();
-+    auto sparseEncoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
-+        cast<RankedTensorType>(op.getResult().getType()).getEncoding());
-+    auto llvmElemTy = typeConverter->convertType(
-+        cast<MemDescType>(op.getSrc().getType()).getElementType());
-+    auto smemObj = getSharedMemoryObjectFromStruct(loc, adaptor.getSrc(),
-+                                                   llvmElemTy, rewriter);
-+    Value res = SharedToSparseDotOperand::convertLayout(
-+        rewriter, loc, op.getSrc(), sparseEncoding, smemObj, typeConverter,
-+        getThreadId(rewriter, loc));
-+
-+    rewriter.replaceOp(op, res);
-+    return success();
-+  }
- };
- 
- struct ConvertLayoutOpConversion
-diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
-new file mode 100644
-index 000000000..58023633e
---- /dev/null
-+++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
-@@ -0,0 +1,75 @@
-+#include "../Utility.h"
-+
-+namespace SharedToSparseDotOperand {
-+namespace {
-+constexpr int kThreadsPerWarp = 32;
-+
-+// Each 16x16 original sparse matrix tile requires 16 metadata values of 16-bit
-+// size, where the first thread (T0) in each 4-thread group holds two such
-+// values in a register (32-bit).
-+// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
-+constexpr int kTileSize = 16;
-+constexpr int kThreadsInGroup = 4;
-+constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
-+constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
-+}  // namespace
-+
-+Value convertLayout(
-+    ConversionPatternRewriter &rewriter, Location loc, Value tensor,
-+    triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
-+    const SharedMemoryObject &smemObj, const LLVMTypeConverter *typeConverter,
-+    Value thread) {
-+  // Calculate tile size as number of mask elements (4xi4).
-+  NvidiaMmaEncodingAttr mmaLayout =
-+      cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
-+  SmallVector<unsigned> warpsPerCTA = mmaLayout.getWarpsPerCTA();
-+  SmallVector<unsigned> shapePerCTATile = {
-+      kTileSize * warpsPerCTA[0], kTileSize / kMetadataElementsPerPackedValue};
-+  Value strideM = smemObj.strides[0];
-+  Value strideK = smemObj.strides[1];
-+
-+  // Calculate offset in the tile for the current thread.
-+  Value threadsPerWarp = i32_val(kThreadsPerWarp);
-+  Value warpId = udiv(thread, threadsPerWarp);
-+  Value warpGroupId;
-+  if (mmaLayout.isHopper()) {
-+    warpGroupId = urem(warpId, i32_val(warpsPerCTA[0]));
-+  } else {
-+    assert(mmaLayout.isAmpere());
-+    warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
-+  }
-+  Value laneId = urem(thread, threadsPerWarp);
-+  Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
-+  Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));
-+  Value rowId = add(mul(warpGroupId, i32_val(kTileSize)), laneGroupId);
-+
-+  // Calculate number of tile repetitions.
-+  auto shape = cast<MemDescType>(tensor.getType()).getShape();
-+  int repM = shape[0] / shapePerCTATile[0];
-+  int repK = shape[1] / shapePerCTATile[1];
-+  assert(repM > 0 && repK > 0);
-+
-+  // Load sparse metadata from shared memory.
-+  MLIRContext *ctx = tensor.getContext();
-+  Type ptrTy = ptr_ty(ctx, 3);
-+  Value base = gep(ptrTy, i16_ty, smemObj.base, i32_val(0));
-+  SmallVector<Value> values;
-+
-+  for (int k = 0; k < repK; ++k) {
-+    for (int m = 0; m < repM; ++m) {
-+      Value row = add(rowId, i32_val(m * shapePerCTATile[0]));
-+      Value column = add(columnId, i32_val(k * shapePerCTATile[1]));
-+      Value offset1 = add(mul(row, strideM), mul(column, strideK));
-+      Value offset2 = add(offset1, mul(i32_val(kMetadataLineOffset), strideM));
-+      Value lower = load(i16_ty, gep(ptrTy, i16_ty, base, offset1));
-+      Value upper = load(i16_ty, gep(ptrTy, i16_ty, base, offset2));
-+      values.push_back(lower);
-+      values.push_back(upper);
-+    }
-+  }
-+
-+  // Pack resulting values as LLVM struct.
-+  Type structTy = struct_ty(SmallVector<Type>(values.size(), i16_ty));
-+  return packLLElements(loc, typeConverter, values, rewriter, structTy);
-+}
-+}  // namespace SharedToSparseDotOperand
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp
 index 3e915a577..b2df2f59e 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM.cpp

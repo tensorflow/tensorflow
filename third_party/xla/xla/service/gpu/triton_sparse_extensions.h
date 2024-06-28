@@ -28,6 +28,7 @@ namespace xla::gpu {
 std::unique_ptr<mlir::Pass> createAddSparseDotEncodingPass(
     int32_t num_warps, int32_t threads_per_warp, int32_t num_ctas);
 std::unique_ptr<mlir::Pass> createSparseBlockedToMMAPass();
+std::unique_ptr<mlir::Pass> createSparseConvertLayoutOpToLLVMPass();
 
 void registerSparsePasses();
 
