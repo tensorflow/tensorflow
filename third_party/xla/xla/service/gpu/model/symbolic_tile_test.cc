@@ -155,8 +155,6 @@ TEST_F(SymbolicTileTest,
 
 TEST_F(SymbolicTileTest,
        CanPropagateTileThroughNonTrivialSplitReshapeFromOutputToInput) {
-  // TODO(b/334043867): we need disjunctions here to derive the proper
-  // constraints for the tile sizes.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -180,6 +178,12 @@ TEST_F(SymbolicTileTest,
           (((-s2 + 7) floordiv 6) * (((-s1 + 9) floordiv 8) *
           ((-((-s0 + 5) floordiv 4) + 1) * 48) +
           (-((-s1 + 9) floordiv 8) + 1) * 6) + -((-s2 + 7) floordiv 6) + 1, 1)
+        constraints: s0 in [1, 2) && s1 in [1, 2) ||
+                     s0 in [1, 2) && s2 in [1, 2) ||
+                     s0 in [1, 2) && s2 in [6, 7) ||
+                     s1 in [1, 2) && s2 in [1, 2) ||
+                     s1 in [8, 9) && s2 in [1, 2) ||
+                     s1 in [8, 9) && s2 in [6, 7)
       )")));
 
   // Capturing elements along dimensions 0, 1, and 2 makes the stride equal to
@@ -575,7 +579,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
 
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshape) {
-  // TODO(b/326998704): constraints should allow us to unblock this use case.
+  // TODO(b/349487906): constraints should allow us to unblock this use case.
   // A slice of a split reshape creates a non-unit stride atop a floordiv.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
@@ -598,8 +602,6 @@ TEST_F(SymbolicTileTest,
 
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughMisalignedSliceOfSplitReshape) {
-  // TODO(b/326998704): constraints should allow us to unblock part of this use
-  // case.
   // TODO(b/331257678): handling correctly cases where offsets don't get
   // simplified away perfectly will allow us to unblock part of this use case.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
@@ -623,7 +625,7 @@ TEST_F(SymbolicTileTest,
 
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshapeOnTranspose) {
-  // TODO(b/326998704): constraints should allow us to unblock this use case.
+  // TODO(b/349487906): constraints should allow us to unblock this use case.
   // A slice of a split reshape creates a non-unit stride atop a floordiv.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
@@ -647,7 +649,7 @@ TEST_F(SymbolicTileTest,
 
 TEST_F(SymbolicTileTest,
        FailsGracefullyAtPropagatingTileThroughSliceOfSplitReshapeOfReverse) {
-  // TODO(b/326998704): constraints should allow us to unblock this use case.
+  // TODO(b/349487906): constraints should allow us to unblock this use case.
   // A slice of a split reshape of a reverse creates a negative non-unit stride
   // atop a floordiv.
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
@@ -746,6 +748,7 @@ TEST_F(SymbolicTileTest,
         offset_map: ()[s0, s1, s2] -> (0, 0)
         size_map: ()[s0, s1, s2] -> (s0 * s1, 50304)
         stride_map: ()[s0, s1, s2] -> (((-s1 + 2049) floordiv 2048) * ((-((-s0 + 5) floordiv 4) + 1) * 2048) + -((-s1 + 2049) floordiv 2048) + 1, 1)
+        constraints: s0 in [1, 2) || s1 in [1, 2) || s1 in [2048, 2049)
       )")));
 }
 
@@ -757,12 +760,14 @@ TEST_F(SymbolicTileTest, CanDeriveTileWhenTheIndexingMapHasSymbolsInASum) {
                      &mlir_context_),
       {4, 2048, 393}, {128});
 
+  // TODO(b/349377672): the constraints here can be simplified away.
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: ()[s0, s1, s2] -> (0, 0, 0)
         size_map: ()[s0, s1, s2] -> (s0, s1, s2 * 128)
         stride_map: ()[s0, s1, s2] -> (1, 1, 1)
+        constraints: 128 in [1, 2) || 128 in [128, 129) || s2 in [1, 2)
       )")));
 }
 
