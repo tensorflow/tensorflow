@@ -35,6 +35,9 @@ static_assert(sizeof(nsync::nsync_mu) <= sizeof(internal::MuData),
 static inline nsync::nsync_mu *mu_cast(internal::MuData *mu) {
   return reinterpret_cast<nsync::nsync_mu *>(mu);
 }
+static inline const nsync::nsync_mu *mu_cast(const internal::MuData *mu) {
+  return reinterpret_cast<const nsync::nsync_mu *>(mu);
+}
 
 mutex::mutex() { nsync::nsync_mu_init(mu_cast(&mu_)); }
 
@@ -44,6 +47,10 @@ bool mutex::try_lock() { return nsync::nsync_mu_trylock(mu_cast(&mu_)) != 0; };
 
 void mutex::unlock() { nsync::nsync_mu_unlock(mu_cast(&mu_)); }
 
+void mutex::assert_held() const TF_ASSERT_EXCLUSIVE_LOCK() {
+  nsync::nsync_mu_assert_held(mu_cast(&mu_));
+}
+
 void mutex::lock_shared() { nsync::nsync_mu_rlock(mu_cast(&mu_)); }
 
 bool mutex::try_lock_shared() {
@@ -51,6 +58,10 @@ bool mutex::try_lock_shared() {
 };
 
 void mutex::unlock_shared() { nsync::nsync_mu_runlock(mu_cast(&mu_)); }
+
+void mutex::assert_held_shared() const TF_ASSERT_SHARED_LOCK() {
+  nsync::nsync_mu_rassert_held(mu_cast(&mu_));
+}
 
 // A callback suitable for nsync_mu_wait() that calls Condition::Eval().
 static int EvaluateCondition(const void *vcond) {
