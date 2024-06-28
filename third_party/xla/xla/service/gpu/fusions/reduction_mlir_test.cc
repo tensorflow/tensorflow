@@ -409,8 +409,7 @@ TEST_F(MlirRowReductionTest, NonTrivialEpilogue) {
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5) -> (
-          (d0 floordiv 4) * 4 + d0 mod 4)
+        (d0, d1, d2, d3, d4, d5) -> (d0)
         domain:
         d0 in [0, 4)
         d1 in [0, 1)
@@ -418,7 +417,6 @@ TEST_F(MlirRowReductionTest, NonTrivialEpilogue) {
         d3 in [0, 1)
         d4 in [0, 1)
         d5 in [0, 1)
-        d0 mod 4 in [0, 4)
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),

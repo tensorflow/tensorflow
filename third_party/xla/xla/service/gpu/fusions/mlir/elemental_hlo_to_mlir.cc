@@ -1414,7 +1414,9 @@ SmallVector<Value> EmitLoopNest(
   // TODO(b/343420432): Add an op that represents a constrained loop nest and
   // peel in a pass, instead of doing it ad hoc here.
   int64_t cumulative_loop_size = 1;
-  for (int sym_index = indexing_map.GetSymbolCount() - 1;
+  int last_peelable_symbol =
+      indexing_map.GetSymbolCount() - 1 - (vectorize ? 1 : 0);
+  for (int sym_index = last_peelable_symbol;
        sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
     auto& bound = indexing_map.GetSymbolBound(sym_index);
     cumulative_loop_size *= bound.GetLoopTripCount();

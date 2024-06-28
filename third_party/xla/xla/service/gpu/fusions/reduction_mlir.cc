@@ -78,6 +78,7 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir_converter::PartitionedComputations;
 
+constexpr int kRowMajorReduced = ReductionDimensions::kRowMajorReducedDimension;
 constexpr int kRowKept = ReductionDimensions::kRowKeptDimension;
 constexpr int kRowMinorReduced = ReductionDimensions::kRowMinorReducedDimension;
 
@@ -459,28 +460,20 @@ MlirRowReductionFusion::MlirRowReductionFusion(
     : MlirReductionFusion(analysis) {
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
-  Vector3 reduction_tiling = {
-      std::min(reduction_dimensions_
-                   .dimensions[ReductionDimensions::kRowMajorReducedDimension],
-               BatchedReductionRaceFreeBound()),
-      1, 16};
+  int64_t rows_per_warp = RowReductionGetRowsPerWarp(shape[kRowMinorReduced]);
+  int64_t minor_reduced_elements_per_thread = rows_per_warp > 1 ? 1 : 16;
 
   int64_t num_threads_y = 1;
-  int64_t rows_per_warp = RowReductionGetRowsPerWarp(
-      shape[ReductionDimensions::kRowMinorReducedDimension]);
   int64_t num_threads_x = [&] {
     if (rows_per_warp > 1) {
-      return shape[ReductionDimensions::kRowMinorReducedDimension];
+      return shape[kRowMinorReduced];
     }
     int64_t max_block_size =
         MinThreadsXRowReduction(first_reduce_->GetModule()->config());
-    return std::min(
-        max_block_size,
-        RoundUpTo(
-            CeilOfRatio(shape[ReductionDimensions::kRowMinorReducedDimension],
-                        reduction_tiling
-                            [ReductionDimensions::kRowMinorReducedDimension]),
-            WarpSize()));
+    return std::min(max_block_size,
+                    RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
+                                          minor_reduced_elements_per_thread),
+                              WarpSize()));
   }();
 
   // If we're limited by the size of the x dimension, add additional parallelism
@@ -490,16 +483,11 @@ MlirRowReductionFusion::MlirRowReductionFusion(
   // 256. See https://forums.developer.nvidia.com/t/55529
   constexpr int64_t kThreadsPerBlockTarget = 256;
   if (num_threads_x * 2 <= kThreadsPerBlockTarget) {
-    int64_t kept_size = reduction_dimensions_
-                            .dimensions[ReductionDimensions::kRowKeptDimension];
+    int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
     // Increase the size of the y dimension as long as there's remaining
     // parallelism.
     if (kept_size * num_threads_x <= kThreadsPerBlockTarget) {
       num_threads_y = kept_size;
-      // num_threads_x is a power of two, but it may be less than 32. If dim_y
-      // is also small, we may have to increase the bound so the total number of
-      // threads is a multiple of 32.
-      while ((num_threads_x * num_threads_y) % 32) ++num_threads_y;
     } else {
       num_threads_y = kThreadsPerBlockTarget / num_threads_x;
     }
@@ -507,13 +495,11 @@ MlirRowReductionFusion::MlirRowReductionFusion(
 
   int vector_size =
       GetVectorSizeForMlir(analysis, reduction_dimensions_, num_threads_x);
-
-  num_threads_ =
-      absl::InlinedVector<int64_t, 4>{1, num_threads_y, num_threads_x};
-  input_shape_ = {shape[0], shape[1], shape[2] / vector_size};
-  tile_sizes_per_thread_ = {
-      reduction_tiling[0], reduction_tiling[1],
-      std::max<int64_t>(reduction_tiling[2] / vector_size, 1)};
+  num_threads_ = {1, num_threads_y, num_threads_x, 1};
+  input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
+  tile_sizes_per_thread_ = {shape[kRowMajorReduced], 1,
+                            minor_reduced_elements_per_thread / vector_size,
+                            vector_size};
   // The indexing map simplifier does not currently handle this correctly,
   // leading to loop bounds that are too large.
   // TODO(jreiffers): Implement tightening of ranges based on constraints
@@ -528,27 +514,12 @@ MlirRowReductionFusion::MlirRowReductionFusion(
         std::min(tile_sizes_per_thread_[i],
                  CeilOfRatio(input_shape_[i], num_threads_[i]));
   }
-  if (rows_per_warp > 1) {
-    // If we produce more than one element per thread, that means the reduced
-    // dimension is small and it can't be tiled - we already have more threads
-    // in a warp than the size of the reduced dimension. The code generator
-    // doesn't currently support tiling the kept dimension, because it just
-    // uses the thread ID as the coordinate.
-    tile_sizes_per_thread_[2] = 1;
-  }
-  if (vector_size != 1) {
-    num_threads_.push_back(1);  // The vector dimension is a loop.
-    input_shape_.push_back(vector_size);
-    tile_sizes_per_thread_.push_back(vector_size);
-  }
 
   tile_sizes_per_block_.resize(input_shape_.size());
   num_blocks_.resize(input_shape_.size());
   for (int64_t i = 0; i < input_shape_.size(); ++i) {
     tile_sizes_per_block_[i] = tile_sizes_per_thread_[i] * num_threads_[i];
-    CHECK_NE(tile_sizes_per_block_[i], 0);
     num_blocks_[i] = CeilOfRatio(input_shape_[i], tile_sizes_per_block_[i]);
-    CHECK_NE(num_blocks_[i], 0);
   }
 
   total_num_blocks_ = Product(num_blocks_);
