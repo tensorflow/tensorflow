@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
@@ -131,7 +132,20 @@ class CallFrameBuilder {
 
 class CallFrame {
  public:
+  CallFrame(CallFrame&&);
+  CallFrame& operator=(CallFrame&&);
+
   ~CallFrame();
+
+  // Creates a copy of the call frame with updated arguments and results.
+  //
+  // For any particular instance of a custom call in the XLA program, all
+  // attributes are defined at compile time. Also types and dimensions of all
+  // array (buffer) arguments and results are known at compile time. Instead of
+  // rebuilding the call frame from scratch on every execution, we can just
+  // update the arguments and results with new pointes to device memory.
+  absl::StatusOr<CallFrame> Update(absl::Span<const se::DeviceMemoryBase> args,
+                                   absl::Span<const se::DeviceMemoryBase> rets);
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
@@ -140,6 +154,12 @@ class CallFrame {
 
  private:
   friend class CallFrameBuilder;
+
+  // Declare implementation detail structs to grant access to private members.
+  struct AttributeStorage;
+  struct AttributeType;
+  struct ConvertAttribute;
+  struct FixUpAttribute;
 
   // Declare implementation detail structs for call frame storage.
   struct Arguments;
@@ -154,30 +174,59 @@ class CallFrame {
 
   using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
-  CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
-            absl::Span<const CallFrameBuilder::Buffer> rets,
-            const CallFrameBuilder::AttributesMap& attrs);
-
-  static std::unique_ptr<Arguments> InitArgs(
-      absl::Span<const CallFrameBuilder::Buffer> args);
-
-  static std::unique_ptr<Results> InitRets(
-      absl::Span<const CallFrameBuilder::Buffer> rets);
-
-  static std::unique_ptr<Attributes> InitAttrs(
-      const CallFrameBuilder::AttributesMap& attrs);
+  CallFrame(std::unique_ptr<Arguments> arguments,
+            std::unique_ptr<Results> results,
+            std::shared_ptr<Attributes> attributes);
 
   static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
 
+  //===----- Call frame arguments -----------------------------------------===//
+
+  // Creates call frame arguments from the call frame builder buffers.
+  static std::unique_ptr<Arguments> CreateArgs(
+      absl::Span<const CallFrameBuilder::Buffer> args);
+
+  // Creates updated arguments from the original call frame arguments and
+  // new device memory pointers.
+  static std::unique_ptr<Arguments> UpdateArgs(
+      const Arguments& args, absl::Span<const se::DeviceMemoryBase> buffers);
+
+  // Fixes up call frame arguments by initializing XLA FFI structs with valid
+  // pointers into storage objects.
+  static std::unique_ptr<Arguments> FixUpArgs(std::unique_ptr<Arguments> args);
+
+  //===----- Call frame results -------------------------------------------===//
+
+  // Creates call frame results from the call frame builder buffers.
+  static std::unique_ptr<Results> CreateRets(
+      absl::Span<const CallFrameBuilder::Buffer> rets);
+
+  // Creates updated arguments from the original call frame arguments and
+  // new device memory pointers.
+  static std::unique_ptr<Results> UpdateRets(
+      const Results& rets, absl::Span<const se::DeviceMemoryBase> buffers);
+
+  // Fixes up call frame results by initializing XLA FFI structs with valid
+  // pointers into storage objects.
+  static std::unique_ptr<Results> FixUpRets(std::unique_ptr<Results> rets);
+
+  //===----- Call frame attributes ----------------------------------------===//
+
+  // Creates call frame attributes from the call frame builder attributes.
+  static std::unique_ptr<Attributes> CreateAttrs(
+      const CallFrameBuilder::AttributesMap& attrs);
+
+  // Fixes up call frame attributes by initializing XLA FFI structs with valid
+  // pointers into storage objects.
+  static std::unique_ptr<Attributes> FixUpAttrs(
+      std::unique_ptr<Attributes> attrs);
+
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Results> results_;
-  std::unique_ptr<Attributes> attributes_;
 
-  // Declare implementation detail structs to grant access to private members.
-  struct ConvertAttribute;
-  struct FixupAttribute;
-  struct AttributeType;
-  struct AttributeStorage;
+  // Attributes are defined at compile time and can be shared between multiple
+  // instances of a call frame (see `Update` above).
+  std::shared_ptr<Attributes> attributes_;
 };
 
 }  // namespace xla::ffi

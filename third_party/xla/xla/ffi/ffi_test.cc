@@ -18,6 +18,7 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::ffi {
@@ -669,6 +671,70 @@ TEST(FfiTest, UserData) {
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, UpdateBufferArgumentsAndResults) {
+  std::vector<float> storage0(4, 0.0f);
+  std::vector<float> storage1(4, 0.0f);
+
+  se::DeviceMemoryBase memory0(storage0.data(), 4 * sizeof(float));
+  se::DeviceMemoryBase memory1(storage1.data(), 4 * sizeof(float));
+
+  std::vector<int64_t> dims = {2, 2};
+
+  auto bind = Ffi::Bind()
+                  .Arg<BufferR2<PrimitiveType::F32>>()
+                  .Ret<BufferR2<PrimitiveType::F32>>()
+                  .Attr<int32_t>("n");
+
+  // `fn0` expects argument to be `memory0` and result to be `memory1`.
+  auto fn0 = [&](BufferR2<PrimitiveType::F32> arg,
+                 Result<BufferR2<PrimitiveType::F32>> ret, int32_t n) {
+    EXPECT_EQ(arg.data.opaque(), storage0.data());
+    EXPECT_EQ(ret->data.opaque(), storage1.data());
+    EXPECT_EQ(arg.dimensions, dims);
+    EXPECT_EQ(ret->dimensions, dims);
+    EXPECT_EQ(n, 42);
+    return absl::OkStatus();
+  };
+
+  // `fn1` expects argument to be `memory1` and result to be `memory0`.
+  auto fn1 = [&](BufferR2<PrimitiveType::F32> arg,
+                 Result<BufferR2<PrimitiveType::F32>> ret, int32_t n) {
+    EXPECT_EQ(arg.data.opaque(), storage1.data());
+    EXPECT_EQ(ret->data.opaque(), storage0.data());
+    EXPECT_EQ(arg.dimensions, dims);
+    EXPECT_EQ(ret->dimensions, dims);
+    EXPECT_EQ(n, 42);
+    return absl::OkStatus();
+  };
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("n", 42);
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/1);
+  builder.AddBufferArg(memory0, PrimitiveType::F32, dims);
+  builder.AddBufferRet(memory1, PrimitiveType::F32, dims);
+  builder.AddAttributes(attrs.Build());
+
+  // Keep call frame wrapped in optional to be able to destroy it and test that
+  // updated call frame does not reference any destroyed memory.
+  std::optional<CallFrame> call_frame(builder.Build());
+
+  {  // Call `fn0` with an original call frame.
+    auto handler = bind.To(fn0);
+    auto status = Call(*handler, *call_frame);
+    TF_ASSERT_OK(status);
+  }
+
+  {  // Call `fn1` with swapped buffers for argument and result.
+    auto handler = bind.To(fn1);
+    TF_ASSERT_OK_AND_ASSIGN(
+        CallFrame updated_call_frame,
+        std::move(call_frame)->Update({memory1}, {memory0}));
+    auto status = Call(*handler, updated_call_frame);
+    TF_ASSERT_OK(status);
+  }
 }
 
 }  // namespace xla::ffi

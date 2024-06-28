@@ -17,25 +17,89 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
 
-void BM_AddBufferArg(benchmark::State& state) {
-  size_t num_args = state.range();
+TEST(CallFrameTest, UpdateCallFrame) {
+  se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x12345678), 1024);
+  se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x87654321), 1024);
 
-  se::DeviceMemoryBase memory(nullptr, 1024);
+  std::vector<int64_t> dims = {1, 2, 3, 4};
+
+  CallFrameBuilder::AttributesBuilder attrs_builder;
+  attrs_builder.Insert("attr1", "value1");
+  attrs_builder.Insert("attr2", "value2");
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/1);
+  builder.AddBufferArg(mem0, PrimitiveType::F32, dims);
+  builder.AddBufferRet(mem1, PrimitiveType::F32, dims);
+  builder.AddAttributes(attrs_builder.Build());
+
+  // Keep call frame wrapped in optional to be able to destroy it and test that
+  // updated call frame does not reference any destroyed memory.
+  std::optional<CallFrame> call_frame = builder.Build();
+
+  {  // Construct XLA_FFI_CallFrame from the original call frame.
+    XLA_FFI_CallFrame ffi_call_frame = call_frame->Build(
+        /*api=*/nullptr, /*ctx=*/nullptr, XLA_FFI_ExecutionStage_EXECUTE);
+
+    EXPECT_EQ(ffi_call_frame.args.size, 1);
+    EXPECT_EQ(ffi_call_frame.args.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.args.args[0])->data,
+              mem0.opaque());
+
+    EXPECT_EQ(ffi_call_frame.rets.size, 1);
+    EXPECT_EQ(ffi_call_frame.rets.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.rets.rets[0])->data,
+              mem1.opaque());
+
+    EXPECT_EQ(ffi_call_frame.attrs.size, 2);
+  }
+
+  CallFrame updated_call_frame =
+      std::move(call_frame)->Update({mem1}, {mem0}).value();
+
+  {  // Construct XLA_FFI_CallFrame from the updated call frame.
+    XLA_FFI_CallFrame ffi_call_frame = updated_call_frame.Build(
+        /*api=*/nullptr, /*ctx=*/nullptr, XLA_FFI_ExecutionStage_EXECUTE);
+
+    EXPECT_EQ(ffi_call_frame.args.size, 1);
+    EXPECT_EQ(ffi_call_frame.args.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.args.args[0])->data,
+              mem1.opaque());
+
+    EXPECT_EQ(ffi_call_frame.rets.size, 1);
+    EXPECT_EQ(ffi_call_frame.rets.types[0], XLA_FFI_ArgType_BUFFER);
+    EXPECT_EQ(static_cast<XLA_FFI_Buffer*>(ffi_call_frame.rets.rets[0])->data,
+              mem0.opaque());
+
+    EXPECT_EQ(ffi_call_frame.attrs.size, 2);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+void BM_AddBufferArg(benchmark::State& state) {
+  size_t num_args = state.range(0);
+
+  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
   std::vector<int64_t> dims = {1, 2, 3, 4};
 
   for (auto _ : state) {
     CallFrameBuilder builder(num_args, /*num_rets=*/0);
     for (size_t i = 0; i < num_args; ++i) {
-      builder.AddBufferArg(se::DeviceMemoryBase(nullptr, 1024),
-                           PrimitiveType::F32, dims);
+      builder.AddBufferArg(memory, PrimitiveType::F32, dims);
     }
 
     CallFrame call_frame = builder.Build();
@@ -43,7 +107,7 @@ void BM_AddBufferArg(benchmark::State& state) {
 }
 
 void BM_AddAttributes(benchmark::State& state) {
-  size_t num_attrs = state.range();
+  size_t num_attrs = state.range(0);
 
   CallFrameBuilder::FlatAttributesMap flat_attrs;
   for (size_t i = 0; i < num_attrs; ++i) {
@@ -61,7 +125,29 @@ void BM_AddAttributes(benchmark::State& state) {
   }
 }
 
+void BM_UpdateCallFrame(benchmark::State& state) {
+  size_t num_args = state.range(0);
+
+  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
+  std::vector<int64_t> dims = {1, 2, 3, 4};
+
+  CallFrameBuilder builder(num_args, /*num_rets=*/0);
+  for (size_t i = 0; i < num_args; ++i) {
+    builder.AddBufferArg(se::DeviceMemoryBase(nullptr, 1024),
+                         PrimitiveType::F32, dims);
+  }
+  CallFrame call_frame = builder.Build();
+
+  std::vector<se::DeviceMemoryBase> updated_args(num_args, memory);
+
+  for (auto _ : state) {
+    auto updated_call_frame = call_frame.Update(updated_args, /*rets=*/{});
+    benchmark::DoNotOptimize(updated_call_frame);
+  }
+}
+
 BENCHMARK(BM_AddBufferArg)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
 BENCHMARK(BM_AddAttributes)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
+BENCHMARK(BM_UpdateCallFrame)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16);
 
 }  // namespace xla::ffi

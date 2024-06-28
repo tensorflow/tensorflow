@@ -431,7 +431,7 @@ class Binding {
   template <typename Fn>
   std::unique_ptr<Handler<Fn, Ts...>> To(Fn fn) {
     return std::unique_ptr<Handler<Fn, Ts...>>(
-        new Handler<Fn, Ts...>(std::move(fn), std::move(attrs_)));
+        new Handler<Fn, Ts...>(std::move(fn), attrs_));
   }
 
  private:
