@@ -697,8 +697,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {
-      DebugOptions::CUBLAS, DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
-      DebugOptions::COLLECTIVES};
+      DebugOptions::CUBLAS, DebugOptions::CUBLASLT, DebugOptions::CUDNN,
+      DebugOptions::CUSTOM_CALL, DebugOptions::COLLECTIVES};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
