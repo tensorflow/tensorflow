@@ -48,7 +48,8 @@ class TupleSimplifier : public HloModulePass {
   // backend.
   bool exclude_entry_computation_;
 
-  // Collapse the following structure into just 'Tuple-shaped Op':
+  // Collapse the following structure into just 'Tuple-shaped Op', iff the
+  // sequence of GTE ops is order-preserving:
   //
   //   Tuple-shaped Op
   //         |

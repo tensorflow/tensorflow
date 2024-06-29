@@ -224,8 +224,8 @@ TEST_F(TupleSimplifierTest, NestedGteOfTuples) {
 }
 
 TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
-  // Verify that a tuple constructed of GTE instructions operating on the same
-  // tuple are collapsed.
+  // Verify that a tuple reconstructed from GTE instructions extracting from the
+  // same tuple is collapsed.
   constexpr absl::string_view kModuleStr = R"(
     HloModule TupleOfGteInstructions, entry_computation_layout={((f32[], f32[], f32[]))->(f32[], f32[], f32[])}
 
@@ -248,6 +248,29 @@ TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Parameter(0));
+}
+
+TEST_F(TupleSimplifierTest, TupleOfGteNotRemovedIfOrderIsNotPreserved) {
+  // Verify that a tuple constructed of GTE instructions operating on the same
+  // tuple is NOT collapsed if the original tuple is not constructed.
+  //
+  // Note that, in the HLO program below, the final tuple is rearranged
+  // following the permutation (0, 2, 1).
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule TupleOfGteInstructions, entry_computation_layout={((f32[], f32[], f32[]))->(f32[], f32[], f32[])}
+
+    ENTRY %TupleOfGteInstructions (param: (f32[], f32[], f32[])) -> (f32[], f32[], f32[]) {
+      %param = (f32[], f32[], f32[]) parameter(0)
+      %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=0
+      %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
+      %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=2
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.2, f32[] %get-tuple-element.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Run(module.get(), /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, IncompatibleTuples) {
