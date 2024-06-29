@@ -163,7 +163,6 @@ cc_library(
         "//xla/pjrt:semaphore",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
-        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",

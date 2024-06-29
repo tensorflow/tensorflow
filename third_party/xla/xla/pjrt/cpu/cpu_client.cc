@@ -1588,10 +1588,18 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           cpu::Thunk::CollectiveExecuteParams collective_params,
           cpu::Thunk::CollectiveExecuteParams::Create(&run_options));
 
+      // TODO(penporn): Consolidate with other thunk parameter set up calls.
+      TF_ASSIGN_OR_RETURN(
+          cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
+          cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
+
       cpu::Thunk::ExecuteParams execute_params = {
-          &cpu_executable->host_kernels(), &allocations,
+          &cpu_executable->host_kernels(),
+          &allocations,
           cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-          run_options.intra_op_thread_pool(), &collective_params};
+          run_options.intra_op_thread_pool(),
+          &collective_params,
+          &custom_call_execute_params};
 
       auto execute_event = cpu_executable->thunks().Execute(
           execute_params, [&](cpu::ThunkExecutor::Task task) {
@@ -1714,11 +1722,18 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                 collective_params =
                     cpu::Thunk::CollectiveExecuteParams::Create(&run_options);
 
+            absl::StatusOr<cpu::Thunk::CustomCallExecuteParams>
+                custom_call_params =
+                    cpu::Thunk::CustomCallExecuteParams::Create(&run_options);
+
             if (collective_params.ok()) {
               cpu::Thunk::ExecuteParams execute_params = {
-                  &cpu_executable->host_kernels(), &allocations,
+                  &cpu_executable->host_kernels(),
+                  &allocations,
                   cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
-                  run_options.intra_op_thread_pool(), &*collective_params};
+                  run_options.intra_op_thread_pool(),
+                  &*collective_params,
+                  &*custom_call_params};
 
               auto execute_event = cpu_executable->thunks().Execute(
                   execute_params, [&](cpu::ThunkExecutor::Task task) {

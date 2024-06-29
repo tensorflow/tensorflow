@@ -149,6 +149,23 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "custom_call_benchmark_test",
+    srcs = ["custom_call_benchmark_test.cc"],
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "gather_benchmark_test",
     srcs = ["gather_benchmark_test.cc"],
     deps = [

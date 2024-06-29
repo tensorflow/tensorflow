@@ -90,6 +90,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
         "No registered implementation for FFI custom call to %s for Host",
         target_name_);
   }
+  if (params.custom_call_params == nullptr) {
+    return Internal("CustomCallExecuteParams cannot be nullptr.");
+  }
 
   // Build the FFI call frame.
   ffi::CallFrameBuilder builder(
