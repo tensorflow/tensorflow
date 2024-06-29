@@ -49,5 +49,22 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
   instr->set_frontend_attributes(attributes);
 }
 
+bool HasEquivalentShardings(const HloInstruction& lhs,
+                            const HloInstruction& rhs) {
+  if (lhs.has_sharding() && !lhs.sharding().IsReplicated() &&
+      !rhs.has_sharding()) {
+    return false;
+  }
+  if (!lhs.has_sharding() && rhs.has_sharding() &&
+      !rhs.sharding().IsReplicated()) {
+    return false;
+  }
+  if (lhs.has_sharding() && rhs.has_sharding() &&
+      lhs.sharding() != rhs.sharding()) {
+    return false;
+  }
+  return true;
+}
+
 }  // namespace hlo_instruction_utils
 }  // namespace xla

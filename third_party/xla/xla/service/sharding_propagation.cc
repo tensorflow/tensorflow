@@ -48,6 +48,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/hlo_cse.h"
+#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/shape.h"
@@ -1759,15 +1761,26 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               ShapeUtil::GetLeafCount(instruction.shape().tuple_shapes(i));
         }
       }
+      auto base_instruction_sharding = [&](const HloSharding& user_sharding) {
+        if (instruction.has_sharding()) {
+          return instruction.sharding();
+        } else {
+          std::vector<HloSharding> shardings;
+          ShapeUtil::ForEachSubshape(
+              instruction.shape(),
+              [&](const Shape& sub_shape, const ShapeIndex& index) {
+                if (ShapeUtil::IsLeafIndex(instruction.shape(), index)) {
+                  shardings.push_back(hlo_sharding_util::ReplicateAllDataDims(
+                      user_sharding, sub_shape.rank()));
+                }
+              });
+          return HloSharding::Tuple(instruction.shape(), shardings);
+        }
+      };
       if (user.shape().IsArray()) {
         // Use ReplicateAllDataDims instead of HloSharding::Replicate() to
         // preserve manual subgroups.
-        HloSharding new_sharding =
-            instruction.has_sharding()
-                ? instruction.sharding()
-                : HloSharding::SingleTuple(
-                      instruction.shape(),
-                      hlo_sharding_util::ReplicateAllDataDims(user.sharding()));
+        HloSharding new_sharding = base_instruction_sharding(user.sharding());
         new_sharding.tuple_elements()[sharding_index] = user.sharding();
         return new_sharding;
       } else {
@@ -1775,12 +1788,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           return std::nullopt;
         }
         HloSharding new_sharding =
-            instruction.has_sharding()
-                ? instruction.sharding()
-                : HloSharding::SingleTuple(
-                      instruction.shape(),
-                      hlo_sharding_util::ReplicateAllDataDims(
-                          user.sharding().tuple_elements()[0]));
+            base_instruction_sharding(user.sharding().tuple_elements()[0]);
         for (int64_t i = 0; i < user.sharding().tuple_elements().size(); ++i) {
           new_sharding.tuple_elements()[sharding_index + i] =
               user.sharding().tuple_elements()[i];
@@ -3265,6 +3273,23 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     TF_RETURN_IF_ERROR(
         run_to_fix_point(aggressiveness, /*propagate_shard_group=*/true));
+  }
+
+  if (changed) {
+    // Run CSE again to remove any duplicate ops with the same sharding or
+    // compatible shardings.
+    HloPassPipeline pass("sharding-propation-cse");
+    pass.AddPass<HloCSE>(
+        /*is_layout_sensitive=*/false,
+        /*only_fusion_computations=*/false,
+        /*ignore_control_dependencies=*/false,
+        /*only_scalars=*/false,
+        /*is_sharding_sensitive=*/true,
+        /*allow_compatible_sharding=*/true);
+    TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
+    // propagate sharding again to update the sharding of the CSE'd ops.
+    TF_RETURN_IF_ERROR(run_to_fix_point(/*aggressiveness=*/3,
+                                        /*propagate_shard_group=*/false));
   }
 
   // Align the shardings from the same shard_as group so that they will adopt
