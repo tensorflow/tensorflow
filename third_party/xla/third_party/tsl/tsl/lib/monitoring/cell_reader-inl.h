@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tsl/lib/monitoring/collected_metrics.h"
 #include "tsl/lib/monitoring/metric_def.h"
 #include "tsl/lib/monitoring/test_utils.h"
