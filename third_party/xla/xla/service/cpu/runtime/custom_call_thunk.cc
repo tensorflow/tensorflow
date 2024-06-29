@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime/custom_call_thunk.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
@@ -32,37 +37,106 @@ limitations under the License.
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
+namespace {
+
+// Builds a call frame prototype for typed-FFI custom calls with dummy device
+// memory addresses. This is called once when creating the CustomCall thunk,
+// then the thunk will need to update the addresses at runtime.
+absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
+    const CustomCallApiVersion version,
+    const CustomCallThunk::OpBuffers& op_buffers,
+    const absl::string_view backend_config) {
+  ffi::CallFrameBuilder builder(
+      /*num_args=*/op_buffers.arguments_buffers.size(),
+      /*num_rets=*/op_buffers.results_buffers.size());
+
+  // Add prototype input buffers with actual data types and shapes. Device
+  // memory addresses will be updated at runtime.
+  for (int i = 0; i < op_buffers.arguments_buffers.size(); ++i) {
+    auto& shape = op_buffers.arguments_shapes[i];
+    auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
+                                       std::multiplies<int64_t>());
+    auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
+    se::DeviceMemoryBase placeholder_arg(nullptr, elements * dtype_bytes);
+    builder.AddBufferArg(placeholder_arg, shape.element_type(),
+                         shape.dimensions());
+  }
+
+  // Add prototype output buffers with actual data types and shapes. Device
+  // memory addresses will be updated at runtime.
+  for (int i = 0; i < op_buffers.results_buffers.size(); ++i) {
+    auto& shape = op_buffers.results_shapes[i];
+    auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
+                                       std::multiplies<int64_t>());
+    auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
+    se::DeviceMemoryBase placeholder_ret(nullptr, elements * dtype_bytes);
+    builder.AddBufferRet(placeholder_ret, shape.element_type(),
+                         shape.dimensions());
+  }
+
+  // Add attributes.
+  if (!backend_config.empty() && backend_config != "{}") {
+    // Parse backend config into an MLIR dictionary.
+    mlir::MLIRContext mlir_context;
+    ffi::CallFrameBuilder::FlatAttributesMap attributes;
+    mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
+    if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+    } else {
+      return Internal(
+          "Unsupported backend config. Expected a string parsable into "
+          "dictionary attribute");
+    }
+    // Convert the MLIR dictionary to FFI attributes.
+    ffi::CallFrameBuilder::AttributesBuilder attrs;
+    attrs.Append(std::move(attributes));
+    builder.AddAttributes(attrs.Build());
+    VLOG(3) << absl::StreamFormat("  attributes: %s", backend_config);
+  }
+  return builder.Build();
+}
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     Info info, absl::string_view target_name, OpBuffers op_buffers,
     absl::string_view backend_config, CustomCallApiVersion api_version) {
-  return absl::WrapUnique(
-      new CustomCallThunk(std::move(info), target_name, std::move(op_buffers),
-                          std::move(backend_config), api_version));
+  std::optional<ffi::CallFrame> call_frame;
+  if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    TF_ASSIGN_OR_RETURN(
+        call_frame,
+        BuildCallFrameForTypedFFI(api_version, op_buffers, backend_config));
+  }
+  return absl::WrapUnique(new CustomCallThunk(
+      std::move(info), target_name, std::move(op_buffers), api_version,
+      std::move(backend_config), std::move(call_frame)));
 }
 
 CustomCallThunk::CustomCallThunk(Info info, absl::string_view target_name,
                                  OpBuffers op_buffers,
+                                 CustomCallApiVersion api_version,
                                  absl::string_view backend_config,
-                                 CustomCallApiVersion api_version)
+                                 std::optional<ffi::CallFrame> call_frame)
     : Thunk(Kind::kCustomCall, std::move(info)),
       target_name_(target_name),
       op_buffers_(std::move(op_buffers)),
+      api_version_(api_version),
       backend_config_(std::move(backend_config)),
-      api_version_(api_version) {}
+      call_frame_(std::move(call_frame)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::Execute(
     const ExecuteParams& params) {
@@ -94,54 +168,34 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
     return Internal("CustomCallExecuteParams cannot be nullptr.");
   }
 
-  // Build the FFI call frame.
-  ffi::CallFrameBuilder builder(
-      /*num_args=*/op_buffers_.arguments_buffers.size(),
-      /*num_rets=*/op_buffers_.results_buffers.size());
-
-  // Add input buffers.
+  // Collect argument buffers.
+  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments;
+  arguments.reserve(op_buffers_.arguments_buffers.size());
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
     auto& slice = op_buffers_.arguments_buffers[i];
-    auto& shape = op_buffers_.arguments_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg,
+    TF_ASSIGN_OR_RETURN(arguments.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(slice));
-    builder.AddBufferArg(arg, shape.element_type(), shape.dimensions());
-    VLOG(3) << absl::StreamFormat("  arg: %s in slice %s (%p)",
-                                  shape.ToString(true), slice.ToString(),
-                                  arg.opaque());
+    VLOG(3) << absl::StreamFormat(
+        "  arg: %s in slice %s (%p)",
+        op_buffers_.arguments_shapes[i].ToString(true), slice.ToString(),
+        arguments[i].opaque());
   }
 
-  // Add output buffers.
+  // Collect results buffers.
+  absl::InlinedVector<se::DeviceMemoryBase, 4> results;
+  results.reserve(op_buffers_.results_buffers.size());
   for (int i = 0; i < op_buffers_.results_buffers.size(); ++i) {
     auto& slice = op_buffers_.results_buffers[i];
-    auto& shape = op_buffers_.results_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase res,
+    TF_ASSIGN_OR_RETURN(results.emplace_back(),
                         params.buffer_allocations->GetDeviceAddress(slice));
-    builder.AddBufferRet(res, shape.element_type(), shape.dimensions());
     VLOG(3) << absl::StreamFormat("  res: %s in slice %s (%p)",
-                                  shape.ToString(true), slice.ToString(),
-                                  res.opaque());
+                                  op_buffers_.results_shapes[i].ToString(true),
+                                  slice.ToString(), results[i].opaque());
   }
 
-  // Add attributes.
-  if (!backend_config_.empty()) {
-    // Parse backend config into an MLIR dictionary.
-    mlir::MLIRContext mlir_context;
-    ffi::CallFrameBuilder::FlatAttributesMap attributes;
-    mlir::Attribute attr = mlir::parseAttribute(backend_config_, &mlir_context);
-    if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
-    } else {
-      return Internal(
-          "Unsupported backend config. Expected a string parsable into "
-          "dictionary attribute");
-    }
-    // Convert the MLIR dictionary to FFI attributes.
-    ffi::CallFrameBuilder::AttributesBuilder attrs;
-    attrs.Append(std::move(attributes));
-    builder.AddAttributes(attrs.Build());
-    VLOG(3) << absl::StreamFormat("  attributes: %s", backend_config_);
-  }
+  // Update the FFI call frame with the actual device memory addresses.
+  TF_ASSIGN_OR_RETURN(ffi::CallFrame call_frame,
+                      call_frame_->CopyWithBuffers(arguments, results));
 
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
@@ -152,7 +206,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
                                    custom_call_params->ffi_execution_context};
 
   // Call the function and check execution status.
-  ffi::CallFrame call_frame = builder.Build();
   auto status = ffi::Call(handler->bundle.execute, call_frame, call_options);
   if (!status.ok()) {
     // Overwrite the returned error code to kInternal to match the original CPU

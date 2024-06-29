@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/thunk_emitter.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -831,7 +832,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
         CustomCallApiVersion_Name(version));
   }
 
-  // Get backend config and buffer assignments.ß
+  // Get backend config and buffer assignments.
   auto backend_config = custom_call->opaque();
   TF_ASSIGN_OR_RETURN(auto op_buffers,
                       GetCustomCallOpBuffers(instruction, buffer_assignment_));
