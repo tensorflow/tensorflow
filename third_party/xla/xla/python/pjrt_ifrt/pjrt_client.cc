@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
@@ -87,6 +89,26 @@ namespace {
 // explicitly said this is WAI. See b/258212655#comment10.
 absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
   return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+// Returns an `AttributeMap` with the attributes of the given `PjRtClient`.
+AttributeMap MakeAttributeMap(xla::PjRtClient* pjrt_client) {
+  absl::flat_hash_map<std::string, PjRtValueType> attributes;
+  attributes.insert({"supports_executable_serialization", true});
+  if (std::optional<PjRtPluginAttributes> plugin_attributes =
+          pjrt_client->plugin_attributes();
+      plugin_attributes.has_value()) {
+    attributes.insert(
+        {"pjrt_c_api_major_version",
+         PjRtValueType(plugin_attributes->pjrt_c_api_major_version)});
+    attributes.insert(
+        {"pjrt_c_api_minor_version",
+         PjRtValueType(plugin_attributes->pjrt_c_api_minor_version)});
+    for (const auto& [key, value] : plugin_attributes->attributes) {
+      attributes.insert({key, value});
+    }
+  }
+  return FromPjRtDeviceAttributeMap(std::move(attributes));
 }
 
 void SerializePjRtDeviceAttributes(
@@ -455,7 +477,9 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
 }
 
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {}
+    : pjrt_client_(std::move(pjrt_client)),
+      default_compiler_(this),
+      attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() = default;
 
@@ -498,27 +522,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   return LookupPjRtDevice(pjrt_device);
 }
 
-absl::flat_hash_map<std::string, Client::ClientAttribute>
-PjRtClient::attributes() const {
-  absl::flat_hash_map<std::string, ClientAttribute> attributes;
-  attributes.insert({"supports_executable_serialization", true});
-
-  if (std::optional<PjRtPluginAttributes> plugin_attributes =
-          pjrt_client_->plugin_attributes();
-      plugin_attributes.has_value()) {
-    attributes.insert(
-        {"pjrt_c_api_major_version",
-         ClientAttribute(plugin_attributes->pjrt_c_api_major_version)});
-    attributes.insert(
-        {"pjrt_c_api_minor_version",
-         ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
-    for (const auto& [key, value] : plugin_attributes->attributes) {
-      attributes.insert({key, value});
-    }
-  }
-
-  return attributes;
-}
+const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {

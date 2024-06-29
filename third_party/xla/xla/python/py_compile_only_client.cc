@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -82,7 +83,9 @@ class CompileOnlyDevice
     : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
   explicit CompileOnlyDevice(const PjRtDeviceDescription* description)
-      : description_(std::move(description)) {}
+      : description_(std::move(description)),
+        attributes_(
+            ifrt::FromPjRtDeviceAttributeMap(description_->Attributes())) {}
 
   const PjRtDeviceDescription& description() const { return *description_; }
 
@@ -111,13 +114,11 @@ class CompileOnlyDevice
     return Unimplemented("DefaultMemory is not supported");
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const {
-    return description_->Attributes();
-  }
+  const ifrt::AttributeMap& Attributes() const override { return attributes_; }
 
  private:
   const PjRtDeviceDescription* description_;
+  ifrt::AttributeMap attributes_;
 };
 
 class InvalidIfrtCompiler final
@@ -151,7 +152,8 @@ class CompileOnlyIfRtClient final
  public:
   explicit CompileOnlyIfRtClient(std::shared_ptr<ifrt::PjRtTopology> topology)
       : topology_(std::move(topology)),
-        descriptions_(topology_->DeviceDescriptions()) {
+        descriptions_(topology_->DeviceDescriptions()),
+        attributes_(ifrt::AttributeMap::Map()) {
     for (auto& description : descriptions_) {
       owned_devices_.push_back(
           std::make_unique<CompileOnlyDevice>(description.get()));
@@ -218,10 +220,7 @@ class CompileOnlyIfRtClient final
   ifrt::PlatformId platform_id() const override {
     return topology_->platform_id();
   }
-  absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const override {
-    return {};
-  }
+  const ifrt::AttributeMap& Attributes() const override { return attributes_; }
 
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override { return 0; }
@@ -271,6 +270,7 @@ class CompileOnlyIfRtClient final
   InvalidIfrtCompiler default_compiler_;
   std::shared_ptr<ifrt::PjRtTopology> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
+  ifrt::AttributeMap attributes_;
   std::vector<std::unique_ptr<CompileOnlyDevice>> owned_devices_;
   std::vector<ifrt::Device*> devices_;
 };

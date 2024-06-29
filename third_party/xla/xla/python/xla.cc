@@ -840,10 +840,10 @@ NB_MODULE(xla_extension, m_nb) {
            })
       .def("__getattr__",
            [](ifrt::Topology& topology, std::string_view name) -> nb::object {
-             const auto& attrs = topology.Attributes();
+             const auto& attrs = topology.Attributes().map();
              auto it = attrs.find(name);
              if (it != attrs.end()) {
-               return std::visit([](auto&& v) { return nb::cast(v); },
+               return std::visit([](auto&& v) { return nb::cast(v.value); },
                                  it->second);
              }
              throw nb::attribute_error(

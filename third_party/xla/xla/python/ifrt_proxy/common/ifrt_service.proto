@@ -18,6 +18,7 @@ package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
 import "xla/pjrt/execute_options.proto";
+import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
@@ -218,7 +219,9 @@ message InitResponse {
     repeated int32 memory_ids = 8;
     string debug_string = 4;
     string to_string = 5;
-    map<string, proto.Variant> attributes = 6;
+    map<string, proto.Variant> deprecated_attributes = 6
+        [deprecated = true];            // Deprecated since Version 4.
+    AttributeMapProto attributes = 10;  // New in Version 4.
   }
 
   repeated Device devices = 6;  // == ifrt::Client::devices()

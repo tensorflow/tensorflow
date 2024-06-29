@@ -21,13 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 
 namespace xla::ifrt {
 
@@ -35,7 +36,8 @@ char PjRtTopology::ID = 0;
 
 PjRtTopology::PjRtTopology(
     std::shared_ptr<const xla::PjRtTopologyDescription> description)
-    : description_(std::move(description)) {}
+    : description_(std::move(description)),
+      attributes_(FromPjRtDeviceAttributeMap(description_->Attributes())) {}
 
 absl::string_view PjRtTopology::platform_name() const {
   return description_->platform_name();
@@ -63,9 +65,6 @@ absl::StatusOr<std::string> PjRtTopology::Serialize() const {
   return description_->Serialize();
 }
 
-const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-PjRtTopology::Attributes() const {
-  return description_->Attributes();
-}
+const AttributeMap& PjRtTopology::Attributes() const { return attributes_; }
 
 }  // namespace xla::ifrt

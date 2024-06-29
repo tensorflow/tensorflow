@@ -322,11 +322,11 @@ PyType_Slot PyDevice::slots_[] = {
         try {
           auto device = nb::cast<PyDevice*>(nb::handle(self));
           auto name = nb::cast<std::string_view>(nb::handle(key));
-          const auto& attrs = device->device_->Attributes();
+          const auto& attrs = device->device_->Attributes().map();
           auto it = attrs.find(name);
           if (it != attrs.end()) {
-            auto result =
-                std::visit([](auto&& v) { return nb::cast(v); }, it->second);
+            auto result = std::visit([](auto&& v) { return nb::cast(v.value); },
+                                     it->second);
             return result.release().ptr();
           }
           PyErr_SetNone(PyExc_AttributeError);

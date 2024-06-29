@@ -24,14 +24,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "tsl/lib/gtl/int_type.h"
 
@@ -64,8 +63,7 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
   // Returns vendor specific attributes about the device. For example the model
   // number of a GPU, or the mesh coordinates of a TPU device. The returned
   // reference will remain valid for the lifetime of the Device.
-  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-  Attributes() const = 0;
+  virtual const AttributeMap& Attributes() const = 0;
 
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are

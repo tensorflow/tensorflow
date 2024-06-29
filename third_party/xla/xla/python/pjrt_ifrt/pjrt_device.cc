@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 
@@ -43,14 +45,16 @@ PjRtDevice::PjRtDevice(
     xla::PjRtDevice* pjrt_device)
     : client_(client),
       id_(id),
+      attributes_(FromPjRtDeviceAttributeMap(std::move(attributes))),
       kind_(std::move(kind)),
       to_string_(std::move(to_string)),
       debug_string_(std::move(debug_string)),
       process_index_(process_index),
-      attributes_(std::move(attributes)),
       pjrt_device_(pjrt_device) {}
 
 DeviceId PjRtDevice::Id() const { return id_; }
+
+const AttributeMap& PjRtDevice::Attributes() const { return attributes_; }
 
 absl::string_view PjRtDevice::Kind() const { return kind_; }
 
@@ -67,11 +71,6 @@ bool PjRtDevice::IsAddressable() const { return pjrt_device_ != nullptr; }
 absl::Span<Memory* const> PjRtDevice::Memories() const { return memories_; }
 
 int PjRtDevice::ProcessIndex() const { return process_index_; }
-
-const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-PjRtDevice::Attributes() const {
-  return attributes_;
-}
 
 }  // namespace ifrt
 }  // namespace xla

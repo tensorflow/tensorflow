@@ -33,6 +33,7 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -101,11 +102,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return platform_version_;
   }
   PlatformId platform_id() const override { return platform_id_; }
-  absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const override {
-    // TODO(b/309059940): Forward the backend attributes to the client.
-    return {};
-  }
+  const AttributeMap& Attributes() const override { return attributes_; }
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override {
     return addressable_devices().size();
@@ -163,6 +160,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   const uint64_t platform_id_;
   const uint64_t process_index_;
   const std::string runtime_type_;
+
+  const AttributeMap attributes_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Device>> devices_;
   const std::vector<xla::ifrt::Device*> device_ptrs_;

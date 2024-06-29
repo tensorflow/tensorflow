@@ -41,10 +41,9 @@
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/host_callback.h"
-#include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -397,12 +396,13 @@ TEST_P(IfrtBackendHandlerTest, Init) {
     device_memories.push_back({&mock_memories[i]});
   }
 
-  using AttributeMap =
-      absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>;
-  std::vector<AttributeMap> device_attributes(mock_devices_.size());
+  std::vector<AttributeMap> device_attributes;
+  device_attributes.reserve(mock_devices_.size());
 
   for (int i = 0; i < mock_devices_.size(); ++i) {
-    device_attributes[i].insert({"name", absl::StrCat("device", i)});
+    AttributeMap::Map map;
+    map.insert({"name", AttributeMap::StringValue(absl::StrCat("device", i))});
+    device_attributes.push_back(AttributeMap(std::move(map)));
 
     MockDevice& mock_device = *mock_devices_[i];
     // TODO(b/314368788): Clean up PJRT device ID APIs.
@@ -418,48 +418,97 @@ TEST_P(IfrtBackendHandlerTest, Init) {
   auto request = NewIfrtRequest(NewOpId());
   request->mutable_init_request();
 
-  EXPECT_THAT(CallBackend(std::move(request)),
-              IsOkAndHolds(Pointee(
-                  Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
-                    init_response {
-                      session_id: 12345
-                      platform_name: "ifrt_backend"
-                      platform_version: "n/a"
-                      platform_id: 42
-                      process_index: 1
-                      runtime_type: "ifrt-service"
-                      devices {
-                        id: 0
-                        device_kind: "mock"
-                        default_memory_id: 0
-                        memory_ids: [ 0 ]
-                        attributes {
-                          key: "name"
-                          value { string_value: "device0" }
+  if (Version().protocol_version() <= 3) {
+    EXPECT_THAT(CallBackend(std::move(request)),
+                IsOkAndHolds(Pointee(
+                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                      init_response {
+                        session_id: 12345
+                        platform_name: "ifrt_backend"
+                        platform_version: "n/a"
+                        platform_id: 42
+                        process_index: 1
+                        runtime_type: "ifrt-service"
+                        devices {
+                          id: 0
+                          device_kind: "mock"
+                          default_memory_id: 0
+                          memory_ids: [ 0 ]
+                          deprecated_attributes {
+                            key: "name"
+                            value { string_value: "device0" }
+                          }
+                        }
+                        devices {
+                          id: 1
+                          device_kind: "mock"
+                          default_memory_id: 1
+                          memory_ids: [ 1 ]
+                          deprecated_attributes {
+                            key: "name"
+                            value { string_value: "device1" }
+                          }
+                        }
+                        memories {
+                          id: 0
+                          memory_space_kind: "mock"
+                          device_ids: [ 0 ]
+                        }
+                        memories {
+                          id: 1
+                          memory_space_kind: "mock"
+                          device_ids: [ 1 ]
                         }
                       }
-                      devices {
-                        id: 1
-                        device_kind: "mock"
-                        default_memory_id: 1
-                        memory_ids: [ 1 ]
-                        attributes {
-                          key: "name"
-                          value { string_value: "device1" }
+                    )pb"))))));
+  } else {
+    EXPECT_THAT(CallBackend(std::move(request)),
+                IsOkAndHolds(Pointee(
+                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                      init_response {
+                        session_id: 12345
+                        platform_name: "ifrt_backend"
+                        platform_version: "n/a"
+                        platform_id: 42
+                        process_index: 1
+                        runtime_type: "ifrt-service"
+                        devices {
+                          id: 0
+                          device_kind: "mock"
+                          default_memory_id: 0
+                          memory_ids: [ 0 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device0" }
+                            }
+                          }
+                        }
+                        devices {
+                          id: 1
+                          device_kind: "mock"
+                          default_memory_id: 1
+                          memory_ids: [ 1 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device1" }
+                            }
+                          }
+                        }
+                        memories {
+                          id: 0
+                          memory_space_kind: "mock"
+                          device_ids: [ 0 ]
+                        }
+                        memories {
+                          id: 1
+                          memory_space_kind: "mock"
+                          device_ids: [ 1 ]
                         }
                       }
-                      memories {
-                        id: 0
-                        memory_space_kind: "mock"
-                        device_ids: [ 0 ]
-                      }
-                      memories {
-                        id: 1
-                        memory_space_kind: "mock"
-                        device_ids: [ 1 ]
-                      }
-                    }
-                  )pb"))))));
+                    )pb"))))));
+  }
 }
 #endif
 

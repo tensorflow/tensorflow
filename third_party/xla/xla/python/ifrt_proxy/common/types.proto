@@ -18,6 +18,9 @@ package xla.ifrt.proto;
 
 // Mirrors `xla::PjRtValueType`, which is used in IFRT to model
 // polymorphic-typed values, e.g., `xla::ifrt::Executable::CostAnalysisValue`.
+//
+// Deprecated since Version 4. Use `xla::ifrt::AttributeMapProto::Value`
+// instead.
 message Variant {
   message Int64List {
     repeated sfixed64 values = 1;

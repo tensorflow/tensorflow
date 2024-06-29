@@ -82,6 +82,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":array_spec_proto_cc",
+        ":attribute_map",
         ":device_proto_cc",
         ":dtype_proto_cc",
         ":remap_plan_proto_cc",
@@ -368,10 +369,10 @@ cc_library(
     srcs = ["mock.cc"],
     hdrs = ["mock.h"],
     deps = [
+        ":attribute_map",
         ":ifrt",
         "//xla:test",
         "//xla/hlo/ir:hlo",
-        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",

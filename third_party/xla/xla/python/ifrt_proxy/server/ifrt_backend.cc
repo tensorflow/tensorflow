@@ -22,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -274,9 +275,16 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    for (const auto& [name, attr] : device->Attributes()) {
-      TF_ASSIGN_OR_RETURN((*d->mutable_attributes())[name],
-                          ToVariantProto(attr));
+    if (version_.protocol_version() <= 3) {
+      for (const auto& [name, attr] : device->Attributes().map()) {
+        TF_ASSIGN_OR_RETURN(
+            (*d->mutable_deprecated_attributes())[name],
+            std::visit(
+                [&](const auto& attr) { return ToVariantProto(attr.value); },
+                attr));
+      }
+    } else {
+      *d->mutable_attributes() = device->Attributes().ToProto();
     }
   }
   for (auto* addressable_device : client_->addressable_devices()) {

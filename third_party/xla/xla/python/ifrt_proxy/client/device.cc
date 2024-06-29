@@ -14,15 +14,27 @@
 
 #include "xla/python/ifrt_proxy/client/device.h"
 
+#include <utility>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+Device::Device(DeviceDescription description, int local_device_id,
+               int local_hardware_id, bool is_addressable)
+    : description_(std::move(description)),
+      attributes_(FromPjRtDeviceAttributeMap(description_.Attributes())),
+      local_device_id_(local_device_id),
+      local_hardware_id_(local_hardware_id),
+      is_addressable_(is_addressable) {}
 
 ifrt::Client* Device::client() const { return client_; }
 
@@ -48,10 +60,7 @@ absl::StatusOr<ifrt::Memory*> Device::DefaultMemory() const {
 
 int Device::ProcessIndex() const { return description_.process_index(); }
 
-const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-Device::Attributes() const {
-  return description_.Attributes();
-}
+const AttributeMap& Device::Attributes() const { return attributes_; }
 
 char Device::ID = 0;  // NOLINT
 

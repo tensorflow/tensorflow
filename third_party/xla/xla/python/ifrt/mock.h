@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -137,8 +137,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
-  MOCK_METHOD((absl::flat_hash_map<std::string, Client::ClientAttribute>),
-              attributes, (), (const, final));
+  MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
   MOCK_METHOD(int, device_count, (), (const, final));
   MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
@@ -206,9 +205,7 @@ class MockDevice : public Device {
   MOCK_METHOD(absl::string_view, Kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
-  MOCK_METHOD(
-      (const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>&),
-      Attributes, (), (const, final));
+  MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<Memory*>, DefaultMemory, (), (const, final));
   MOCK_METHOD(absl::Span<Memory* const>, Memories, (), (const, final));
   // LINT.ThenChange(mock.cc:MockDeviceDelegation)
