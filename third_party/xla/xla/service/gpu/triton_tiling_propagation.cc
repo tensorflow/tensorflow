@@ -901,7 +901,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
           // with any operand not divisible by kMinConcatFragmentSize will not
           // be fused; tiling configurations with tile size for this dimension
           // larger than kMinConcatFragmentSize will not be emitted.
-          constexpr int kMinConcatFragmentSize = 128;
+          constexpr int kMinConcatFragmentSize = 64;
           return operand->shape().dimensions(hlo.concatenate_dimension()) %
                      kMinConcatFragmentSize !=
                  0;
