@@ -65,11 +65,11 @@ limitations under the License.
 #endif
 
 #if __has_attribute(always_inline)
-#define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
+#define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE __attribute__((always_inline))
 #elif defined(_MSC_VER)
 #define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE __forceinline
 #else
-#define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE inline
+#define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
 #endif
 
 #if __has_attribute(noinline)

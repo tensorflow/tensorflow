@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -409,7 +410,11 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
-  return new XLA_FFI_Error{std::move(*reinterpret_cast<absl::Status*>(status))};
+  auto* absl_status = reinterpret_cast<absl::Status*>(status);
+  if (ABSL_PREDICT_TRUE(absl_status->ok())) {
+    return nullptr;
+  }
+  return new XLA_FFI_Error{std::move(*absl_status)};
 }
 
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {

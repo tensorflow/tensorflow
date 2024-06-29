@@ -602,6 +602,7 @@ void BM_AnyBufferArgX1(benchmark::State& state) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
   });
+
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));
   }
@@ -647,6 +648,7 @@ void BM_BufferArgX1(benchmark::State& state) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
   });
+
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));
   }
@@ -680,6 +682,42 @@ void BM_BufferArgX4(benchmark::State& state) {
 }
 
 BENCHMARK(BM_BufferArgX4);
+
+//===----------------------------------------------------------------------===//
+// BM_BufferArgX8
+//===----------------------------------------------------------------------===//
+
+void BM_BufferArgX8(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(8).Build();
+
+  auto handler = Ffi::Bind()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .To([](auto b0, auto b1, auto b2, auto b3, auto b4,
+                            auto b5, auto b6, auto b7) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       benchmark::DoNotOptimize(b4);
+                       benchmark::DoNotOptimize(b5);
+                       benchmark::DoNotOptimize(b6);
+                       benchmark::DoNotOptimize(b7);
+                       return Error::Success();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferArgX8);
 
 //===----------------------------------------------------------------------===//
 // BM_TupleOfI32Attrs

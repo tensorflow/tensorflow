@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
 
@@ -736,5 +739,188 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
     TF_ASSERT_OK(status);
   }
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks are below.
+//===----------------------------------------------------------------------===//
+
+static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
+  se::DeviceMemoryBase memory;
+  std::vector<int64_t> dims(4, 1);
+
+  CallFrameBuilder builder(/*num_args=*/num_args, /*num_rets=*/0);
+  for (size_t i = 0; i < num_args; ++i) {
+    builder.AddBufferArg(memory, PrimitiveType::F32, dims);
+  }
+  return builder;
+}
+
+//===----------------------------------------------------------------------===//
+// BM_AnyBufferArgX1
+//===----------------------------------------------------------------------===//
+
+void BM_AnyBufferArgX1(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(1).Build();
+
+  auto handler = Ffi::Bind().Arg<AnyBuffer>().To([](auto buffer) {
+    benchmark::DoNotOptimize(buffer);
+    return absl::OkStatus();
+  });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_AnyBufferArgX1);
+
+//===----------------------------------------------------------------------===//
+// BM_AnyBufferArgX4
+//===----------------------------------------------------------------------===//
+
+void BM_AnyBufferArgX4(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(4).Build();
+
+  auto handler = Ffi::Bind()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
+                     .Arg<AnyBuffer>()
+                     .To([](auto b0, auto b1, auto b2, auto b3) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       return absl::OkStatus();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_AnyBufferArgX4);
+
+//===----------------------------------------------------------------------===//
+// BM_BufferArgX1
+//===----------------------------------------------------------------------===//
+
+void BM_BufferArgX1(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(1).Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR4<F32>>().To([](auto buffer) {
+    benchmark::DoNotOptimize(buffer);
+    return absl::OkStatus();
+  });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferArgX1);
+
+//===----------------------------------------------------------------------===//
+// BM_BufferArgX4
+//===----------------------------------------------------------------------===//
+
+void BM_BufferArgX4(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(4).Build();
+
+  auto handler = Ffi::Bind()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .To([](auto b0, auto b1, auto b2, auto b3) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       return absl::OkStatus();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferArgX4);
+
+//===----------------------------------------------------------------------===//
+// BM_BufferArgX8
+//===----------------------------------------------------------------------===//
+
+void BM_BufferArgX8(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(8).Build();
+
+  auto handler = Ffi::Bind()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .Arg<BufferR4<F32>>()
+                     .To([](auto b0, auto b1, auto b2, auto b3, auto b4,
+                            auto b5, auto b6, auto b7) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       benchmark::DoNotOptimize(b4);
+                       benchmark::DoNotOptimize(b5);
+                       benchmark::DoNotOptimize(b6);
+                       benchmark::DoNotOptimize(b7);
+                       return absl::OkStatus();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferArgX8);
+
+//===----------------------------------------------------------------------===//
+// BM_TupleOfI32Attrs
+//===----------------------------------------------------------------------===//
+
+struct TupleOfI32 {
+  int64_t i32_0;
+  int64_t i32_1;
+  int64_t i32_2;
+  int64_t i32_3;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(TupleOfI32,
+                                      StructMember<int32_t>("i32_0"),
+                                      StructMember<int32_t>("i32_1"),
+                                      StructMember<int32_t>("i32_2"),
+                                      StructMember<int32_t>("i32_3"));
+
+void BM_TupleOfI32Attrs(benchmark::State& state) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32_0", 1);
+  attrs.Insert("i32_1", 2);
+  attrs.Insert("i32_2", 3);
+  attrs.Insert("i32_3", 4);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Attrs<TupleOfI32>().To([](auto tuple) {
+    benchmark::DoNotOptimize(tuple);
+    return absl::OkStatus();
+  });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_TupleOfI32Attrs);
 
 }  // namespace xla::ffi

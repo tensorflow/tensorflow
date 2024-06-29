@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/ffi/api/api.h"
 // IWYU pragma: end_exports
 
+#include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
@@ -105,7 +107,8 @@ using Token = BufferR0<PrimitiveType::TOKEN>;
 
 namespace internal {
 
-inline AnyBuffer DecodeBuffer(XLA_FFI_Buffer* buf) {
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE AnyBuffer
+DecodeBuffer(XLA_FFI_Buffer* buf) {
   size_t size_bytes = 0;
   if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
     size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
@@ -120,25 +123,25 @@ inline AnyBuffer DecodeBuffer(XLA_FFI_Buffer* buf) {
 }
 
 template <PrimitiveType dtype, size_t rank>
-std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
-                                                DiagnosticEngine& diagnostic) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
+    XLA_FFI_Buffer* buf, DiagnosticEngine& diagnostic) {
   if (auto buf_dtype = PrimitiveType(buf->dtype);
-      XLA_FFI_PREDICT_FALSE(buf_dtype != dtype)) {
+      ABSL_PREDICT_FALSE(buf_dtype != dtype)) {
     return diagnostic.Emit("Wrong buffer dtype: expected ")
            << primitive_util::LowercasePrimitiveTypeName(dtype) << " but got "
            << primitive_util::LowercasePrimitiveTypeName(buf_dtype);
   }
 
   if constexpr (rank != internal::kDynamicRank) {
-    if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
+    if (ABSL_PREDICT_FALSE(buf->rank != rank)) {
       return diagnostic.Emit("Wrong buffer rank: expected ")
              << rank << " but got " << buf->rank;
     }
   }
 
   size_t size_bytes = 0;
-  if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
-    size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+  if constexpr (primitive_util::IsArrayType(dtype)) {
+    size_bytes = primitive_util::ByteWidth(dtype);
     for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
   }
 
@@ -171,10 +174,10 @@ struct ArgBinding<Buffer<dtype, rank>> {
 
 template <>
 struct ArgDecoding<AnyBuffer> {
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  ABSL_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<AnyBuffer> Decode(XLA_FFI_ArgType type, void* arg,
                                          DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
@@ -185,10 +188,10 @@ struct ArgDecoding<AnyBuffer> {
 
 template <PrimitiveType dtype, size_t rank>
 struct ArgDecoding<Buffer<dtype, rank>> {
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  ABSL_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Buffer<dtype, rank>> Decode(
       XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
@@ -204,11 +207,11 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 
 template <>
 struct RetDecoding<AnyBuffer> {
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  ABSL_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<AnyBuffer>> Decode(XLA_FFI_RetType type,
                                                  void* arg,
                                                  DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
       return diagnostic.Emit("Wrong result type: expected ")
              << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
@@ -218,10 +221,10 @@ struct RetDecoding<AnyBuffer> {
 
 template <PrimitiveType dtype, size_t rank>
 struct RetDecoding<Buffer<dtype, rank>> {
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  ABSL_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<Buffer<dtype, rank>>> Decode(
       XLA_FFI_RetType type, void* arg, DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
       return diagnostic.Emit("Wrong result type: expected ")
              << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
@@ -241,13 +244,13 @@ struct RetDecoding<Buffer<dtype, rank>> {
     using Type = absl::Span<const T>;                                    \
     static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr, \
                                       DiagnosticEngine& diagnostic) {    \
-      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {       \
+      if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {          \
         return diagnostic.Emit("Wrong attribute type: expected ")        \
                << XLA_FFI_AttrType_ARRAY << " but got " << type;         \
       }                                                                  \
                                                                          \
       auto* array = reinterpret_cast<XLA_FFI_Array*>(attr);              \
-      if (XLA_FFI_PREDICT_FALSE(array->dtype != TYPE)) {                 \
+      if (ABSL_PREDICT_FALSE(array->dtype != TYPE)) {                    \
         return diagnostic.Emit("Wrong array data type: expected ")       \
                << TYPE << " but got " << array->dtype;                   \
       }                                                                  \
@@ -277,8 +280,8 @@ struct AttrDecoding<Pointer<T>> {
   static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
                                     DiagnosticEngine& diagnostic) {
     auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
-                              scalar->dtype != XLA_FFI_DataType_S64)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
+                           scalar->dtype != XLA_FFI_DataType_S64)) {
       return diagnostic.Emit("Wrong attribute type: ")
              << "expected i64 scalar for passing pointer but got " << type;
     }
