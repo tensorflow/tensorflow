@@ -24,6 +24,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -916,10 +917,7 @@ void ConstraintExpression::Print(std::ostream& out,
                                  const AffineMapPrinter& printer) const {
   if (IsAlwaysSatisfied()) {
     out << "always satisfied";
-    return;
-  }
-
-  if (is_satisfiable()) {
+  } else if (is_satisfiable()) {
     // Accumulate constraints in a vector in order to put them in lexicographic
     // order and to get deterministic output.
     std::vector<std::string> conjunction_strings;
@@ -939,10 +937,77 @@ void ConstraintExpression::Print(std::ostream& out,
     }
     std::sort(conjunction_strings.begin(), conjunction_strings.end());
     out << absl::StrJoin(conjunction_strings, " || ");
-  } else if (!is_satisfiable()) {
+  } else {
     out << "unsatisfiable";
   }
   out << "\n";
+}
+
+namespace {
+
+bool IsConstraintAlwaysSatisfied(mlir::AffineExpr expr, Interval interval) {
+  if (AffineConstantExpr constant = mlir::dyn_cast<AffineConstantExpr>(expr)) {
+    return interval.Contains(constant.getValue());
+  }
+  return false;
+}
+
+bool IsConstraintUnsatisfiable(mlir::AffineExpr expr, Interval interval) {
+  if (!interval.IsFeasible()) {
+    return true;
+  }
+  if (AffineConstantExpr constant = mlir::dyn_cast<AffineConstantExpr>(expr)) {
+    return !interval.Contains(constant.getValue());
+  }
+  return false;
+}
+
+struct Unsatisfiable {};
+struct AlwaysSatisfied {};
+
+std::variant<Unsatisfiable, AlwaysSatisfied, ConjointConstraints>
+SimplifyConjointConstraints(const ConjointConstraints& conjunction) {
+  ConjointConstraints result;
+  for (const auto& [expr, interval] : conjunction) {
+    if (IsConstraintAlwaysSatisfied(expr, interval)) {
+      continue;
+    }
+    if (IsConstraintUnsatisfiable(expr, interval)) {
+      return Unsatisfiable{};
+    }
+    result.insert({expr, interval});
+  }
+  if (result.empty()) {
+    return AlwaysSatisfied{};
+  }
+  return result;
+}
+
+ConstraintExpression SimplifyConstraintExpression(
+    const ConstraintExpression constraint_expression) {
+  if (!constraint_expression.is_satisfiable() ||
+      constraint_expression.IsAlwaysSatisfied()) {
+    return constraint_expression;
+  }
+  auto result = ConstraintExpression::GetUnsatisfiableConstraintExpression();
+  for (const auto& conjunction :
+       constraint_expression.DisjointConjointConstraints()) {
+    auto simplified_conjunction = SimplifyConjointConstraints(conjunction);
+    if (std::holds_alternative<Unsatisfiable>(simplified_conjunction)) {
+      continue;
+    }
+    if (std::holds_alternative<AlwaysSatisfied>(simplified_conjunction)) {
+      return ConstraintExpression();
+    }
+    result.Or(std::get<ConjointConstraints>(simplified_conjunction));
+  }
+  return result;
+}
+
+}  // namespace
+
+void ConstraintExpression::Simplify() {
+  *this = SimplifyConstraintExpression(std::move(*this));
 }
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
@@ -1068,8 +1133,9 @@ void ConstraintExpression::Print(std::ostream& out,
       /*rt_vars=*/indexing_map.GetRTVars());
   tile_map.RemoveUnusedSymbols();
   CHECK_EQ(tile_map.GetRangeVarsCount(), 0);
-
   VLOG(1) << "tile_map: " << tile_map.ToString();
+
+  constraints.Simplify();
   return SymbolicTile(std::move(tile_map), std::move(constraints));
 }
 

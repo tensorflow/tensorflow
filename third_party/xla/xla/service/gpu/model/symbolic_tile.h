@@ -95,6 +95,18 @@ class ConstraintExpression {
 
   void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
+  // Simplifies the constraint expression.
+  //
+  // We remove conjunctions that are always satisfied, and we remove
+  // disjunctions that are unsatisfiable. If we can deduce that the whole
+  // expression is unsatisfiable or always satisfied, than we change the whole
+  // expression to the canonical form.
+  //
+  // E.g., if we find that one of the conjunctions is always satisfied, we don't
+  // just throw away that part---we throw away everything and make the
+  // ConstraintExpression canonically always satisfied.
+  void Simplify();
+
   // TODO(bchetioui): add a util to verify constraints here later.
   // TODO(bchetioui): is canonicalization of disjunctions necessary?
  private:

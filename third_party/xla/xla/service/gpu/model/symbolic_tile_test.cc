@@ -760,14 +760,29 @@ TEST_F(SymbolicTileTest, CanDeriveTileWhenTheIndexingMapHasSymbolsInASum) {
                      &mlir_context_),
       {4, 2048, 393}, {128});
 
-  // TODO(b/349377672): the constraints here can be simplified away.
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: ()[s0, s1, s2] -> (0, 0, 0)
         size_map: ()[s0, s1, s2] -> (s0, s1, s2 * 128)
         stride_map: ()[s0, s1, s2] -> (1, 1, 1)
-        constraints: 128 in [1, 2) || 128 in [128, 129) || s2 in [1, 2)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, ResultingConstraintsAreSimplifiedAway) {
+  // The example is from
+  // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
+                     &mlir_context_),
+      {4, 2048, 393}, {128});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: ()[s0, s1, s2] -> (0, 0, 0)
+        size_map: ()[s0, s1, s2] -> (s0, s1, s2 * 128)
+        stride_map: ()[s0, s1, s2] -> (1, 1, 1)
       )")));
 }
 
@@ -1061,6 +1076,89 @@ TEST_F(
 
   EXPECT_FALSE(
       ConstraintExpression::And(constraints_1, constraints_2).is_satisfiable());
+}
+
+TEST_F(ConstraintExpressionTest,
+       CanSimplifyAlwaysSatisfiedContraintExpression) {
+  ConstraintExpression constraints;
+  constraints.Or(GetConjointConstraints({
+      {"d0", Interval{0, 1}},
+  }));
+  constraints.Or(GetConjointConstraints({
+      {"25", Interval{0, 100}},
+      {"1", Interval{1, 1}},
+  }));
+  constraints.Or(GetConjointConstraints({
+      {"d0", Interval{0, -1}},
+  }));
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("always satisfied"));
+}
+
+TEST_F(ConstraintExpressionTest, CanSimplifyUnsatisfiableContraintExpression) {
+  ConstraintExpression constraints;
+  constraints.Or(GetConjointConstraints({
+      {"d0", Interval{0, -1}},
+  }));
+  constraints.Or(GetConjointConstraints({
+      {"1", Interval{2, 3}},
+  }));
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
+}
+
+TEST_F(ConstraintExpressionTest,
+       CanSimplifyAwayAlwaysSatisfiedPartOfConjunction) {
+  ConstraintExpression constraints;
+  constraints.Or(GetConjointConstraints({
+      {"d0", Interval{0, 1}},
+      {"1", Interval{1, 1}},
+      {"d1", Interval{0, 1}},
+      {"2", Interval{2, 3}},
+  }));
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints,
+              MatchConstraintExpressionString("d0 in [0, 2) && d1 in [0, 2)"));
+}
+
+TEST_F(ConstraintExpressionTest,
+       CanSimplifyAwayUnsatisfiablePartOfDisjunction) {
+  ConstraintExpression constraints;
+  constraints.Or(GetConjointConstraints({
+      {"d0", Interval{0, 1}},
+  }));
+  constraints.Or(GetConjointConstraints({
+      {"d1", Interval{0, 1}},
+      {"1", Interval{0, 0}},
+      {"d2", Interval{0, 1}},
+  }));
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 2)"));
+}
+
+TEST_F(ConstraintExpressionTest, SimplifyKeepsAlwaysSatisfiedUnchanged) {
+  ConstraintExpression constraints;
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("always satisfied"));
+}
+
+TEST_F(ConstraintExpressionTest, SimplifyKeepsUnsatisfiableUnchanged) {
+  auto constraints =
+      ConstraintExpression::GetUnsatisfiableConstraintExpression();
+
+  constraints.Simplify();
+
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 }  // namespace
