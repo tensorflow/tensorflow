@@ -180,7 +180,7 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
          const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
              preserved_shardings = {}) -> absl::StatusOr<int64_t> {
     auto size_fn = [](const BufferValue& buffer) {
-      return spmd::GetBytes(buffer.shape());
+      return spmd::ByteSizeOfShape(buffer.shape());
     };
     TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                         ScheduleModule(&module, size_fn,

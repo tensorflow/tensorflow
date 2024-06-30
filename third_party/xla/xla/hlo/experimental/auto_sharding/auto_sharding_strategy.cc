@@ -111,7 +111,7 @@ ComputeSliceShardingAndCommunicationCostFromOperand(
   // dimensions that shard sliced tensor dimensions.
   const HloSharding& result =
       Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
-  double num_bytes_to_transfer = GetBytes(new_shape);
+  double num_bytes_to_transfer = ByteSizeOfShape(new_shape);
   double communication_cost = 0;
   for (size_t i = 0; i < mesh_dims_for_communication.size(); ++i) {
     int64_t mesh_dim = mesh_dims_for_communication[i];
@@ -264,7 +264,8 @@ BuildStrategyAndCost(
               src_strategy_group->strategies[sid].output_sharding;
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
-          double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
+          double memory_cost =
+              ByteSizeOfShapeWithSharding(ins->shape(), output_spec);
 
           std::vector<std::optional<HloSharding>> input_shardings_optional(
               {output_spec, std::nullopt, std::nullopt});
@@ -379,7 +380,7 @@ BuildStrategyAndCost(
 
             double compute_cost = 0, communication_cost = 0;
             double memory_cost =
-                GetBytes(gather_shape) / output_spec.NumTiles();
+                ByteSizeOfShapeWithSharding(gather_shape, output_spec);
             std::vector<std::optional<HloSharding>> input_shardings_optional(
                 {data_spec, indices_spec});
             std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
@@ -445,7 +446,8 @@ BuildStrategyAndCost(
 
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
-          double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
+          double memory_cost =
+              ByteSizeOfShapeWithSharding(ins->shape(), output_spec);
           std::vector<double> communication_resharding_costs =
               CommunicationReshardingCostVector(src_strategy_group,
                                                 operand->shape(), input_spec,
@@ -586,7 +588,8 @@ BuildStrategyAndCost(
           }
 
           std::string name = ToStringSimple(*output_spec);
-          double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
+          double memory_cost =
+              ByteSizeOfShapeWithSharding(ins->shape(), output_spec);
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, *output_spec, strategy_map, cluster_env, call_graph,

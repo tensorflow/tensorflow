@@ -319,7 +319,8 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
       output_spec,
       compute_cost,
       communication_cost,
-      GetBytes(ins_->shape()) / output_spec.NumTiles(),
+      static_cast<double>(
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec)),
       communication_resharding_costs,
       memory_resharding_costs,
       {input_specs.begin(), input_specs.end()},
@@ -570,7 +571,8 @@ void DotHandler::SplitLhsSpaceBothContract() {
     }
 
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
@@ -595,7 +597,8 @@ void DotHandler::SplitRhsSpaceBothContract() {
            e.mesh_dims[1]}};
     }
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
@@ -705,7 +708,8 @@ void DotHandler::SplitBatchDimBothContract() {
       out_dim_map = DimMap{{e.j, e.mesh_dims[0]}};
     }
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
@@ -733,7 +737,8 @@ void DotHandler::SplitBothContractTwoDims() {
       out_dim_map = DimMap{};
     }
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0],
                                         e.mesh_dims[1]);
     };
@@ -764,7 +769,8 @@ void DotHandler::RecomputeSplitBothContract() {
                               instruction_sequence_, hlo_cost_analysis_) /
                           device_mesh_.dim(e.mesh_dims[0]);
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_,
@@ -819,7 +825,8 @@ void DotHandler::Add1DDataParallel() {
       }
       auto communication_cost_fn = [this,
                                     mesh_dim](const HloSharding& output_spec) {
-        double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+        double memory_cost =
+            ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
         return cluster_env_.AllReduceCost(memory_cost, mesh_dim);
       };
       MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_1d_,
@@ -1135,7 +1142,8 @@ void ConvHandler::SplitLhsBatchBothInchannel() {
                         absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
     const DimMap out_dim_map = {{out_batch_dim_, e.mesh_dims[0]}};
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
@@ -1155,7 +1163,8 @@ void ConvHandler::SplitRhsOutchannelBothInchannel() {
                         absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[0]);
     const DimMap out_dim_map = {{out_out_channel_dim_, e.mesh_dims[1]}};
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
-      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double memory_cost =
+          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
     };
     MaybeAppend(name, lhs_dim_map, rhs_dim_map, out_dim_map, device_mesh_, 0,
@@ -1188,7 +1197,8 @@ void ConvHandler::Add1DDataParallel() {
                                          mesh_dim, mesh_dim);
       const DimMap out_dim_map = {};
       auto communication_cost_fn = [this](const HloSharding& output_spec) {
-        double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+        double memory_cost =
+            ByteSizeOfShapeWithSharding(ins_->shape(), output_spec);
         return cluster_env_.AllReduceCost(memory_cost, 0) +
                cluster_env_.AllReduceCost(memory_cost, 1);
       };

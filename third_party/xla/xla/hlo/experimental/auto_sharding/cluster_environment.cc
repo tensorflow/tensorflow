@@ -153,7 +153,7 @@ double ClusterEnvironment::ReshardingCostMixedMeshShape(
       } else {
         communication_dim = src_tensor_dim_to_mesh_dim[i];
       }
-      int64_t communication_bytes = GetBytes(shape);
+      int64_t communication_bytes = ByteSizeOfShape(shape);
       resharding_costs +=
           AllToAllCostUtil(communication_bytes, communication_dim, num_devices);
     } else {
@@ -200,7 +200,7 @@ double ClusterEnvironment::OverestimateReplicationCost(
     // TODO(b/238210866) Do not use kInfinityCost.
     return kInfinityCost;
   }
-  int64_t bytes_moved = GetBytes(shape) / src_spec.NumTiles();
+  int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_spec);
   double cost = 0.0;
   for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
     auto this_cost = this->AllGatherCost(bytes_moved, i);
@@ -220,8 +220,8 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
           int64_t dst_device = dst_spec.tile_assignment()(indices);
           src_dst_pairs.emplace_back(src_device, dst_device);
         });
-    return this->CollectivePermuteCost(GetBytes(shape) / src_spec.NumTiles(),
-                                       src_dst_pairs);
+    return this->CollectivePermuteCost(
+        ByteSizeOfShapeWithSharding(shape, src_spec), src_dst_pairs);
   };
 
   if (CanReshardWithCollectivePermute(src_spec, dst_spec)) {
@@ -368,13 +368,12 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
     if (device_mesh_.dim(0) > 1 && device_mesh_.dim(1) > 1) {
       return TryCollectivePermuteForResharding(shape, src_spec, dst_spec);
     }
-
-    double bytes = GetBytes(shape);
+    double bytes = ByteSizeOfShape(shape);
     return AllToAllCost(bytes, all_gather_dims.front());
   }
 
   // Case 3: all-gather
-  double bytes = GetBytes(shape) / src_spec.NumTiles();
+  double bytes = ByteSizeOfShapeWithSharding(shape, src_spec);
   double cost = 0.0;
   for (int dim : all_gather_dims) {
     if (dim >= device_mesh_.num_dimensions()) {

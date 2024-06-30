@@ -157,13 +157,6 @@ std::string ToString(absl::Span<T> span) {
   return absl::StrCat("[", absl::StrJoin(span, ", "), "]");
 }
 
-// Get the number of bytes of a shape.
-inline double GetBytes(const Shape& shape) {
-  return static_cast<double>(
-      ShapeUtil::ByteSizeOf(shape,
-                            /*pointer_size=*/kAutoShardingPointerSize));
-}
-
 // Return whether two shapes are equal in dimension.
 // The element type and layout are ignored.
 inline bool DimensionsEqual(const Shape& a, const Shape& b) {
