@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_
-#define XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_
+#ifndef XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_
+#define XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_
 
 #include <memory>
 #include <utility>
@@ -26,19 +26,19 @@ limitations under the License.
 
 namespace xla {
 
-mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
-                                                  llvm::raw_ostream& output,
-                                                  bool emit_return_tuple,
-                                                  bool emit_use_tuple_arg);
+mlir::LogicalResult StablehloToHloTranslateFunction(mlir::ModuleOp module,
+                                                    llvm::raw_ostream& output,
+                                                    bool emit_return_tuple,
+                                                    bool emit_use_tuple_arg);
 
-mlir::LogicalResult MlirHloToHloTextTranslateFunction(
+mlir::LogicalResult StablehloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
     bool print_sugar, bool via_builder, bool with_layouts);
 
-// Translate the MHLO program in in-memory file 'buffer' to a HLO program
+// Translate the StableHLO program in in-memory file 'buffer' to a HLO program
 // written in a file represented with handle 'output_stream';
-mlir::LogicalResult MlirHloToHloTextMain(
+mlir::LogicalResult StablehloToHloTextMain(
     std::unique_ptr<llvm::MemoryBuffer> buffer,
     llvm::raw_ostream& output_stream, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
@@ -46,4 +46,4 @@ mlir::LogicalResult MlirHloToHloTextMain(
 
 }  // namespace xla
 
-#endif  // XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_
+#endif  // XLA_TRANSLATE_STABLEHLO_TO_HLO_TRANSLATE_H_

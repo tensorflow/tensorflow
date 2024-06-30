@@ -13,57 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/translate/mhlo_to_hlo/translate_registration.h"
+
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/translate/mhlo_to_hlo/translate.h"
-
-namespace {
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
-    llvm::cl::desc(
-        "Emit HLO modules using tuples as args for the entry computation"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> emit_return_tuple(
-    "emit-return-tuple",
-    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> with_layouts(
-    "with-layouts",
-    llvm::cl::desc("Propagate layouts when translating MHLO->XLA HLO"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> print_layouts(
-    "print-layouts", llvm::cl::desc("Print layouts in the generated HLO text"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> print_large_constants(
-    "print-large-constants",
-    llvm::cl::desc("Print large constants in the generated HLO text"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> print_sugar(
-    "print-sugar",
-    llvm::cl::desc(
-        "Print async ops using syntactic sugar in the generated HLO text"),
-    llvm::cl::init(true));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> via_builder(
-    "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
-    llvm::cl::init(false));
-}  // namespace
 
 static mlir::LogicalResult MlirHloToHloTranslate(mlir::ModuleOp module,
                                                  llvm::raw_ostream& output) {

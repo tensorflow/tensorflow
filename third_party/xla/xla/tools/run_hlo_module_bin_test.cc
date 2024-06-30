@@ -35,7 +35,7 @@ namespace {
 class RunHloModuleTest : public ::testing::Test {
  protected:
   void RunHlo(const std::string& file_name,
-              std::vector<std::string> extra_args = {}) {
+              const std::vector<std::string>& extra_args = {}) {
     std::string run_hlo_module_bin = tsl::io::JoinPath(
         tsl::testing::XlaSrcRoot(), "tools", "run_hlo_module");
 
@@ -74,6 +74,30 @@ class RunHloModuleTest : public ::testing::Test {
 
 TEST_F(RunHloModuleTest, AddHlo) {
   RunHlo("add.hlo");
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  ASSERT_THAT(
+      stderr_output_,
+      testing::HasSubstr("Results on Host and Interpreter are close enough."));
+  EXPECT_THAT(stderr_output_,
+              testing::Not(testing::HasSubstr("memory allocation bug")));
+}
+
+TEST_F(RunHloModuleTest, AddMhlo) {
+  RunHlo("add_mhlo.mlir", {"--input_format=mhlo"});
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  ASSERT_THAT(
+      stderr_output_,
+      testing::HasSubstr("Results on Host and Interpreter are close enough."));
+  EXPECT_THAT(stderr_output_,
+              testing::Not(testing::HasSubstr("memory allocation bug")));
+}
+
+TEST_F(RunHloModuleTest, AddStablehlo) {
+  RunHlo("add_stablehlo.mlir", {"--input_format=stablehlo"});
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 0);
