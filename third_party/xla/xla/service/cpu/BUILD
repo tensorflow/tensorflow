@@ -696,6 +696,7 @@ cc_library(
         ":onednn_memory_util",
         ":parallel_loop_emitter",
         ":target_machine_features",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
