@@ -109,7 +109,9 @@ DecodeBuffer(XLA_FFI_Buffer* buf) {
   size_t size_bytes = 0;
   if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
     size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
-    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+    for (int64_t i = 0; i < buf->rank; ++i) {
+      size_bytes *= buf->dims[i];
+    }
   }
 
   AnyBuffer buffer;
@@ -139,7 +141,15 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
   size_t size_bytes = 0;
   if constexpr (primitive_util::IsArrayType(dtype)) {
     size_bytes = primitive_util::ByteWidth(dtype);
-    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+    if constexpr (rank != internal::kDynamicRank) {
+      for (int64_t i = 0; i < rank; ++i) {
+        size_bytes *= buf->dims[i];
+      }
+    } else {
+      for (int64_t i = 0; i < buf->rank; ++i) {
+        size_bytes *= buf->dims[i];
+      }
+    }
   }
 
   Buffer<dtype, rank> buffer;
