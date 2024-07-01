@@ -325,7 +325,7 @@ _TENSORFLOW_CPU_BUILD = Build(
     configs=(
         "release_cpu_linux",
         "rbe_linux_cpu",
-        "linux_cuda_pycpp_test_filters",
+        "linux_cpu_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
@@ -349,7 +349,7 @@ _TENSORFLOW_GPU_BUILD = Build(
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
-        "linux_cpu_pycpp_test_filters",
+        "linux_cuda_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
