@@ -854,6 +854,7 @@ cc_library(
 xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",

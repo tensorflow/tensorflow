@@ -207,6 +207,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
