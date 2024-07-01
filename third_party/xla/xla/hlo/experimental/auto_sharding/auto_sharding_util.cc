@@ -1889,8 +1889,9 @@ int64_t ByteSizeOfShapeWithSharding(const Shape& original_shape,
   return total_size;
 }
 
-int64_t GetShardedInstructionSize(const Shape& shape, int64_t num_devices,
-                                  std::optional<HloSharding> sharding) {
+int64_t ByteSizeOfShapeIfShardedAcrossDevices(
+    const Shape& shape, int64_t num_devices,
+    std::optional<HloSharding> sharding) {
   if (sharding.has_value()) {
     return ByteSizeOfShapeWithSharding(shape, sharding);
   }

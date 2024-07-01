@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
@@ -593,7 +592,7 @@ inline int64_t ByteSizeOfShape(const Shape& shape) {
 // provided, this function behaves the same as ByteSizeOfShapeWithSharding
 // above. If not, it will give a lower bound on the bytes size of the shape if
 // sharded across `num_devices` devices.
-int64_t GetShardedInstructionSize(
+int64_t ByteSizeOfShapeIfShardedAcrossDevices(
     const Shape& shape, int64_t num_devices,
     std::optional<HloSharding> sharding = std::nullopt);
 
