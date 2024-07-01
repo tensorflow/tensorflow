@@ -1,8 +1,10 @@
 // RUN: xla-translate -mlir-print-debuginfo  -hlo-text-to-mlir-hlo %s  2>&1 | FileCheck %s
+// RUN: xla-translate -mlir-print-debuginfo  -hlo-text-to-stablehlo %s  2>&1 | FileCheck %s --check-prefix CHECK-SHLO
 
 HloModule Test
 
 // CHECK-LABEL: func @main
+// CHECK-SHLO-LABEL: func @main
 ENTRY Test {
   constant.2 = pred[] constant(false)
   constant.1 = s32[3]{0} constant({0, 1, 2})
@@ -12,3 +14,4 @@ ENTRY Test {
 // translated to a compared instead of a convert to i1 (which is truncating).
 // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<3xi32>
 // CHECK: mhlo.compare NE, %{{.*}}, %[[ZERO]]
+// CHECK-SHLO: stablehlo.constant dense<[false, true, true]> : tensor<3xi1>
