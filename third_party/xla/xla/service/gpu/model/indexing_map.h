@@ -263,7 +263,7 @@ class IndexingMap {
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
       std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-      absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {});
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
               std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,

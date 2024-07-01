@@ -943,7 +943,7 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
 IndexingMap::IndexingMap(
     AffineMap affine_map, std::vector<DimVar> dimensions,
     std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-    absl::Span<std::pair<AffineExpr, Interval>> constraints)
+    absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
