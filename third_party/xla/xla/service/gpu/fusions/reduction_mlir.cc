@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
@@ -136,7 +137,7 @@ IndexingMap MlirReductionFusion::GetIndexingMap(
       AffineMap::get(6, tile_sizes_per_thread_.size(), results, ctx);
   auto symbol_sizes = tile_sizes_per_thread_;
   // Set the tile size to 1 for symbols that are not used and remove trailing
-  // unused symbols. This affects output indexing maps only.
+  // unused symbols.
   int last_used_symbol = -1;
   for (int i = 0; i < symbol_sizes.size(); ++i) {
     if (!affine_map.isFunctionOfSymbol(i)) {
@@ -287,16 +288,20 @@ IndexingMap MlirRowReductionFusion::ComputeReductionInputIndexing(
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
   auto block_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
-  SmallVector<AffineExpr> results;
-  results.resize(input_shape_.size());
-  for (int i = 0; i < input_shape_.size(); ++i) {
-    results[i] = block_id[i] * tile_sizes_per_block_[i] + thread_id[i];
-    if (tile_sizes_per_thread_[i] > 1) {
-      results[i] = results[i] + getAffineSymbolExpr(i, ctx) * num_threads_[i];
-    }
-  }
-  auto map = GetIndexingMap(results);
-  for (auto [result, input_dim] : llvm::zip(results, input_shape_)) {
+  auto major_reduced = GetLoopSymbol(0, ctx);
+  auto minor_reduced = GetLoopSymbol(1, ctx);
+  auto vector_index = GetLoopSymbol(2, ctx);
+
+  SmallVector<AffineExpr> indices{
+      major_reduced,
+      block_id[0] * tile_sizes_per_block_[0] + thread_id[0],
+      block_id[1] * tile_sizes_per_block_[1] +
+          (minor_reduced * num_threads_[1]) + thread_id[1],
+      vector_index,
+  };
+
+  auto map = GetIndexingMap(indices);
+  for (auto [result, input_dim] : llvm::zip(indices, input_shape_)) {
     map.AddConstraint(result, {0, input_dim - 1});
   }
   return map;
@@ -309,14 +314,13 @@ IndexingMap MlirRowReductionFusion::ComputeReductionOutputIndexing(
   auto block_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
   IndexingMap projected_index =
-      GetIndexingMap(block_id[kRowKept] * tile_sizes_per_block_[kRowKept] +
-                     thread_id[kRowKept]);
+      GetIndexingMap(block_id[0] * tile_sizes_per_block_[0] + thread_id[0]);
   int rows_per_warp = GetRowsPerWarp();
   if (rows_per_warp > 1) {
-    projected_index.AddConstraint(
-        thread_id[kRowMinorReduced] % (WarpSize() / rows_per_warp), {0, 0});
+    projected_index.AddConstraint(thread_id[1] % (WarpSize() / rows_per_warp),
+                                  {0, 0});
   } else {
-    projected_index.AddConstraint(thread_id[kRowMinorReduced], {0, 0});
+    projected_index.AddConstraint(thread_id[1], {0, 0});
   }
   return projected_index;
 }
@@ -563,6 +567,14 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
                        physical_shape, ctx);
 }
 
+mlir::AffineExpr MlirReductionFusion::GetLoopSymbol(
+    int index, mlir::MLIRContext* ctx) const {
+  if (tile_sizes_per_thread_[index] == 1) {
+    return mlir::getAffineConstantExpr(0, ctx);
+  }
+  return mlir::getAffineSymbolExpr(index, ctx);
+}
+
 SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
     ImplicitLocOpBuilder& b, const HloValueMap& results,
     llvm::SmallVector<Value> outputs, EmitterState& state, int group_id,
@@ -607,8 +619,8 @@ MlirRowReductionFusion::MlirRowReductionFusion(
   int64_t rows_per_warp = RowReductionGetRowsPerWarp(shape[kRowMinorReduced]);
   int64_t minor_reduced_elements_per_thread = rows_per_warp > 1 ? 1 : 16;
 
-  int64_t num_threads_y = 1;
-  int64_t num_threads_x = [&] {
+  int64_t num_threads_kept = 1;
+  int64_t num_threads_reduced = [&] {
     if (rows_per_warp > 1) {
       return shape[kRowMinorReduced];
     }
@@ -626,47 +638,38 @@ MlirRowReductionFusion::MlirRowReductionFusion(
   // recommendation is to use between 128 and 512 threads, so we just go for
   // 256. See https://forums.developer.nvidia.com/t/55529
   constexpr int64_t kThreadsPerBlockTarget = 256;
-  if (num_threads_x * 2 <= kThreadsPerBlockTarget) {
+  if (num_threads_reduced * 2 <= kThreadsPerBlockTarget) {
     int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
     // Increase the size of the y dimension as long as there's remaining
     // parallelism.
-    if (kept_size * num_threads_x <= kThreadsPerBlockTarget) {
-      num_threads_y = kept_size;
+    if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
+      num_threads_kept = kept_size;
     } else {
-      num_threads_y = kThreadsPerBlockTarget / num_threads_x;
+      num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
     }
   }
 
-  int vector_size =
-      GetVectorSizeForMlir(analysis, reduction_dimensions_, num_threads_x);
-  num_threads_ = {1, num_threads_y, num_threads_x, 1};
+  int vector_size = GetVectorSizeForMlir(analysis, reduction_dimensions_,
+                                         num_threads_reduced);
+  num_threads_ = {num_threads_kept, num_threads_reduced};
+  // TODO(jreiffers): Get rid of `vector_size` in here.
   input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
-  tile_sizes_per_thread_ = {shape[0], 1,
-                            minor_reduced_elements_per_thread / vector_size,
-                            vector_size};
-  // The indexing map simplifier does not currently handle this correctly,
-  // leading to loop bounds that are too large.
-  // TODO(jreiffers): Implement tightening of ranges based on constraints
-  // instead. For example, based on:
+  // TODO(jreiffers): Tighten ranges based on constraints when simplifying
+  // instead of using min here. For example, based on
   //
   //   s1 in [0, 127]
   //   d0 floordiv 32 + s1 * 32 in [0, 63]
   //
   // Tighten the bound of s1 to [0, 1].
-  for (int i = 0; i < num_threads_.size(); ++i) {
-    tile_sizes_per_thread_[i] =
-        std::min(tile_sizes_per_thread_[i],
-                 CeilOfRatio(input_shape_[i], num_threads_[i]));
-  }
+  int minor_reduced_tile_size =
+      std::min(minor_reduced_elements_per_thread / vector_size,
+               CeilOfRatio(input_shape_[2], num_threads_[1]));
 
-  tile_sizes_per_block_.resize(input_shape_.size());
-  num_blocks_.resize(input_shape_.size());
-  for (int64_t i = 0; i < input_shape_.size(); ++i) {
-    tile_sizes_per_block_[i] = tile_sizes_per_thread_[i] * num_threads_[i];
-    num_blocks_[i] = CeilOfRatio(input_shape_[i], tile_sizes_per_block_[i]);
-  }
-  // TODO(jreiffers): Clean up the shape here. The first and last element of
-  // num_blocks_ and num_threads_ are always 1.
+  tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
+  tile_sizes_per_block_ = {num_threads_kept,
+                           minor_reduced_tile_size * num_threads_reduced};
+  num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
+                 CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
 
   vector_size_ = 1;
 }
@@ -677,17 +680,16 @@ int MlirRowReductionFusion::GetRowsPerWarp() const {
 }
 
 int MlirRowReductionFusion::GetWarpsPerRow() const {
-  return CeilOfRatio(
-      num_threads_[ReductionDimensions::kRowMinorReducedDimension], WarpSize());
+  return CeilOfRatio(num_threads_[1], WarpSize());
 }
 
 IndexingMap MlirRowReductionFusion::GetSharedMemoryReductionReadMap(
     mlir::MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
-  auto lane_id = thread_id[2] % WarpSize();
+  auto lane_id = thread_id[1] % WarpSize();
   return GetThreadVectorIndexingMap(
-      {thread_id[1], lane_id}, {{thread_id[2], {0, GetWarpsPerRow() - 1}}});
+      {thread_id[0], lane_id}, {{thread_id[1], {0, GetWarpsPerRow() - 1}}});
 }
 
 IndexingMap MlirRowReductionFusion::GetSharedMemoryWriteMap(
@@ -696,9 +698,9 @@ IndexingMap MlirRowReductionFusion::GetSharedMemoryWriteMap(
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
   // The reduced dimension is tiled; each warp writes one element to shared
   // memory (from lane 0).
-  auto lane_id = thread_id[2] % WarpSize();
-  auto warp_id = thread_id[2].floorDiv(WarpSize());
-  return GetThreadVectorIndexingMap({thread_id[1], warp_id},
+  auto lane_id = thread_id[1] % WarpSize();
+  auto warp_id = thread_id[1].floorDiv(WarpSize());
+  return GetThreadVectorIndexingMap({thread_id[0], warp_id},
                                     {{lane_id, {0, 0}}});
 }
 
@@ -716,8 +718,7 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
   auto thread_ids =
       mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
   Value warp_id = b.create<ma::DivUIOp>(
-      thread_ids[ReductionDimensions::kRowMinorReducedDimension],
-      b.create<ma::ConstantIndexOp>(WarpSize()));
+      thread_ids[1], b.create<ma::ConstantIndexOp>(WarpSize()));
 
   HloValueMap inits = GetInitsAndSideOutputTensors(group_id, state);
   const auto& reductions = reduction_heroes_[group_id];
@@ -795,7 +796,7 @@ IndexingMap MlirColumnReductionFusion::ComputeReductionOutputIndexing(
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
   auto block_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
-  AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
+  AffineExpr vector_index = GetLoopSymbol(1, ctx);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
       (block_id[1] * WarpSize() + thread_id[0]) * vector_size_ + vector_index};
@@ -810,8 +811,8 @@ IndexingMap MlirColumnReductionFusion::ComputeReductionInputIndexing(
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
   auto block_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
-  AffineExpr element_index = getAffineSymbolExpr(0, ctx);
-  AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
+  AffineExpr element_index = GetLoopSymbol(0, ctx);
+  AffineExpr vector_index = GetLoopSymbol(1, ctx);
 
   SmallVector<AffineExpr, 3> results{
       block_id[0], thread_id[0] + element_index * num_threads_[1],

@@ -100,6 +100,8 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
       llvm::ArrayRef<mlir::AffineExpr> results,
       absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints)
       const;
+  // Returns the loop symbol corresponding to the thread tile index.
+  mlir::AffineExpr GetLoopSymbol(int index, mlir::MLIRContext* ctx) const;
 
   Shape GetReduceOperandShape() const {
     return first_reduce_->operand(0)->shape();
@@ -140,7 +142,6 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
 
   // The number of elements for each dimension of a tile.
   absl::InlinedVector<int64_t, 4> tile_sizes_per_thread_;
-  absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
 
   absl::InlinedVector<int64_t, 4> num_threads_;
   absl::InlinedVector<int64_t, 4> num_blocks_;
@@ -168,6 +169,8 @@ class MlirRowReductionFusion : public MlirReductionFusion {
   IndexingMap GetSharedMemoryReductionReadMap(
       mlir::MLIRContext* ctx) const override;
   IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+
+  absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
 };
 
 class MlirColumnReductionFusion : public MlirReductionFusion {
