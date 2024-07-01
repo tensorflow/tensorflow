@@ -1,7 +1,8 @@
 // RUN: sparse-opt %s \
 // RUN:   --allocate-shared-memory \
-// RUN:   --sparse-convert-layout-op \
+// RUN:   --sparse-local-load-to-llvm \
 // RUN:   --convert-triton-gpu-to-llvm=compute-capability=90 \
+// RUN:   --sparse-dot-to-llvm \
 // RUN: | FileCheck %s
 
 #blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
