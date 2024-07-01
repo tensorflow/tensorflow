@@ -3683,6 +3683,11 @@ HloInstructionProto HloIotaInstruction::ToProto() const {
   return proto;
 }
 
+bool HloIotaInstruction::IsElementwiseImpl(
+    const std::optional<int64_t>& operand_idx) const {
+  return true;
+}
+
 void HloIotaInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   printer.Next([this](Printer* printer) {
