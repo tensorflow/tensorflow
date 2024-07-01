@@ -46,6 +46,10 @@ namespace {
 
 // Convolution dimensions to be used in the tests.
 struct ConvolutionDimensions {
+  explicit ConvolutionDimensions(int convolution_rank = 2)
+      : convolution_rank(convolution_rank) {}
+
+  int convolution_rank = 2;
   int batch_size = 1;
   int input_size = 3;
   int input_channels = 5;
@@ -62,10 +66,9 @@ using CorrectTypes = ::testing::Types<float, Eigen::half>;
 TYPED_TEST_SUITE(ConvolutionThunkTypedTest, CorrectTypes);
 
 std::vector<int64_t> MakeInputDims(
-    int convolution_rank,
     ConvolutionDimensions dims = ConvolutionDimensions()) {
   std::vector<int64_t> input_dims = {dims.batch_size};
-  for (int i = 0; i < convolution_rank; ++i) {
+  for (int i = 0; i < dims.convolution_rank; ++i) {
     input_dims.push_back(dims.input_size);
   }
   input_dims.push_back(dims.input_channels);
@@ -73,10 +76,9 @@ std::vector<int64_t> MakeInputDims(
 }
 
 std::vector<int64_t> MakeKernelDims(
-    int convolution_rank,
     ConvolutionDimensions dims = ConvolutionDimensions()) {
   std::vector<int64_t> kernel_dims = {};
-  for (int i = 0; i < convolution_rank; ++i) {
+  for (int i = 0; i < dims.convolution_rank; ++i) {
     kernel_dims.push_back(dims.kernel_size);
   }
   kernel_dims.push_back(dims.input_channels);
@@ -85,10 +87,9 @@ std::vector<int64_t> MakeKernelDims(
 }
 
 std::vector<int64_t> MakeOutputDims(
-    int convolution_rank,
     ConvolutionDimensions dims = ConvolutionDimensions()) {
   std::vector<int64_t> output_dims = {dims.batch_size};
-  for (int i = 0; i < convolution_rank; ++i) {
+  for (int i = 0; i < dims.convolution_rank; ++i) {
     output_dims.push_back(dims.output_size);
   }
   output_dims.push_back(dims.output_channels);
@@ -174,12 +175,22 @@ Window MakeWindow(int convolution_rank) {
 template <typename ElementType>
 class ConvolutionThunkBuilder {
  public:
-  auto Build(int convolution_rank,
-             ConvolutionDimensions dims = ConvolutionDimensions()) {
+  // Constructor that lets the user specify the convolution dimensions.
+  auto Build(ConvolutionDimensions dims = ConvolutionDimensions()) {
     // Data dimensions.
-    auto input_dims = MakeInputDims(convolution_rank, dims);
-    auto kernel_dims = MakeKernelDims(convolution_rank, dims);
-    auto output_dims = MakeOutputDims(convolution_rank, dims);
+    auto input_dims = MakeInputDims(dims);
+    auto kernel_dims = MakeKernelDims(dims);
+    auto output_dims = MakeOutputDims(dims);
+
+    return Build(input_dims, kernel_dims, output_dims);
+  }
+
+  // Constructor that lets the user specify each data dimension separately.
+  auto Build(const std::vector<int64_t>& input_dims,
+             const std::vector<int64_t>& kernel_dims,
+             const std::vector<int64_t>& output_dims) {
+    // Convolution rank inferred from the input dimensions.
+    int convolution_rank = input_dims.size() - 2;
 
     // Actual data.
     input_ = MakeDataVector<ElementType>(input_dims);
@@ -254,7 +265,8 @@ class ConvolutionThunkBuilder {
 template <typename ElementType>
 void SuccessfulConvolution(int convolution_rank) {
   ConvolutionThunkBuilder<ElementType> builder;
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build(convolution_rank))
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, builder.Build(ConvolutionDimensions(convolution_rank)));
 
   // Execute thunk and wait for completion.
   Thunk::ExecuteParams params = builder.GetExecutionParams();
@@ -282,21 +294,112 @@ TYPED_TEST(ConvolutionThunkTypedTest, SuccessfulConvolution3D) {
 TEST(ConvolutionThunkTest, CreationErrorOnUnsupportedType) {
   ConvolutionThunkBuilder<int> builder;
 
-  auto status_or_thunk = builder.Build(/*convolution_rank=*/2);
+  auto status_or_thunk = builder.Build();
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
               ::testing::HasSubstr("Unsupported element type (S32)"));
 }
 
-TEST(ConvolutionThunkTest, CreationErrorOnIncorrectConvolutionRank) {
+TEST(ConvolutionThunkTest, CreationErrorOnTooHighConvolutionRank) {
   ConvolutionThunkBuilder<float> builder;
 
-  auto status_or_thunk = builder.Build(/*convolution_rank=*/4);
+  auto status_or_thunk =
+      builder.Build(ConvolutionDimensions(/*convolution_rank=*/4));
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
               ::testing::HasSubstr("Incorrect convolution rank (4)"));
+}
+
+TEST(ConvolutionThunkTest, CreationErrorOnTooLowConvolutionRank) {
+  ConvolutionThunkBuilder<float> builder;
+
+  auto status_or_thunk =
+      builder.Build(ConvolutionDimensions(/*convolution_rank=*/0));
+  EXPECT_EQ(status_or_thunk.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status_or_thunk.status().message(),
+              ::testing::HasSubstr("Incorrect convolution rank (0)"));
+}
+
+TEST(ConvolutionThunkTest, CreationErrorOnMismatchedKernelBufferRank) {
+  ConvolutionThunkBuilder<float> builder;
+
+  ConvolutionDimensions dims_2d(/*convolution_rank=*/2);
+  auto input_dims = MakeInputDims(dims_2d);
+  auto output_dims = MakeOutputDims(dims_2d);
+
+  // Create kernel buffer with mismatched rank.
+  ConvolutionDimensions dims_3d(/*convolution_rank=*/3);
+  auto kernel_dims = MakeKernelDims(dims_3d);
+
+  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  EXPECT_EQ(status_or_thunk.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status_or_thunk.status().message(),
+              ::testing::HasSubstr("Buffer ranks mismatch. Input rank (4) vs "
+                                   "kernel rank (5) vs output rank (4)"));
+}
+
+TEST(ConvolutionThunkTest, CreationErrorOnMismatchedOutputBufferRank) {
+  ConvolutionThunkBuilder<float> builder;
+
+  ConvolutionDimensions dims_2d(/*convolution_rank=*/2);
+  auto input_dims = MakeInputDims(dims_2d);
+  auto kernel_dims = MakeKernelDims(dims_2d);
+
+  // Create output buffer with mismatched rank.
+  ConvolutionDimensions dims_3d(/*convolution_rank=*/3);
+  auto output_dims = MakeOutputDims(dims_3d);
+
+  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  EXPECT_EQ(status_or_thunk.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status_or_thunk.status().message(),
+              ::testing::HasSubstr("Buffer ranks mismatch. Input rank (4) vs "
+                                   "kernel rank (4) vs output rank (5)"));
+}
+
+TEST(ConvolutionThunkTest, CreationErrorOnBatchSizeMismatch) {
+  ConvolutionThunkBuilder<float> builder;
+
+  ConvolutionDimensions dims;
+  dims.batch_size = 1;
+  auto input_dims = MakeInputDims(dims);
+  auto kernel_dims = MakeKernelDims(dims);
+
+  // Create output with mismatched batch size.
+  dims.batch_size = 2;
+  auto output_dims = MakeOutputDims(dims);
+
+  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  EXPECT_EQ(status_or_thunk.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status_or_thunk.status().message(),
+              ::testing::HasSubstr(
+                  "Batch sizes mismatch. Input batch (1) vs output batch (2)"));
+}
+
+TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
+  ConvolutionThunkBuilder<float> builder;
+
+  ConvolutionDimensions dims;
+  dims.output_channels = 3;
+  auto input_dims = MakeInputDims(dims);
+  auto kernel_dims = MakeKernelDims(dims);
+
+  // Create output with output channels different than the kernel filters count.
+  dims.output_channels = 4;
+  auto output_dims = MakeOutputDims(dims);
+
+  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  EXPECT_EQ(status_or_thunk.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      status_or_thunk.status().message(),
+      ::testing::HasSubstr("Output channels mismatch. Kernel filters count (3) "
+                           "should be the same as output channels count (4)"));
 }
 
 }  // namespace
