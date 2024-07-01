@@ -84,9 +84,9 @@ constexpr int kRowMinorReduced = ReductionDimensions::kRowMinorReducedDimension;
 
 LaunchDimensions MlirReductionFusion::launch_dimensions() const {
   size_t blocks_y = groups_.grouped_roots.size();
-  return {se::BlockDim(/*x=*/total_num_blocks_,
+  return {se::BlockDim(/*x=*/Product(num_blocks_),
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
-          se::ThreadDim(/*x=*/total_num_threads_per_block_,
+          se::ThreadDim(/*x=*/Product(num_threads_),
                         /*y=*/1, /*z=*/1)};
 }
 
@@ -149,11 +149,12 @@ IndexingMap MlirReductionFusion::GetIndexingMap(
   symbol_sizes.resize(last_used_symbol + 1);
   affine_map = AffineMap::get(6, symbol_sizes.size(), results, ctx);
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
-  return IndexingMap{affine_map,
-                     DimVarsFromTensorSizes({total_num_threads_per_block_, 1, 1,
-                                             total_num_blocks_, num_groups, 1}),
-                     RangeVarsFromTensorSizes(symbol_sizes),
-                     /*rt_vars=*/{}};
+  return IndexingMap{
+      affine_map,
+      DimVarsFromTensorSizes(
+          {Product(num_threads_), 1, 1, Product(num_blocks_), num_groups, 1}),
+      RangeVarsFromTensorSizes(symbol_sizes),
+      /*rt_vars=*/{}};
 }
 
 struct MlirReductionFusion::EmitterState {
@@ -264,19 +265,16 @@ absl::Status MlirReductionFusion::EmitEntryFunction(
   return absl::OkStatus();
 }
 
-IndexingMap MlirRowReductionFusion::ComputeThreadIdToReductionInputIndexing(
+IndexingMap MlirRowReductionFusion::ComputeReductionInputIndexing(
     mlir::MLIRContext* ctx) const {
-  auto rank = input_shape_.size();
-
-  auto thread_offsets =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
-  auto block_offsets =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
+  auto thread_id =
+      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
+  auto block_id =
+      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
   SmallVector<AffineExpr> results;
-  results.resize(rank);
-  for (int i = 0; i < rank; ++i) {
-    results[i] =
-        block_offsets[i] * tile_sizes_per_block_[i] + thread_offsets[i];
+  results.resize(input_shape_.size());
+  for (int i = 0; i < input_shape_.size(); ++i) {
+    results[i] = block_id[i] * tile_sizes_per_block_[i] + thread_id[i];
     if (tile_sizes_per_thread_[i] > 1) {
       results[i] = results[i] + getAffineSymbolExpr(i, ctx) * num_threads_[i];
     }
@@ -286,6 +284,25 @@ IndexingMap MlirRowReductionFusion::ComputeThreadIdToReductionInputIndexing(
     map.AddConstraint(result, {0, input_dim - 1});
   }
   return map;
+}
+
+IndexingMap MlirRowReductionFusion::ComputeReductionOutputIndexing(
+    MLIRContext* ctx) const {
+  auto thread_id =
+      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
+  auto block_id =
+      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
+  IndexingMap projected_index =
+      GetIndexingMap(block_id[kRowKept] * tile_sizes_per_block_[kRowKept] +
+                     thread_id[kRowKept]);
+  int rows_per_warp = GetRowsPerWarp();
+  if (rows_per_warp > 1) {
+    projected_index.AddConstraint(
+        thread_id[kRowMinorReduced] % (WarpSize() / rows_per_warp), {0, 0});
+  } else {
+    projected_index.AddConstraint(thread_id[kRowMinorReduced], {0, 0});
+  }
+  return projected_index;
 }
 
 HloValueMap MlirReductionFusion::GetInitsAndSideOutputTensors(
@@ -308,7 +325,7 @@ HloValueMap MlirReductionFusion::GetInitsAndSideOutputTensors(
 HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     int group_id, const HloValueMap& inits) {
   auto tile_indexing =
-      owner.ComputeThreadIdToReductionInputIndexing(builder.getContext());
+      owner.ComputeReductionInputIndexing(builder.getContext());
   tile_indexing
       .GetMutableDimensionBound(
           KernelFusionInterface::kIndexingMapBlockIdxDims[1])
@@ -413,10 +430,40 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToInputIndexing(
              .indexing_maps[hero_operand_index]
              .begin());
   }
-  auto map = ComputeThreadIdToReductionInputIndexing(ctx);
+  auto map = ComputeReductionInputIndexing(ctx);
   AddGroupIdConstraint(map, root_index, groups_);
   return map * GetBitcastMap(input_shape_,
                              hero.operand(hero_operand_index)->shape(), ctx);
+}
+
+std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
+    int64_t root_index, MLIRContext* ctx) const {
+  if (!groups_.is_reduction_root[root_index]) {
+    auto map = ComposeIndexingMaps(
+        ComputeReductionInputIndexing(ctx),
+        GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
+                      ctx));
+    AddGroupIdConstraint(map, root_index, groups_);
+    return map;
+  }
+
+  auto projected_indexing = ComputeReductionOutputIndexing(ctx);
+  auto output_shape = reduction_dimensions_.GetOutputShape();
+  CHECK_EQ(output_shape.size(),
+           projected_indexing.GetAffineMap().getNumResults());
+  for (auto [result, dim_size] : llvm::zip(
+           projected_indexing.GetAffineMap().getResults(), output_shape)) {
+    projected_indexing.AddConstraint(result, {0, dim_size - 1});
+  }
+  AddGroupIdConstraint(projected_indexing, root_index, groups_);
+
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  auto physical_shape =
+      ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
+  return projected_indexing *
+         GetBitcastMap(ShapeUtil::MakeShapeWithDescendingLayout(
+                           PrimitiveType::U8, output_shape),
+                       physical_shape, ctx);
 }
 
 SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
@@ -497,7 +544,7 @@ MlirRowReductionFusion::MlirRowReductionFusion(
       GetVectorSizeForMlir(analysis, reduction_dimensions_, num_threads_x);
   num_threads_ = {1, num_threads_y, num_threads_x, 1};
   input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
-  tile_sizes_per_thread_ = {shape[kRowMajorReduced], 1,
+  tile_sizes_per_thread_ = {shape[0], 1,
                             minor_reduced_elements_per_thread / vector_size,
                             vector_size};
   // The indexing map simplifier does not currently handle this correctly,
@@ -521,47 +568,10 @@ MlirRowReductionFusion::MlirRowReductionFusion(
     tile_sizes_per_block_[i] = tile_sizes_per_thread_[i] * num_threads_[i];
     num_blocks_[i] = CeilOfRatio(input_shape_[i], tile_sizes_per_block_[i]);
   }
+  // TODO(jreiffers): Clean up the shape here. The first and last element of
+  // num_blocks_ and num_threads_ are always 1.
 
-  total_num_blocks_ = Product(num_blocks_);
-  total_num_threads_per_block_ = Product(num_threads_);
   vector_size_ = 1;
-}
-
-std::optional<IndexingMap>
-MlirRowReductionFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, MLIRContext* ctx) const {
-  if (!groups_.is_reduction_root[root_index]) {
-    auto map = ComposeIndexingMaps(
-        ComputeThreadIdToReductionInputIndexing(ctx),
-        GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
-                      ctx));
-    AddGroupIdConstraint(map, root_index, groups_);
-    return map;
-  }
-  const auto& hero = analysis_.fusion_hero(root_index).instruction();
-
-  auto thread_ids =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_offsets = GetBlockOffsetsForTiling(
-      num_blocks_, tile_sizes_per_block_, input_shape_.size(), ctx);
-
-  IndexingMap linear_index =
-      GetIndexingMap(block_offsets.getResult(kRowKept) + thread_ids[kRowKept]);
-  int rows_per_warp = GetRowsPerWarp();
-  if (rows_per_warp > 1) {
-    linear_index.AddConstraint(
-        thread_ids[kRowMinorReduced] % (WarpSize() / rows_per_warp), {0, 0});
-  } else {
-    linear_index.AddConstraint(thread_ids[kRowMinorReduced], {0, 0});
-  }
-  auto physical_shape =
-      ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  auto map = ComposeIndexingMaps(
-      linear_index,
-      GetBitcastMap({input_shape_[kRowKept]}, physical_shape, ctx));
-
-  AddGroupIdConstraint(map, root_index, groups_);
-  return map;
 }
 
 int MlirRowReductionFusion::GetRowsPerWarp() const {
@@ -581,7 +591,7 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
   Value zero = b.create<ma::ConstantIndexOp>(0);
   Value thread_id = state.thread_and_block_ids[0];
   auto thread_indexing =
-      GetBitcastMap({total_num_threads_per_block_},
+      GetBitcastMap({Product(num_threads_)},
                     ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
                     b.getContext());
   auto thread_ids =
@@ -686,12 +696,12 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
                   reduction_dimensions_.dimensions[2]};
   vector_size_ =
       GetVectorSizeForMlir(analysis, reduction_dimensions_, WarpSize());
-  num_warps_per_column_ = WarpSize();
-  total_num_threads_per_block_ = num_warps_per_column_ * WarpSize();
+  int64_t num_warps_per_column = WarpSize();
+  num_threads_ = {num_warps_per_column, WarpSize()};
   int64_t num_col_elements_per_thread =
       CeilOfRatio(reduction_dimensions_
                       .dimensions[ReductionDimensions::kColReducedDimension],
-                  num_warps_per_column_);
+                  num_warps_per_column);
   tile_sizes_per_thread_ = {num_col_elements_per_thread, vector_size_};
 
   int64_t major_kept_dim =
@@ -700,59 +710,38 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
   int64_t minor_kept_dim =
       reduction_dimensions_
           .dimensions[ReductionDimensions::kColMinorKeptDimension];
-  num_blocks_per_row_ = CeilOfRatio(minor_kept_dim, WarpSize() * vector_size_);
-  total_num_blocks_ = major_kept_dim * num_blocks_per_row_;
+  int64_t num_blocks_per_row =
+      CeilOfRatio(minor_kept_dim, WarpSize() * vector_size_);
+  num_blocks_ = {major_kept_dim, num_blocks_per_row};
 }
 
-std::optional<IndexingMap>
-MlirColumnReductionFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, MLIRContext* ctx) const {
-  if (!groups_.is_reduction_root[root_index]) {
-    auto map = ComposeIndexingMaps(
-        ComputeThreadIdToReductionInputIndexing(ctx),
-        GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
-                      ctx));
-    AddGroupIdConstraint(map, root_index, groups_);
-    return map;
-  }
-  AffineExpr th_x = getAffineDimExpr(0, ctx);
-  AffineExpr bl_x = getAffineDimExpr(3, ctx);
+IndexingMap MlirColumnReductionFusion::ComputeReductionOutputIndexing(
+    MLIRContext* ctx) const {
+  auto thread_id =
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+  auto block_id =
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
   AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
-
-  auto reduced_shape = ShapeUtil::DeleteDimension(
-      ReductionDimensions::kColReducedDimension,
-      ShapeUtil::MakeShape(PrimitiveType::F32, input_shape_));
   SmallVector<AffineExpr, 2> results{
-      bl_x.floorDiv(num_blocks_per_row_),
-      ((bl_x % num_blocks_per_row_) * WarpSize() + th_x.floorDiv(WarpSize())) *
-              vector_size_ +
-          vector_index};
-  IndexingMap map = GetIndexingMap(results);
-  for (auto [result, dim_size] :
-       llvm::zip(results, reduced_shape.dimensions())) {
-    map.AddConstraint(result, {0, dim_size - 1});
-  }
-  map.AddConstraint(th_x % WarpSize(), {0, 0});
-  AddGroupIdConstraint(map, root_index, groups_);
-  const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  auto physical_shape =
-      ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  return map * GetBitcastMap(reduced_shape, physical_shape, ctx);
+      block_id[0],
+      (block_id[1] * WarpSize() + thread_id[0]) * vector_size_ + vector_index};
+  IndexingMap projected_index = GetIndexingMap(results);
+  projected_index.AddConstraint(thread_id[1], {0, 0});
+  return projected_index;
 }
 
-IndexingMap MlirColumnReductionFusion::ComputeThreadIdToReductionInputIndexing(
+IndexingMap MlirColumnReductionFusion::ComputeReductionInputIndexing(
     mlir::MLIRContext* ctx) const {
-  AffineExpr th_x = getAffineDimExpr(0, ctx);
-  AffineExpr bl_x = getAffineDimExpr(3, ctx);
+  auto thread_id =
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+  auto block_id =
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
   AffineExpr element_index = getAffineSymbolExpr(0, ctx);
   AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
 
   SmallVector<AffineExpr, 3> results{
-      bl_x.floorDiv(num_blocks_per_row_),
-      th_x.floorDiv(WarpSize()) + element_index * num_warps_per_column_,
-      ((bl_x % num_blocks_per_row_) * WarpSize() + th_x % WarpSize()) *
-              vector_size_ +
-          vector_index};
+      block_id[0], thread_id[0] + element_index * num_threads_[1],
+      (block_id[1] * WarpSize() + thread_id[1]) * vector_size_ + vector_index};
   IndexingMap map = GetIndexingMap(results);
   for (auto [result, dim_size] :
        llvm::zip(results, reduction_dimensions_.dimensions)) {
