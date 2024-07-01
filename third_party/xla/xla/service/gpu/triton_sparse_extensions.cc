@@ -18,10 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "Dialect/NVGPU/IR/Dialect.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -40,9 +44,12 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "nvidia/include/TritonNVIDIAGPUToLLVM/PTXAsmFormat.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/TritonGPUConversion.h"
@@ -60,6 +67,14 @@ int computeOrigBitWidth(Value x);
 Value getSharedMemMMAOperand(Value v, mlir::PatternRewriter &rewriter,
                              int opIdx, bool allowTranspose);
 }  // namespace mlir::triton::gpu
+
+// The functions below are defined in WGMMA.cpp.
+Value createDescriptor(ConversionPatternRewriter &rewriter, Location loc,
+                       int64_t swizzling, uint32_t stride);
+int64_t getSwizzlingFromLayout(const triton::gpu::SharedEncodingAttr &layout,
+                               uint32_t widthInByte);
+triton::nvgpu::WGMMAEltType getMmaRetType(Value);
+triton::nvgpu::WGMMAEltType getMmaOperandType(Value, bool);
 
 namespace {
 
@@ -431,13 +446,345 @@ struct LocalLoadOpConversion
   }
 };
 
-class SparseConvertLayoutOpToLLVMPass
-    : public PassWrapper<SparseConvertLayoutOpToLLVMPass,
-                         OperationPass<ModuleOp>> {
- public:
-  SparseConvertLayoutOpToLLVMPass() = default;
+using ::mlir::LLVM::getSharedMemoryObjectFromStruct;
+using ::mlir::triton::gpu::getShapePerCTA;
+using ::mlir::triton::gpu::getShapePerCTATile;
+using ::mlir::triton::gpu::SharedEncodingAttr;
 
-  StringRef getArgument() const override { return "sparse-convert-layout-op"; }
+using ValueTableV2 = std::map<std::pair<unsigned, unsigned>, Value>;
+
+constexpr int kContractingFactor = 2;  // implied by N:M (2:4)
+constexpr int kCore = 2;               // number of core matrices per batch
+constexpr int kCoreTile = kCore * kContractingFactor;
+
+// ----- Ampere implementation.
+
+ValueTableV2 getValuesFromDotOperandLayoutStruct(SmallVector<Value> elems,
+                                                 int n0, int n1) {
+  int offset = 0;
+  ValueTableV2 vals;
+  for (int i = 0; i < n0; ++i) {
+    for (int j = 0; j < n1; ++j) {
+      vals[{kCore * i, kCore * j}] = elems[offset++];
+      vals[{kCore * i, kCore * j + 1}] = elems[offset++];
+      vals[{kCore * i + 1, kCore * j}] = elems[offset++];
+      vals[{kCore * i + 1, kCore * j + 1}] = elems[offset++];
+    }
+  }
+  return vals;
+}
+
+std::string getMmaSpPtxInstruction(Type type) {
+  if (type.isF16()) {
+    return "mma.sp.sync.aligned.m16n8k32.row.col.f32.f16.f16.f32";
+  } else if (type.isBF16()) {
+    return "mma.sp.sync.aligned.m16n8k32.row.col.f32.bf16.bf16.f32";
+  }
+  llvm::report_fatal_error("Unsupported SparseDotOp operand type");
+}
+
+LogicalResult convertSparseMMA(triton::gpu::SparseDotOp op,
+                               triton::gpu::SparseDotOp::Adaptor adaptor,
+                               const LLVMTypeConverter *typeConverter,
+                               ConversionPatternRewriter &rewriter) {
+  // Get number of repetitions across the dimensions.
+  auto aTensorTy = cast<RankedTensorType>(op.getA().getType());
+  auto bTensorTy = cast<RankedTensorType>(op.getB().getType());
+
+  auto layoutA = dyn_cast<DotOperandEncodingAttr>(aTensorTy.getEncoding());
+  auto layoutB = dyn_cast<DotOperandEncodingAttr>(bTensorTy.getEncoding());
+  assert(layoutA != nullptr && layoutB != nullptr);
+
+  int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
+  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
+  auto repA = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(aTensorTy),
+                                 bitwidth, layoutA.getOpIdx());
+  auto repB = mmaEnc.getMMAv2Rep(triton::gpu::getShapePerCTA(bTensorTy),
+                                 bitwidth, layoutB.getOpIdx());
+
+  assert(repA[0] == 1 && repB[0] == 1);  // batch size
+  assert(repB[1] == repA[2] * kContractingFactor);
+  int repM = repA[1], repN = repB[2], repK = repB[1];
+
+  // Arrange loaded values into positions.
+  Location loc = op.getLoc();
+  auto ha = getValuesFromDotOperandLayoutStruct(
+      unpackLLElements(loc, adaptor.getA(), rewriter), repM,
+      repK / kContractingFactor);
+  auto hb = getValuesFromDotOperandLayoutStruct(
+      unpackLLElements(loc, adaptor.getB(), rewriter),
+      std::max(repN / kCore, 1), repK);
+
+  // Combine loaded metadata values.
+  auto hMeta = unpackLLElements(loc, adaptor.getAMeta(), rewriter);
+  SmallVector<Value> hMetaPacked;
+  for (int i = 0; i < hMeta.size(); i += kCore) {
+    Value lower = zext(i32_ty, hMeta[i]);
+    Value upper = zext(i32_ty, hMeta[i + 1]);
+    Value packed = or_(shl(upper, i32_val(16)), lower);
+    hMetaPacked.push_back(packed);
+  }
+
+  // Flatten accumulator values.
+  auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
+
+  // Create `mma.sp` instruction for 4/8 core matrices.
+  auto callMma = [&](unsigned m, unsigned n, unsigned k) {
+    triton::PTXBuilder builder;
+    auto &mma =
+        *builder.create(getMmaSpPtxInstruction(aTensorTy.getElementType()));
+
+    auto retArgs = builder.newListOperand(kCoreTile, "=f");
+    auto cArgs = builder.newListOperand();
+    int baseIdx = m * repN * kCore + n * kCoreTile;
+    for (int i = 0; i < kCoreTile; ++i) {
+      cArgs->listAppend(builder.newOperand(fc[baseIdx + i], std::to_string(i)));
+    }
+    int i = k / kContractingFactor;
+    auto aArgs = builder.newListOperand({
+        {ha[{m, i}], "r"},
+        {ha[{m + 1, i}], "r"},
+        {ha[{m, i + 1}], "r"},
+        {ha[{m + 1, i + 1}], "r"},
+    });
+    auto bArgs = builder.newListOperand({
+        {hb[{n, k}], "r"},
+        {hb[{n, k + 1}], "r"},
+        {hb[{n, k + 2}], "r"},
+        {hb[{n, k + 3}], "r"},
+    });
+    auto metaArg =
+        builder.newOperand(hMetaPacked[k / kCoreTile * repM + m / kCore], "r");
+    auto selector = builder.newConstantOperand(0);
+    mma(retArgs, aArgs, bArgs, cArgs, metaArg, selector);
+
+    Type fp32x4Ty = LLVM::LLVMStructType::getLiteral(
+        op.getContext(), SmallVector<Type>(kCoreTile, f32_ty));
+    Value mmaOut = builder.launch(rewriter, loc, fp32x4Ty);
+    for (int i = 0; i < kCoreTile; ++i) {
+      fc[baseIdx + i] = extract_val(f32_ty, mmaOut, i);
+    }
+  };
+
+  for (int k = 0; k < repK; k += kContractingFactor)
+    for (int m = 0; m < repM; ++m)
+      for (int n = 0; n < repN; ++n) callMma(kCore * m, n, kCore * k);
+
+  // Replace with new packed result.
+  Type structTy = LLVM::LLVMStructType::getLiteral(
+      op.getContext(), SmallVector<Type>(fc.size(), f32_ty));
+  Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
+  rewriter.replaceOp(op, res);
+
+  return success();
+}
+
+// ----- Hopper implementation.
+
+constexpr int kThreadsPerWarp = 32;
+constexpr int kWarpsInGroup = 4;
+constexpr int kMmaAccumulatorCount = 2;
+constexpr int kMmaLineSize = 128;
+constexpr int kMmaAlignment = 16;
+
+// Shared memory descriptor builder for WGMMA.
+Value smemDescriptor(int a, int b, ConversionPatternRewriter &rewriter,
+                     Location loc, std::vector<unsigned int> instrShape,
+                     bool trans, int dimWpt, Value warpId, MemDescType tensorTy,
+                     Value baseDesc, int minor) {
+  auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
+  int elemBytes = tensorTy.getElementTypeBitWidth() / 8;
+  int elemsPerSwizzlingRow =
+      kMmaLineSize / sharedLayout.getPerPhase() / elemBytes;
+  Value elemsPerSwizzlingRowVal = i32_val(elemsPerSwizzlingRow);
+
+  Value k = i32_val(b * instrShape[1]);
+  Value m = add(i32_val(a * dimWpt * instrShape[0]),
+                mul(warpId, i32_val(instrShape[0])));
+  if (trans) {
+    std::swap(k, m);
+  }
+  Value leading_offset = mul(udiv(k, elemsPerSwizzlingRowVal),
+                             i32_val(minor * elemsPerSwizzlingRow));
+  Value stride_offset = mul(m, elemsPerSwizzlingRowVal);
+  Value offset =
+      add(add(leading_offset, stride_offset), urem(k, elemsPerSwizzlingRowVal));
+  Value off1 = mul(i32_val(elemBytes), offset);
+  Value off_ = zext(i64_ty, udiv(off1, i32_val(kMmaAlignment)));
+
+  return add(baseDesc, off_);
+}
+
+LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
+                                 triton::gpu::SparseDotOp::Adaptor adaptor,
+                                 const LLVMTypeConverter *typeConverter,
+                                 ConversionPatternRewriter &rewriter,
+                                 Value thread) {
+  // Get number of repetitions across the dimensions.
+  auto aTensorTy = cast<MemDescType>(op.getA().getType());
+  auto bTensorTy = cast<MemDescType>(op.getB().getType());
+  auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
+  auto mmaEnc = cast<NvidiaMmaEncodingAttr>(dTensorTy.getEncoding());
+
+  auto shapePerCTA = getShapePerCTA(dTensorTy);
+  auto shapePerCTATile = getShapePerCTATile(mmaEnc);
+  auto instrShape = mmaEnc.getInstrShape();
+  int repM = ceil<unsigned>(shapePerCTA[0], shapePerCTATile[0]);
+  int repN = ceil<unsigned>(shapePerCTA[1], shapePerCTATile[1]);
+  int repK = ceil<unsigned>(bTensorTy.getShape()[0],
+                            instrShape[2] * kContractingFactor);
+
+  // Flatten accumulator values.
+  auto loc = op.getLoc();
+  auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
+  int accSize = kMmaAccumulatorCount * (instrShape[1] / kWarpsInGroup);
+  assert(fc.size() == repM * repN * accSize);
+
+  // Get warp ID.
+  auto wpt = mmaEnc.getWarpsPerCTA();
+  Value warp =
+      and_(udiv(thread, i32_val(kThreadsPerWarp)), i32_val(0xFFFFFFFC));
+  Value warpM = urem(warp, i32_val(wpt[0]));
+  Value warpMN = udiv(warp, i32_val(wpt[0]));
+  Value warpN = urem(warpMN, i32_val(wpt[1]));
+
+  // Create descriptor.
+  auto getSharedData = [&](Value arg, MemDescType tensorTy) {
+    auto sharedObj = getSharedMemoryObjectFromStruct(
+        loc, arg, typeConverter->convertType(tensorTy.getElementType()),
+        rewriter);
+    auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
+    auto shape = getShapePerCTA(tensorTy);
+    auto ord = sharedLayout.getOrder();
+    int byteSize = aTensorTy.getElementTypeBitWidth() / 8;
+    int64_t swizzling =
+        getSwizzlingFromLayout(sharedLayout, shape[ord[0]] * byteSize);
+    Value baseDesc = createDescriptor(rewriter, loc, swizzling, shape[ord[1]]);
+    baseDesc =
+        add(baseDesc, lshr(ptrtoint(i64_ty, sharedObj.base), int_val(64, 4)));
+    return std::make_tuple(shape, ord, baseDesc);
+  };
+
+  // Create descriptor for loading A from shared memory.
+  auto tA = getSharedData(adaptor.getA(), aTensorTy);
+  Value warpA = urem(warpM, i32_val(std::get<0>(tA)[0] / instrShape[0]));
+  bool transA = std::get<1>(tA)[0] == 0;
+  auto loadA = [&](int m, int k) {
+    return smemDescriptor(m, k, rewriter, loc, {instrShape[0], instrShape[2]},
+                          transA, wpt[0], warpA, aTensorTy, std::get<2>(tA),
+                          std::get<0>(tA)[std::get<1>(tA)[1]]);
+  };
+
+  // Create descriptor for loading B from shared memory.
+  auto tB = getSharedData(adaptor.getB(), bTensorTy);
+  Value warpB = urem(warpN, i32_val(std::get<0>(tB)[1] / instrShape[1]));
+  bool transB = std::get<1>(tB)[0] == 1;
+  auto loadB = [&](int n, int k) {
+    return smemDescriptor(n, k, rewriter, loc,
+                          {instrShape[1], instrShape[2] * kContractingFactor},
+                          transB, wpt[1], warpB, bTensorTy, std::get<2>(tB),
+                          std::get<0>(tB)[std::get<1>(tB)[1]]);
+  };
+
+  // Load metadata from shared memory.
+  auto hMeta = unpackLLElements(loc, adaptor.getAMeta(), rewriter);
+  SmallVector<Value> hMetaPacked;
+  for (int i = 0; i < hMeta.size(); i += kCore) {
+    Value lower = zext(i32_ty, hMeta[i]);
+    Value upper = zext(i32_ty, hMeta[i + 1]);
+    Value packed = or_(shl(upper, i32_val(16)), lower);
+    hMetaPacked.push_back(packed);
+  }
+  assert(hMetaPacked.size() == repM * repK);
+
+  // Generate prologue.
+  triton::nvgpu::WGMMAEltType eltTypeA = getMmaOperandType(op.getA(), false);
+  triton::nvgpu::WGMMAEltType eltTypeB = getMmaOperandType(op.getB(), false);
+  triton::nvgpu::WGMMAEltType eltTypeC = getMmaRetType(op.getD());
+
+  triton::nvgpu::WGMMALayout layoutA = transA ? triton::nvgpu::WGMMALayout::col
+                                              : triton::nvgpu::WGMMALayout::row;
+  triton::nvgpu::WGMMALayout layoutB = transB ? triton::nvgpu::WGMMALayout::row
+                                              : triton::nvgpu::WGMMALayout::col;
+
+  rewriter.create<triton::nvgpu::FenceAsyncSharedOp>(loc, 0);
+  rewriter.create<triton::nvgpu::WGMMAFenceOp>(loc);
+
+  // Generate main loop.
+  for (int m = 0; m < repM; ++m) {
+    for (int n = 0; n < repN; ++n) {
+      llvm::MutableArrayRef acc(&fc[(m * repN + n) * accSize], accSize);
+      auto accTy = LLVM::LLVMStructType::getLiteral(
+          op.getContext(), SmallVector<Type>(accSize, f32_ty));
+      Value d = packLLElements(loc, typeConverter, acc, rewriter, accTy);
+      for (int k = 0; k < repK; ++k) {
+        Value a = loadA(m, k);
+        Value b = loadB(n, k);
+        Value meta = hMetaPacked[k * repM + m];
+        d = rewriter.create<triton::nvgpu::SparseWGMMAOp>(
+            loc, accTy, a, meta, b, d, kWarpsInGroup * instrShape[0],
+            instrShape[1], kContractingFactor * instrShape[2], eltTypeC,
+            eltTypeA, eltTypeB, layoutA, layoutB);
+      }
+      auto res = unpackLLElements(loc, d, rewriter);
+      for (int i = 0; i < res.size(); ++i) {
+        acc[i] = res[i];
+      }
+    }
+  }
+
+  // Replace with new packed result.
+  Type structTy = LLVM::LLVMStructType::getLiteral(
+      op.getContext(), SmallVector<Type>(fc.size(), f32_ty));
+  Value res = packLLElements(loc, typeConverter, fc, rewriter, structTy);
+
+  rewriter.create<triton::nvgpu::WGMMACommitGroupOp>(loc);
+  res = rewriter.create<triton::nvgpu::WGMMAWaitGroupOp>(loc, res, 0);
+  rewriter.replaceOp(op, res);
+
+  return success();
+}
+
+// ----- Dispatch based on architecture.
+
+LogicalResult rewriteSparseDotOp(triton::gpu::SparseDotOp op,
+                                 triton::gpu::SparseDotOp::Adaptor adaptor,
+                                 const LLVMTypeConverter *typeConverter,
+                                 ConversionPatternRewriter &rewriter) {
+  auto resultTy = cast<RankedTensorType>(op.getResult().getType());
+  NvidiaMmaEncodingAttr mmaLayout =
+      cast<NvidiaMmaEncodingAttr>(resultTy.getEncoding());
+
+  if (mmaLayout.isAmpere()) {
+    return convertSparseMMA(op, adaptor, typeConverter, rewriter);
+  }
+  if (mmaLayout.isHopper()) {
+    return convertSparseWGMMA(op, adaptor, typeConverter, rewriter,
+                              getThreadId(rewriter, op.getLoc()));
+  }
+
+  llvm::report_fatal_error(
+      "Unsupported SparseDotOp found when converting TritonGPU to LLVM.");
+}
+
+struct SparseDotOpConversion
+    : public ConvertOpToLLVMPattern<triton::gpu::SparseDotOp> {
+  using ConvertOpToLLVMPattern<
+      triton::gpu::SparseDotOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    return rewriteSparseDotOp(op, adaptor, getTypeConverter(), rewriter);
+  }
+};
+
+class SparseLocalLoadOpToLLVMPass
+    : public PassWrapper<SparseLocalLoadOpToLLVMPass, OperationPass<ModuleOp>> {
+ public:
+  SparseLocalLoadOpToLLVMPass() = default;
+
+  StringRef getArgument() const override { return "sparse-local-load-to-llvm"; }
 
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
@@ -464,7 +811,38 @@ class SparseConvertLayoutOpToLLVMPass
     }
   }
 
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseConvertLayoutOpToLLVMPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadOpToLLVMPass)
+};
+
+class SparseDotOpToLLVMPass
+    : public PassWrapper<SparseDotOpToLLVMPass, OperationPass<ModuleOp>> {
+ public:
+  SparseDotOpToLLVMPass() = default;
+
+  StringRef getArgument() const override { return "sparse-dot-to-llvm"; }
+
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+                    arith::ArithDialect>();
+  }
+
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    ConversionTarget target(*context);
+    target.addLegalDialect<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+                           arith::ArithDialect, triton::nvgpu::NVGPUDialect>();
+    target.addIllegalOp<triton::gpu::SparseDotOp>();
+    mlir::LowerToLLVMOptions option(context);
+    TritonGPUToLLVMTypeConverter typeConverter(context, option);
+    auto pattern = std::make_unique<SparseDotOpConversion>(typeConverter);
+    RewritePatternSet patterns(context, std::move(pattern));
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadOpToLLVMPass)
 };
 
 }  // namespace
@@ -479,12 +857,17 @@ std::unique_ptr<mlir::Pass> xla::gpu::createSparseBlockedToMMAPass() {
   return std::make_unique<SparseBlockedToMMAPass>();
 }
 
-std::unique_ptr<mlir::Pass> xla::gpu::createSparseConvertLayoutOpToLLVMPass() {
-  return std::make_unique<SparseConvertLayoutOpToLLVMPass>();
+std::unique_ptr<mlir::Pass> xla::gpu::createSparseLocalLoadOpToLLVMPass() {
+  return std::make_unique<SparseLocalLoadOpToLLVMPass>();
+}
+
+std::unique_ptr<mlir::Pass> xla::gpu::createSparseDotOpToLLVMPass() {
+  return std::make_unique<SparseDotOpToLLVMPass>();
 }
 
 void xla::gpu::registerSparsePasses() {
   registerPass([] { return std::make_unique<AddSparseDotEncodingPass>(); });
   registerPass(createSparseBlockedToMMAPass);
-  registerPass(createSparseConvertLayoutOpToLLVMPass);
+  registerPass(createSparseLocalLoadOpToLLVMPass);
+  registerPass(createSparseDotOpToLLVMPass);
 }

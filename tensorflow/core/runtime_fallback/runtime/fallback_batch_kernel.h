@@ -215,6 +215,7 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
       batch_resource_options.batch_timeout_micros = batch_timeout_micros_;
       batch_resource_options.max_enqueued_batches = max_enqueued_batches_;
       batch_resource_options.allowed_batch_sizes = allowed_batch_sizes_;
+      batch_resource_options.batch_padding_policy = batch_padding_policy_;
       batch_resource_options.low_priority_max_batch_size =
           low_priority_max_batch_size_;
       batch_resource_options.low_priority_batch_timeout_micros =

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -239,6 +240,18 @@ class SharedBatchScheduler
 
     // If true, the padding will not be appended.
     bool disable_padding = false;
+
+    // The padding policy to use.
+    //
+    // See the documentation for kPadUpPolicy for details.
+    string batch_padding_policy = string(kPadUpPolicy);
+
+    // A pointer to a ModelBatchStats instance for this model. To be used for
+    // cost-based padding policy selection.
+    //
+    // If null, some other padding policy will be used if a cost-based one is
+    // requested.
+    ModelBatchStats* model_batch_stats = nullptr;
 
     // If true, queue implementation would split high priority and low priority
     // inputs into two sub queues.
@@ -588,6 +601,9 @@ class Queue {
   // The time at which the first task was added to the open (back-most) batch
   // in 'high_priority_batches_'. Valid iff that batch contains at least one
   // task.
+  //
+  // Note that when using a batch padding policy other than PAD_UP, this field
+  // might contain an approximate value (see ScheduleBatchWithEagerSplit).
   uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled.
@@ -1223,7 +1239,35 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
     std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
     // Consider closing the open batch at this time, to schedule it.
     if (batches.size() == 1 && IsOpenBatchSchedulable()) {
+      // Support BatchPaddingPolicy::kBatchDown and
+      // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
+      // starting a new batch because starting a new batch will close the old
+      // batch, making it read-only.
+      std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
+      MaybeBatchDown(
+          /* batch= */ *batches[0],
+          /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
+          /* disable_padding= */ options_.disable_padding,
+          /* batch_padding_policy= */ options_.batch_padding_policy,
+          /* model_batch_stats= */ options_.model_batch_stats,
+          /* out_trimmed_tasks= */ trimmed_tasks);
+
       StartNewBatch();
+
+      // Move the trimmed tasks, if any, into the new batch.
+      Batch<TaskType>& new_batch = *batches[1];
+      for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
+        new_batch.AddTask(std::move(task));
+      }
+      if (!new_batch.empty()) {
+        // Ideally, we'd set open_batch_start_time_micros_ to time we received
+        // the first task, but we don't have this information here, so we're
+        // using NOW as the timestamp. An alternative solution that doesn't
+        // require adding time to each task would be to assume that requests
+        // arrived at a steady rate and therefore use a point between the old
+        // value of open_batch_start_time_micros_ and NOW.
+        open_batch_start_time_micros_ = env_->NowMicros();
+      }
     }
 
     if (batches.size() >= 2) {

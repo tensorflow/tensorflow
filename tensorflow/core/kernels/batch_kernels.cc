@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -203,8 +204,9 @@ class BatchResource : public serving::BatchResourceBase {
             num_batch_threads, max_execution_batch_size, batch_timeout_micros,
             max_enqueued_batches, allowed_batch_sizes,
             enable_large_batch_splitting,
-            /*disable_padding=*/false, low_priority_max_batch_size,
-            low_priority_batch_timeout_micros,
+            /*disable_padding=*/false,
+            /*batch_padding_policy=*/std::string(serving::kPadUpPolicy),
+            low_priority_max_batch_size, low_priority_batch_timeout_micros,
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
             mixed_priority_batching_policy),
         allowed_batch_sizes));

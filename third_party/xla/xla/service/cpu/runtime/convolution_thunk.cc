@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -38,22 +39,68 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 namespace {
 
-bool IsSupportedType(PrimitiveType primitive_type) {
-  return primitive_type == PrimitiveType::F16 ||
-         primitive_type == PrimitiveType::F32;
-}
-
 auto GetConvolutionRank(const Shape& input_shape) {
   // Convolution rank is the number of spatial dimensions. Besides spatial
   // dimensions, input shape contains two other dimensions (batch size and the
   // number of channels).
   return input_shape.dimensions_size() - 2;
+}
+
+absl::Status ValidateShapes(const Shape& input_shape, const Shape& kernel_shape,
+                            const Shape& output_shape,
+                            const ConvolutionDimensionNumbers& dnums) {
+  // Convolution rank.
+  int64_t convolution_rank = GetConvolutionRank(input_shape);
+  if (convolution_rank > 3 || convolution_rank < 1) {
+    return InvalidArgument("ConvolutionThunk: Incorrect convolution rank (%d)",
+                           convolution_rank);
+  }
+
+  // Rank of input, kernel and output buffers.
+  if (input_shape.dimensions_size() != kernel_shape.dimensions_size() ||
+      input_shape.dimensions_size() != output_shape.dimensions_size()) {
+    return InvalidArgument(
+        "ConvolutionThunk: Buffer ranks mismatch. Input rank (%d) vs kernel "
+        "rank (%d) vs output rank (%d)",
+        input_shape.dimensions_size(), kernel_shape.dimensions_size(),
+        output_shape.dimensions_size());
+  }
+
+  // Batch size.
+  auto input_batch = input_shape.dimensions(dnums.input_batch_dimension());
+  auto output_batch = output_shape.dimensions(dnums.output_batch_dimension());
+  if (input_batch != output_batch) {
+    return InvalidArgument(
+        "ConvolutionThunk: Batch sizes mismatch. Input batch (%d) vs output "
+        "batch (%d)",
+        input_batch, output_batch);
+  }
+
+  // Output channels / kernel filters.
+  auto kernel_filters =
+      kernel_shape.dimensions(dnums.kernel_output_feature_dimension());
+  auto output_channels =
+      output_shape.dimensions(dnums.output_feature_dimension());
+  if (kernel_filters != output_channels) {
+    return InvalidArgument(
+        "ConvolutionThunk: Output channels mismatch. Kernel filters count (%d) "
+        "should be the same as output channels count (%d)",
+        kernel_filters, output_channels);
+  }
+
+  return absl::OkStatus();
+}
+
+bool IsSupportedType(PrimitiveType primitive_type) {
+  return primitive_type == PrimitiveType::F16 ||
+         primitive_type == PrimitiveType::F32;
 }
 
 bool CanUseACL(const ConvolutionThunk::Options& options,
@@ -76,17 +123,12 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     const Shape& kernel_shape, BufferAllocation::Slice output_buffer,
     const Shape& output_shape, const ConvolutionDimensionNumbers& dnums,
     const Window& window, int64_t feature_group_count) {
-  // TODO(abanas): Add shape verification (batch size, feature count, etc.)
+  TF_RETURN_IF_ERROR(
+      ValidateShapes(input_shape, kernel_shape, output_shape, dnums));
   auto primitive_type = input_shape.element_type();
   if (!IsSupportedType(primitive_type)) {
     return InvalidArgument("ConvolutionThunk: Unsupported element type (%s)",
                            PrimitiveType_Name(primitive_type));
-  }
-
-  int64_t convolution_rank = GetConvolutionRank(input_shape);
-  if (convolution_rank > 3) {
-    return InvalidArgument("ConvolutionThunk: Incorrect convolution rank (%d)",
-                           convolution_rank);
   }
 
   absl::InlinedVector<int64_t, 2> input_dims;
@@ -97,6 +139,8 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
   // convolutions, except that we pretend that the 1D convolution is really
   // a 2D convolution with the missing dimension set to 1.  We also adjust
   // the padding, dilation parameters as needed.
+
+  int64_t convolution_rank = GetConvolutionRank(input_shape);
   if (convolution_rank == 1) {
     input_dims.push_back(1);
     kernel_dims.push_back(1);
