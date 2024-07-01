@@ -42,7 +42,8 @@ TEST(SparsifyModelTest, MetadataIsAddedToOutputModel) {
 
   // Load input model
   auto input_fbm = tflite::FlatBufferModel::BuildFromFile(
-      "tensorflow/lite/testdata/sparse_tensor.bin");
+      "tensorflow/compiler/mlir/lite/sparsity/testdata/"
+      "sparse_tensor.bin");
   tflite::ModelT input_model;
   input_fbm->GetModel()->UnPackTo(&input_model);
 

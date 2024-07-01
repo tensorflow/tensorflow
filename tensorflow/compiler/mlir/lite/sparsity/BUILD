@@ -50,7 +50,7 @@ tf_cc_test(
     name = "sparsify_model_test",
     srcs = ["sparsify_model_test.cc"],
     data = [
-        "//tensorflow/lite:testdata/sparse_tensor.bin",
+        ":testdata/sparse_tensor.bin",
     ],
     deps = [
         ":sparsify_model",
