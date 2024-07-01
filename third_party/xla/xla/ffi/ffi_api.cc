@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -91,7 +92,13 @@ absl::Status Call(Ffi& handler, CallFrame& call_frame,
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  return TakeStatus(handler.Call(&ffi_call_frame));
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = handler.Call(&ffi_call_frame);
+  } catch (std::exception& e) {
+    return absl::UnknownError(absl::StrCat("XLA FFI call failed: ", e.what()));
+  }
+  return TakeStatus(status);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
@@ -99,7 +106,13 @@ absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame =
       call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  return TakeStatus((*handler)(&ffi_call_frame));
+  XLA_FFI_Error* status = nullptr;
+  try {
+    status = (*handler)(&ffi_call_frame);
+  } catch (std::exception& e) {
+    return absl::UnknownError(absl::StrCat("XLA FFI call failed: ", e.what()));
+  }
+  return TakeStatus(status);
 }
 
 namespace internal {
