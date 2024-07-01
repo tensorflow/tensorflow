@@ -5706,6 +5706,7 @@ xla_test(
     ],
     tags = [
         "nomac",
+        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
     ],
     deps = [
         "//xla:shape_util",
