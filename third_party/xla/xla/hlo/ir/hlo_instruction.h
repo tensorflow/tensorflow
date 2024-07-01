@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -1562,6 +1563,20 @@ class HloInstruction {
   bool SameOp(const HloInstruction& other) const {
     return opcode() == other.opcode() &&
            IdenticalSlowPath(other, std::equal_to<const HloComputation*>());
+  }
+
+  // Returns a hash value of an HLO instruction. Hash considers
+  // information on opcode and number of operands.
+  // This function returns the same hash value for equivalent HLO instructions
+  // even if IdenticalIgnoringCommutativeOperandOrder is used.
+  // This hash function may have a lot of collisions. More precise hash function
+  // is recommended for specific combination of arguments in
+  // IdenticalIgnoringCommutativeOperandOrder.
+  // NOTE the requirement to use in hash table:
+  // eq(hlo1, hlo2) => hash(hlo1) == hash(hlo2).
+  size_t HashForIdenticalComparison() const {
+    // TODO(b/310715511): use a more precise hash function.
+    return absl::HashOf(opcode(), operands().size());
   }
 
   // Same as Identical() but ignores the order of commutative operands (e.g.
