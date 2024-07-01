@@ -171,7 +171,7 @@ class Handler;
 
 class Ffi {
  public:
-  // Creates and empty binding specification wich allows to define FFI handler
+  // Creates and empty binding specification which allows to define FFI handler
   // signature separately from implementation and rely on compile time type
   // checking to verify that signature matches the provided implementation.
   static Binding<> Bind();
@@ -676,7 +676,7 @@ struct AttrBinding<Attr<T, attr_name>> {
   static constexpr std::string_view name() { return attr_name; }
 };
 
-// Default attributes binding for `Dictonary` parameters.
+// Default attributes binding for `Dictionary` parameters.
 template <>
 struct AttrsBinding<Dictionary> {
   using Attrs = Dictionary;
@@ -1331,10 +1331,13 @@ class Handler : public Ffi {
     std::tuple<std::optional<FnArgType<Ts>>...> args = {
         internal::Decode<Ts>::call(offsets, ctx, diagnostic)...};
 
-    bool all_decoded = (std::get<Is>(args).has_value() && ...);
-    if (XLA_FFI_PREDICT_FALSE(!all_decoded)) {
-      return FailedDecodeError(call_frame, {std::get<Is>(args).has_value()...},
-                               diagnostic);
+    if constexpr (sizeof...(Ts) > 0) {
+      // We intentionally use `&`, as it generates fewer branch instructions.
+      bool all_decoded = (std::get<Is>(args).has_value() & ...);
+      if (XLA_FFI_PREDICT_FALSE(!all_decoded)) {
+        return FailedDecodeError(
+            call_frame, {std::get<Is>(args).has_value()...}, diagnostic);
+      }
     }
 
     auto result = fn_(std::move(*std::get<Is>(args))...);
