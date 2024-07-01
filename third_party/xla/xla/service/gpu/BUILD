@@ -6319,8 +6319,8 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "gpu_latency_hiding_scheduler_test",
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
-    deps = ["@com_google_googletest//:gtest_main"],
+    deps = ["//xla/tests:xla_internal_test_main"],
 )
