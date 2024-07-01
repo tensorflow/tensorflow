@@ -64,15 +64,12 @@ struct CalledComputation {};  // binds `HloComputation*`
 // No checks are done at decoding time. Any dtype and rank combination is
 // accepted.
 struct AnyBuffer {
-  using Shape = absl::Span<const int64_t>;
+  using Dimensions = absl::Span<const int64_t>;
 
   PrimitiveType dtype;
   se::DeviceMemoryBase data;
-  Shape dimensions;
+  Dimensions dimensions;
 };
-
-// Deprecated. Use `AnyBuffer` instead.
-using BufferBase = AnyBuffer;
 
 namespace internal {
 
@@ -89,10 +86,10 @@ using NativeType = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
 // any rank is accepted.
 template <PrimitiveType dtype, size_t rank = internal::kDynamicRank>
 struct Buffer {
-  using Shape = AnyBuffer::Shape;
+  using Dimensions = AnyBuffer::Dimensions;
 
   se::DeviceMemory<internal::NativeType<dtype>> data;
-  Shape dimensions;
+  Dimensions dimensions;
 };
 
 // clang-format off

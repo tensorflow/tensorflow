@@ -496,7 +496,10 @@ TEST(FfiTest, AnyBufferArgument) {
   auto fn = [&](AnyBuffer buffer) {
     EXPECT_EQ(buffer.dtype, PrimitiveType::F32);
     EXPECT_EQ(buffer.data.opaque(), storage.data());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
+    AnyBuffer::Dimensions dimensions = buffer.dimensions;
+    EXPECT_EQ(dimensions.size(), 2);
+    EXPECT_EQ(dimensions[0], 2);
+    EXPECT_EQ(dimensions[1], 2);
     return absl::OkStatus();
   };
 
