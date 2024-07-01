@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -94,6 +95,11 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   // derived from tile_sizes_per_thread_. Symbols not occurring in the results
   // have their ranges set to 1 (instead of the size).
   IndexingMap GetIndexingMap(llvm::ArrayRef<mlir::AffineExpr> results) const;
+  // Returns an indexing map whose domain is (thread ID, vector_index).
+  IndexingMap GetThreadVectorIndexingMap(
+      llvm::ArrayRef<mlir::AffineExpr> results,
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints)
+      const;
 
   Shape GetReduceOperandShape() const {
     return first_reduce_->operand(0)->shape();
@@ -107,6 +113,19 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   // reduced shape (i.e., one or two results, depending on the reduction type).
   virtual IndexingMap ComputeReductionOutputIndexing(
       mlir::MLIRContext* ctx) const = 0;
+
+  // Returns the (thread ID, vector index) -> (shared index...) map for the
+  // shared memory reduction.
+  virtual IndexingMap GetSharedMemoryReductionReadMap(
+      mlir::MLIRContext* ctx) const {
+    return IndexingMap::GetUndefined();
+  }
+
+  // Returns the (thread ID, vector index) -> (shared index...) map for the
+  // write to shared memory.
+  virtual IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const {
+    return IndexingMap::GetUndefined();
+  }
 
   // The reduction heroes for each reduction group.
   std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
@@ -138,12 +157,17 @@ class MlirRowReductionFusion : public MlirReductionFusion {
 
  protected:
   int GetRowsPerWarp() const;
+  // The number of warps working on one output element.
+  int GetWarpsPerRow() const;
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
       mlir::MLIRContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
       mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryReductionReadMap(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
 };
 
 class MlirColumnReductionFusion : public MlirReductionFusion {
@@ -157,6 +181,9 @@ class MlirColumnReductionFusion : public MlirReductionFusion {
       mlir::MLIRContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
       mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryReductionReadMap(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
 };
 
 std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(
