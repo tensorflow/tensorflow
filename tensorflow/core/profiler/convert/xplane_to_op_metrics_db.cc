@@ -139,6 +139,7 @@ void CollectTfActivities(
     const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops,
     std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
+  if (IsDerivedThreadId(line.Id())) return;
   tf_activities->reserve(line.NumEvents() * 2);
   line.ForEachEvent(
       [&tf_ops, &tf_op_id, &tf_activities](const XEventVisitor& event) {
@@ -155,6 +156,17 @@ void CollectTfActivities(
               {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
           tf_activities->push_back(
               {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
+        }
+        if (auto tf_op_stat = event.GetStat(StatType::kTfOp);
+            tf_op_stat.has_value()) {
+          ++tf_op_id;
+          tsl::profiler::TfOp tf_op =
+              tsl::profiler::ParseTfOpFullname(tf_op_stat->StrOrRefValue());
+          tsl::profiler::Timespan span = event.GetTimespan();
+          tf_activities->push_back(
+              {span.begin_ps(), tf_op_id, kTfOpBegin, tf_op, false});
+          tf_activities->push_back(
+              {span.end_ps(), tf_op_id, kTfOpEnd, tf_op, false});
         }
       });
 }
@@ -183,11 +195,9 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     const XLineVisitor& line,
     const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
-  if (!tf_ops.empty()) {
-    std::vector<TfActivity> tf_activities;
-    CollectTfActivities(line, tf_ops, &tf_activities);
-    ProcessTfActivities(&tf_activities, &tf_metrics_db_data);
-  }
+  std::vector<TfActivity> tf_activities;
+  CollectTfActivities(line, tf_ops, &tf_activities);
+  ProcessTfActivities(&tf_activities, &tf_metrics_db_data);
   return tf_metrics_db_data;
 }
 
