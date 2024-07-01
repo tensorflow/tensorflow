@@ -1336,30 +1336,6 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
-    name = "mlir-tflite-runner",
-    srcs = [
-        "mlir_tflite_runner.cc",
-    ],
-    deps = [
-        ":flatbuffer_translate_lib",
-        ":flatbuffer_translate_registration",
-        ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/delegates/flex:delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-    ],
-)
-
 cc_library(
     name = "tf_tfl_passes",
     srcs = ["tf_tfl_passes.cc"],
