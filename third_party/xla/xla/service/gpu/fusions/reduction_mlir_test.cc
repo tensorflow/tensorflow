@@ -274,6 +274,69 @@ TEST_F(MlirRowReductionTest, F64RowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirRowReductionTest, RowReductionMinorAndMajor) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[7,100,128] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[100] reduce(param_0, param_1), dimensions={0,2}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[7,100,128] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[100] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  auto module = ParseAndReturnVerifiedModule(kHloString).value();
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+  MlirRowReductionFusion fusion(analysis);
+
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          s0,
+          d3 * 8 + d0 floordiv 32,
+          (d0 mod 32 + s2 * 32) * 2 + s3
+        )
+        domain:
+        d0 in [0, 256)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 13)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        s0 in [0, 7)
+        s1 in [0, 1)
+        s2 in [0, 2)
+        s3 in [0, 2)
+        d0 mod 32 + s2 * 32 in [0, 64)
+        d3 * 8 + d0 floordiv 32 in [0, 100)
+      )"));
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5) -> (d3 * 8 + d0 floordiv 32)
+        domain:
+        d0 in [0, 256)
+        d1 in [0, 1)
+        d2 in [0, 1)
+        d3 in [0, 13)
+        d4 in [0, 1)
+        d5 in [0, 1)
+        d0 mod 32 in [0, 1)
+        d3 * 8 + d0 floordiv 32 in [0, 100)
+      )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 TEST_F(MlirRowReductionTest, MultiRowReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
