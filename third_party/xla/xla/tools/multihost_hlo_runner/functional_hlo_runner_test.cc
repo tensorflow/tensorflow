@@ -27,10 +27,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/filecheck.h"
+#include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -60,9 +59,9 @@ std::string GetHloPath(std::string file_name) {
 
 absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient() {
   if (IsTestingCpu()) {
-    return xla::FunctionalHloRunner::CreateHostClient();
+    return CreateHostClient();
   }
-  return xla::FunctionalHloRunner::CreateGpuClient({});
+  return CreateGpuClient({});
 }
 
 using FunctionalHloRunnerTest = ::testing::Test;
@@ -338,7 +337,7 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
       FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          FunctionalHloRunner::CreateMockGpuClient(16));
+                          CreateMockGpuClient(16));
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, debug_options, preproc_options, raw_compile_options,

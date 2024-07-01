@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,28 +29,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/pjrt/distributed/distributed.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-
-struct PjRtEnvironment {
-  std::unique_ptr<xla::PjRtClient> client;
-  std::unique_ptr<xla::DistributedRuntimeService> service;
-  std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
-  std::shared_ptr<xla::DistributedRuntimeClient> distributed_client;
-};
-
-absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
-                                              absl::string_view address,
-                                              int node_id, int num_nodes,
-                                              bool enable_mock_nccl,
-                                              absl::Duration init_timeout);
 
 // Supported input formats for the input HLO module.
 enum class InputFormat {
@@ -227,17 +210,6 @@ class FunctionalHloRunner {
     int replicas = 1;
     int partitions = 1;
   };
-
-  // Create a PjRtClient which can run HLOs on Host CPU.
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
-
-  // Create a PjRtClient which can run HLOs on GPU.
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
-      GpuClientOptions options);
-
-  // Create a PjRtClient which mocks multi-hosts GPU run
-  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateMockGpuClient(
-      int num_nodes = 1);
 
   // Loads an ExecutionOptions proto (which can be used in RawCompileOptions).
   static absl::StatusOr<ExecutionOptions> LoadExecutionOptions(

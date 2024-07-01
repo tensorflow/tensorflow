@@ -21,25 +21,21 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
-#include "xla/pjrt/distributed/client.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/status_macros.h"
+#include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace {

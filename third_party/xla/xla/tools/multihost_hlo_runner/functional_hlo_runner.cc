@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
@@ -46,12 +45,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/pjrt/distributed/client.h"
-#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -76,77 +70,6 @@ limitations under the License.
 
 namespace xla {
 
-static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    absl::string_view device_type, absl::string_view address, int node_id,
-    int num_nodes, bool enable_mock_nccl, absl::Duration init_timeout,
-    std::unique_ptr<xla::DistributedRuntimeService>& service,
-    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store,
-    std::shared_ptr<xla::DistributedRuntimeClient>& distributed_client) {
-  if (device_type == "host") {
-    CHECK_EQ(num_nodes, 1);
-    return xla::FunctionalHloRunner::CreateHostClient();
-  }
-
-  if (device_type != "gpu") {
-    return absl::UnimplementedError(device_type);
-  }
-
-  if (enable_mock_nccl) {
-    CHECK_GT(num_nodes, 1);
-    return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
-  } else {
-    if (num_nodes == 1) {
-      return xla::FunctionalHloRunner::CreateGpuClient({});
-    } else {
-      TF_RET_CHECK(!address.empty());
-      TF_RET_CHECK(node_id >= 0)
-          << "Node id is expected to be in range [0, num_nodes)";
-      TF_RET_CHECK(node_id < num_nodes)
-          << "Node id is expected to be in range [0, num_nodes)";
-
-      CHECK_GT(address.length(), 0);
-      // Multinode. Start service on task 0.
-      if (node_id == 0) {
-        std::string coordinator_bind_address =
-            "[::]:" + std::string(address).substr(address.rfind(':') + 1);
-        xla::CoordinationServiceImpl::Options options;
-        options.num_nodes = num_nodes;
-        auto status_or = xla::GetDistributedRuntimeService(
-            coordinator_bind_address, options);
-        TF_QCHECK_OK(status_or.status());
-        service = std::move(status_or.value());
-      }
-      xla::DistributedRuntimeClient::Options options;
-      options.node_id = node_id;
-      options.init_timeout = init_timeout;
-      distributed_client =
-          GetDistributedRuntimeClient(std::string(address), options);
-      TF_QCHECK_OK(distributed_client->Connect());
-      kv_store = GetDistributedKeyValueStore(distributed_client,
-                                             /*key_prefix=*/"gpu:");
-      GpuClientOptions gpu_client_options;
-      gpu_client_options.node_id = node_id;
-      gpu_client_options.num_nodes = num_nodes;
-      gpu_client_options.kv_store = kv_store;
-      return xla::FunctionalHloRunner::CreateGpuClient(
-          std::move(gpu_client_options));
-    }
-  }
-}
-
-absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
-                                              absl::string_view address,
-                                              int node_id, int num_nodes,
-                                              bool enable_mock_nccl,
-
-                                              absl::Duration init_timeout) {
-  PjRtEnvironment env;
-  TF_ASSIGN_OR_RETURN(env.client,
-                      GetPjRtClient(device_type, address, node_id, num_nodes,
-                                    enable_mock_nccl, init_timeout, env.service,
-                                    env.kv_store, env.distributed_client));
-  return env;
-}
 
 namespace {
 // Creates an HloModule from the given proto.
@@ -348,28 +271,6 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   HloInstruction* entry_root =
       hlo_module->entry_computation()->root_instruction();
   set_manual_sharding(entry_root);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient>>
-FunctionalHloRunner::CreateHostClient() {
-  return GetTfrtCpuClient(CpuClientOptions());
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient>>
-FunctionalHloRunner::CreateGpuClient(GpuClientOptions options) {
-  if (options.node_id < 0 || options.node_id >= options.num_nodes) {
-    return absl::InvalidArgumentError(
-        "Node id is expected to be in range [0, num_nodes)");
-  }
-  return GetStreamExecutorGpuClient(options);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtClient>>
-FunctionalHloRunner::CreateMockGpuClient(int num_nodes) {
-  GpuClientOptions options;
-  options.num_nodes = num_nodes;
-  options.enable_mock_nccl = true;
-  return GetStreamExecutorGpuClient(options);
 }
 
 absl::StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
