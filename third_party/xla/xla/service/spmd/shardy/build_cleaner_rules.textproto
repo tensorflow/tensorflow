@@ -1,0 +1,20 @@
+# proto-file: devtools/build_cleaner/proto/fragment_resolution.proto
+# proto-message: Rules
+
+rule {
+  reason: GENRULE
+  unresolved_fragment_regex: "third_party/py/mlir/ir"
+  resolving_target: "//third_party/py/mlir:ir"
+}
+
+rule {
+  reason: GENRULE
+  unresolved_fragment_regex: "third_party/py/mlir/dialects/mhlo"
+  resolving_target: "//third_party/py/mlir:mhlo_dialect"
+}
+
+rule {
+  reason: GENRULE
+  unresolved_fragment_regex: "third_party/py/mlir/dialects/stablehlo"
+  resolving_target: "//third_party/py/mlir:stablehlo_dialect"
+}

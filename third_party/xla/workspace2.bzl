@@ -5,6 +5,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import TSL Workspaces
 load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
+load("//third_party:openxla/shardy/workspace.bzl", shardy = "repo")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
@@ -23,6 +24,7 @@ def _initialize_third_party():
     mpitrampoline()
     nanobind()
     robin_map()
+    shardy()
     stablehlo()
     triton()
 
