@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 
 # Note: keep the following lines separate due to the way copybara works
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -402,6 +402,19 @@ cc_library(
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
+    ],
+)
+
+tf_cc_test(
+    name = "import_model_test",
+    srcs = [
+        "translate/import_model_test.cc",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":import_model",
+        ":tfrt_compile_options",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
