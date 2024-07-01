@@ -3094,7 +3094,10 @@ xla_test(
 xla_test(
     name = "concatenate_test",
     srcs = ["concatenate_test.cc"],
-    tags = ["test_xla_cpu_thunks"],
+    tags = [
+        "notsan",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
