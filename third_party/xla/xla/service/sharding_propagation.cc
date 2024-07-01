@@ -48,6 +48,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/hlo_cse.h"
+#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/shape.h"
@@ -3265,6 +3267,23 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     TF_RETURN_IF_ERROR(
         run_to_fix_point(aggressiveness, /*propagate_shard_group=*/true));
+  }
+
+  if (changed) {
+    // Run CSE again to remove any duplicate ops with the same sharding or
+    // compatible shardings.
+    HloPassPipeline pass("sharding-propation-cse");
+    pass.AddPass<HloCSE>(
+        /*is_layout_sensitive=*/false,
+        /*only_fusion_computations=*/false,
+        /*ignore_control_dependencies=*/false,
+        /*only_scalars=*/false,
+        /*is_sharding_sensitive=*/true,
+        /*allow_compatible_sharding=*/true);
+    TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
+    // propagate sharding again to update the sharding of the CSE'd ops.
+    TF_RETURN_IF_ERROR(run_to_fix_point(/*aggressiveness=*/3,
+                                        /*propagate_shard_group=*/false));
   }
 
   // Align the shardings from the same shard_as group so that they will adopt
