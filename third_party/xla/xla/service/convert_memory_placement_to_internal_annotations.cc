@@ -64,11 +64,16 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
                 instruction->name(), instruction->operand_count());
           }
           HloInstruction* input = instruction->mutable_operand(0);
-          TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+          HloInstruction* move_to_host_custom_call =
               c->AddInstruction(HloInstruction::CreateCustomCall(
                   input->shape(), {input},
                   host_memory_offload_annotations::
-                      kMoveToHostCustomCallTarget))));
+                      kMoveToHostCustomCallTarget));
+          if (instruction->has_sharding()) {
+            move_to_host_custom_call->set_sharding(instruction->sharding());
+          }
+          TF_RETURN_IF_ERROR(
+              instruction->ReplaceAllUsesWith(move_to_host_custom_call));
           TF_RETURN_IF_ERROR(
               c->RemoveInstructionAndUnusedOperands(instruction));
           changed = true;
