@@ -136,6 +136,13 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return false;
   }
 
+  if (config.enabled_legacy_custom_call_targets.contains(
+          hlo->custom_call_target())) {
+    VLOG(3) << "Recording legacy custom call target "
+            << hlo->custom_call_target() << " into command buffer.";
+    return true;
+  }
+
   // A special case for jax-triton kernel while it is not ported to FFI.
   if (hlo->custom_call_target() == "triton_kernel_call" &&
       // TODO(b/327718087): This is an ugly hack to prevent capturing triton
@@ -692,7 +699,16 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
-  CommandBufferConfig config{std::move(commands), device_description_};
+
+  absl::flat_hash_set<std::string> legacy_custom_call_targets;
+  for (auto target :
+       debug_options.legacy_command_buffer_custom_call_targets()) {
+    legacy_custom_call_targets.insert(target);
+  }
+
+  CommandBufferConfig config{std::move(commands),
+                             std::move(legacy_custom_call_targets),
+                             device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};

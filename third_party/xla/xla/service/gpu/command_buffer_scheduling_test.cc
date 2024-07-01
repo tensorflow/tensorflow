@@ -52,6 +52,7 @@ class CommandBufferSchedulingTest : public HloTestBase {
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -503,8 +504,8 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   }
   EXPECT_EQ(seq.size(), 10);
 
-  CommandBufferScheduling::CommandBufferConfig config{{DebugOptions::FUSION},
-                                                      device_desc()};
+  CommandBufferScheduling::CommandBufferConfig config{
+      {DebugOptions::FUSION}, {}, device_desc()};
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
       CommandBufferScheduling::CollectCommandBufferSequences(seq, config);
