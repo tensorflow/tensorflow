@@ -1,7 +1,6 @@
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_cuda_library",
 )
@@ -1564,7 +1563,7 @@ tf_kernel_library(
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm([":light_outside_compilation"]),
+    ],
 )
 
 tf_kernel_library(
