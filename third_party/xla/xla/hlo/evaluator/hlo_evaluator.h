@@ -257,6 +257,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
       const Array2D<std::complex<double>>& rhs);
   static std::unique_ptr<Array2D<int32_t>> MatmulArray2D(
       const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs);
+  static std::unique_ptr<Array2D<uint8_t>> MatmulArray2D(
+      const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs);
 
  protected:
   // Evaluates the given instruction, and stores the evaluation result in the

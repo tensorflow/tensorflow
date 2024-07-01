@@ -534,6 +534,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulU8);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(PrintfToStderr);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
