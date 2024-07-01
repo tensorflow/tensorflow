@@ -50,7 +50,7 @@ class CubSortKeysTest : public HloTestBase,
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    GpuSortRewriter::SetSortSizeThresholdForTestingOnly(100000);
+    GpuSortRewriter::SetSortSizeThresholdForTestingOnly(33000);
   }
 };
 
@@ -138,7 +138,7 @@ class CubSortPairsTest
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    GpuSortRewriter::SetSortSizeThresholdForTestingOnly(100000);
+    GpuSortRewriter::SetSortSizeThresholdForTestingOnly(33000);
   }
 };
 
