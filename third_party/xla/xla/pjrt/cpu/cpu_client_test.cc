@@ -367,8 +367,8 @@ struct MemsetValue {
 static absl::Status MemsetFromValue(
     ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
     MemsetValue* memset_value) {
-  for (size_t i = 0; i < result->dimensions.at(0); ++i) {
-    result->data.base()[i] = memset_value->value;
+  for (size_t i = 0; i < result->element_count(); ++i) {
+    result->typed_data()[i] = memset_value->value;
   }
   return absl::OkStatus();
 }

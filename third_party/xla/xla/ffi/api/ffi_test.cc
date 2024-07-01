@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/xla_data.pb.h"
@@ -56,7 +57,6 @@ enum class Int64BasedEnum : int64_t {
 };
 
 }  // namespace
-
 }  // namespace xla::ffi
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);
@@ -98,6 +98,58 @@ TEST(FfiTest, DataTypeEnumValue) {
             encoded(DataType::F8E4M3B11FNUZ));
   EXPECT_EQ(encoded(PrimitiveType::F8E5M2FNUZ), encoded(DataType::F8E5M2FNUZ));
   EXPECT_EQ(encoded(PrimitiveType::F8E4M3FNUZ), encoded(DataType::F8E4M3FNUZ));
+}
+
+TEST(FfiTest, DataTypeByteWidth) {
+  EXPECT_EQ(0, ByteWidth(DataType::TOKEN));
+  EXPECT_EQ(0, ByteWidth(DataType::INVALID));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::PRED),
+            ByteWidth(DataType::PRED));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::S8),
+            ByteWidth(DataType::S8));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::S16),
+            ByteWidth(DataType::S16));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::S32),
+            ByteWidth(DataType::S32));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::S64),
+            ByteWidth(DataType::S64));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::U8),
+            ByteWidth(DataType::U8));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::U16),
+            ByteWidth(DataType::U16));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::U32),
+            ByteWidth(DataType::U32));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::U64),
+            ByteWidth(DataType::U64));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F16),
+            ByteWidth(DataType::F16));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F32),
+            ByteWidth(DataType::F32));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F64),
+            ByteWidth(DataType::F64));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::BF16),
+            ByteWidth(DataType::BF16));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::C64),
+            ByteWidth(DataType::C64));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::C128),
+            ByteWidth(DataType::C128));
+
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E5M2),
+            ByteWidth(DataType::F8E5M2));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3FN),
+            ByteWidth(DataType::F8E4M3FN));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3B11FNUZ),
+            ByteWidth(DataType::F8E4M3B11FNUZ));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E5M2FNUZ),
+            ByteWidth(DataType::F8E5M2FNUZ));
+  EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E4M3FNUZ),
+            ByteWidth(DataType::F8E4M3FNUZ));
 }
 
 TEST(FfiTest, ErrorEnumValue) {
@@ -156,8 +208,8 @@ TEST(FfiTest, AnyBufferArgument) {
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Arg<AnyBuffer>().To([&](auto buffer) {
-    EXPECT_EQ(buffer.data, storage.data());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
+    EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.dimensions().size(), 2);
     return Error::Success();
   });
   auto status = Call(*handler, call_frame);
@@ -193,8 +245,8 @@ TEST(FfiTest, AnyBufferResult) {
   auto call_frame = builder.Build();
 
   auto handler = Ffi::Bind().Ret<AnyBuffer>().To([&](Result<AnyBuffer> buffer) {
-    EXPECT_EQ(buffer->data, storage.data());
-    EXPECT_EQ(buffer->dimensions.size(), 2);
+    EXPECT_EQ(buffer->untyped_data(), storage.data());
+    EXPECT_EQ(buffer->dimensions().size(), 2);
     return Error::Success();
   });
   auto status = Call(*handler, call_frame);
