@@ -69,14 +69,15 @@ bool IsRemovableWhile(HloInstruction* instruction,
 }  // namespace
 
 /*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
-    HloComputation* computation, bool remove_cross_partition_collective_ops) {
+    HloComputation* computation, bool remove_cross_partition_collective_ops,
+    bool cleanup_mof_root) {
   bool changed = false;
   VLOG(3) << "Before dce:";
   XLA_VLOG_LINES(3, computation->ToString());
   // Cleanup unused tuple elements in multi-output fusion roots. We do this
   // first, because it may create dead roots which we can clean up next.
   if (auto* fusion_instruction = computation->FusionInstruction();
-      fusion_instruction != nullptr &&
+      cleanup_mof_root && fusion_instruction != nullptr &&
       computation->root_instruction()->opcode() == HloOpcode::kTuple &&
       !computation->root_instruction()->has_sharding() &&
       fusion_instruction->output_operand_aliasing().empty() &&
@@ -282,7 +283,8 @@ absl::StatusOr<bool> HloDCE::Run(
   for (auto* computation : computations) {
     TF_ASSIGN_OR_RETURN(
         bool changed_for_computation,
-        RunOnComputation(computation, remove_cross_partition_collective_ops_));
+        RunOnComputation(computation, remove_cross_partition_collective_ops_,
+                         cleanup_mof_root_));
     changed |= changed_for_computation;
   }
 
