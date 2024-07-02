@@ -201,7 +201,7 @@ def _tag_filters_for_compute_capability(
 
 
 _DEFAULT_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build:latest-python3.11",
+    image_url="gcr.io/tensorflow-sigs/build:latest-python3.12",
 )
 
 # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
