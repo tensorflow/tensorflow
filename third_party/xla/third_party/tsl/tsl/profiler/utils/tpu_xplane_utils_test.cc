@@ -21,6 +21,7 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
 namespace profiler {

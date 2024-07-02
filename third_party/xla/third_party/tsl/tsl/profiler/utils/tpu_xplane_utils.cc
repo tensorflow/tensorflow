@@ -17,10 +17,12 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
 namespace profiler {
