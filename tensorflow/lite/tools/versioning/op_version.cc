@@ -393,6 +393,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_CONV_3D_TRANSPOSE: {
+      // If the op has int8 filter, it is version 2.
+      if (op_sig.inputs.at(1).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
+
     case BuiltinOperator_LSTM: {
       auto lstm_params =
           reinterpret_cast<TfLiteLSTMParams*>(op_sig.builtin_data);

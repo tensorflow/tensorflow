@@ -32,9 +32,9 @@ enum class TestType {
   kDynamic = 1,
 };
 
-class Conv3dTransposeOpModel : public SingleOpModel {
+class BaseConv3dTransposeOpModel : public SingleOpModel {
  public:
-  Conv3dTransposeOpModel(
+  BaseConv3dTransposeOpModel(
       std::initializer_list<int> output_shape_data, const TensorData& filter,
       const TensorData& input, const TensorData& bias, const TensorData& output,
       TestType test_type, Padding padding = Padding_VALID,
@@ -66,7 +66,7 @@ class Conv3dTransposeOpModel : public SingleOpModel {
     }
   }
 
-  Conv3dTransposeOpModel(
+  BaseConv3dTransposeOpModel(
       std::initializer_list<int> output_shape_data, const TensorData& filter,
       const TensorData& input, const TensorData& output, TestType test_type,
       Padding padding = Padding_VALID, int32_t stride_depth = 1,
@@ -95,6 +95,18 @@ class Conv3dTransposeOpModel : public SingleOpModel {
     }
   }
 
+ protected:
+  int output_shape_;
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+};
+
+class Conv3dTransposeOpModel : public BaseConv3dTransposeOpModel {
+ public:
+  using BaseConv3dTransposeOpModel::BaseConv3dTransposeOpModel;
+
   void SetFilter(std::vector<float> f) { PopulateTensor(filter_, f); }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
@@ -103,13 +115,6 @@ class Conv3dTransposeOpModel : public SingleOpModel {
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int output_shape_;
-  int input_;
-  int filter_;
-  int bias_;
-  int output_;
 };
 
 template <typename T>
@@ -361,7 +366,313 @@ TEST_P(Conv3dTransposeOpTest, BiasTest) {
            -1, -80, 3, 84, 0,  43,  2, 1,  -1, 6,   3, 42, 0,  -43, 2, 47}));
 }
 
+class PerChannelQuantizedConv3dTransposeOpModel
+    : public BaseConv3dTransposeOpModel {
+ public:
+  using BaseConv3dTransposeOpModel::BaseConv3dTransposeOpModel;
+
+  template <typename T>
+  void SetInput(std::vector<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    PerChannelQuantizeBias(bias_, data);
+  }
+
+  void SetFilter(std::vector<float> data) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
+  }
+
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+};
+
+class PerChannelQuantizedConv3dTransposeOpTest
+    : public ::testing::TestWithParam<TestType> {};
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       SimpleINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {1, 3, 3, 5, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam());
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
+               1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 5, 2));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-1,  -1,  -4,  -4,  -8,  -8,  -12, -12, 1,   1,   -16, -16, -18,
+           -16, -18, -20, -18, -24, 14,  -12, 1,   17,  18,  4,   22,  4,
+           26,  4,   29,  -29, -34, -32, -36, -30, -36, -30, -36, -30, 14,
+           2,   -50, 2,   -8,  -26, -8,  -26, -8,  -26, 74,  -44, -16, 50,
+           28,  4,   28,  4,   28,  4,   60,  -62, -1,  33,  32,  38,  36,
+           42,  40,  46,  45,  1,   -34, 50,  10,  54,  10,  58,  10,  62,
+           60,  0,   -49, 1,   -54, 0,   -58, 0,   -62, 0,   -1,  -1},
+          0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       AsymmetricINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {1, 3, 3, 5, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0.0f, 32.0f},
+      {TensorType_INT8, {}, -63.5f, 74.0f},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam());
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
+               1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 5, 2));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-1,  -1,  -4,  -4,  -8,  -8,  -12, -12, 1,   1,   -16, -16, -18,
+           -16, -18, -20, -18, -24, 14,  -12, 1,   17,  18,  4,   22,  4,
+           26,  4,   29,  -29, -34, -32, -36, -30, -36, -30, -36, -30, 14,
+           2,   -50, 2,   -8,  -26, -8,  -26, -8,  -26, 74,  -44, -16, 50,
+           28,  4,   28,  4,   28,  4,   60,  -62, -1,  33,  32,  38,  36,
+           42,  40,  46,  45,  1,   -34, 50,  10,  54,  10,  58,  10,  62,
+           60,  0,   -49, 1,   -54, 0,   -58, 0,   -62, 0,   -1,  -1},
+          0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       StrideINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {2, 4, 3, 2, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {2, 2, 2, 1, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam(), Padding_VALID,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(16));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 3, 2, 2));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-1, 1,   1, -1, -2, 4,   2, 0,  -1, -5,  1, 5,  -1, 1,   1, -1,
+           -2, 4,   2, 0,  -1, -5,  1, 5,  -1, 9,   1, -1, -2, 4,   2, 8,
+           -1, -13, 1, 13, -1, 9,   1, -1, -2, 4,   2, 8,  -1, -13, 1, 13,
+           -1, 17,  1, -1, -2, 4,   2, 16, -1, -21, 1, 21, -1, 17,  1, -1,
+           -2, 4,   2, 16, -1, -21, 1, 21, -1, 25,  1, -1, -2, 4,   2, 24,
+           -1, -29, 1, 29, -1, 25,  1, -1, -2, 4,   2, 24, -1, -29, 1, 29},
+          0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       DilationINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {1, 3, 3, 2, 2},
+      {TensorType_INT8,
+       {1, 2, 2, 2, 1},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {1, 3, 1, 1, 1}, 0, 0, 0.5f, 0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam(), Padding_VALID,
+      /*stride_depth=*/1,
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_depth=*/1, /*dilation_width=*/1,
+      /*dilation_height=*/2);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(3));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 2, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0, 0, 0,  0, 0, 0,  0, 0,  0, 0, 0, 0, 1, -1, 1,  1, 0, 0,
+                   0, 0, -1, 1, 1, -1, 2, -2, 2, 2, 0, 0, 0, 0,  -2, 2, 2, -2},
+                  0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       StrideAndPaddingSameINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {2, 4, 2, 1, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {2, 2, 2, 1, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam(), Padding_SAME,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(16));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 2, 1, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-1, 1,  -2, 4, -1, 1,  -2, 4, -1, 9,  -2, 4, -1, 9,  -2, 4,
+                   -1, 17, -2, 4, -1, 17, -2, 4, -1, 25, -2, 4, -1, 25, -2, 4},
+                  0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       BiasINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {2, 4, 3, 2, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {2, 3, 2, 1, 2}, 0, 0, 0.5f, 0},
+      // Quantisation scales for bias are computed as the product between the
+      // input scale (0.5f) and the filter quantisation scales (0.5f, 1.0f).
+      {TensorType_INT32,
+       {2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.25f, 0.5f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam());
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(24));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  m.SetBias({1, 2});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 3, 2, 2));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {0,  3,   2, 1,  -1, 6,   3, 2,  0,  -3,  2, 7,  -1, 12,  3, 0,
+           -3, 10,  5, 10, -1, -16, 3, 20, -1, 28,  3, 0,  -3, 10,  5, 26,
+           -1, -32, 3, 36, 0,  19,  2, 1,  -1, 6,   3, 18, 0,  -19, 2, 23,
+           0,  27,  2, 1,  -1, 6,   3, 26, 0,  -27, 2, 31, -1, 60,  3, 0,
+           -3, 10,  5, 58, -1, -64, 3, 68, -1, 76,  3, 0,  -3, 10,  5, 74,
+           -1, -80, 3, 84, 0,  43,  2, 1,  -1, 6,   3, 42, 0,  -43, 2, 47},
+          0.35f)));
+}
+
+TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
+       SimpleINT16x8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dTransposeOpModel m(
+      {1, 3, 3, 5, 2},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 1.0f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT16, {1, 2, 2, 4, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT16, {}, 0, 0, 0.5f, 0},
+      PerChannelQuantizedConv3dTransposeOpTest::GetParam());
+
+  m.SetInput<int16_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
+               1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 5, 2));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear(
+          {-1,  -1,  -4,  -4,  -8,  -8,  -12, -12, 1,   1,   -16, -16, -18,
+           -16, -18, -20, -18, -24, 14,  -12, 1,   17,  18,  4,   22,  4,
+           26,  4,   29,  -29, -34, -32, -36, -30, -36, -30, -36, -30, 14,
+           2,   -50, 2,   -8,  -26, -8,  -26, -8,  -26, 74,  -44, -16, 50,
+           28,  4,   28,  4,   28,  4,   60,  -62, -1,  33,  32,  38,  36,
+           42,  40,  46,  45,  1,   -34, 50,  10,  54,  10,  58,  10,  62,
+           60,  0,   -49, 1,   -54, 0,   -58, 0,   -62, 0,   -1,  -1},
+          0.35f)));
+}
+
 INSTANTIATE_TEST_SUITE_P(Conv3dTransposeOpTest, Conv3dTransposeOpTest,
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
+
+INSTANTIATE_TEST_SUITE_P(PerChannelQuantizedConv3dTransposeOpTest,
+                         PerChannelQuantizedConv3dTransposeOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));
 

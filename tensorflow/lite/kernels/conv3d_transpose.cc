@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv3d_transpose.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -41,13 +42,25 @@ const int kTensorNotAllocated = -1;
 struct OpData {
   Padding3DValues padding;
 
-  // The id of the temporary col2im tensor.
+  // IDs are the arbitrary identifiers used by TF Lite to identify and access
+  // memory buffers.
   int col2im_id = kTensorNotAllocated;
-
+  int scratch_tensor_id = kTensorNotAllocated;
   // The index of col2im tensor in the temporaries list.
   int col2im_index;
 
   bool need_col2im = false;
+
+  // Scratch tensor is used in the quantized path for storing accumulation
+  // results.
+  int32_t scratch_tensor_index;
+
+  // Per channel output multiplier and shift.
+  std::vector<int32_t> per_channel_output_multiplier;
+  std::vector<int> per_channel_output_shift;
+
+  int32_t output_activation_min;
+  int32_t output_activation_max;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -59,19 +72,48 @@ void Free(TfLiteContext* context, void* buffer) {
   delete static_cast<OpData*>(buffer);
 }
 
+TfLiteStatus ResizeTensor(TfLiteContext* context,
+                          const TfLiteTensor* shape_tensor,
+                          TfLiteTensor* tensor_to_resize) {
+  // Currently only support int32 for output shape.
+  if (shape_tensor->type != kTfLiteInt32) {
+    TF_LITE_KERNEL_LOG(context, "Output shape is %s, not int32.",
+                       TfLiteTypeGetName(shape_tensor->type));
+    return kTfLiteError;
+  }
+
+  TfLiteIntArray* shape = TfLiteIntArrayCreate(NumElements(shape_tensor));
+  for (int i = 0; i < shape->size; ++i) {
+    shape->data[i] = GetTensorData<int32_t>(shape_tensor)[i];
+  }
+
+  return context->ResizeTensor(context, tensor_to_resize, shape);
+}
+
 static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
+                                                       TfLiteType input_type,
                                                        TfLiteNode* node,
                                                        KernelType kernel_type) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   int temporaries_count = 0;
 
   // Allocate col2im tensor for the optimized kernel.
-  if (kernel_type == kGenericOptimized) {
+  if (kernel_type == kGenericOptimized && input_type != kTfLiteInt8 &&
+      input_type != kTfLiteInt16) {
     if (data->col2im_id == kTensorNotAllocated) {
       context->AddTensors(context, 1, &data->col2im_id);
     }
     data->col2im_index = temporaries_count++;
     data->need_col2im = true;
+  }
+
+  // Allocate scratch buffer tensor
+  if (input_type == kTfLiteInt8 || input_type == kTfLiteInt16) {
+    if (data->scratch_tensor_id == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &data->scratch_tensor_id);
+    }
+    data->scratch_tensor_index = temporaries_count;
+    ++temporaries_count;
   }
 
   TfLiteIntArrayFree(node->temporaries);
@@ -162,15 +204,37 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                     SizeOfDimension(filter, 4));
 
   // Check types.
-  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
+  TfLiteType input_type = input->type;
+  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
+                              input_type == kTfLiteInt8 ||
+                              input_type == kTfLiteInt16);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
   TF_LITE_ENSURE_TYPES_EQ(context, output_shape->type, kTfLiteInt32);
+  if (input_type == kTfLiteInt8 || input_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteInt8);
+  } else {
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
+  }
+
+  if (input_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
+  TF_LITE_ENSURE_EQ(context, filter->params.zero_point, 0);
 
   // Check bias.
   const TfLiteTensor* bias = GetInput(context, node, 3);
   if (bias) {
-    TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input->type);
+    if (input_type == kTfLiteInt8) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+    } else if (input_type == kTfLiteInt16) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+    } else {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
+    }
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 3));
   }
 
@@ -181,8 +245,52 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   }
 
   // Allocate temporary tensors.
-  TF_LITE_ENSURE_STATUS(
-      AllocateTemporaryTensorsIfRequired(context, node, kernel_type));
+  TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, input->type,
+                                                           node, kernel_type));
+
+  if (input_type != kTfLiteFloat32) {
+    node->temporaries->data[opdata->scratch_tensor_index] =
+        opdata->scratch_tensor_id;
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, opdata->scratch_tensor_index,
+                                  &scratch_buffer));
+    if (input->type == kTfLiteInt16) {
+      scratch_buffer->type = kTfLiteInt64;
+    } else {
+      scratch_buffer->type = kTfLiteInt32;
+    }
+    scratch_buffer->allocation_type = kTfLiteDynamic;
+    if (!IsConstantTensor(output_shape)) {
+      SetTensorToDynamic(scratch_buffer);
+    } else {
+      TF_LITE_ENSURE_STATUS(
+          ResizeTensor(context, output_shape, scratch_buffer));
+    }
+
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    int channels_out = filter->dims->data[3];
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context,
+                   (affine_quantization->scale->size == 1) ||
+                       (affine_quantization->scale->size == channels_out));
+    for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
+      TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+    }
+
+    opdata->per_channel_output_multiplier.resize(channels_out);
+    opdata->per_channel_output_shift.resize(channels_out);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, filter, bias, output, params->activation, nullptr,
+        nullptr, &opdata->output_activation_min, &opdata->output_activation_max,
+        opdata->per_channel_output_multiplier.data(),
+        opdata->per_channel_output_shift.data(), channels_out));
+  }
 
   // Check temporary tensors.
   TfLiteTensor* col2im = nullptr;
@@ -251,6 +359,39 @@ void EvalFloat(KernelType kernel_type, TfLiteContext* context, TfLiteNode* node,
   }
 }
 
+template <typename InputType, typename BiasType>
+void EvalQuantizedPerChannel(KernelType kernel_type, TfLiteContext* context,
+                             TfLiteNode* node, TfLiteConv3DParams* params,
+                             OpData* opdata, const TfLiteTensor* input,
+                             const TfLiteTensor* filter,
+                             const TfLiteTensor* bias, TfLiteTensor* output,
+                             TfLiteTensor* scratch_buffer) {
+  Conv3DTransposeParams runtime_params;
+  runtime_params.input_offset = -input->params.zero_point;
+  runtime_params.output_offset = output->params.zero_point;
+  runtime_params.padding_values = opdata->padding;
+  runtime_params.stride_depth = params->stride_depth;
+  runtime_params.stride_height = params->stride_height;
+  runtime_params.stride_width = params->stride_width;
+  runtime_params.dilation_depth = params->dilation_depth_factor;
+  runtime_params.dilation_height = params->dilation_height_factor;
+  runtime_params.dilation_width = params->dilation_width_factor;
+  switch (kernel_type) {
+    case kGenericOptimized:
+    case kReference: {
+      reference_integer_ops::Conv3DTransposePerChannel<InputType, BiasType>(
+          runtime_params, opdata->per_channel_output_multiplier.data(),
+          opdata->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<InputType>(input), GetTensorShape(filter),
+          GetTensorData<int8_t>(filter), GetTensorShape(bias),
+          GetTensorData<BiasType>(bias), GetTensorShape(output),
+          GetTensorData<InputType>(output),
+          GetTensorData<BiasType>(scratch_buffer));
+      break;
+    }
+  }
+}
+
 TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
                   TfLiteNode* node) {
   auto* params =
@@ -282,10 +423,31 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
     kernel_type = kReference;
   }
 
+  TfLiteTensor* scratch_buffer = nullptr;
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, opdata->scratch_tensor_index,
+                                  &scratch_buffer));
+    if (IsDynamicTensor(scratch_buffer)) {
+      TF_LITE_ENSURE_OK(context,
+                        ResizeTensor(context, output_shape, scratch_buffer));
+    }
+  }
+
   switch (input->type) {
     case kTfLiteFloat32:
       EvalFloat(kernel_type, context, node, params, opdata, input, filter, bias,
                 col2im, output);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedPerChannel<int8_t, int32_t>(kernel_type, context, node,
+                                               params, opdata, input, filter,
+                                               bias, output, scratch_buffer);
+      break;
+    case kTfLiteInt16:
+      EvalQuantizedPerChannel<int16_t, int64_t>(kernel_type, context, node,
+                                                params, opdata, input, filter,
+                                                bias, output, scratch_buffer);
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",

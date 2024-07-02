@@ -517,7 +517,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_REAL, Register_REAL());
   AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE,
-             Register_CONV_3D_TRANSPOSE_REF());
+             Register_CONV_3D_TRANSPOSE_REF(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_BROADCAST_ARGS, Register_BROADCAST_ARGS());
   AddBuiltin(BuiltinOperator_MULTINOMIAL, Register_MULTINOMIAL());
   AddBuiltin(BuiltinOperator_RANDOM_STANDARD_NORMAL,
