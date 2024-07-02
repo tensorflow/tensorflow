@@ -1437,11 +1437,11 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       output_tensors: List of output tensors.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete function is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1519,11 +1519,11 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete function is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1714,7 +1714,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     """Converts a Keras model as a saved model.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
@@ -1733,7 +1733,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     """Converts a keras model based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
@@ -1889,7 +1889,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """Converts the given concrete functions as a saved model format.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
@@ -1908,11 +1908,11 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete function is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -1977,7 +1977,7 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
     """Converts a Jax serving func based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ImportError:
@@ -2075,18 +2075,18 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       integer quantization, i.e, if `tf.int8` is the only supported type in
       `target_spec.supported_types`. Refer to `tf.lite.RepresentativeDataset`.
       (default None)
-    target_spec: Experimental flag, subject to change. Specifications of target
-      device, including supported ops set, supported types and a set of user's
-      defined TensorFlow operators required in the TensorFlow Lite runtime.
-      Refer to `tf.lite.TargetSpec`.
+    target_spec: Experimental flag, subject to change. Specifications of the
+      target device, including supported ops set, supported types and a set 
+      of user's defined TensorFlow operators required in the TensorFlow Lite 
+      runtime. Refer to `tf.lite.TargetSpec`.
     inference_input_type: Data type of the input layer. Note that integer types
-      (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization and quantization aware training. (default tf.float32,
+      (tf.int8 and tf.uint8) are currently only supported for post-training
+      integer quantization and quantization-aware training. (default tf.float32,
       must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
-      types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization and quantization aware training. (default
-      tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
+      types (tf.int8 and tf.uint8) are currently only supported for 
+      post-training integer quantization and quantization-aware training. 
+      (default tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When False, any unknown operation is an error. When True, custom ops are
       created for any op that is unknown. The developer needs to provide these
@@ -2293,13 +2293,13 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   )
   def experimental_from_jax(cls, serving_funcs, inputs):
     # Experimental API, subject to changes.
-    # TODO(b/197690428): Currently only support single function.
+    # TODO(b/197690428): Currently only supports single function.
     """Creates a TFLiteConverter object from a Jax model with its inputs.
 
     Args:
-      serving_funcs: A array of Jax functions with all the weights applied
+      serving_funcs: An array of Jax functions with all the weights applied
         already.
-      inputs: A array of Jax input placeholders tuples list, e.g.,
+      inputs: An array of Jax input placeholders tuples list, e.g.,
         jnp.zeros(INPUT_SHAPE). Each tuple list should correspond with the
         serving function.
 
@@ -2318,11 +2318,11 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
 
     Raises:
       ValueError:
-        No concrete functions is specified.
+        No concrete function is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
@@ -2410,7 +2410,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       raise ValueError(
           "The `quantized_input_stats` flag must be defined when either "
           "`inference_type` flag or `inference_input_type` flag is set to "
-          "tf.int8 or tf.uint8. Currently, `inference_type={}` and "
+          "tf.int8 or tf.uint8. Currently `inference_type={}` and "
           "`inference_input_type={}`.".format(
               _get_tf_type_name(converter_kwargs["inference_type"]),
               _get_tf_type_name(converter_kwargs["inference_input_type"]),
@@ -2514,8 +2514,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      a Graphviz graph depending on value in `output_format`.
 
     Raises:
       ValueError:
@@ -2710,7 +2710,7 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
     self._saved_model_exported_names = saved_model_exported_names
 
     if len(self._saved_model_exported_names) != 1:
-      raise ValueError("Only support a single signature key.")
+      raise ValueError("Only supports a single signature key.")
 
     signature_key = self._saved_model_exported_names[0]
 
@@ -2737,8 +2737,8 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
     (`interpreter.get_signature_runner`).
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      a Graphviz graph depending on value in `output_format`.
 
     Raises:
       ValueError:
@@ -2865,7 +2865,7 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     """Converts a Keras model as a saved model.
 
     Returns:
-      The converted data in serialized format.
+      The converted data is in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
@@ -2880,8 +2880,8 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     """Converts a Keras model based on instance variables.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      a Graphviz graph depending on value in `output_format`.
 
     Raises:
       ValueError:
@@ -2958,8 +2958,8 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      a Graphviz graph depending on value in `output_format`.
 
     Raises:
       ValueError:
@@ -3343,8 +3343,8 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     """Converts a TensorFlow GraphDef based on instance variables.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+      The converted data is in serialized format. Either a TFLite Flatbuffer or
+      a Graphviz graph depending on value in `output_format`.
 
     Raises:
       ValueError:
