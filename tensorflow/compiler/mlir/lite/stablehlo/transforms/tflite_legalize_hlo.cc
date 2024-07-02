@@ -109,20 +109,22 @@ std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
-  MLIRContext& context = getContext();
-  RewritePatternSet patterns(&getContext());
-  // Add new conversion patterns here.
-  PopulateLegalizeHloToTFLitePatterns(&patterns, &context);
+  MLIRContext* context = &getContext();
 
-  ConversionTarget target(context);
+  RewritePatternSet patterns(context);
+  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
+               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
+      context);
+  populateWithGenerated(patterns);
+
+  ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
-  // Converted MHLO ops should be marked illegal here.
-  // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
@@ -131,14 +133,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 }
 }  // namespace
 
-void PopulateLegalizeHloToTFLitePatterns(RewritePatternSet* patterns,
-                                         MLIRContext* context) {
-  patterns->add<odml::ConvertCustomCallOp>(context);
-  populateWithGenerated(*patterns);
-
-  patterns->add<ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
-      context);
-}
 
 // Creates an instance of the pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass() {
