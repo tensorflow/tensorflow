@@ -1787,4 +1787,71 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
                             expected);
 }
 
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
+  const char* hlo = R"(
+  HloModule test, replica_count=8
+
+  add {
+    param_0 = f16[] parameter(0)
+    param_1 = f16[] parameter(1)
+    ROOT add.1 = f16[] add(param_0, param_1)
+  }
+
+  ENTRY main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[16,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    ROOT loop_dynamic_update_slice_fusion = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, constant_20, constant_0)
+  }
+  )";
+
+  const char* expected = R"(
+  // CHECK: %address-computation{{.+}} {
+  // CHECK:   %[[RS:.+]] = f16[16,128]{1,0} reduce-scatter({{.+}})
+  // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY {{.+}} {
+  // CHECK-NOT: reduce-scatter
+  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
+                            expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
+  const char* hlo = R"(
+  HloModule test, replica_count=8
+
+  add.clone {
+    x.1 = f16[] parameter(0)
+    y.1 = f16[] parameter(1)
+    ROOT add.462 = f16[] add(x.1, y.1)
+  }
+
+  ENTRY %main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    param_2 = u32[] parameter(2)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[16,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+    ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, param_2, constant_0), metadata={}
+  })";
+
+  const char* expected = R"(
+  // CHECK: %address-computation{{.+}} {
+  // CHECK:   %[[RS:.+]] = f16[16,128]{1,0} reduce-scatter({{.+}})
+  // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
+  // CHECK: }
+  // CHECK: ENTRY {{.+}} {
+  // CHECK-NOT: reduce-scatter
+  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(PLATFORM),
+                            expected);
+}
+
 }  // namespace xla::gpu
