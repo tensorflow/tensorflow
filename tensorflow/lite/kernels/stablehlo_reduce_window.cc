@@ -308,49 +308,7 @@ void PadCrop(const PadCropData& ctx, const char* input, const char* init_value,
 
 namespace reduce_window {
 namespace {
-
-// Reduces the elements of a tensor viewed through a strided window.
-//
-// This applies a reduction to a tensor by skipping over elements that are not
-// in the window defined by the given shape and strides. The window is reduced
-// to one element.
-//
-// The shape is the shape of the window. The strides are based on the actual
-// tensor and the distance between window elements, counted in elements.
-// Sparse windows are possible.
-//
-// For instance: the following window has a [2, 2] shape and [8, 3] strides.
-//
-// ┌──┐     ┌──┐
-// │ 1│ 2  3│ 4│
-// └──┘     └──┘
-//   5  6  7  8    is reduced to 1 + 4 + 9 + 12 = 26
-// ┌──┐     ┌──┐
-// │ 9│10 11│12│
-// └──┘     └──┘
-//  13 14 15 16
-//
-// This is a recursive implementation of the strided reduction.
-template <class Op, class Type>
-void StridedReduce(const Type* input, const int64_t* const shape,
-                   const int64_t* const strides, Type& accu, const int rank,
-                   const int depth) {
-  const int64_t stride = strides[depth];
-  const int64_t size = shape[depth];
-  if (depth + 1 == rank) {
-    const Op op;
-    for (int64_t i = 0; i < size; ++i) {
-      accu = op(accu, *input);
-      input += stride;
-    }
-  } else {
-    for (int64_t i = 0; i < size; ++i) {
-      StridedReduce<Op, Type>(input, shape, strides, accu, rank, depth + 1);
-      input += stride;
-    }
-  }
-}
-
+	
 // Recursively computes strided reductions using a sliding window over the
 // given tensor.
 //
@@ -395,6 +353,50 @@ void ReduceWindowImpl(const Type* input, Type* output,
     }
   }
 }
+
+// Reduces the elements of a tensor viewed through a strided window.
+//
+// This applies a reduction to a tensor by skipping over elements that are not
+// in the window defined by the given shape and strides. The window is reduced
+// to one element.
+//
+// The shape is the shape of the window. The strides are based on the actual
+// tensor and the distance between window elements, counted in elements.
+// Sparse windows are possible.
+//
+// For instance: the following window has a [2, 2] shape and [8, 3] strides.
+//
+// ┌──┐     ┌──┐
+// │ 1│ 2  3│ 4│
+// └──┘     └──┘
+//   5  6  7  8    is reduced to 1 + 4 + 9 + 12 = 26
+// ┌──┐     ┌──┐
+// │ 9│10 11│12│
+// └──┘     └──┘
+//  13 14 15 16
+//
+// This is a recursive implementation of the strided reduction.
+template <class Op, class Type>
+void StridedReduce(const Type* input, const int64_t* const shape,
+                   const int64_t* const strides, Type& accu, const int rank,
+                   const int depth) {
+  const int64_t stride = strides[depth];
+  const int64_t size = shape[depth];
+  if (depth + 1 == rank) {
+    const Op op;
+    for (int64_t i = 0; i < size; ++i) {
+      accu = op(accu, *input);
+      input += stride;
+    }
+  } else {
+    for (int64_t i = 0; i < size; ++i) {
+      StridedReduce<Op, Type>(input, shape, strides, accu, rank, depth + 1);
+      input += stride;
+    }
+  }
+}
+
+
 
 // Computes and holds the parameters that can be precomputed for the dilation
 // operation.
