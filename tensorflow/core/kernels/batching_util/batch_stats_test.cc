@@ -64,6 +64,15 @@ TEST(BatchStatsTest, CostTrackerMeanIsCorrect) {
   ASSERT_EQ(*tracker.mean(), absl::Hours(6));
 }
 
+TEST(BatchStatsTest, ProcessedSizeIsCorrect) {
+  ModelBatchStats stats;
+
+  stats.RegisterProcessedSize(5);
+  stats.RegisterProcessedSize(7);
+
+  ASSERT_EQ(stats.cumulative_processed_size(), 12);
+}
+
 }  // namespace
 
 }  // namespace tensorflow::serving
