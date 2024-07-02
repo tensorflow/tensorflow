@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ROUND_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ROUND_H_
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -31,6 +34,23 @@ inline float RoundToNearest(float value) {
     return floor_val;
   } else {
     return floor_val = floor_val + 1.0f;
+  }
+}
+
+template <typename T>
+void RoundQuantized(const RoundParams& params, const RuntimeShape& input_shape,
+                    const T* input_data, const RuntimeShape& output_shape,
+                    T* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const int32_t kMin = std::numeric_limits<T>::min();
+  const int32_t kMax = std::numeric_limits<T>::max();
+  for (int i = 0; i < flat_size; ++i) {
+    const int32_t scaled_output = MultiplyByQuantizedMultiplier(
+        input_data[i] - params.input_offset, params.output_multiplier,
+        params.output_shift);
+    const int32_t clamped_output =
+        std::min(std::max(scaled_output, kMin), kMax);
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 

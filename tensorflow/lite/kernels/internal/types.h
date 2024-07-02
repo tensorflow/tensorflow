@@ -920,6 +920,12 @@ struct ResizeNearestNeighborParams {
   bool half_pixel_centers;
 };
 
+struct RoundParams {
+  int32_t input_offset;
+  int32_t output_multiplier;
+  int output_shift;
+};
+
 struct SliceParams {
   int8_t begin_count;
   int32_t begin[5];

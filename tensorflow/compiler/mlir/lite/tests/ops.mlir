@@ -1951,7 +1951,7 @@ func.func @anyWithI64Axis(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i
 // -----
 
 func.func @testRoundInvalidInputType(%arg: tensor<?xi32>) -> tensor<?xi32> {
-  // expected-error @+1 {{'tfl.round' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{'tfl.round' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type values}}
   %0 = "tfl.round"(%arg) : (tensor<?xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
 }

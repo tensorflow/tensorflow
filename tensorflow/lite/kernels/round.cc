@@ -29,7 +29,24 @@ namespace round {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  int32_t input_offset;
+  int32_t output_multiplier;
+  int output_shift;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  return data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TfLiteTensor* output;
@@ -37,29 +54,78 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+
+  if (input->type != kTfLiteInt8 && input->type != kTfLiteInt16 &&
+      input->type != kTfLiteFloat32) {
+    context->ReportError(context,
+                         "Inputs of type '%s' are not supported by round.",
+                         TfLiteTypeGetName(input->type));
+    return kTfLiteError;
+  }
+
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, output->params.scale, 1.0f);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    if (input->params.scale > 1.0f) {
+      context->ReportError(context, "Scale '%f' is not supported by round.",
+                           input->params.scale);
+      return kTfLiteError;
+    }
+    QuantizeMultiplier(input->params.scale, &data->output_multiplier,
+                       &data->output_shift);
+    data->input_offset = input->params.zero_point;
+  }
+
   output->type = input->type;
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
   return context->ResizeTensor(context, output, output_size);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  RoundParams op_params;
+  op_params.input_offset = data->input_offset;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  optimized_ops::Round(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
-
+  switch (input->type) {
+    case kTfLiteInt8:
+      reference_ops::RoundQuantized<int8_t>(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      break;
+    case kTfLiteInt16:
+      reference_ops::RoundQuantized<int16_t>(
+          op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+      break;
+    case kTfLiteFloat32:
+      reference_ops::Round(GetTensorShape(input), GetTensorData<float>(input),
+                           GetTensorShape(output),
+                           GetTensorData<float>(output));
+      break;
+    default:
+      context->ReportError(context, "Type '%s' is not supported by round.",
+                           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
   return kTfLiteOk;
 }
 }  // namespace round
 
 TfLiteRegistration* Register_ROUND() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, round::Prepare, round::Eval};
+  static TfLiteRegistration r = {round::Init, round::Free, round::Prepare,
+                                 round::Eval};
   return &r;
 }
 
