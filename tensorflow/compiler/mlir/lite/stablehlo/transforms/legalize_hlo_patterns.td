@@ -455,12 +455,12 @@ def : Pat<(MHLO_SelectOp
            (FloatOrDefaultCompare $compare_type1),
            (FloatOrDefaultCompare $compare_type2)]>;
 
-// Converts a dag of HLOs representing floor_mod to tf.FloorMod.
+// Converts a dag of HLOs representing floor_mod to tf.FloorMod for float type.
 // The pattern matched executes the following computation:
 //
 // rem = remainder(arg0, arg1)
 // for i in 0 to len(arg1):
-//    if ((rem[i] < 0) != (arg0[i] < 0) && arg0[i] != 0)
+//    if ((rem[i] < 0) != (arg1[i] < 0) && arg0[i] != 0)
 //       rem[i] += arg1[i]
 // return rem
 def : Pat<(MHLO_SelectOp
@@ -486,6 +486,48 @@ def : Pat<(MHLO_SelectOp
            (SameValue $rem, $rem3),
            (SameTypeOrDefaultCompare $compare_type, $cst),
            (SameTypeOrDefaultCompare $compare_type1, $cst1)]>;
+
+// Converts a dag of HLOs representing floor_mod to tf.FloorMod for int type.
+// The pattern matched executes the following computation:
+//
+// arg1nz = ones_like(arg1) if arg1 == 0 else arg1  # <-- this is added for int.
+// rem = remainder(arg0, arg1nz)
+// for i in 0 to len(arg1nz):
+//    if ((rem[i] < 0) != (arg1nz[i] < 0) && arg0[i] != 0)
+//       rem[i] += arg1nz[i]
+// return rem
+def : Pat<(MHLO_SelectOp
+            (MHLO_AndOp
+              (MHLO_CompareOp
+                (MHLO_CompareOp:$rltz
+                  (MHLO_RemOp:$rem $arg,
+                    (MHLO_SelectOp:$arg1nz
+                      (MHLO_CompareOp $arg1, (MHLO_ConstantOp $cst3), MHLO_ComparisonDirectionValue<"EQ">, $compare_type4),
+                      (MHLO_ConstantOp $cst_one),
+                      $arg1)),
+                  (MHLO_ConstantOp $cst),
+                  MHLO_ComparisonDirectionValue<"LT">,
+                  $compare_type),
+                (MHLO_CompareOp:$arg1ltz $arg1nz1, (MHLO_ConstantOp $cst1), MHLO_ComparisonDirectionValue<"LT">, $compare_type1),
+                MHLO_ComparisonDirectionValue<"NE">,
+                $compare_type2),
+              (MHLO_CompareOp:$rnz $rem1, (MHLO_ConstantOp $cst2), MHLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (MHLO_AddOp $rem2, $arg1nz2),
+            $rem3),
+          (TF_FloorModOp $arg, $arg1),
+          [(ValueEquals<"0.0"> $cst),
+           (ValueEquals<"0.0"> $cst1),
+           (ValueEquals<"0.0"> $cst2),
+           (ValueEquals<"0.0"> $cst3),
+           (ValueEquals<"1.0"> $cst_one),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (SameValue $rem, $rem3),
+           (SameValue $arg1nz, $arg1nz1),
+           (SameValue $arg1nz, $arg1nz2),
+           (SameTypeOrDefaultCompare $compare_type, $cst),
+           (SameTypeOrDefaultCompare $compare_type1, $cst1),
+           (SameTypeOrDefaultCompare $compare_type4, $cst3)]>;
 
 // Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:
