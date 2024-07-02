@@ -374,14 +374,8 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       const SymbolicTiledHloInstruction*)>
       get_tiled_hlo_instruction;
 
-  get_tiled_hlo_instruction =
-      [&](const SymbolicTiledHloInstruction* symbolic_tiled_hlo)
-      -> absl::StatusOr<TiledHloInstruction*> {
-    auto it1 = symbolic_to_tiled_hlo_map.find(symbolic_tiled_hlo);
-    if (it1 != symbolic_to_tiled_hlo_map.end()) {
-      return it1->second;
-    }
-
+  for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
+       symbolic_tiled_hlo_instructions_) {
     std::vector<int64_t> tile_sizes =
         symbolic_tiled_hlo->TileSizes(tile_parameters);
     std::vector<int64_t> tile_strides =
@@ -398,33 +392,26 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
                             std::move(tile_strides),
                             std::move(block_id_to_block_offset_indexing)));
 
-    auto it2 = tiled_hlo_instructions_set.find(tiled_hlo_holder.get());
-    if (it2 != tiled_hlo_instructions_set.end()) {
-      return *it2;
+    auto it = tiled_hlo_instructions_set.find(tiled_hlo_holder.get());
+    if (it != tiled_hlo_instructions_set.end()) {
+      symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = *it;
+      continue;
+    }
+
+    if (tiled_hlo_instructions_set.contains(tiled_hlo_holder.get())) {
+      continue;
     }
 
     tiled_hlo_instructions.push_back(std::move(tiled_hlo_holder));
     TiledHloInstruction* tiled_hlo = tiled_hlo_instructions.back().get();
     tiled_hlo_instructions_set.insert(tiled_hlo);
-    symbolic_to_tiled_hlo_map[symbolic_tiled_hlo] = tiled_hlo;
+    symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
 
-    for (SymbolicTiledHloInstruction* operand :
+    for (const SymbolicTiledHloInstruction* operand :
          symbolic_tiled_hlo->operands()) {
-      TF_ASSIGN_OR_RETURN(TiledHloInstruction * tiled_operand,
-                          get_tiled_hlo_instruction(operand));
-      tiled_hlo->AppendOperand(tiled_operand);
+      tiled_hlo->AppendOperand(symbolic_to_tiled_hlo_map.at(operand));
     }
-
-    topological_order[tiled_hlo] = topological_order.size();
-    return tiled_hlo;
-  };
-
-  TF_CHECK_OK(get_tiled_hlo_instruction(GetRoot()).status());
-
-  // Order instructions in def-before-use order.
-  absl::c_sort(tiled_hlo_instructions, [&](const auto& i1, const auto& i2) {
-    return topological_order.at(i1.get()) < topological_order.at(i2.get());
-  });
+  }
 
   return TiledHloComputation::FromSortedTiledHloInstructions(
       std::move(tiled_hlo_instructions));
