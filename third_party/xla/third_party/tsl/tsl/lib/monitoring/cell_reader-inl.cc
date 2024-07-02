@@ -20,14 +20,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "tsl/lib/monitoring/collected_metrics.h"
 #include "tsl/lib/monitoring/collection_registry.h"
 #include "tsl/lib/monitoring/metric_def.h"
 #include "tsl/lib/monitoring/test_utils.h"
-#include "tsl/lib/monitoring/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {
