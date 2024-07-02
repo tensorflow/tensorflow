@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -674,6 +675,12 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
         "input/output tensor should all be in FP32, INT32 or quantized INT8");
     return std::nullopt;
   }
+
+  if (EqualizeRanks(rewriter, op->getLoc(), x, y)
+          .failed())
+    return std::nullopt;
+  x_type = dyn_cast<ShapedType>(x.getType());
+  y_type = dyn_cast<ShapedType>(y.getType());
 
   // If the output is I8 then we need to rescale to I32
   // Then scale back to I8
