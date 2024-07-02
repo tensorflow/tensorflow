@@ -65,5 +65,6 @@ xla_cc_test(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:stablehlo_portable_api",
     ],
 )
