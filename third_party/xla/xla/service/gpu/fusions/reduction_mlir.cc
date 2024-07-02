@@ -781,17 +781,6 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
   auto* ctx = state.entry_function.getContext();
   const auto& reductions = reduction_heroes_[group_id];
 
-  Value zero = b.create<ma::ConstantIndexOp>(0);
-  Value thread_id = state.thread_and_block_ids[0];
-  auto thread_indexing =
-      GetBitcastMap({Product(num_threads_)},
-                    ShapeUtil::MakeShapeWithDescendingLayout(U8, num_threads_),
-                    b.getContext());
-  auto thread_ids =
-      mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
-  Value warp_id = b.create<ma::DivUIOp>(
-      thread_ids[1], b.create<ma::ConstantIndexOp>(WarpSize()));
-
   HloValueMap inits = GetInits(group_id, state);
   auto per_thread =
       state.EmitPerThreadElements(group_id, inits, state.FusionOutputs());
@@ -807,23 +796,10 @@ llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
 
   SmallVector<Value> shared_tiles =
       state.WriteToSharedMemory(reductions, reduced);
-
-  // TODO(jreiffers): This should probably be a part of the output constraint?
-  auto warp_writes = b.create<ma::CmpIOp>(ma::CmpIPredicate::eq, warp_id, zero);
-  auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(per_thread.outputs),
-                                         warp_writes, true, true);
-
-  mlir::ImplicitLocOpBuilder then_builder(b.getLoc(),
-                                          if_op.getThenBodyBuilder());
   HloValueMap reduced_from_shared_memory =
-      state.ReduceSharedMemory(then_builder, shared_tiles, inits, reductions);
-  then_builder.create<mlir::scf::YieldOp>(
-      EvaluateEpilogue(then_builder, reduced_from_shared_memory,
-                       per_thread.outputs, state, group_id, ctx));
-
-  if_op.getElseBodyBuilder().create<mlir::scf::YieldOp>(b.getLoc(),
-                                                        per_thread.outputs);
-  return if_op.getResults();
+      state.ReduceSharedMemory(b, shared_tiles, inits, reductions);
+  return EvaluateEpilogue(b, reduced_from_shared_memory, per_thread.outputs,
+                          state, group_id, ctx);
 }
 
 llvm::SmallVector<mlir::Value> MlirMultiRowReductionFusion::EmitReduction(
