@@ -102,6 +102,7 @@ cc_library(
 pytype_strict_library(
     name = "py_function_lib_py",
     srcs = ["py_function_lib.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_function_lib",
         ":representative_dataset",
