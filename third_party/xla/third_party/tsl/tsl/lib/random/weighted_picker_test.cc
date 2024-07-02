@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/simple_philox.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"

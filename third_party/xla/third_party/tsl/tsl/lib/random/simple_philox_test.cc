@@ -18,6 +18,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "tsl/lib/random/philox_random.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
