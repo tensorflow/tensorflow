@@ -103,6 +103,7 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   std::unique_ptr<ThreadPoolManager> thread_pool_manager_ TF_GUARDED_BY(mutex_);
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
   tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_);
+  std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 
 // Configures the TfrtSessionFactory according to `options`. Should not be
