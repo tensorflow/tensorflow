@@ -51,7 +51,8 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
 }
 
 std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
-  if (op.getCallTargetName().starts_with("custom_call.")) {
+  if (op.getCallTargetName().starts_with("custom_call.") ||
+      op.getCallTargetName().starts_with("odml.")) {
     auto bc = op.getBackendConfig();
     if (!bc || mlir::isa<mlir::StringAttr>(*bc)) {
       return false;
