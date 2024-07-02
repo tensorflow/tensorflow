@@ -208,15 +208,7 @@ class SpmdExpansionPass
 
  private:
   mlir::LogicalResult spmdExpand(mlir::func::FuncOp func_op);
-
-  mlir::LogicalResult AnnotateCallees(
-      mlir::func::FuncOp func_op, mlir::SymbolTableCollection& symbol_table);
 };
-
-mlir::LogicalResult SpmdExpansionPass::AnnotateCallees(
-    mlir::func::FuncOp func_op, mlir::SymbolTableCollection& symbol_table) {
-  return mlir::success();
-}
 
 // Given SPMD expanded `function_operands` to `function`, update the function
 // signature to reflect the local shape of `function_operands`.
