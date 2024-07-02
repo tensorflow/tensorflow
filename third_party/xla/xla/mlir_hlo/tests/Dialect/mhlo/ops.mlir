@@ -366,7 +366,7 @@ func.func @reduce_scatter_with_promotable_quantized_types(
 // -----
 
 func.func @reduce_scatter_c2(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
-  // expected-error@+1 {{expects scatter_dimension >= 0}}
+  // expected-error@+1 {{op attribute 'scatter_dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.reduce_scatter"(%data) <{replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
       scatter_dimension = -1 : i64}> ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
@@ -672,8 +672,7 @@ func.func @all_to_all_dynamic_concat_dim(%data: tensor<?x16xf32>) -> tensor<?x4x
 // -----
 
 func.func @all_to_all_c1(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
-  // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{AllToAll split_dimension cannot be negative}}
+  // expected-error@+1 {{op attribute 'split_dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.all_to_all"(%data) {
     split_dimension = -1 : i64,
     concat_dimension = 0 : i64,
@@ -714,8 +713,7 @@ func.func @all_to_all_c2(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
 // -----
 
 func.func @all_to_all_c3(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
-  // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{AllToAll concat_dimension cannot be negative}}
+  // expected-error@+1 {{op attribute 'concat_dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.all_to_all"(%data) {
     split_dimension = 1 : i64,
     concat_dimension = -1 : i64,
@@ -742,8 +740,7 @@ func.func @all_to_all_c3(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
 // -----
 
 func.func @all_to_all_c4(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
-  // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{AllToAll split_count must be > 0}}
+  // expected-error@+1 {{op attribute 'split_count' failed to satisfy constraint: 64-bit signless integer attribute whose value is positive}}
   %0 = "mhlo.all_to_all"(%data) {
     split_dimension = 1 : i64,
     concat_dimension = 0 : i64,
@@ -835,7 +832,7 @@ func.func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0xf32>) -> te
 // -----
 
 func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
-  // expected-error@+1 {{all_gather_dim cannot be negative}}
+  // expected-error@+1 {{op attribute 'all_gather_dim' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = -1 : i64,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
@@ -1462,19 +1459,9 @@ func.func @concatenate_c3()  -> tensor<2xi32> {
 // -----
 
 func.func @concatenate_c4(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
-  // @expected-error@+2 {{'mhlo.concatenate' op failed to infer returned types}}
-  // expected-error@+1 {{dimension -1 is negative}}
+  // expected-error@+1 {{op attribute 'dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) <{ dimension = -1 : i64 }> : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
-}
-
-// -----
-
-func.func @concatenate_c4(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>)  -> tensor<?xi32> {
-  // @expected-error@+2 {{'mhlo.concatenate' op failed to infer returned types}}
-  // expected-error@+1 {{dimension -1 is negative}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) <{ dimension = -1 : i64 }> : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-  func.return %0 : tensor<?xi32>
 }
 
 // -----
@@ -1749,7 +1736,7 @@ func.func @iota_scalar() -> tensor<i32> {
 // -----
 
 func.func @iota_invalid_iota_dimension() -> tensor<4xi32> {
-  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
+  // expected-error@+1 {{iota dimension cannot go beyond the output rank}}
   %0 = "mhlo.iota"() <{iota_dimension = 1 : i64}> : () -> tensor<4xi32>
   func.return %0 : tensor<4xi32>
 }
@@ -2683,6 +2670,14 @@ func.func @get_tuple_element_bad_type(%arg0: tuple<tensor<f32>, tensor<i32>>) ->
 
 // -----
 
+func.func @get_tuple_element_c1(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
+  // expected-error@+1 {{op attribute 'index' failed to satisfy constraint: 32-bit signless integer attribute whose value is non-negative}}
+  %0 = "stablehlo.get_tuple_element"(%arg0) {index = -1 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 func.func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
   // @expected-error@+2 {{'mhlo.get_tuple_element' op failed to infer returned types}}
   // expected-error@+1 {{index 2 is out of bounds of operand with size 2}}
@@ -3584,7 +3579,7 @@ func.func @reduce_precision(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 // -----
 
 func.func @reduce_precision_invalid_exponent(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
-  // expected-error @+1 {{exponent_bits must be at least 1.}}
+  // expected-error @+1 {{op attribute 'exponent_bits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=0 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   func.return %0 : tensor<2x4xf32>
 }
@@ -3592,7 +3587,7 @@ func.func @reduce_precision_invalid_exponent(%arg: tensor<2x4xf32>) -> tensor<2x
 // -----
 
 func.func @reduce_precision_invalid_mantissa(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
-  // expected-error @+1 {{mantissa_bits must be at least 0.}}
+  // expected-error @+1 {{op attribute 'mantissa_bits' failed to satisfy constraint: 32-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=1 : i32, mantissa_bits=-1 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   func.return %0 : tensor<2x4xf32>
 }
@@ -4815,8 +4810,7 @@ func.func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
 // -----
 
 func.func @get_dimension_size_negative_dimension(%I: tensor<1x128x512xf32>) -> tensor<i32> {
-  // @expected-error@+2 {{'mhlo.get_dimension_size' op failed to infer returned types}}
-  // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+  // expected-error@+1 {{op attribute 'dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %size = "mhlo.get_dimension_size"(%I) <{dimension = -1 : i64}> : (tensor<1x128x512xf32>) -> tensor<i32>
   func.return %size : tensor<i32>
 }
@@ -4845,8 +4839,7 @@ func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32
 
 func.func @set_dimension_size_negative_dimension(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
   %dim = mhlo.constant dense<512> : tensor<i32>
-  // @expected-error@+2 {{'mhlo.set_dimension_size' op failed to infer returned types}}
-  // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+  // expected-error@+1 {{op attribute 'dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %result = "mhlo.set_dimension_size"(%I, %dim) {dimension =-1 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
   func.return %result : tensor<1x128x512xf32>
 }
@@ -5677,8 +5670,7 @@ func.func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2x
 // -----
 
 func.func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<2x2x2x2xf32> {
-  // @expected-error@+2 {{'mhlo.batch_norm_training' op failed to infer returned types}}
-  // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+  // expected-error@+1 {{op attribute 'feature_index' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = -1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
   func.return %0#0 : tensor<2x2x2x2xf32>
 }
@@ -5728,8 +5720,7 @@ func.func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<
 // -----
 
 func.func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xf32>) {
-  // @expected-error@+2 {{'mhlo.batch_norm_inference' op failed to infer returned types}}
-  // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+  // expected-error@+1 {{op attribute 'feature_index' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = -1 : i64} :
       (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
         tensor<256xf32>) -> tensor<4x256xf32>
@@ -5778,8 +5769,7 @@ func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf
 // -----
 
 func.func @error_batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xf32> {
-  // @expected-error@+2 {{'mhlo.batch_norm_grad' op failed to infer returned types}}
-  // expected-error@+1 {{expects featureIndex to be a non-negative number, got -1.}}
+  // expected-error@+1 {{op attribute 'feature_index' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %0:3 = "mhlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = -1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
   func.return %0#0 : tensor<2x2x2x2xf32>
 }
@@ -6826,8 +6816,7 @@ func.func @is_finite_mismatch_return_shape(%arg0: tensor<3xf32>) -> tensor<4xi1>
 // -----
 
 func.func @negative_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<?x?xf32> {
-  // expected-error@+2 {{'mhlo.set_dimension_size' op failed to infer returned types}}
-  // expected-error@+1 {{requires non-negative dimension attribute; found (-1)}}
+  // expected-error@+1 {{op attribute 'dimension' failed to satisfy constraint: 64-bit signless integer attribute whose value is non-negative}}
   %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = -1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<?x?xf32>
   func.return %result : tensor<?x?xf32>
 }
