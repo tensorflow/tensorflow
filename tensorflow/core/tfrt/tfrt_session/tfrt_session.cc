@@ -230,7 +230,8 @@ class TfrtSession : public tensorflow::Session {
     // In the multi-host case, this prevents local Sessions from running
     // global resource creation functions.
     model_context.set_is_local_session(
-        !options_.config.experimental().enable_multi_host());
+        !options_.config.experimental().enable_multi_host() &&
+        !options_.config.experimental().tfrt_use_ifrt());
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // Run post-partition graph optimization passes which have been registered
@@ -823,7 +824,8 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
       auto inter_op_thread_pools,
       thread_pool_manager_->UpdateAndGetInterOpThreadPools(options));
 
-  auto* backend_compiler = options.config.experimental().enable_multi_host()
+  auto* backend_compiler = (options.config.experimental().enable_multi_host() ||
+                            options.config.experimental().tfrt_use_ifrt())
                                ? backend_compiler_
                                : nullptr;
   *out_session = new TfrtSession(
