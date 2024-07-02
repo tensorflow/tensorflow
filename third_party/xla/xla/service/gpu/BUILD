@@ -1246,6 +1246,39 @@ cc_library(
 )
 
 cc_library(
+    name = "async_wrapper",
+    srcs = ["async_wrapper.cc"],
+    hdrs = ["async_wrapper.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_test(
+    name = "async_wrapper_test",
+    srcs = ["async_wrapper_test.cc"],
+    deps = [
+        ":async_wrapper",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:verified_hlo_module",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "triton_support",
     srcs = ["triton_support.cc"],
     hdrs = ["triton_support.h"],
