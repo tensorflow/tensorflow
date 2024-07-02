@@ -371,8 +371,9 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
 //===----------------------------------------------------------------------===//
 
 TracedCommandBuffer::TracedCommandBuffer(
+    const CommandBufferCmd* trace_cmd,
     CommandBufferCmd::BufferUsageVector buffers, int64_t capacity)
-    : capacity_(capacity), entries_(capacity) {
+    : trace_cmd_(trace_cmd), capacity_(capacity), entries_(capacity) {
   CHECK_GT(capacity, 0) << "capacity must be larger than 0";  // NOLINT
   // Collect unique buffer allocation indices in a set first and convert to
   // vector as flat hash set iteration has measurable overheads.
@@ -409,6 +410,8 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     // pointer to cached command buffer.
     if (ABSL_PREDICT_TRUE(absl::c_equal(entries_[i].recorded_allocs, allocs) &&
                           entries_[i].command_buffer)) {
+      VLOG(6) << "Command buffer trace cache hit for command "
+              << trace_cmd_->ToString();
       return shift_right(i).command_buffer.get();
     }
 
@@ -419,6 +422,8 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
           entries_[i].command_buffer,
           se::TraceCommandBufferFactory::Create(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
+      VLOG(6) << "Command buffer trace cache create new item for command "
+              << trace_cmd_->ToString();
       return shift_right(i).command_buffer.get();
     }
   }
@@ -430,6 +435,8 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
       entries_[capacity_ - 1].command_buffer,
       se::TraceCommandBufferFactory::Create(executor, stream, trace));
   entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());
+  VLOG(6) << "Command buffer trace cache does replacement for command "
+          << trace_cmd_->ToString();
   return shift_right(capacity_ - 1).command_buffer.get();
 }
 
@@ -449,7 +456,7 @@ absl::Status TracedCommandBufferCmd::AddTracedCommandBuffer(
       record_params.state.GetOrCreate<TracedCommandBuffer>(this, [&] {
         const auto& debug_options = xla::GetDebugOptionsFromFlags();
         return std::make_unique<TracedCommandBuffer>(
-            buffers(), debug_options.xla_cmd_buffer_trace_cache_size());
+            this, buffers(), debug_options.xla_cmd_buffer_trace_cache_size());
       });
 
   TF_ASSIGN_OR_RETURN(
