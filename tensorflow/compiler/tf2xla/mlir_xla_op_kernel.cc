@@ -143,8 +143,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
         unconditionally_use_output_shapes,
         mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
         device->device_type(),
-        *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info,
-        {});
+        *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info);
   };
 
   // Some of the operations that come through here do not know how to set their
