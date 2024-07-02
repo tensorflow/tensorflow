@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
