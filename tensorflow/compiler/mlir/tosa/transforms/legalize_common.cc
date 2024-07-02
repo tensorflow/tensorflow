@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -601,6 +602,12 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
         "input/output tensor should be all quantized or all floating-point");
     return std::nullopt;
   }
+
+  if (EqualizeRanks(rewriter, op->getLoc(), input_lhs_val, input_rhs_val)
+          .failed())
+    return std::nullopt;
+  input_lhs_type = dyn_cast<ShapedType>(input_lhs_val.getType());
+  input_rhs_type = dyn_cast<ShapedType>(input_rhs_val.getType());
 
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
