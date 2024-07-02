@@ -143,6 +143,10 @@ cc_library(
     hdrs = [
         "passes.h",
     ],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:__pkg__",
+    ],
     deps = [
         ":legalize_tf_patterns_inc_gen",
         ":legalize_utils",
