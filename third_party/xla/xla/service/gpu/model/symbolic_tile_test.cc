@@ -796,7 +796,7 @@ class ConstraintExpressionTest : public IndexingTestBase {
       ConstraintVector&& expr_and_interval_pairs) {
     ConjointConstraints conjunction;
     for (auto& [string_expr, interval] : expr_and_interval_pairs) {
-      conjunction.insert(
+      conjunction.push_back(
           {ParseAffineExpr(string_expr, &mlir_context_), interval});
     }
     return conjunction;

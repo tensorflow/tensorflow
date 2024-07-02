@@ -57,6 +57,7 @@ using ::mlir::AffineSymbolExpr;
 using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
+using Constraint = ConstraintExpression::Constraint;
 using ConjointConstraints = ConstraintExpression::ConjointConstraints;
 
 // Converts all dimensions to symbols at the same position.
@@ -509,7 +510,7 @@ TryConstructSingleConjointConstraintForDestructuredSummation(
 
   // Add leading ones.
   while (running_size_index < partial_dim_index) {
-    constraints.insert({sizes[running_size_index], one});
+    constraints.push_back(Constraint{sizes[running_size_index], one});
     ++running_size_index;
   }
 
@@ -525,14 +526,14 @@ TryConstructSingleConjointConstraintForDestructuredSummation(
     if (!max_size.has_value()) {
       return std::nullopt;
     }
-    constraints.insert(
-        {size_expr, Interval{/*lower=*/*max_size, /*upper=*/*max_size}});
+    constraints.push_back(Constraint{
+        size_expr, Interval{/*lower=*/*max_size, /*upper=*/*max_size}});
     ++running_size_index;
   }
 
   // Add trailing ones.
   while (running_size_index < sizes.size()) {
-    constraints.insert({sizes[running_size_index], one});
+    constraints.push_back(Constraint{sizes[running_size_index], one});
     ++running_size_index;
   }
 
@@ -776,8 +777,13 @@ std::optional<ConjointConstraints> TryIntersectConjointConstraints(
   }
 
   ConjointConstraints result = std::move(conjunction_1);
-  for (const auto& [expr, interval] : conjunction_2) {
-    if (auto result_it = result.find(expr); result_it != result.end()) {
+  for (const auto& constraint : conjunction_2) {
+    Constraint* result_it =
+        llvm::find_if(result, [&](const Constraint& result_constraint) {
+          return result_constraint.expr == constraint.expr;
+        });
+    const auto& [expr, interval] = constraint;
+    if (result_it != result.end()) {
       auto& [result_expr, result_interval] = *result_it;
       result_interval = result_interval.Intersect(interval);
       if (!result_interval.IsFeasible()) {
@@ -787,7 +793,7 @@ std::optional<ConjointConstraints> TryIntersectConjointConstraints(
         return std::nullopt;
       }
     } else {
-      result.insert({expr, interval});
+      result.push_back(Constraint{expr, interval});
     }
   }
 
@@ -890,7 +896,7 @@ void ConstraintExpression::And(ConjointConstraints conjunction) {
     return;
   }
 
-  std::vector<ConjointConstraints> new_constraints;
+  llvm::SmallVector<ConjointConstraints, 2> new_constraints;
   new_constraints.reserve(disjoint_conjoint_constraints_.size());
 
   for (ConjointConstraints& conjunction_2 : disjoint_conjoint_constraints_) {
@@ -975,7 +981,7 @@ SimplifyConjointConstraints(const ConjointConstraints& conjunction) {
     if (IsConstraintUnsatisfiable(expr, interval)) {
       return Unsatisfiable{};
     }
-    result.insert({expr, interval});
+    result.push_back(Constraint{expr, interval});
   }
   if (result.empty()) {
     return AlwaysSatisfied{};
