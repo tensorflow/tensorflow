@@ -163,17 +163,17 @@ class MultinomialOp : public OpKernel {
     const int num_samples = num_samples_t.scalar<int>()();
     OP_REQUIRES(ctx, num_samples >= 0,
                 errors::InvalidArgument(
-                    "num_samples should be nonnegative, got ", num_samples));
+                    "num_samples should be non-negative, got ", num_samples));
 
-    for (int i = 0; i < 2; i++) {
-      const int64_t dim = logits_t.dim_size(i);
-      OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
-                  errors::InvalidArgument(
-                      "logits.shape = ", logits_t.shape().DebugString(),
-                      " too large for int"));
-    }
     const int batch_size = static_cast<int>(logits_t.dim_size(0));
     const int num_classes = static_cast<int>(logits_t.dim_size(1));
+
+    OP_REQUIRES(ctx, batch_size == logits_t.dim_size(0),
+                errors::InvalidArgument("batch_size cannot exceed max int"));
+
+    OP_REQUIRES(ctx, num_classes == logits_t.dim_size(1),
+                errors::InvalidArgument("num_classes cannot exceed max int"));
+
     OP_REQUIRES(ctx, num_classes > 0,
                 errors::InvalidArgument("num_classes should be positive, got ",
                                         num_classes));
