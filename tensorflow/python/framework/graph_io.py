@@ -61,14 +61,8 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
     graph_def = graph_or_graph_def
 
   if sys.byteorder == 'big':
-    if hasattr(graph_def, 'node'):
-      byte_swap_tensor.swap_tensor_content_in_graph_node(
-          graph_def, 'big', 'little'
-      )
-    else:
-      byte_swap_tensor.swap_tensor_content_in_graph_function(
-          graph_def, 'big', 'little'
-      )
+    byte_swap_tensor.swap_tensor_content_in_graph(graph_def,
+                                                  "big", "little")
 
   # gcs does not have the concept of directory at the moment.
   if not logdir.startswith('gs:'):
@@ -81,4 +75,8 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
   else:
     file_io.atomic_write_string_to_file(
         path, graph_def.SerializeToString(deterministic=True))
+
+  if sys.byteorder == 'big':
+    byte_swap_tensor.swap_tensor_content_in_graph(graph_def,
+                                                  "little", "big")
   return path

@@ -202,17 +202,20 @@ Status ByteSwapTensorContentInNode(NodeDef& node) {
 }
 
 Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
-  for (auto& function : *meta_graph_def->mutable_graph_def()
-                             ->mutable_library()
-                             ->mutable_function())
-    for (auto& node : (*function.mutable_node_def()))
-      TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
+  auto graph_def = meta_graph_def->mutable_graph_def();
+  TF_RETURN_IF_ERROR(ByteSwapTensorContentInGraphDef(graph_def));
   return absl::OkStatus();
 }
 
 Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
   for (auto& node : *graph_def->mutable_node())
     TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
+
+  for (auto& function : *graph_def->mutable_library()
+                             ->mutable_function())
+    for (auto& node : (*function.mutable_node_def()))
+      TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
+
   return absl::OkStatus();
 }
 
