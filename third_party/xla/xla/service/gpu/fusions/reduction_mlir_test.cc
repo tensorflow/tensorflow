@@ -32,6 +32,8 @@ using ::testing::SizeIs;
 
 using MlirRowReductionTest = MlirEmitterTestBase<MlirRowReductionFusion>;
 using MlirColumnReductionTest = MlirEmitterTestBase<MlirColumnReductionFusion>;
+using MlirMultiRowReductionTest =
+    MlirEmitterTestBase<MlirMultiRowReductionFusion>;
 
 TEST_F(MlirRowReductionTest, VariadicRowReduce) {
   constexpr auto kHloString = R"(
@@ -334,7 +336,7 @@ TEST_F(MlirRowReductionTest, RowReductionMinorAndMajor) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirRowReductionTest, MultiRowReduction) {
+TEST_F(MlirMultiRowReductionTest, MultiRowReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true
 
@@ -356,7 +358,7 @@ TEST_F(MlirRowReductionTest, MultiRowReduction) {
   auto module = ParseAndReturnVerifiedModule(kHloString).value();
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-  MlirRowReductionFusion fusion(analysis);
+  MlirMultiRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
@@ -432,7 +434,7 @@ TEST_F(MlirRowReductionTest, NonPowerOfTwoRowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
-TEST_F(MlirRowReductionTest, NonTrivialEpilogue) {
+TEST_F(MlirMultiRowReductionTest, NonTrivialEpilogue) {
   constexpr auto kHloString = R"(
     HloModule module
     add {
@@ -464,7 +466,7 @@ TEST_F(MlirRowReductionTest, NonTrivialEpilogue) {
   auto module = ParseAndReturnVerifiedModule(kHloString).value();
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-  MlirRowReductionFusion fusion(analysis);
+  MlirMultiRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
@@ -818,7 +820,7 @@ TEST_F(MlirRowReductionTest, ThreadIndexingOutputLayout) {
       )"));
 }
 
-TEST_F(MlirRowReductionTest, TwoGroups) {
+TEST_F(MlirMultiRowReductionTest, TwoGroups) {
   auto module = ParseAndReturnVerifiedModule(R"(
     add {
       p0 = f32[] parameter(0)
@@ -843,14 +845,14 @@ TEST_F(MlirRowReductionTest, TwoGroups) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-  MlirRowReductionFusion fusion(analysis);
+  MlirMultiRowReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.GetGroups().grouped_roots,
               ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
                           ElementsAre(&analysis.fusion_root(1).instruction())));
 }
 
-TEST_F(MlirRowReductionTest, OneGroup) {
+TEST_F(MlirMultiRowReductionTest, OneGroup) {
   auto module = ParseAndReturnVerifiedModule(R"(
     %add {
       %p0 = c128[] parameter(0)
@@ -875,7 +877,7 @@ TEST_F(MlirRowReductionTest, OneGroup) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  MlirRowReductionFusion mlir_fusion(analysis);
+  MlirMultiRowReductionFusion mlir_fusion(analysis);
   EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
 }
 

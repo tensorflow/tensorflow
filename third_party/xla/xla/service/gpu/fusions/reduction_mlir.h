@@ -67,11 +67,8 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   struct EmitterState;
   friend struct EmitterState;
 
-  // Returns the init values for reductions, and the init values for the side
-  // outputs. Side output init values are tensors, while reduction init values
-  // are scalars.
-  HloValueMap GetInitsAndSideOutputTensors(int group_id,
-                                           EmitterState& state) const;
+  // Returns the init values for reductions (scalars).
+  HloValueMap GetInits(int group_id, EmitterState& state) const;
 
   absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
@@ -157,7 +154,6 @@ class MlirRowReductionFusion : public MlirReductionFusion {
   explicit MlirRowReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
-  int GetRowsPerWarp() const;
   // The number of warps working on one output element.
   int GetWarpsPerRow() const;
   llvm::SmallVector<mlir::Value> EmitReduction(
@@ -171,6 +167,20 @@ class MlirRowReductionFusion : public MlirReductionFusion {
   IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
 
   absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
+};
+
+class MlirMultiRowReductionFusion : public MlirReductionFusion {
+ public:
+  explicit MlirMultiRowReductionFusion(const HloFusionAnalysis& analysis);
+
+ protected:
+  int GetRowsPerWarp() const;
+  llvm::SmallVector<mlir::Value> EmitReduction(
+      int group_id, EmitterState& state) const override;
+  IndexingMap ComputeReductionInputIndexing(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap ComputeReductionOutputIndexing(
+      mlir::MLIRContext* ctx) const override;
 };
 
 class MlirColumnReductionFusion : public MlirReductionFusion {
