@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tsl/platform/statusor.h"

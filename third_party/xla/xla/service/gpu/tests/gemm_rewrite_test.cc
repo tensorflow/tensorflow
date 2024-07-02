@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
