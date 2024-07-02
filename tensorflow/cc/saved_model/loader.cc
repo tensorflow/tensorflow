@@ -535,16 +535,16 @@ Status LoadSavedModel(const SessionOptions& session_options,
   return absl::OkStatus();
 }
 
-bool MaybeSavedModelDirectory(const string& export_dir) {
+bool MaybeSavedModelDirectory(const string& export_dir, tsl::Env* env) {
   const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
   const string saved_model_cpb_path =
       io::JoinPath(export_dir, kSavedModelFilenameCpb);
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  return Env::Default()->FileExists(saved_model_pb_path).ok() ||
-         Env::Default()->FileExists(saved_model_cpb_path).ok() ||
-         Env::Default()->FileExists(saved_model_pbtxt_path).ok();
+  return env->FileExists(saved_model_pb_path).ok() ||
+         env->FileExists(saved_model_cpb_path).ok() ||
+         env->FileExists(saved_model_pbtxt_path).ok();
 }
 
 }  // namespace tensorflow
