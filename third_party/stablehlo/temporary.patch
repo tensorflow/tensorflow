@@ -1,3 +1,37 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -841,12 +841,14 @@
+ STABLEHLO_CAPI_SOURCES = [
+     "stablehlo/integrations/c/StablehloAttributes.cpp",
+     "stablehlo/integrations/c/StablehloDialect.cpp",
++    "stablehlo/integrations/c/StablehloPasses.cpp",
+     "stablehlo/integrations/c/StablehloTypes.cpp",
+ ]
+ 
+ STABLEHLO_CAPI_HEADERS = [
+     "stablehlo/integrations/c/StablehloAttributes.h",
+     "stablehlo/integrations/c/StablehloDialect.h",
++    "stablehlo/integrations/c/StablehloPasses.h",
+     "stablehlo/integrations/c/StablehloTypes.h",
+ ]
+ 
+@@ -857,6 +859,7 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops",
++        ":stablehlo_passes",
+         "@llvm-project//mlir:CAPIIR",
+     ],
+ )
+@@ -879,6 +882,7 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":stablehlo_ops",
++        ":stablehlo_passes",
+         "@llvm-project//mlir:CAPIIRObjects",
+     ],
+     alwayslink = True,
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -3543,6 +3577,149 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/integrations/c/CMakeLists.txt b/stablehlo/stablehlo/integrations/c/CMakeLists.txt
+--- stablehlo/stablehlo/integrations/c/CMakeLists.txt
++++ stablehlo/stablehlo/integrations/c/CMakeLists.txt
+@@ -26,10 +26,12 @@
+   PARTIAL_SOURCES_INTENDED
+   StablehloAttributes.cpp
+   StablehloDialect.cpp
++  StablehloPasses.cpp
+   StablehloTypes.cpp
+ 
+   LINK_LIBS PUBLIC
+   StablehloOps
++  StablehloPasses
+ )
+ 
+ add_mlir_public_c_api_library(VhloCAPI
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloPasses.cpp b/stablehlo/stablehlo/integrations/c/StablehloPasses.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloPasses.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloPasses.cpp
+@@ -0,0 +1,17 @@
++/* Copyright 2024 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++    http://www.apache.org/licenses/LICENSE-2.0
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/integrations/c/StablehloPasses.h"
++
++#include "stablehlo/transforms/Passes.h"
++
++void mlirRegisterAllStablehloPasses() { mlir::stablehlo::registerPasses(); }
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloPasses.h b/stablehlo/stablehlo/integrations/c/StablehloPasses.h
+--- stablehlo/stablehlo/integrations/c/StablehloPasses.h
++++ stablehlo/stablehlo/integrations/c/StablehloPasses.h
+@@ -0,0 +1,30 @@
++/* Copyright 2024 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++    http://www.apache.org/licenses/LICENSE-2.0
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_INTEGRATIONS_C_STABLEHLO_PASSES_H
++#define STABLEHLO_INTEGRATIONS_C_STABLEHLO_PASSES_H
++
++#include "mlir-c/IR.h"
++#include "mlir-c/Support.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/// Register all compiler passes of StableHLO.
++MLIR_CAPI_EXPORTED void mlirRegisterAllStablehloPasses();
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  // STABLEHLO_INTEGRATIONS_C_STABLEHLO_PASSES_H
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -20,6 +20,7 @@
+ #include "stablehlo/dialect/Serialization.h"
+ #include "stablehlo/integrations/c/StablehloAttributes.h"
+ #include "stablehlo/integrations/c/StablehloDialect.h"
++#include "stablehlo/integrations/c/StablehloPasses.h"
+ #include "stablehlo/integrations/c/StablehloTypes.h"
+ #include "stablehlo/integrations/python/PortableApi.h"
+ #include "stablehlo/reference/Api.h"
+@@ -64,6 +65,13 @@
+         }
+       },
+       py::arg("context"), py::arg("load") = true);
++
++  //
++  // Passes.
++  //
++
++  m.def("register_stablehlo_passes",
++        []() { mlirRegisterAllStablehloPasses(); });
+ 
+   //
+   // Types.
+diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+@@ -17,9 +17,10 @@
+ 
+ # pylint: disable=wildcard-import,undefined-variable
+ 
++import io
+ import re
+-import io
+ from mlir import ir
++from mlir import passmanager as pm
+ from mlir.dialects import stablehlo
+ import numpy as np
+ 
+@@ -304,6 +305,7 @@
+     deserialized = stablehlo.deserialize_portable_artifact(context, serialized)
+     assert module_str == str(deserialized)
+ 
++
+ @run
+ def test_str_serialization_apis():
+   curr_version = stablehlo.get_current_version()
+@@ -323,3 +325,23 @@
+     deserialized = stablehlo.deserialize_portable_artifact(serialized)
+     deserialized_module = ir.Module.parse(deserialized)
+     assert module_str == str(deserialized_module)
++
++
++@run
++def test_register_passes():
++  """Tests pass registration."""
++  with ir.Context() as context:
++    stablehlo.register_dialect(context)
++    module = ir.Module.parse(ASM_FORMAT.format("2xf32"))
++    assert module is not None
++
++    stablehlo.register_stablehlo_passes()
++    pipeline = [
++        "stablehlo-legalize-to-vhlo",
++        "vhlo-legalize-to-stablehlo",
++    ]
++    pipeline = pm.PassManager.parse(f"builtin.module({','.join(pipeline)})")
++
++    cloned_module = module.operation.clone()
++    pipeline.run(cloned_module.operation)
++    assert str(module) == str(cloned_module)
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
