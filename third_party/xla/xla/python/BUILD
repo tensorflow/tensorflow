@@ -259,8 +259,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":nb_class_ptr",
-        ":python_ref_manager",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",

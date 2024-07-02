@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "xla/python/traceback.h"
 
+#include <Python.h>
+
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -31,7 +35,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/nb_class_ptr.h"
-#include "xla/python/python_ref_manager.h"
 #include "tsl/platform/platform.h"
 
 #ifdef PLATFORM_GOOGLE
@@ -173,6 +176,50 @@ nb::object Traceback::AsPythonTraceback() const {
   return traceback;
 }
 
+namespace {
+
+Py_hash_t traceback_tp_hash(PyObject* o) {
+  Traceback* tb;
+  if (!nb::try_cast(nb::handle(o), tb)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a Traceback object");
+    return -1;
+  }
+  size_t h = absl::HashOf(*tb);
+  Py_hash_t s = absl::bit_cast<Py_hash_t>(h);  // Python hashes are signed.
+  return s == -1 ? -2 : s;  // -1 must not be used as a Python hash value.
+}
+
+PyObject* traceback_tp_richcompare(PyObject* self, PyObject* other, int op) {
+  if (op != Py_EQ && op != Py_NE) {
+    return Py_NewRef(Py_NotImplemented);
+  }
+
+  Traceback* x;
+  if (!nb::try_cast(nb::handle(self), x)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a Traceback object");
+    return nullptr;
+  }
+
+  bool result;
+  Traceback* y;
+  if (nb::try_cast(nb::handle(other), y)) {
+    result = ((*x == *y) == (op == Py_EQ));
+  } else {
+    result = (op == Py_NE);
+  }
+  return Py_NewRef(result ? Py_True : Py_False);
+}
+
+// It turns out to be slightly faster to define a tp_hash slot rather than
+// defining __hash__ and __eq__ on the class.
+PyType_Slot traceback_slots_[] = {
+    {Py_tp_hash, (void*)traceback_tp_hash},
+    {Py_tp_richcompare, (void*)traceback_tp_richcompare},
+    {0, nullptr},
+};
+
+}  // namespace
+
 void BuildTracebackSubmodule(nb::module_& m) {
   nb::class_<Traceback::Frame>(m, "Frame")
       .def_ro("file_name", &Traceback::Frame::file_name)
@@ -186,6 +233,7 @@ void BuildTracebackSubmodule(nb::module_& m) {
       });
 
   nb::class_<Traceback> traceback(m, "Traceback",
+                                  nb::type_slots(traceback_slots_),
                                   "Represents a Python stack trace.");
   traceback.def_prop_rw_static(
       "enabled", [](nb::object /* cls */) { return Traceback::enabled(); },
@@ -221,10 +269,6 @@ void BuildTracebackSubmodule(nb::module_& m) {
     return nb::make_tuple(out_code, out_lasti);
   });
   traceback.def("__str__", &Traceback::ToString);
-  traceback.def("__eq__",
-                [](const Traceback& a, const Traceback& b) { return a == b; });
-  traceback.def("__hash__",
-                [](const Traceback& tb) { return absl::HashOf(tb); });
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
 
   traceback.def_static(
