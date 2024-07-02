@@ -77,12 +77,6 @@ def xla_cc_test(name, deps = [], **kwargs):
         **kwargs
     )
 
-def xla_nvml_deps():
-    return ["@local_config_cuda//cuda:nvml_headers"]
-
-def xla_cub_deps():
-    return ["@local_config_cuda//cuda:cub_headers"]
-
 def xla_internal(targets, otherwise = []):
     _ = targets  # buildifier: disable=unused-variable
     return otherwise
