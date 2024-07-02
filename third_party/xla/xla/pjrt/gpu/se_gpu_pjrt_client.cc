@@ -1161,9 +1161,12 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto pjrt_platform_name = xla::RocmName();
 #elif TENSORFLOW_USE_SYCL
   auto pjrt_platform_name = xla::SyclName();
-#else   // TENSORFLOW_USE_ROCM
+#elif GOOGLE_CUDA
   auto pjrt_platform_name = xla::CudaName();
-#endif  // TENSORFLOW_USE_ROCM
+#else
+  std::string pjrt_platform_name{};
+  return absl::UnimplementedError("No GPU platform available");
+#endif  // GOOGLE_CUDA
 
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
