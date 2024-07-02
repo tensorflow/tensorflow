@@ -4,7 +4,6 @@ build --action_env CUDA_TOOLKIT_PATH=/usr/local/cuda-12.2
 build --action_env TF_CUBLAS_VERSION=12.3
 build --action_env TF_CUDA_COMPUTE_CAPABILITIES=7.5
 build --action_env TF_CUDNN_VERSION=8
-build --repo_env TF_NEED_TENSORRT=0
 build --config nonccl
 build --action_env LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 build --action_env PYTHON_BIN_PATH=/usr/bin/python3

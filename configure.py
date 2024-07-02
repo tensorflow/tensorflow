@@ -33,7 +33,6 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '11'
 _DEFAULT_CUDNN_VERSION = '2'
-_DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _SUPPORTED_ANDROID_NDK_VERSIONS = [19, 20, 21, 25]
@@ -976,23 +975,6 @@ def set_tf_cudnn_version(environ_cp):
   environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
 
 
-def set_tf_tensorrt_version(environ_cp):
-  """Set TF_TENSORRT_VERSION."""
-  if not (is_linux() or is_windows()):
-    raise ValueError('Currently TensorRT is only supported on Linux platform.')
-
-  if not int(environ_cp.get('TF_NEED_TENSORRT', False)):
-    return
-
-  ask_tensorrt_version = (
-      'Please specify the TensorRT version you want to use. '
-      '[Leave empty to default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
-  tf_tensorrt_version = get_from_env_or_user_or_default(
-      environ_cp, 'TF_TENSORRT_VERSION', ask_tensorrt_version,
-      _DEFAULT_TENSORRT_VERSION)
-  environ_cp['TF_TENSORRT_VERSION'] = tf_tensorrt_version
-
-
 def set_tf_nccl_version(environ_cp):
   """Set TF_NCCL_VERSION."""
   if not is_linux():
@@ -1238,14 +1220,8 @@ def validate_cuda_config(environ_cp):
 
   cuda_libraries = ['cuda', 'cudnn']
   if is_linux():
-    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
-      cuda_libraries.append('tensorrt')
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
-  if is_windows():
-    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
-      cuda_libraries.append('tensorrt')
-      print('WARNING: TensorRT support on Windows is experimental\n')
 
   paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
   if not paths:
@@ -1271,11 +1247,6 @@ def validate_cuda_config(environ_cp):
   print('Found cuDNN %s in:' % config['cudnn_version'])
   print('    %s' % config['cudnn_library_dir'])
   print('    %s' % config['cudnn_include_dir'])
-
-  if 'tensorrt_version' in config:
-    print('Found TensorRT %s in:' % config['tensorrt_version'])
-    print('    %s' % config['tensorrt_library_dir'])
-    print('    %s' % config['tensorrt_include_dir'])
 
   if config.get('nccl_version', None):
     print('Found NCCL %s in:' % config['nccl_version'])
@@ -1338,9 +1309,6 @@ def main():
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
 
-  if is_macos():
-    environ_cp['TF_NEED_TENSORRT'] = '0'
-
   if is_ppc64le():
     # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
     gcc_env = get_gcc_compiler(environ_cp)
@@ -1392,13 +1360,6 @@ def main():
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
 
-    set_action_env_var(
-        environ_cp,
-        'TF_NEED_TENSORRT',
-        'TensorRT',
-        False,
-        bazel_config_name='tensorrt')
-
     environ_save = dict(environ_cp)
     for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
 
@@ -1407,7 +1368,6 @@ def main():
             'TF_CUDA_VERSION',
             'TF_CUBLAS_VERSION',
             'TF_CUDNN_VERSION',
-            'TF_TENSORRT_VERSION',
             'TF_NCCL_VERSION',
             'TF_CUDA_PATHS',
             # Items below are for backwards compatibility when not using
@@ -1416,7 +1376,6 @@ def main():
             'CUDNN_INSTALL_PATH',
             'NCCL_INSTALL_PATH',
             'NCCL_HDR_PATH',
-            'TENSORRT_INSTALL_PATH'
         ]
         # Note: set_action_env_var above already writes to bazelrc.
         for name in cuda_env_names:
@@ -1429,10 +1388,7 @@ def main():
 
       set_tf_cuda_version(environ_cp)
       set_tf_cudnn_version(environ_cp)
-      if is_windows():
-        set_tf_tensorrt_version(environ_cp)
       if is_linux():
-        set_tf_tensorrt_version(environ_cp)
         set_tf_nccl_version(environ_cp)
 
       set_tf_cuda_paths(environ_cp)

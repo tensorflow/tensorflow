@@ -333,7 +333,6 @@ class XLAConfigOptions:
   # CUDA specific
   cuda_compiler: CudaCompiler
   using_nccl: bool
-  using_tensorrt: bool
 
   def to_bazelrc_lines(
       self,
@@ -401,7 +400,6 @@ class XLAConfigOptions:
           f" TF_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
       )
       rc.append(f"build --action_env TF_CUDNN_VERSION={dpav.cudnn_version}")
-      rc.append(f"build --repo_env TF_NEED_TENSORRT={int(self.using_tensorrt)}")
       if self.using_nccl:
         rc.append(f"build --action_env TF_NCCL_VERSION={dpav.nccl_version}")
       else:
@@ -476,7 +474,6 @@ def _parse_args():
       default="-Wno-sign-compare",
   )
   parser.add_argument("--nccl", action="store_true")
-  parser.add_argument("--tensorrt", action="store_true")
 
   # Path and version overrides
   path_help = "Optional: will be found on PATH if possible."
@@ -518,7 +515,6 @@ def main():
       python_bin_path=args.python_bin_path,
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
-      using_tensorrt=args.tensorrt,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(
