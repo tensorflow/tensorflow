@@ -847,6 +847,16 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "device_description_test",
+    srcs = ["device_description_test.cc"],
+    deps = [
+        ":device_description",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 #===--------------------------------------------------------------------------------------------===#
 # Aliases for StreamExecutor platforms
 #===--------------------------------------------------------------------------------------------===#

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -80,6 +82,89 @@ class DynamicSliceFusionTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(debug_options);
     return config;
+  }
+
+  ::testing::AssertionResult RunAndCompareReplicated(absl::string_view hlo_ref,
+                                                     absl::string_view hlo_opt,
+                                                     const ErrorSpec& error) {
+    auto module_expected_or_status =
+        ParseAndReturnVerifiedModule(/*hlo_text=*/hlo_ref);
+    if (!module_expected_or_status.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module_expected_or_status.status().ToString();
+    }
+    auto module_actual_or_status =
+        ParseAndReturnVerifiedModule(/*hlo_text=*/hlo_opt);
+    if (!module_actual_or_status.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module_actual_or_status.status().ToString();
+    }
+    return RunAndCompareReplicated(
+        /*module_expected=*/std::move(module_expected_or_status.value()),
+        /*module_actual=*/std::move(module_actual_or_status.value()), error);
+  }
+
+  ::testing::AssertionResult RunAndCompareReplicated(
+      std::unique_ptr<HloModule> module_expected,
+      std::unique_ptr<HloModule> module_actual, const ErrorSpec& error) {
+    std::vector<int> mismatches =
+        CompareInputs(*module_expected, *module_actual);
+    if (!mismatches.empty()) {
+      return ::testing::AssertionFailure()
+             << "Error: parameter mismatch at indices: "
+             << absl::StrJoin(mismatches, ",");
+    }
+    int64_t replica_count = module_expected->config().replica_count();
+    if (replica_count != module_actual->config().replica_count()) {
+      return ::testing::AssertionFailure()
+             << "Error: replica count does not match: " << replica_count
+             << " Vs " << module_expected->config().replica_count();
+    }
+    absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
+        /*module=*/module_expected.get(), /*pseudo_random=*/true,
+        /*use_large_range=*/false,
+        /*treat_gte_as_data_formatting=*/false,
+        /*max_bits_of_precision=*/std::nullopt);
+    CHECK_OK(fake_arguments);
+    std::vector<Literal*> fake_argument_ptrs;
+    absl::c_transform(
+        /*input=*/*fake_arguments,
+        /*output=*/std::back_inserter(fake_argument_ptrs),
+        /*unary_op=*/[](const Literal& literal) -> Literal* {
+          return const_cast<Literal*>(&literal);
+        });
+    auto status_output_expected = ExecuteReplicated(
+        std::move(module_expected), /*arguments=*/fake_argument_ptrs,
+        /*num_replicas=*/replica_count, /*use_threads=*/true,
+        /*run_hlo_passes=*/true);
+    if (!status_output_expected.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error: failed executing expected module";
+    }
+    auto status_output_actual = ExecuteReplicated(
+        std::move(module_actual), /*arguments=*/fake_argument_ptrs,
+        /*num_replicas=*/replica_count, /*use_threads=*/true,
+        /*run_hlo_passes=*/true);
+    if (!status_output_actual.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error: failed executing actual module";
+    }
+    if (status_output_actual->size() != status_output_expected->size()) {
+      return ::testing::AssertionFailure()
+             << "Error: number of outputs is not equal: "
+             << status_output_expected->size() << " Vs "
+             << status_output_actual->size();
+    }
+    for (auto [expected, actual] :
+         llvm::zip(*status_output_expected, *status_output_actual)) {
+      if (!LiteralTestUtil::NearOrEqual(expected, actual, error)) {
+        return ::testing::AssertionFailure()
+               << "Output values not close enough.";
+      }
+    }
+    return ::testing::AssertionSuccess();
   }
 };
 
@@ -2753,6 +2838,108 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
                                       error_spec,
                                       /*run_hlo_passes=*/false));
+}
+
+TEST_F(DynamicSliceFusionTest, ReduceScatterDUSConstant) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  // DUS offset is a constant
+  const char* hlo_ref = R"(
+  HloModule test, replica_count=8
+
+  add.clone {
+    x.1 = f16[] parameter(0)
+    y.1 = f16[] parameter(1)
+    ROOT add.462 = f16[] add(x.1, y.1)
+  }
+
+  ENTRY %main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[16,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+    ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, constant_20, constant_0), metadata={}
+  })";
+
+  const char* hlo_opt = R"(
+  HloModule test, replica_count=8
+
+  %add (param_0: f16[], param_1: f16[]) -> f16[] {
+    %param_0 = f16[] parameter(0)
+    %param_1 = f16[] parameter(1)
+    ROOT %add.1 = f16[] add(f16[] %param_0, f16[] %param_1)
+  }
+
+  %address-computation (p0: f16[128,128], p1: f16[128,128], p2: u32[], p3: u32[]) -> f16[128,128] {
+    %p1 = f16[128,128]{1,0} parameter(1)
+    %p0 = f16[128,128]{1,0} parameter(0)
+    %reduce-scatter.1 = f16[16,128]{1,0} reduce-scatter(f16[128,128]{1,0} %p0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+    %p2 = u32[] parameter(2)
+    %p3 = u32[] parameter(3)
+    ROOT %loop_dynamic_update_slice_fusion.1 = f16[128,128]{1,0} dynamic-update-slice(f16[128,128]{1,0} %p1, f16[16,128]{1,0} %reduce-scatter.1, u32[] %p2, u32[] %p3)
+  }
+
+  ENTRY %main.9 (param_0.1: f16[128,128], param_1.1: f16[128,128]) -> f16[128,128] {
+    %param_0.1 = f16[128,128]{1,0} parameter(0)
+    %param_1.1 = f16[128,128]{1,0} parameter(1)
+    %constant_20 = u32[] constant(20)
+    %constant_0 = u32[] constant(0)
+    ROOT %address_computation = f16[128,128]{1,0} fusion(f16[128,128]{1,0} %param_0.1, f16[128,128]{1,0} %param_1.1, u32[] %constant_20, u32[] %constant_0), kind=kCustom, calls=%address-computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+  })";
+
+  EXPECT_TRUE(RunAndCompareReplicated(hlo_ref, hlo_opt, error_spec));
+}
+
+TEST_F(DynamicSliceFusionTest, ReduceScatterDUSParameterOffset) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  // DUS offset is a parameter. This enforces a d2h copy.
+  const char* hlo_ref = R"(
+  HloModule test, replica_count=8
+
+  add.clone {
+    x.1 = f16[] parameter(0)
+    y.1 = f16[] parameter(1)
+    ROOT add.462 = f16[] add(x.1, y.1)
+  }
+
+  ENTRY %main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    param_2 = u32[] parameter(2)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = f16[16,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+    ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, param_2, constant_0), metadata={}
+  })";
+
+  const char* hlo_opt = R"(
+  HloModule test, replica_count=8
+
+  %add (param_0: f16[], param_1: f16[]) -> f16[] {
+    %param_0 = f16[] parameter(0)
+    %param_1 = f16[] parameter(1)
+    ROOT %add.1 = f16[] add(f16[] %param_0, f16[] %param_1)
+  }
+
+  %address-computation {
+    %p1 = f16[128,128]{1,0} parameter(1)
+    %p0 = f16[128,128]{1,0} parameter(0)
+    %reduce-scatter.1 = f16[16,128]{1,0} reduce-scatter(f16[128,128]{1,0} %p0), channel_id=64, replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+    %p2 = u32[] parameter(2)
+    %p3 = u32[] parameter(3)
+    ROOT %loop_dynamic_update_slice_fusion.1 = f16[128,128]{1,0} dynamic-update-slice(f16[128,128]{1,0} %p1, f16[16,128]{1,0} %reduce-scatter.1, u32[] %p2, u32[] %p3)
+  }
+
+  ENTRY %main.9 {
+    %param_0 = f16[128,128]{1,0} parameter(0)
+    %param_1 = f16[128,128]{1,0} parameter(1)
+    %param_2 = u32[] parameter(2)
+    %constant_0 = u32[] constant(0)
+    ROOT %address_computation = f16[128,128]{1,0} fusion(f16[128,128]{1,0} %param_0, f16[128,128]{1,0} %param_1, u32[] %param_2, u32[] %constant_0), kind=kCustom, calls=%address-computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+  })";
+
+  EXPECT_TRUE(RunAndCompareReplicated(hlo_ref, hlo_opt, error_spec));
 }
 
 }  // namespace
