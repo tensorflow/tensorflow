@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/padding.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 namespace tensorflow {
 
@@ -96,14 +98,18 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
               errors::InvalidArgument(
                   "input and filter must have the same depth: ", depth, " vs ",
                   filter.dim_size(2)));
-
   // Effective filter size, after introducing rate - 1 zeros between each
   // non-zero filter element.
   const int filter_rows_eff =
       filter_rows + (filter_rows - 1) * (*rate_rows - 1);
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
-
+  
+  const Tensor& out_backprop = context->input(2);
+  OP_REQUIRES(context, out_backprop.dims() == 4,
+              absl::InvalidArgumentError(
+                  absl::StrCat("out_backprop must be 4-dimensional",
+                                out_backprop.shape().DebugString())));
   OP_REQUIRES_OK(context, GetWindowedOutputSize(
                               input_rows, filter_rows_eff, /*dilation_rate=*/1,
                               *stride_rows, padding, out_rows, pad_top));
