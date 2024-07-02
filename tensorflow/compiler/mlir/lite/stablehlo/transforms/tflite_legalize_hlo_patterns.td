@@ -13,34 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the legalization pattern definition file for HLO to TFL.
-
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
+include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
 
+def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
-// TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
+
 def LegalizeTranspose : Pat<(MHLO_TransposeOp $arg, $perm),
                             (TFL_TransposeOp $arg,
                             (CreateTFLCastToInt32Op (TFL_ConstOp $perm)))>;
-
-
-def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
-                                               "$0.getDefiningOp())">;
-
-def LegalizeDotGeneral: Pat<(MHLO_DotGeneralOp:$old_value
-               $lhs,
-               $rhs,
-               $dot_dimension_numbers, $precision_config),
-          (ConvertDotGeneralOp $old_value)>;
 
 def LowerCbrt : Pat<(MHLO_CbrtOp $opr), 
   (TFL_PowOp $opr,
@@ -50,3 +40,9 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
 
+def LegalizeReshape : Pat<(MHLO_ReshapeOp:$output $input),
+          (TFL_ReshapeOp $input, 
+            (CreateTFLCastToInt32Op (ShapeToConst $output)))>;
+
+def LegalizeDynamicReshape : Pat<(MHLO_DynamicReshapeOp $input, $shape),
+          (TFL_ReshapeOp $input, (CreateTFLCastToInt32Op $shape))>;

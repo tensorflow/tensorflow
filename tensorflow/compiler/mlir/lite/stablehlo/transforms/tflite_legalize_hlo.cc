@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // The kept headers are provided for the included file `passes.h.inc`.
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -43,6 +44,15 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 namespace {
+
+// Returns the shape of the given value in a Constant Op.
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
 
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
@@ -109,20 +119,23 @@ std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
-  MLIRContext& context = getContext();
-  RewritePatternSet patterns(&getContext());
-  // Add new conversion patterns here.
-  PopulateLegalizeHloToTFLitePatterns(&patterns, &context);
+  MLIRContext* context = &getContext();
 
-  ConversionTarget target(context);
+  RewritePatternSet patterns(context);
+  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
+               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
+      context);
+  populateWithGenerated(patterns);
+
+  ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
-  // Converted MHLO ops should be marked illegal here.
-  // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
+                      mhlo::ReshapeOp, mhlo::DynamicReshapeOp>();
+
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
@@ -131,14 +144,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 }
 }  // namespace
 
-void PopulateLegalizeHloToTFLitePatterns(RewritePatternSet* patterns,
-                                         MLIRContext* context) {
-  patterns->add<odml::ConvertCustomCallOp>(context);
-  populateWithGenerated(*patterns);
-
-  patterns->add<ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
-      context);
-}
 
 // Creates an instance of the pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass() {
