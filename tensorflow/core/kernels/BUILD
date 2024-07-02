@@ -959,6 +959,7 @@ cc_library(
         ":unpack_op",
         ":unravel_index_op",
         ":where_op",
+        ":wrap_pad_op",
     ],
 )
 
@@ -1095,6 +1096,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pad_op",
     prefix = "pad_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "wrap_pad_op",
+    prefix = "wrap_pad_op",
     deps = ARRAY_DEPS,
 )
 
@@ -6610,6 +6617,8 @@ filegroup(
         "transpose_functor.h",
         "transpose_op.h",
         "where_op.h",
+        "wrap_pad_op.h",
+        "wrap_pad_op_cpu_impl.h",
         "xent_op.h",
     ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
@@ -6962,6 +6971,12 @@ filegroup(
         "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
+        "wrap_pad_op.cc",
+        "wrap_pad_op_cpu_impl_1.cc",
+        "wrap_pad_op_cpu_impl_2.cc",
+        "wrap_pad_op_cpu_impl_3.cc",
+        "wrap_pad_op_cpu_impl_4.cc",
+        "wrap_pad_op_cpu_impl_5.cc",
         "xent_op.cc",
         ":portable_extended_ops_headers",
     ] + [

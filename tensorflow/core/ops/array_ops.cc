@@ -1971,6 +1971,15 @@ REGISTER_OP("MirrorPad")
     .SetShapeFn(PadShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("WrapPad")
+    .Input("input: T")
+    .Input("paddings: Tpaddings")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(PadShapeFn);
+
+// --------------------------------------------------------------------------
 namespace {
 template <typename T>
 Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
