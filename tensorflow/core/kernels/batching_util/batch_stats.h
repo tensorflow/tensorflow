@@ -50,6 +50,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_STATS_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_STATS_H_
 
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -139,6 +140,19 @@ class ModelBatchStats {
     return batch_size_stats_by_batch_size_[batch_size];
   }
 
+  // Registers that the model server has processed a batch of size `size`
+  // non-padding tasks for this model, updating the current cumulative
+  // processed size.
+  void RegisterProcessedSize(int64_t size) {
+    cumulative_processed_size_.fetch_add(size, std::memory_order_relaxed);
+  }
+
+  // Returns the cumulative size processed by this model (the total
+  // count of individual unit-sized queries processed by the model).
+  int64_t cumulative_processed_size() const {
+    return cumulative_processed_size_.load(std::memory_order_relaxed);
+  }
+
  private:
   mutable mutex mu_;
 
@@ -151,6 +165,11 @@ class ModelBatchStats {
   // elements, once created, are fixed in memory.
   absl::node_hash_map<int32, BatchSizeStats> batch_size_stats_by_batch_size_
       TF_GUARDED_BY(mu_);
+
+  // The total count of individual unit-sized queries processed by this model.
+  // Can be used to generate an internal load metric per model. See
+  // RegisterQuerySize for more details.
+  std::atomic<int64_t> cumulative_processed_size_ = 0;
 };
 
 // Tracks batch statistics for all models.
