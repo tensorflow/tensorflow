@@ -149,9 +149,11 @@ PyObject* PyDictFromSparsityParam(const TfLiteSparsity& param) {
   PyDict_SetItemString(result, "traversal_order",
                        PyArrayFromIntVector(param.traversal_order->data,
                                             param.traversal_order->size));
-  PyDict_SetItemString(
-      result, "block_map",
-      PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  if (param.block_map != nullptr) {
+    PyDict_SetItemString(
+        result, "block_map",
+        PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  }
   PyObject* dim_metadata = PyList_New(param.dim_metadata_size);
   for (int i = 0; i < param.dim_metadata_size; i++) {
     PyObject* dim_metadata_i = PyDict_New();
