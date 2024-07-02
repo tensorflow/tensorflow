@@ -251,7 +251,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
+        "//tensorflow/lite/tools/versioning:jet_gpu_compatibility",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
