@@ -255,10 +255,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
     deps = [
-        ":tfrt_fallback_opdefs",
         ":tfrt_gpu_opdefs_inc_gen",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

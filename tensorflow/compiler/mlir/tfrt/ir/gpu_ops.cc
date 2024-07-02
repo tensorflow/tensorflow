@@ -14,10 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/ir/gpu_ops.h"
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 
 namespace tfrt {
 namespace gpu {
