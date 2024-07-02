@@ -2835,6 +2835,43 @@ TEST(QuantizedGeluOpTest, GeluUInt8Approximate) {
               })));
 }
 
+TEST(QuantizedGeluOpTest, GeluInt16) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  QuantizedGeluOpModel m({TensorType_INT16, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/false);
+  m.SetInput<int16_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.84137f, 2.99579f,           // Row 1
+                  0.84137f, -0.158661f, -0.0455017f  // Row 2
+              })));
+}
+TEST(QuantizedGeluOpTest, GeluInt16Approximate) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  QuantizedGeluOpModel m({TensorType_INT16, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/true);
+  m.SetInput<int16_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.841187f, 2.99625f,           // Row 1
+                  0.841187f, -0.158752f, -0.0454102f  // Row 2
+              })));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TanhOpTest, TanhOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kTanhKernelMap)));

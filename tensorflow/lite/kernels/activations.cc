@@ -1700,6 +1700,11 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
 
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // PopulateLookupTable takes a function pointer for TFLM compatibility
   // reasons, we thus can't directly pass a std::function<float(float)> or
   // lambda with capture. Add an if/else condition to avoid capture of
@@ -1718,6 +1723,13 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
                              ? reference_ops::GeluTransformApproximate
                              : reference_ops::GeluTransform,
                          data->lut_uint8);
+  } else if (input->type == kTfLiteInt16) {
+    LUTPopulate<int16_t>(input->params.scale, input->params.zero_point,
+                         output->params.scale, output->params.zero_point,
+                         params->approximate
+                             ? reference_ops::GeluTransformApproximate
+                             : reference_ops::GeluTransform,
+                         data->lut_int16);
   }
   return GenericPrepare(context, node);
 }
@@ -1748,9 +1760,15 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
           data->lut_int8, GetTensorData<int8_t>(output));
       return kTfLiteOk;
+    case kTfLiteInt16:
+      reference_integer_ops::LookupTable(
+          GetTensorData<int16_t>(input),
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
+          data->lut_int16, GetTensorData<int16_t>(output));
+      return kTfLiteOk;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Only float32, int8 and uint8 supported currently, got %s.",
+          context, "Only float32, int8, int16 and uint8 supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
