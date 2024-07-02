@@ -24,11 +24,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -36,13 +50,14 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/pattern_utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
-#include "tensorflow/core/grappler/utils/topological_sort.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #ifdef INTEL_MKL
 #include "tensorflow/core/util/mkl_heuristics.h"
 #endif  // INTEL_MKL
@@ -510,6 +525,24 @@ bool RuntimeFusionEnabled(const Cluster* cluster) {
   return is_enabled;
 }
 
+bool IsReluSemanticMaximum(const RemapperContext& ctx,
+                           const utils::MutableNodeView& node_view) {
+  if (!IsMaximum(*node_view.node())) return false;
+
+  const std::vector<OpInfo::TensorProperties>& input_props =
+      ctx.graph_properties.GetInputProperties(node_view.node()->name());
+  if (input_props.size() < 2) return false;
+
+  for (const auto& input_prop : input_props) {
+    if (input_prop.shape().dim_size() == 0 &&
+        IsZeroTensor(input_prop.value(), input_prop.dtype())) {
+      return true;
+      break;
+    }
+  }
+  return false;
+}
+
 bool IsSupportedActivation(const NodeDef& node, const Cluster* cluster) {
   bool is_default_supported =
       IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
@@ -667,8 +700,6 @@ bool IsConvOrMatMul(const NodeDef& node) {
 bool IsBiasSemanticAdd(const RemapperContext& ctx,
                        const utils::MutableNodeView& node_view,
                        int& bias_port) {
-  if (!IsMKLEnabled()) return false;
-
   const auto* node_def = node_view.node();
   if (!NodeIsOnCpu(node_def)) return false;
   if (!IsAdd(*node_def) || node_view.NumRegularFanins() != 2) return false;
@@ -682,7 +713,6 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   const auto& regular_fanin_1 = node_view.GetRegularFanin(1);
   const auto* node_view_1 = regular_fanin_1.node_view();
   const auto* node_def_1 = node_view_1->node();
-
   if (!IsConvOrMatMul(*node_def_0) && !IsConvOrMatMul(*node_def_1))
     return false;
 
@@ -701,13 +731,11 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
 
   const TensorShapeProto& prot0_shape = props[0].shape();
   const TensorShapeProto& prot1_shape = props[1].shape();
-
   if (prot0_shape.unknown_rank() || prot1_shape.unknown_rank() ||
       prot0_shape.dim_size() < 1 || prot1_shape.dim_size() < 1 ||
       !IsKnown(prot0_shape.dim(prot0_shape.dim_size() - 1)) ||
       !IsKnown(prot1_shape.dim(prot1_shape.dim_size() - 1)))
     return false;
-
   // Helper function to check Add/AddV2 could be replaced with BiasAdd.
   const auto is_supported_shape =
       [&](const TensorShapeProto& shape,
@@ -734,7 +762,6 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   if (ShapesSymbolicallyEqual(prot0_shape, prot1_shape) ||
       !ShapesBroadcastable(prot0_shape, prot1_shape))
     return false;
-
   if (IsConvOrMatMul(*node_def_0)) {
     bias_port = 1;
     return (is_supported_shape(prot0_shape, prot1_shape));
@@ -856,7 +883,7 @@ bool FindFusedConvWithFusedActivation(const RemapperContext& ctx,
   return true;
 }
 
-bool FindContractionWithBiasAndActivation(
+bool FindContractionWithBiasAddAndActivation(
     const RemapperContext& ctx, Cluster* cluster, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -865,8 +892,9 @@ bool FindContractionWithBiasAndActivation(
   if (HasControlFaninOrFanout(*node_view)) return false;
 
   const auto* node_def = node_view->node();
-  if (!IsSupportedActivation(*node_def, cluster)) return false;
-
+  if (!IsSupportedActivation(*node_def, cluster) &&
+      !(IsReluSemanticMaximum(ctx, *node_view)))
+    return false;
   // And input to the activation node must match ContractionWithBiasAdd pattern.
   if (node_view->NumRegularFanins() < 1) return false;
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
@@ -880,7 +908,6 @@ bool FindContractionWithBiasAndActivation(
       !HaveSameDataType(node_def, bias_add_node_def) ||
       IsInPreserveSet(ctx, bias_add_node_def))
     return false;
-
   // Get the contraction node
   const auto* contraction_node_view =
       bias_add_node_view->GetRegularFanin(1 - base.bias_port).node_view();
@@ -3401,7 +3428,12 @@ Status AddFusedContractionNode(
     CopyConv3DAttributes(contraction, &fused_op, &activation);
   }
 
-  SetFusedOpAttributes(&fused_op, {"BiasAdd", activation.op()});
+  SetFusedOpAttributes(
+      &fused_op,
+      {"BiasAdd",
+       IsReluSemanticMaximum(*ctx, *ctx->graph_view.GetNode(matched.activation))
+           ? "Relu"
+           : activation.op()});
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -4672,6 +4704,7 @@ Status ReplaceSoftplusTanhAndMulWithMish(
 //   (3) Fusing Conv2D biasadd and relu on GPU
 //   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 //   (5) Fusing side output and/or activation into FusedBatchNormGrad.
+//   (6) Fusing MatMul + AddV2 + Relu (Maximum(x, 0))
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
                             const Cluster* cluster) {
   // Candidate for a FusedBatchNorm splitting.
@@ -4809,17 +4842,66 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
     return true;
   };
 
+  const auto is_add_matmul_candidate = [&]() -> bool {
+    if (!IsAdd(*node_def) && !IsBiasAdd(*node_def)) return false;
+    if (node_view->NumRegularFanins() < 2) return false;
+    const auto& add_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* add_fanin_0_node_view = add_fanin_0.node_view();
+    const auto* add_fanin_0_node_def = add_fanin_0_node_view->node();
+    const auto& add_fanin_1 = node_view->GetRegularFanin(1);
+    const auto* add_fanin_1_node_view = add_fanin_1.node_view();
+    const auto* add_fanin_1_node_def = add_fanin_1_node_view->node();
+    if (!IsMatMul(*add_fanin_0_node_def) && !IsMatMul(*add_fanin_1_node_def))
+      return false;
+    return true;
+  };
+
+  const auto is_maximum_add_matmul_candidate = [&]() -> bool {
+    if (!IsMaximum(*node_def)) return false;
+    if (node_view->NumRegularFanins() < 2) return false;
+    const auto& max_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* max_fanin_0_node_view = max_fanin_0.node_view();
+    const auto* max_fanin_0_node_def = max_fanin_0_node_view->node();
+    const auto& max_fanin_1 = node_view->GetRegularFanin(1);
+    const auto* max_fanin_1_node_view = max_fanin_1.node_view();
+    const auto* max_fanin_1_node_def = max_fanin_1_node_view->node();
+    const NodeDef* add_node_def = nullptr;
+    const utils::MutableNodeView* add_node_view = nullptr;
+    if (IsAdd(*max_fanin_0_node_def) || IsBiasAdd(*max_fanin_0_node_def)) {
+      add_node_def = max_fanin_0_node_def;
+      add_node_view = max_fanin_0_node_view;
+    } else if (IsAdd(*max_fanin_1_node_def) ||
+               IsBiasAdd(*max_fanin_1_node_def)) {
+      add_node_def = max_fanin_1_node_def;
+      add_node_view = max_fanin_1_node_view;
+    } else {
+      return false;
+    }
+    if (add_node_view->NumRegularFanins() < 2) return false;
+    const auto& add_fanin_0 = add_node_view->GetRegularFanin(0);
+    const auto* add_fanin_0_node_view = add_fanin_0.node_view();
+    const auto* add_fanin_0_node_def = add_fanin_0_node_view->node();
+    const auto& add_fanin_1 = add_node_view->GetRegularFanin(1);
+    const auto* add_fanin_1_node_view = add_fanin_1.node_view();
+    const auto* add_fanin_1_node_def = add_fanin_1_node_view->node();
+    if (!IsMatMul(*add_fanin_0_node_def) && !IsMatMul(*add_fanin_1_node_def))
+      return false;
+    return true;
+  };
+
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
            is_act_biasadd_conv_candidate() || IsBiasAdd(*node_def) ||
-           IsTranspose(*node_def);
+           IsTranspose(*node_def) || is_maximum_add_matmul_candidate() ||
+           is_add_matmul_candidate();
 
   return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate() ||
          is_matmul_gelu_exact_fusion_candidate() ||
-         is_act_biasadd_matmul_candidate();
+         is_act_biasadd_matmul_candidate() ||
+         is_maximum_add_matmul_candidate() || is_add_matmul_candidate();
 }
 
 inline bool IsXlaCpuGlobalJitOn() {
@@ -4865,7 +4947,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (invalidated_nodes[i] || nodes_to_delete[i]) {
       continue;
     }
-
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties &&
         RequiresInferredShapes(ctx, i, cluster)) {
@@ -4936,7 +5017,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 #endif
-
       PadWithConv3D pad_with_conv3d;
       // Remap Pad+{Conv3D,_FusedConv3D} into the _FusedConv3D.
       if (FindPadWithConv3D(ctx, i, &pad_with_conv3d)) {
@@ -5106,12 +5186,13 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // Remap {Conv2D,DepthwiseConv2D,MatMul,Conv3D}+BiasAdd+Activation into the
     // _Fused{Conv2D,DepthwiseConv2dNative,MatMul,Conv3D}.
-    ContractionWithBiasAddAndActivation contract_with_bias_and_activation;
+
+    ContractionWithBiasAddAndActivation contract_with_bias_add_and_activation;
     if (allow_non_differentiable_rewrites &&
-        FindContractionWithBiasAndActivation(
-            ctx, cluster, i, &contract_with_bias_and_activation)) {
+        FindContractionWithBiasAddAndActivation(
+            ctx, cluster, i, &contract_with_bias_add_and_activation)) {
       TF_RETURN_IF_ERROR(
-          AddFusedContractionNode(&ctx, contract_with_bias_and_activation,
+          AddFusedContractionNode(&ctx, contract_with_bias_add_and_activation,
                                   &invalidated_nodes, &nodes_to_delete));
       continue;
     }

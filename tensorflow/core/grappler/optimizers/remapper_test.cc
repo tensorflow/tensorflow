@@ -15,8 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/string_ops.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -24,9 +36,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -2085,6 +2101,131 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
     GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseMatMulWithBiasAndActivation with bfloat16.";
   RunTest<DT_BFLOAT16>();  // NOLINT
+}
+
+class RemapperFuseMatMulWithBiasSemanticAddAndMaximumTest
+    : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+    for (const string& add_op : {"BiasAdd", "AddV2", "Add"}) {
+      LOG(ERROR) << "siqiaowu@add_op: " << add_op;
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+      auto input_shape = ops::Placeholder::Shape({4, 32});
+      auto filter_shape_1 = ops::Placeholder::Shape({32, 8});
+      auto bias_shape_1 = ops::Placeholder::Shape({8});
+      auto filter_shape_2 = ops::Placeholder::Shape({8, 2});
+      auto bias_shape_2 = ops::Placeholder::Shape({2});
+
+      auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+      auto filter_1 =
+          Placeholder(s.WithOpName("filter_1"), DT_FLOAT, filter_shape_1);
+      auto bias_1 = Placeholder(s.WithOpName("bias_1"), DT_FLOAT, bias_shape_1);
+      auto filter_2 =
+          Placeholder(s.WithOpName("filter_2"), DT_FLOAT, filter_shape_2);
+      auto bias_2 = Placeholder(s.WithOpName("bias_2"), DT_FLOAT, bias_shape_2);
+
+      auto matmul_1 = ops::MatMul(s.WithOpName("matmul_1"), input, filter_1);
+      Output bias_add_1;
+      if (add_op == "BiasAdd")
+        bias_add_1 = ops::BiasAdd(s.WithOpName("bias_add_1"), matmul_1, bias_1);
+      else if (add_op == "AddV2")
+        bias_add_1 = ops::AddV2(s.WithOpName("bias_add_1"), matmul_1, bias_1);
+      else if (add_op == "Add")
+        bias_add_1 = ops::Add(s.WithOpName("bias_add_1"), bias_1, matmul_1);
+
+      auto matmul_2 =
+          ops::MatMul(s.WithOpName("matmul_2"), bias_add_1, filter_2);
+      Output bias_add_2;
+      if (add_op == "BiasAdd")
+        bias_add_2 = ops::BiasAdd(s.WithOpName("bias_add_2"), matmul_2, bias_2);
+      else if (add_op == "AddV2")
+        bias_add_2 = ops::AddV2(s.WithOpName("bias_add_2"), matmul_2, bias_2);
+      else if (add_op == "Add")
+        bias_add_2 = ops::Add(s.WithOpName("bias_add_2"), bias_2, matmul_2);
+
+      typedef typename EnumToDataType<DTYPE>::Type CType;
+      auto zeros = ops::Const<CType>(s.WithOpName("zeros"), 0.0f, {});
+      Output maximum_output =
+          ops::Maximum(s.WithOpName("maximum"), bias_add_2, zeros);
+
+      auto fetch = s.WithOpName("fetch");
+
+      ops::Identity(fetch, maximum_output);
+
+      auto input_tensor = GenerateRandomTensor<DT_FLOAT>(
+          TensorShape(input_shape.shape_.dim_sizes()));
+      auto filter_1_tensor = GenerateRandomTensor<DT_FLOAT>(
+          TensorShape(filter_shape_1.shape_.dim_sizes()));
+      auto bias_1_tensor = GenerateRandomTensor<DT_FLOAT>(
+          TensorShape(bias_shape_1.shape_.dim_sizes()));
+      auto filter_2_tensor = GenerateRandomTensor<DT_FLOAT>(
+          TensorShape(filter_shape_2.shape_.dim_sizes()));
+      auto bias_2_tensor = GenerateRandomTensor<DT_FLOAT>(
+          TensorShape(bias_shape_2.shape_.dim_sizes()));
+
+      GrapplerItem item;
+      item.fetch = {"fetch"};
+      item.feed = {{"input", input_tensor},
+                   {"filter_1", filter_1_tensor},
+                   {"bias_1", bias_1_tensor},
+                   {"filter_2", filter_2_tensor},
+                   {"bias_2", bias_2_tensor}};
+      TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+      // Place all nodes on CPU.
+      for (int i = 0; i < item.graph.node_size(); ++i) {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+
+      Remapper optimizer(RewriterConfig::AGGRESSIVE);
+      GraphDef output;
+      TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+      int found = 0;
+      for (const NodeDef& node : output.node()) {
+        if (node.name() == "bias_add_1") {
+          EXPECT_EQ("_FusedMatMul", node.op());
+          EXPECT_EQ("input", node.input(0));
+          EXPECT_EQ("filter_1", node.input(1));
+          EXPECT_EQ(1, node.attr().at("num_args").i());
+          EXPECT_EQ("bias_1", node.input(2));
+
+          const auto fused_ops = node.attr().at("fused_ops").list().s();
+          EXPECT_EQ(1, fused_ops.size());
+          EXPECT_EQ("BiasAdd", fused_ops[0]);
+          found++;
+        }
+
+        if (node.name() == "maximum") {
+          EXPECT_EQ("_FusedMatMul", node.op());
+          EXPECT_EQ("bias_add_1", node.input(0));
+          EXPECT_EQ("filter_2", node.input(1));
+          EXPECT_EQ(1, node.attr().at("num_args").i());
+          EXPECT_EQ("bias_2", node.input(2));
+
+          const auto fused_ops = node.attr().at("fused_ops").list().s();
+          EXPECT_EQ(2, fused_ops.size());
+          EXPECT_EQ("BiasAdd", fused_ops[0]);
+          EXPECT_EQ("Relu", fused_ops[1]);
+          found++;
+        }
+      }
+      EXPECT_EQ(2, found);
+
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      EXPECT_EQ(1, tensors_expected.size());
+      EXPECT_EQ(1, tensors.size());
+      test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
+    }
+  }
+};
+
+TEST_F(RemapperFuseMatMulWithBiasSemanticAddAndMaximumTest, F32) {
+  RunTest<DT_FLOAT>();
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
