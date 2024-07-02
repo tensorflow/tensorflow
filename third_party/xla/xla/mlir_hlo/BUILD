@@ -767,7 +767,6 @@ cc_library(
         "transforms/naive_copy_removal.cc",
         "transforms/tile_loops_pass.cc",
         "transforms/unbufferize_pass.cc",
-        "transforms/unroll_loops.cc",
         "transforms/vectorize_copy.cc",
     ],
     hdrs = [

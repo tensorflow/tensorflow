@@ -95,9 +95,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
 
-// Unrolls scf.for loops with static iteration count no larger than 8.
-std::unique_ptr<Pass> createUnrollLoopsPass();
-
 #define GEN_PASS_REGISTRATION
 #include "transforms/passes.h.inc"
 
