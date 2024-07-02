@@ -5,6 +5,7 @@ load(
     "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
+load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -291,7 +292,7 @@ xla_test(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "cutlass_gemm_custom_kernel_benchmarks",
     testonly = 1,
     srcs = if_cuda_is_configured(["cutlass_gemm_custom_kernel_benchmarks.cc"]),
