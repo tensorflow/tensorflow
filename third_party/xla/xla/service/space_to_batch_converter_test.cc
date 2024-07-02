@@ -272,5 +272,84 @@ TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
   ASSERT_TRUE(converter.Run(module.get()).value());
 }
 
+TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+              op::Reduce());
+  auto new_reduce = root->operand(0)->operand(0)->operand(0)->operand(0);
+  // Make sure we propagated on the reduce with the larger batch size.
+  EXPECT_EQ(new_reduce->shape().dimensions(1),
+            // batch*number_of_splits
+            7 * 8);
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnBroadcast) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
+    %broadcast.51 = f32[7,160,400,32]{3,2,1,0} broadcast(f32[7,160,400]{2,1,0} %reduce.41), dimensions={0,1,2}
+    ROOT %subtract.52 = f32[7,160,400,32]{3,2,1,0} subtract(%c, %broadcast.51)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+  /*
+    auto computation = module->entry_computation();
+    HloInstruction* root = computation->root_instruction();
+    EXPECT_THAT(root, op::Transpose());
+    EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+                op::Reduce());
+    auto new_reduce = root->operand(0)->operand(0)->operand(0)->operand(0);
+    // Make sure we propagated on the reduce with the larger batch size.
+    EXPECT_EQ(new_reduce->shape().dimensions(1),
+              // batch*number_of_splits
+              7 * 8);
+    */
+}
+
 }  // namespace
 }  // namespace xla

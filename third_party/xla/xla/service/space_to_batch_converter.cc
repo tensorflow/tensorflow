@@ -901,6 +901,16 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
   return activations_new;
 }
 
+bool IsTrivialElementwise(HloInstruction* hlo) {
+  if (hlo->opcode() == HloOpcode::kFusion || hlo->opcode() == HloOpcode::kRng ||
+      hlo->opcode() == HloOpcode::kCopy ||
+      hlo->opcode() == HloOpcode::kConstant ||
+      hlo->opcode() == HloOpcode::kIota || hlo->opcode() == HloOpcode::kMap) {
+    return false;
+  }
+  return hlo->IsElementwise();
+}
+
 absl::StatusOr<bool> ConvolutionVisitor::Run() {
   for (auto conv : conv_visitor_list_) {
     // If we expect to see an unpropagatable op, space-to-batch may not be
@@ -960,16 +970,6 @@ absl::StatusOr<bool> ConvolutionVisitor::Run() {
   return changed_;
 }
 
-bool IsTrivialElementwise(HloInstruction* hlo) {
-  if (hlo->opcode() == HloOpcode::kFusion || hlo->opcode() == HloOpcode::kRng ||
-      hlo->opcode() == HloOpcode::kCopy ||
-      hlo->opcode() == HloOpcode::kConstant ||
-      hlo->opcode() == HloOpcode::kIota || hlo->opcode() == HloOpcode::kMap) {
-    return false;
-  }
-  return hlo->IsElementwise();
-}
-
 bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
                                       HloInstruction* producer) {
   if (IsTrivialElementwise(consumer)) {
@@ -977,13 +977,46 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
             << consumer->ToString();
 
     HloInstruction* pivot_operand = nullptr;
+
+    std::vector<int64_t> operand_iteration_order(consumer->operand_count());
+    absl::c_iota(operand_iteration_order, 0);
+    int64_t next_operand_to_check = 0;
+    int64_t last_known_good_operand = 0;
+    const int64_t operand_count = consumer->operand_count();
+    while (next_operand_to_check < operand_count &&
+           last_known_good_operand < operand_count) {
+      if (consumer->operand(next_operand_to_check)->opcode() ==
+              HloOpcode::kBroadcast ||
+          consumer->operand(next_operand_to_check)->opcode() ==
+              HloOpcode::kConstant) {
+        while (last_known_good_operand < operand_count &&
+               (consumer->operand(last_known_good_operand)->opcode() ==
+                    HloOpcode::kBroadcast ||
+                consumer->operand(last_known_good_operand)->opcode() ==
+                    HloOpcode::kConstant)) {
+          last_known_good_operand++;
+        }
+        if (last_known_good_operand < operand_count) {
+          int64_t temp = operand_iteration_order[last_known_good_operand];
+          operand_iteration_order[last_known_good_operand] =
+              next_operand_to_check;
+          operand_iteration_order[next_operand_to_check] = temp;
+          last_known_good_operand++;
+        }
+      }
+      next_operand_to_check++;
+      if (last_known_good_operand < next_operand_to_check) {
+        last_known_good_operand = next_operand_to_check;
+      }
+    }
+
     for (int64_t i = 0; i < consumer->operand_count(); ++i) {
-      auto old_producer = consumer->mutable_operand(i);
+      auto old_producer = consumer->mutable_operand(operand_iteration_order[i]);
       std::vector<HloInstruction*> to_transform;
       const bool broadcast_or_constant =
           (old_producer->opcode() == HloOpcode::kConstant) ||
-          (old_producer->opcode() == HloOpcode::kBroadcast &&
-           IsBroadcastPropagatable(old_producer, producer)) ||
+          (old_producer->opcode() == HloOpcode::kBroadcast && pivot_operand &&
+           IsBroadcastPropagatable(old_producer, pivot_operand)) ||
           (consumer->IsElementwiseBinary() &&
            old_producer->opcode() == HloOpcode::kBroadcast &&
            IsBroadcastTree(old_producer, producer, to_transform));
@@ -1050,6 +1083,41 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
         }
       }
     }
+  }
+
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
+    // Restrict broadcast propagation. Can be extended in future.
+    if (consumer->user_count() != 1) {
+      return false;
+    }
+
+    HloInstruction* user = consumer->users()[0];
+    HloInstruction* pivot = nullptr;
+    for (auto op : user->operands()) {
+      if (op != consumer) {
+        if (!old_to_new_instrs_.contains(op)) {
+          return false;
+        }
+
+        if (pivot == nullptr) {
+          pivot = op;
+          continue;
+        }
+
+        // All operands should have the same shape.
+        if (old_to_new_instrs_[pivot]->shape() !=
+            old_to_new_instrs_[op]->shape()) {
+          return false;
+        }
+      }
+    }
+    if (pivot == nullptr) {
+      return false;
+    }
+    VLOG(1) << "Checking if we could propagate on broadcast "
+            << consumer->ToString() << " pivot " << pivot->ToString();
+
+    return IsBroadcastPropagatable(consumer, pivot);
   }
 
   if (consumer->opcode() == HloOpcode::kConcatenate) {
@@ -1441,6 +1509,21 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   return true;
 }
 
+bool BroadcastMovesAllDimensionsLinearly(HloInstruction* broadcast) {
+  auto broadcast_operand = broadcast->mutable_operand(0);
+  bool all_dims_broadcasted_linearly =
+      (broadcast->dimensions().size() == broadcast_operand->shape().rank());
+  if (all_dims_broadcasted_linearly) {
+    for (int i = 1; i < broadcast->dimensions().size(); ++i) {
+      if (broadcast->dimensions(i) != broadcast->dimensions(i - 1) + 1) {
+        all_dims_broadcasted_linearly = false;
+        break;
+      }
+    }
+  }
+  return all_dims_broadcasted_linearly;
+}
+
 void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
                                               HloInstruction* producer) {
   auto new_producer = old_to_new_instrs_[producer];
@@ -1451,11 +1534,15 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
       dim_map_val[DimMapper(SpaceToBatchDimMap::kBatch)];
   const int64_t old_space_dim =
       dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0)];
+  const int64_t old_feature_dim =
+      dim_map_val[DimMapper(SpaceToBatchDimMap::kFeature)];
 
   auto orig_broadcast_dims = consumer->dimensions();
 
   bool batch_is_broadcasted =
       absl::c_linear_search(orig_broadcast_dims, old_batch_dim);
+  bool space_is_broadcasted =
+      absl::c_linear_search(orig_broadcast_dims, old_space_dim);
   const int64_t new_batch_dim = DimLookUp(permute_dims, old_batch_dim);
   const int64_t new_space_dim = DimLookUp(permute_dims, old_space_dim);
 
@@ -1470,31 +1557,81 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
     }
   }
 
-  std::vector<int64_t> final_shape_dims(
-      new_producer->shape().dimensions().begin(),
-      new_producer->shape().dimensions().end());
-  if (batch_is_broadcasted) {
-    final_shape_dims[new_batch_dim] =
-        producer->shape().dimensions(old_batch_dim);
-    final_shape_dims[new_space_dim] *= ctrl_.number_of_splits;
-  }
+  HloInstruction* new_broadcast = nullptr;
+  if (space_is_broadcasted && batch_is_broadcasted) {
+    CHECK(BroadcastMovesAllDimensionsLinearly(consumer));
 
-  std::vector<int64_t> broadcast_dims;
-  const auto& dimensions = consumer->dimensions();
-  broadcast_dims.reserve(dimensions.size());
-  for (auto j : dimensions) {
-    broadcast_dims.push_back(DimLookUp(permute_dims, j));
-  }
-  auto new_broadcast = MakeBroadcastHlo(
-      consumer->mutable_operand(0), broadcast_dims, final_shape_dims,
-      &consumer->metadata(), &consumer->frontend_attributes());
-  VLOG(1) << "Created broadcast " << new_broadcast->ToString();
+    const auto& dimensions = consumer->dimensions();
+    const int64_t output_rank = consumer->shape().rank();
+    const int64_t starting_offset = dimensions[0];
+    std::vector<int64_t> new_broadcast_dims(dimensions.size());
+    for (int i = 0; i < dimensions.size(); ++i) {
+      new_broadcast_dims[i] = starting_offset + i;
+    }
 
-  if (batch_is_broadcasted) {
-    new_broadcast =
-        MakeReshapeHlo(new_producer->shape().dimensions(), new_broadcast)
-            .value();
-    VLOG(2) << "Created reshape of broadcast " << new_broadcast->ToString();
+    // Start with original broadcast shape.
+    std::vector<int64_t> final_shape_dims(
+        consumer->shape().dimensions().begin(),
+        consumer->shape().dimensions().end());
+
+    for (int i = 0; i < dimensions.size(); ++i) {
+      final_shape_dims[starting_offset + i] =
+          new_producer->shape().dimensions(i);
+    }
+
+    new_broadcast = MakeBroadcastHlo(new_producer, new_broadcast_dims,
+                                     final_shape_dims, &consumer->metadata(),
+                                     &consumer->frontend_attributes());
+    VLOG(1) << "Created broadcast " << new_broadcast->ToString();
+
+    std::vector<int64_t> new_permute_dims(output_rank);
+    absl::c_iota(new_permute_dims, 0);
+
+    for (int i = 0; i < dimensions.size(); ++i) {
+      new_permute_dims[starting_offset + i] = permute_dims[i] + starting_offset;
+    }
+
+    std::vector<int64_t> dim_map(NumMappedDims());
+    dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] =
+        old_batch_dim + starting_offset;
+    dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)] =
+        old_space_dim + starting_offset;
+    dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] =
+        old_feature_dim + starting_offset;
+
+    instr_to_dim_map_[consumer] = dim_map;
+
+    instr_to_dim_permute_map_[new_broadcast] = new_permute_dims;
+    old_to_new_instrs_[consumer] = new_broadcast;
+
+  } else {
+    std::vector<int64_t> final_shape_dims(
+        new_producer->shape().dimensions().begin(),
+        new_producer->shape().dimensions().end());
+
+    if (batch_is_broadcasted) {
+      final_shape_dims[new_batch_dim] =
+          producer->shape().dimensions(old_batch_dim);
+      final_shape_dims[new_space_dim] *= ctrl_.number_of_splits;
+    }
+
+    std::vector<int64_t> broadcast_dims;
+    const auto& dimensions = consumer->dimensions();
+    broadcast_dims.reserve(dimensions.size());
+    for (auto j : dimensions) {
+      broadcast_dims.push_back(DimLookUp(permute_dims, j));
+    }
+    new_broadcast = MakeBroadcastHlo(
+        consumer->mutable_operand(0), broadcast_dims, final_shape_dims,
+        &consumer->metadata(), &consumer->frontend_attributes());
+    VLOG(1) << "Created broadcast " << new_broadcast->ToString();
+
+    if (batch_is_broadcasted) {
+      new_broadcast =
+          MakeReshapeHlo(new_producer->shape().dimensions(), new_broadcast)
+              .value();
+      VLOG(2) << "Created reshape of broadcast " << new_broadcast->ToString();
+    }
   }
 
   if (!map_found) {
@@ -1548,15 +1685,66 @@ bool ConvolutionVisitor::IsBroadcastTree(
   return true;
 }
 
+// old_other_op is the other operand of the elementwise op, apart from the
+// broadcast.
 bool ConvolutionVisitor::IsBroadcastPropagatable(HloInstruction* broadcast,
                                                  HloInstruction* old_other_op) {
+  CHECK(old_other_op != nullptr);
   CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
-  CHECK(instr_to_dim_map_.contains(old_other_op));
+  VLOG(1) << "IsBroadcastPropagatable old_other_op "
+          << old_other_op->ToString();
+  CHECK(instr_to_dim_map_.contains(old_other_op))
+      << "old_other_op " << old_other_op->ToString();
 
   auto result = instr_to_dim_map_[old_other_op];
-  const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
+  const int64_t old_space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
+  const int64_t old_batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
+
+  auto broadcast_operand = broadcast->mutable_operand(0);
   auto broadcast_dims = broadcast->dimensions();
-  return !absl::c_linear_search(broadcast_dims, space_dim);
+  VLOG(1) << "IsBroadcastPropagatable? old_space_dim " << old_space_dim
+          << " old_batch_dim " << old_batch_dim;
+  if (!broadcast_dims.empty() &&
+      absl::c_linear_search(broadcast_dims, old_space_dim) &&
+      absl::c_linear_search(broadcast_dims, old_batch_dim) &&
+      old_to_new_instrs_.contains(broadcast_operand) &&
+      old_to_new_instrs_.contains(old_other_op)) {
+    auto new_broadcast_operand = old_to_new_instrs_[broadcast_operand];
+    auto new_other_op = old_to_new_instrs_[old_other_op];
+
+    auto broadcast_operand_dim_map = instr_to_dim_map_[broadcast_operand];
+    const int64_t old_broadcast_operand_space_dim =
+        broadcast_operand_dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)];
+    const int64_t old_broadcast_operand_batch_dim =
+        broadcast_operand_dim_map[DimMapper(SpaceToBatchDimMap::kBatch)];
+
+    auto permute_dims_broadcast_operand =
+        instr_to_dim_permute_map_[new_broadcast_operand];
+    auto permute_dims_other_op = instr_to_dim_permute_map_[new_other_op];
+    const int64_t new_batch_dim_broadcast_operand = DimLookUp(
+        permute_dims_broadcast_operand, old_broadcast_operand_batch_dim);
+    const int64_t new_space_dim_broadcast_operand = DimLookUp(
+        permute_dims_broadcast_operand, old_broadcast_operand_space_dim);
+    const int64_t new_batch_dim_other_op =
+        DimLookUp(permute_dims_other_op, old_batch_dim);
+    const int64_t new_space_dim_other_op =
+        DimLookUp(permute_dims_other_op, old_space_dim);
+
+    if (BroadcastMovesAllDimensionsLinearly(broadcast) &&
+        new_broadcast_operand->shape().dimensions(
+            new_batch_dim_broadcast_operand) ==
+            new_other_op->shape().dimensions(new_batch_dim_other_op) &&
+        new_broadcast_operand->shape().dimensions(
+            new_space_dim_broadcast_operand) ==
+            new_other_op->shape().dimensions(new_space_dim_other_op)) {
+      VLOG(1) << "Broadcast on both space and batch dims";
+      return true;
+    }
+  }
+
+  // Do no allow broadcast with space dim staying intact. This effectively
+  // catches scalar broadcasts at this point.
+  return !absl::c_linear_search(broadcast_dims, old_space_dim);
 }
 
 bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
@@ -1632,6 +1820,10 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kConvolution) {
+    return true;
+  }
+
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
     return true;
   }
 
@@ -1739,8 +1931,13 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     auto result = instr_to_dim_map_[consumer->mutable_operand(0)];
     const int64_t batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
     const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
-    VLOG(1) << "Checking if reduce is supported batch_dim " << batch_dim
-            << " space_dim " << space_dim << " reduce " << consumer->ToString();
+    // Support the trivial case where none of the batch and split spatial dim
+    // are being reduced.
+    return !absl::c_linear_search(reduce_dims, batch_dim) &&
+           !absl::c_linear_search(reduce_dims, space_dim);
+
+    // Support only the trivial case where both batch and split spatial dim are
+    // being reduced
     return absl::c_linear_search(reduce_dims, batch_dim) &&
            absl::c_linear_search(reduce_dims, space_dim);
   }
@@ -2003,6 +2200,11 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     }
   }
 
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
+    PropagateOnBroadcast(consumer, producer);
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kConcatenate) {
     TF_CHECK_OK(PropagateOnConcat(consumer));
     return true;
@@ -2070,15 +2272,113 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kReduce) {
-    auto new_consumer = computation->AddInstruction(consumer->Clone());
-    auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
-
+    auto reduce_dims = consumer->dimensions();
     auto dim_map_val = instr_to_dim_map_[consumer->mutable_operand(0)];
+    auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
+    auto permute_dims = instr_to_dim_permute_map_[first_operand];
+
     const int64_t old_batch_dim =
         dim_map_val[DimMapper(SpaceToBatchDimMap::kBatch)];
+    const int64_t space_dim =
+        dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0)];
 
-    auto permute_dims = instr_to_dim_permute_map_[first_operand];
     const int64_t new_batch_dim = DimLookUp(permute_dims, old_batch_dim);
+    const int64_t new_space_dim = DimLookUp(permute_dims, space_dim);
+    auto new_consumer = computation->AddInstruction(consumer->Clone());
+    std::vector<int64_t> changed_dims(consumer->dimensions().size());
+
+    // Support the trivial case where none of the batch and split spatial dim
+    // are being reduced.
+    if (!absl::c_linear_search(reduce_dims, old_batch_dim) &&
+        !absl::c_linear_search(reduce_dims, space_dim)) {
+      for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
+        changed_dims[i] = DimLookUp(permute_dims, new_consumer->dimensions(i));
+      }
+
+      // Decide where the new batch and space dims are in the output.
+      int64_t new_output_batch_dim = new_batch_dim;
+      int64_t new_output_space_dim = new_space_dim;
+      for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
+        if (changed_dims[i] < new_batch_dim) {
+          new_output_batch_dim--;
+        }
+        if (changed_dims[i] < new_space_dim) {
+          new_output_space_dim--;
+        }
+      }
+
+      // Decide where the new batch and space dims are in the original reduce's
+      // output.
+      int64_t old_output_batch_dim = old_batch_dim;
+      int64_t old_output_space_dim = space_dim;
+      for (int64_t i = 0; i < consumer->dimensions().size(); ++i) {
+        if (reduce_dims[i] < old_batch_dim) {
+          old_output_batch_dim--;
+        }
+        if (reduce_dims[i] < space_dim) {
+          old_output_space_dim--;
+        }
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          new_consumer,
+          MakeReduceHlo(first_operand, consumer->mutable_operand(1),
+                        changed_dims, consumer->called_computations()[0]));
+
+      VLOG(3) << " new_output_batch_dim " << new_output_batch_dim << " size "
+              << first_operand->shape().dimensions(new_batch_dim)
+              << " new_output_space_dim " << new_output_space_dim << " size "
+              << first_operand->shape().dimensions(new_space_dim);
+
+      std::vector<int64_t> dim_map(NumMappedDims());
+      dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] = old_output_batch_dim;
+      dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)] = old_output_space_dim;
+      // We don't know where the feature dim is, so set it to -1.
+      dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] = -1;
+
+      instr_to_dim_map_[consumer] = dim_map;
+      const int64_t rank = first_operand->shape().rank();
+
+      const int64_t output_rank = new_consumer->shape().rank();
+
+      // Make a map of each dim in original reduce output to input.
+      std::vector<int64_t> old_reduce_output_to_input(output_rank);
+      int dim_number_to_assign_old = 0;
+      for (int64_t i = 0; i < rank; ++i) {
+        if (auto it = absl::c_find(reduce_dims, i); it != reduce_dims.end()) {
+          continue;
+        }
+        old_reduce_output_to_input[i] = dim_number_to_assign_old++;
+      }
+
+      // Make a map of each dim in new reduce output to the new input.
+      std::vector<int64_t> new_reduce_output_to_input(output_rank);
+      int dim_number_to_assign_new = 0;
+      for (int64_t i = 0; i < rank; ++i) {
+        if (auto it = absl::c_find(changed_dims, i); it != changed_dims.end()) {
+          continue;
+        }
+        new_reduce_output_to_input[i] = dim_number_to_assign_new++;
+      }
+
+      std::vector<int64_t> new_permute_dims(output_rank);
+      // From the output dims to input dims mapping, figure how the old output
+      // dims are mapped to the new output dims.
+      for (int64_t i = 0; i < output_rank; ++i) {
+        new_permute_dims[i] = std::distance(
+            new_reduce_output_to_input.begin(),
+            absl::c_find(
+                new_reduce_output_to_input,
+                DimLookUp(permute_dims, old_reduce_output_to_input[i])));
+      }
+
+      instr_to_dim_permute_map_[new_consumer] = new_permute_dims;
+      old_to_new_instrs_[consumer] = new_consumer;
+
+      // Because batch and split spatial dims are not reduced, further
+      // propagation is needed.
+      return true;
+    }
 
     auto retval = GetSpatialDimsToSplit(consumer->mutable_operand(0));
     std::vector<int64_t> old_spatial_dims = retval.first;
@@ -2090,7 +2390,6 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
                            consumer->mutable_operand(1), new_batch_dim,
                            new_spatial_dims, old_batch_dim, old_spatial_dims));
 
-    std::vector<int64_t> changed_dims(new_consumer->dimensions().size());
     for (int64_t i = 0; i < new_consumer->dimensions().size(); ++i) {
       changed_dims[i] = DimLookUp(permute_dims, new_consumer->dimensions(i));
     }
@@ -2560,6 +2859,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
 
 absl::StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
     HloInstruction* old_instr) {
+  VLOG(1) << "Batch to space on " << old_instr->ToString();
   if (batch_to_space_map_.count(old_instr)) {
     CHECK_NE(batch_to_space_map_[old_instr], nullptr);
     return batch_to_space_map_[old_instr];
@@ -2697,7 +2997,8 @@ absl::Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
       // batch-to-space. If not ready, mark as non-propagatable.
       for (auto user : node->users()) {
         if (!SupportedOpForPropagation(user, node)) {
-          VLOG(1) << "Unsupported op found " << user->ToString();
+          VLOG(1) << "Unsupported op found " << user->ToString() << " producer "
+                  << node->ToString();
           unsupported_users.insert(user);
           continue;
         }
