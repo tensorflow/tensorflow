@@ -432,6 +432,12 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
+  // Compares the inputs shapes of two modules and returns the list of parameter
+  // indices that mismatch. The mismatch could be either in shape or datatype.
+  // If there is no mismatch, an empty vector is returned.
+  [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
+                                               const HloModule& module_1);
+
  private:
   // Creates or retrieves the allocator.
   se::DeviceMemoryAllocator* GetAllocator();
