@@ -24,7 +24,7 @@ namespace tools {
 class XnnpackDelegateProvider : public DelegateProvider {
  public:
   XnnpackDelegateProvider() {
-    default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(false));
+    default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(true));
     default_params_.AddParam("xnnpack_force_fp16",
                              ToolParam::Create<bool>(false));
     default_params_.AddParam("xnnpack_weight_cache_file_path",
