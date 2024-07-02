@@ -20,9 +20,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/tools/verifier.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
