@@ -432,6 +432,9 @@ string SummarizeOpDef(const OpDef& op_def) {
   if (op_def.is_distributed_communication()) {
     strings::StrAppend(&ret, "; is_distributed_communication=true");
   }
+  if (op_def.allows_shared_kernel()) {
+    strings::StrAppend(&ret, "; allows_shared_kernel=true");
+  }
   strings::StrAppend(&ret, ">");
   return ret;
 }

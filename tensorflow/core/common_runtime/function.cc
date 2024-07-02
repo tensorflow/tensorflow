@@ -187,6 +187,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
                       OpKernel** kernel) override;
 
   bool IsStateful(const string& function_name) const override;
+  bool IsShareable(const string& function_name) const override;
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override;
@@ -207,7 +208,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
                bool skip_flib_def = false) override;
 
  private:
-  FunctionLibraryRuntime* base_flr_;          // not owned
+  FunctionLibraryRuntime* base_flr_;  // not owned
   const FunctionLibraryDefinition lib_def_;
 };
 
@@ -283,6 +284,14 @@ bool FunctionLibraryRuntimeOverlay::IsStateful(
   const OpDef* op_def;
   const Status s = lib_def_.LookUpOpDef(function_name, &op_def);
   return s.ok() && op_def->is_stateful();
+}
+
+bool FunctionLibraryRuntimeOverlay::IsShareable(
+    const string& function_name) const {
+  // Important: we do not forward lookup to the base FLR.
+  const OpDef* op_def;
+  const Status s = lib_def_.LookUpOpDef(function_name, &op_def);
+  return s.ok() && (op_def->is_stateful() || op_def->allows_shared_kernel());
 }
 
 Env* FunctionLibraryRuntimeOverlay::env() { return base_flr_->env(); }
@@ -365,6 +374,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                  CallFrameInterface* call_frame) override;
 
   bool IsStateful(const string& function) const override;
+  bool IsShareable(const string& function) const override;
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override {
@@ -1316,6 +1326,12 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {
   const OpDef* op_def;
   const Status s = base_lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
+}
+
+bool FunctionLibraryRuntimeImpl::IsShareable(const string& func) const {
+  const OpDef* op_def;
+  const Status s = base_lib_def_->LookUpOpDef(func, &op_def);
+  return s.ok() && (op_def->is_stateful() || op_def->allows_shared_kernel());
 }
 
 string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
