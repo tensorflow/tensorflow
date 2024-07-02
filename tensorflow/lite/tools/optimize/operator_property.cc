@@ -112,6 +112,17 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
       property.quantize_input_as_activations = true;
       break;
     }
+    case BuiltinOperator_CONV_3D: {
+      TensorProperty tensor_property;
+      tensor_property.per_axis = true;
+      tensor_property.per_axis_index = 4;
+      tensor_property.symmetric = true;
+      property.inputs = {{0, {}}, {1, tensor_property}};
+      property.outputs = {{0, {}}};
+      property.biases = {2};
+      property.version = 2;
+      break;
+    }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).

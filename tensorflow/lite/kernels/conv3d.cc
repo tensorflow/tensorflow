@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv3d.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -54,6 +55,13 @@ struct OpData {
   bool im2col_oversized = false;
 
   int32_t im2col_index;
+
+  // Per channel output multiplier and shift.
+  std::vector<int32_t> per_channel_output_multiplier;
+  std::vector<int> per_channel_output_shift;
+
+  int32_t output_activation_min;
+  int32_t output_activation_max;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -79,7 +87,8 @@ TfLiteStatus AllocateTemporaryTensorsIfRequired(
       filter->dims->data[1] != 1 || filter->dims->data[0] != 1;
 
   opdata->need_im2col = (kernel_type == kGenericOptimized) &&
-                        (need_dilated_im2col || need_non_dilated_im2col);
+                        (need_dilated_im2col || need_non_dilated_im2col) &&
+                        (filter->type != kTfLiteInt8);
 
   // On mobile platforms, the generic optimized kernel will not be used if the
   // temporary im2col tensor requires too much memory.
@@ -126,14 +135,34 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check types.
   TfLiteType input_type = input->type;
-  TF_LITE_ENSURE_TYPES_EQ(context, input_type, kTfLiteFloat32);
-  TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
+  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
+                              input_type == kTfLiteInt8 ||
+                              input_type == kTfLiteInt16);
+  if (input_type == kTfLiteInt8 || input_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteInt8);
+  } else {
+    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
+  }
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
+  if (input_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
+  TF_LITE_ENSURE_EQ(context, filter->params.zero_point, 0);
 
   // Check bias.
   const TfLiteTensor* bias = GetInput(context, node, 2);
   if (bias) {
-    TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
+    if (input_type == kTfLiteInt8) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+    } else if (input_type == kTfLiteInt16) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
+    } else {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
+    }
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 4));
   }
 
@@ -157,6 +186,29 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       params->dilation_depth_factor, height, width, depth, filter_height,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
       &out_depth);
+
+  if (input_type == kTfLiteInt8 || input_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context,
+                   (affine_quantization->scale->size == 1) ||
+                       (affine_quantization->scale->size == channels_out));
+    for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
+      TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+    }
+    opdata->per_channel_output_multiplier.resize(channels_out);
+    opdata->per_channel_output_shift.resize(channels_out);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, filter, bias, output, params->activation, nullptr,
+        nullptr, &opdata->output_activation_min, &opdata->output_activation_max,
+        opdata->per_channel_output_multiplier.data(),
+        opdata->per_channel_output_shift.data(), channels_out));
+  }
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(5);
   output_size->data[0] = batches;
@@ -244,6 +296,39 @@ TfLiteStatus EvalFloat(KernelType kernel_type, TfLiteContext* context,
   }
 }
 
+template <typename InputType, typename BiasType>
+void EvalQuantizedPerChannel(KernelType kernel_type, TfLiteContext* context,
+                             TfLiteNode* node, TfLiteConv3DParams* params,
+                             OpData* opdata, const TfLiteTensor* input,
+                             const TfLiteTensor* filter,
+                             const TfLiteTensor* bias, TfLiteTensor* output) {
+  Conv3DParams runtime_params;
+  runtime_params.input_offset = -input->params.zero_point;
+  runtime_params.output_offset = output->params.zero_point;
+  runtime_params.padding_values = opdata->padding;
+  runtime_params.stride_depth = params->stride_depth;
+  runtime_params.stride_height = params->stride_height;
+  runtime_params.stride_width = params->stride_width;
+  runtime_params.dilation_depth = params->dilation_depth_factor;
+  runtime_params.dilation_height = params->dilation_height_factor;
+  runtime_params.dilation_width = params->dilation_width_factor;
+  runtime_params.quantized_activation_min = opdata->output_activation_min;
+  runtime_params.quantized_activation_max = opdata->output_activation_max;
+  switch (kernel_type) {
+    case kGenericOptimized:
+    case kReference: {
+      reference_integer_ops::Conv3DPerChannel<InputType, BiasType>(
+          runtime_params, opdata->per_channel_output_multiplier.data(),
+          opdata->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<InputType>(input), GetTensorShape(filter),
+          GetTensorData<int8_t>(filter), GetTensorShape(bias),
+          GetTensorData<BiasType>(bias), GetTensorShape(output),
+          GetTensorData<InputType>(output));
+      break;
+    }
+  }
+}
+
 TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
                   TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConv3DParams*>(node->builtin_data);
@@ -266,6 +351,16 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
   }
 
   switch (input->type) {
+    case kTfLiteInt8:
+      EvalQuantizedPerChannel<int8_t, int32_t>(kernel_type, context, node,
+                                               params, opdata, input, filter,
+                                               bias, output);
+      break;
+    case kTfLiteInt16:
+      EvalQuantizedPerChannel<int16_t, int64_t>(kernel_type, context, node,
+                                                params, opdata, input, filter,
+                                                bias, output);
+      break;
     case kTfLiteFloat32:
       return EvalFloat(kernel_type, context, node, params, opdata, input,
                        filter, bias, im2col, output);

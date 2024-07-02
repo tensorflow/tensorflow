@@ -27,15 +27,16 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
-class Conv3dOpModel : public SingleOpModel {
+class BaseConv3dOpModel : public SingleOpModel {
  public:
-  Conv3dOpModel(const TensorData& input, const TensorData& filter,
-                const TensorData& bias, const TensorData& output,
-                Padding padding = Padding_VALID, int32_t stride_depth = 1,
-                int32_t stride_width = 1, int32_t stride_height = 1,
-                ActivationFunctionType activation = ActivationFunctionType_NONE,
-                int32_t dilation_depth = 1, int32_t dilation_width = 1,
-                int32_t dilation_height = 1) {
+  BaseConv3dOpModel(
+      const TensorData& input, const TensorData& filter, const TensorData& bias,
+      const TensorData& output, Padding padding = Padding_VALID,
+      int32_t stride_depth = 1, int32_t stride_width = 1,
+      int32_t stride_height = 1,
+      ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int32_t dilation_depth = 1, int32_t dilation_width = 1,
+      int32_t dilation_height = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
     bias_ = AddInput(bias);
@@ -49,13 +50,14 @@ class Conv3dOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
   }
 
-  Conv3dOpModel(const TensorData& input, const TensorData& filter,
-                const TensorData& output, Padding padding = Padding_VALID,
-                int32_t stride_depth = 1, int32_t stride_width = 1,
-                int32_t stride_height = 1,
-                ActivationFunctionType activation = ActivationFunctionType_NONE,
-                int32_t dilation_depth = 1, int32_t dilation_width = 1,
-                int32_t dilation_height = 1) {
+  BaseConv3dOpModel(
+      const TensorData& input, const TensorData& filter,
+      const TensorData& output, Padding padding = Padding_VALID,
+      int32_t stride_depth = 1, int32_t stride_width = 1,
+      int32_t stride_height = 1,
+      ActivationFunctionType activation = ActivationFunctionType_NONE,
+      int32_t dilation_depth = 1, int32_t dilation_width = 1,
+      int32_t dilation_height = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
     output_ = AddOutput(output);
@@ -68,6 +70,17 @@ class Conv3dOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_), GetShape(filter_)});
   }
 
+ protected:
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+};
+
+class Conv3dOpModel : public BaseConv3dOpModel {
+ public:
+  using BaseConv3dOpModel::BaseConv3dOpModel;
+
   void SetFilter(std::vector<float> f) { PopulateTensor(filter_, f); }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
@@ -76,12 +89,6 @@ class Conv3dOpModel : public SingleOpModel {
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int input_;
-  int filter_;
-  int bias_;
-  int output_;
 };
 
 template <typename T>
@@ -267,6 +274,225 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
       ElementsAreArray({56,  62,  68,  74,  152, 174, 196, 218, 248, 286, 324,
                         362, 344, 398, 452, 506, 440, 510, 580, 650, 536, 622,
                         708, 794, 632, 734, 836, 938, 728, 846, 964, 1082}));
+}
+
+class PerChannelQuantizedConv3dOpModel : public BaseConv3dOpModel {
+ public:
+  using BaseConv3dOpModel::BaseConv3dOpModel;
+
+  template <typename T>
+  void SetInput(std::vector<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    PerChannelQuantizeBias(bias_, data);
+  }
+
+  void SetFilter(std::vector<float> data) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
+  }
+
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+};
+
+TEST(PerChannelQuantizedConv3dOpModel, SimpleINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 2, 4, 2}, -63.5f, 64.0f},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT8, {}, -63.5f, 64.0f});
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 52, 20, 44, 28}, 1e-5)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel, AsymmetricINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0.0f, 64.0f},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT8, {}, 0.0f, 64.0f});
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 52, 20, 44, 28}, 0.24)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel, StrideINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT8, {}, 0, 0, 0.5f, 0}, Padding_VALID, /*stride_depth=*/2,
+      /*stride_width=*/2, /*stride_height=*/2);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 2, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 44, 28}, 1e-5)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel,
+     StrideAndPaddingSameINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT8, {}, 0, 0, 0.5f, 0}, Padding_SAME, /*stride_depth=*/2,
+      /*stride_width=*/2, /*stride_height=*/2);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 2, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 44, 28}, 1e-5)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel, DilationINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 4, 2, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT8, {}, 0, 0, 0.5f, 0}, Padding_VALID, /*stride_depth=*/1,
+      /*stride_width=*/1, /*stride_height=*/1,
+      /*activation=*/ActivationFunctionType_NONE,
+      /*dilation_depth=*/1, /*dilation_width=*/1,
+      /*dilation_height=*/2);
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 2, 1, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 44, 28}, 1e-5)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel, BiasINT8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT8, {1, 2, 2, 4, 2}, 0, 0, 1.0f, 0},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT32, {2}}, {TensorType_INT8, {}, 0, 0, 1.5f, 0});
+
+  m.SetInput<int8_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+  m.SetBias({1, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({61, 14, 53, 22, 45, 30}, 0.5f)));
+}
+
+TEST(PerChannelQuantizedConv3dOpModel, SimpleINT16x8TestPerChannelQuantized) {
+  PerChannelQuantizedConv3dOpModel m(
+      {TensorType_INT16, {1, 2, 2, 4, 2}, 0, 0, 0.5f, 0},
+      {TensorType_INT8,
+       {2, 2, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1, 2},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/4},
+      {TensorType_INT16, {}, 0, 0, 0.5f, 0});
+  m.SetInput<int16_t>(CreateRangeVector<float>(32));
+  m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
+               2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({60, 12, 52, 20, 44, 28}, 1e-5)));
 }
 
 }  // namespace
