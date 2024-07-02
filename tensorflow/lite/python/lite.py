@@ -675,6 +675,10 @@ class TFLiteConverterBase:
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
     self._experimental_enable_composite_direct_lowering = False
 
+    # Fold quantized weights into transpose convolution op.
+    # Not all runtimes support.
+    self._experimental_fold_qweights_into_tpose_conv = False
+
     # Debug parameters
     self.ir_dump_dir = None
     self.ir_dump_pass_regex = None
@@ -835,6 +839,9 @@ class TFLiteConverterBase:
         ),
         "enable_composite_direct_lowering": (
             self._experimental_enable_composite_direct_lowering
+        ),
+        "fold_qweights_into_tpose_conv": (
+            self._experimental_fold_qweights_into_tpose_conv
         ),
     }
 

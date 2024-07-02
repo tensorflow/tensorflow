@@ -18,12 +18,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -80,6 +78,16 @@ constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
 
+namespace internal {
+
+#include "tensorflow/compiler/mlir/lite/transforms/generated_fold_qweights_into_tpose_conv.inc"
+
+void PopulateFoldConvWeights(RewritePatternSet &patterns) {
+  populateWithGenerated(patterns);
+}
+
+}  // namespace internal
+
 ElementsAttr FlattenTo1D(Attribute a) {
   auto elements = mlir::cast<DenseElementsAttr>(a);
   const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
@@ -125,7 +133,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 
 using ::llvm::cast;
 
-// Optimize TFLite operations in functions.
+// Apply optimization patterns rooted at each function.
 class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
@@ -133,9 +141,11 @@ class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
   explicit OptimizePass(bool enable_canonicalization,
-                        bool disable_fuse_mul_and_fc = false) {
+                        bool disable_fuse_mul_and_fc = false,
+                        bool fold_qweights_into_tpose_conv = false) {
     this->enable_canonicalization_ = enable_canonicalization;
     this->disable_fuse_mul_and_fc_ = disable_fuse_mul_and_fc;
+    this->fold_qweights_into_tpose_conv_ = fold_qweights_into_tpose_conv;
   }
 
   void runOnOperation() override;
@@ -2575,14 +2585,21 @@ void OptimizePass::runOnOperation() {
   if (this->enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+
+  if (this->fold_qweights_into_tpose_conv_) {
+    RewritePatternSet conv_weight_pats(&getContext());
+    internal::PopulateFoldConvWeights(conv_weight_pats);
+    (void)applyPatternsAndFoldGreedily(func, std::move(conv_weight_pats));
+  }
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    bool enable_canonicalization, bool disable_fuse_mul_and_fc) {
-  return std::make_unique<OptimizePass>(enable_canonicalization,
-                                        disable_fuse_mul_and_fc);
+    bool enable_canonicalization, bool disable_fuse_mul_and_fc,
+    bool fold_conv_weights) {
+  return std::make_unique<OptimizePass>(
+      enable_canonicalization, disable_fuse_mul_and_fc, fold_conv_weights);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {

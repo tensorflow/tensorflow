@@ -101,7 +101,10 @@ struct PassConfig {
   bool enable_stablehlo_quantizer = false;
 
   // Enables the attempt to directly lower composites into tflite ops.
-  bool enable_composite_direct_lowering = true;
+  bool enable_composite_direct_lowering = false;
+
+  // Whether to fold quantized weights into tpose conv op.
+  bool fold_qweights_into_tpose_conv = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -132,7 +135,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << pass_config.legalize_custom_tensor_list_ops
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
             << "\nconvert_qdq_format: "
-            << GetQDQQuantModeString(pass_config.qdq_conversion_mode) << "\n";
+            << GetQDQQuantModeString(pass_config.qdq_conversion_mode)
+            << "\fold_qweights_into_tpose_conv: "
+            << pass_config.fold_qweights_into_tpose_conv << "\n";
 }
 
 }  // namespace TFL

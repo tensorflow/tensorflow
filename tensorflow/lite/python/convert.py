@@ -600,6 +600,7 @@ def build_conversion_flags(
     qdq_conversion_mode=None,
     disable_per_channel_quantization_for_dense_layers=False,
     enable_composite_direct_lowering=False,
+    fold_qweights_into_tpose_conv=False,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -731,6 +732,8 @@ def build_conversion_flags(
       layers. The flag works only for integer quantized model.
     enable_composite_direct_lowering: If set, attempts to lower composite ops
       directly to tflite ops.
+    fold_qweights_into_tpose_conv: Fold quantized weights into transpose conv
+      op. Not all runtimes support.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -814,6 +817,7 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
+  conversion_flags.fold_qweights_into_tpose_conv = fold_qweights_into_tpose_conv
   if quantization_options:  # Deprecated
     conversion_flags.quantization_options.CopyFrom(quantization_options)
   if quantization_config:

@@ -159,6 +159,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
       toco_flags.unfold_large_splat_constant();
   pass_config.enable_hlo_to_tf_conversion = true;
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+  pass_config.fold_qweights_into_tpose_conv =
+      toco_flags.fold_qweights_into_tpose_conv();
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {
