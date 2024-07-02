@@ -1,0 +1,54 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "cmake-android",
+            "hidden": true,
+            "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+            "cacheVariables": {
+                "CMAKE_SYSTEM_NAME": "Android",
+                "CMAKE_SYSTEM_VERSION": "26",
+                "ANDROID_PLATFORM": "android-26"
+            },
+            "debug": {
+                "find": true
+            }
+        },
+        {
+            "name": "tflite-gpu-options",
+            "hidden": true,
+            "cacheVariables": {
+                "TFLITE_ENABLE_RUY": true,
+                "TFLITE_ENABLE_GPU": true,
+                "TFLITE_ENABLE_GLES3": true,
+                "TFLITE_ENABLE_INSTALL": false,
+                "BUILD_SHARED_LIBS": true
+            }
+        },
+        {
+            "name": "arm64-android",
+            "inherits": [
+                "cmake-android",
+                "tflite-gpu-options"
+            ],
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/../../cmake_build",
+            "installDir": "${sourceDir}/../../install",
+            "cacheVariables": {
+                "ANDROID_ABI": "arm64-v8a"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "arm64-android-release",
+            "configurePreset": "arm64-android",
+            "configuration": "Release"
+        }
+    ]
+}
