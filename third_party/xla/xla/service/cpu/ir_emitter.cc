@@ -31,11 +31,13 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/meta/type_traits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsX86.h"
@@ -377,7 +380,7 @@ absl::Status IrEmitter::HandleCopy(HloInstruction* copy) {
 }
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
-int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
+int MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64_t byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   DCHECK_GE(byte_size, 0);
   // Largest scalar is a complex128 so we don't need to worry about the
@@ -386,6 +389,11 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
 
   // Allocations may be 8-byte aligned if part of a small block.
   return std::min(int64_t{8}, byte_size);
+}
+
+// Calculate the alignment of a buffer allocated for a given primitive type.
+int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
+  return ::xla::cpu::MinimumAlignmentForPrimitiveType(primitive_type);
 }
 
 int64_t IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -3157,28 +3165,26 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
-    std::string* failure_reason) {
-  if (ShouldEmitParallelLoopFor(*concatenate)) {
-    *failure_reason =
-        "cannot generate memcpy-based concat for the parallel CPU backend";
-    return false;
-  }
+absl::Status IrEmitter::EmitFastConcatenate(
+    const HloInstruction* instr,
+    absl::Span<const llvm_ir::IrArray> source_arrays,
+    const llvm_ir::IrArray& target_array) {
+  return ::xla::cpu::EmitFastConcatenate(instr, source_arrays, target_array,
+                                         module_, b_);
+}
 
-  const Shape& output_shape = concatenate->shape();
-  for (auto* op : operands) {
-    if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
-      *failure_reason = "operand has mismatching layouts";
-      return false;
-    }
-  }
-
+absl::Status EmitFastConcatenate(
+    const HloInstruction* instr,
+    absl::Span<const llvm_ir::IrArray> source_arrays,
+    const llvm_ir::IrArray& target_array, llvm::Module* module,
+    llvm::IRBuilder<>& b) {
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it
   // (inner_dims) and the dimensions that are major to it (outer_dims).
 
-  int64_t concat_dim = concatenate->dimensions(0);
+  auto* concatenate = Cast<HloConcatenateInstruction>(instr);
+  const Shape& output_shape = concatenate->shape();
+  int64_t concat_dim = concatenate->concatenate_dimension();
   const Layout& output_layout = output_shape.layout();
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
   auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
@@ -3188,20 +3194,16 @@ absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
   std::vector<int64_t> outer_dims(std::next(concat_dim_layout_itr),
                                   output_min2maj.end());
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
-  llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
-
-  llvm_ir::ForLoopNest loops(IrName(concatenate), &b_);
+  llvm_ir::ForLoopNest loops(IrName(concatenate), &b);
   std::vector<llvm::Value*> target_multi_index =
       loops.AddLoopsForShapeOnDimensions(output_shape, outer_dims, "concat");
-  std::replace(target_multi_index.begin(), target_multi_index.end(),
-               static_cast<llvm::Value*>(nullptr),
-               static_cast<llvm::Value*>(b_.getInt64(0)));
+  absl::c_replace(target_multi_index, static_cast<llvm::Value*>(nullptr),
+                  static_cast<llvm::Value*>(b.getInt64(0)));
   llvm_ir::IrArray::Index target_index(target_multi_index, output_shape,
-                                       b_.getInt64Ty());
+                                       b.getInt64Ty());
 
   if (!outer_dims.empty()) {
-    SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &b_);
+    SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &b);
   }
 
   PrimitiveType primitive_type = output_shape.element_type();
@@ -3211,33 +3213,32 @@ absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
   // Contiguous subregions from each operand to the concatenate contribute to a
   // contiguous subregion in the target buffer starting at target_region_begin.
   llvm::Value* target_region_begin =
-      target_array.EmitArrayElementAddress(target_index, &b_, "target_region");
+      target_array.EmitArrayElementAddress(target_index, &b, "target_region");
   int64_t byte_offset_into_target_region = 0;
 
-  int64_t inner_dims_product =
-      std::accumulate(inner_dims.begin(), inner_dims.end(), int64_t{1},
-                      [&](int64_t product, int64_t inner_dim) {
-                        return product * output_shape.dimensions(inner_dim);
-                      });
+  int64_t inner_dims_product = absl::c_accumulate(
+      inner_dims, int64_t{1}, [&](int64_t product, int64_t inner_dim) {
+        return product * output_shape.dimensions(inner_dim);
+      });
 
   // For each operand, emit a memcpy from the operand to the target of size
   // equal to the product of inner dimensions.
-  for (HloInstruction* operand : operands) {
-    const Shape& input_shape = operand->shape();
-    llvm_ir::IrArray source_array = GetIrArrayFor(operand);
-    llvm_ir::IrArray::Index source_index(target_multi_index, operand->shape(),
-                                         b_.getInt64Ty());
+  for (int64_t i = 0; i < source_arrays.size(); ++i) {
+    const Shape& input_shape = concatenate->operand(i)->shape();
+    const llvm_ir::IrArray& source_array = source_arrays[i];
+    llvm_ir::IrArray::Index source_index(target_multi_index, input_shape,
+                                         b.getInt64Ty());
     llvm::Value* copy_source_address =
-        source_array.EmitArrayElementAddress(source_index, &b_, "src_addr");
+        source_array.EmitArrayElementAddress(source_index, &b, "src_addr");
 
     llvm::Value* copy_target_address =
-        GEP(b_.getInt8Ty(), target_region_begin,
-            b_.getInt64(byte_offset_into_target_region));
+        b.CreateGEP(b.getInt8Ty(), target_region_begin,
+                    b.getInt64(byte_offset_into_target_region));
 
-    EmitTransferElements(
+    ::xla::cpu::EmitTransferElements(
         copy_target_address, copy_source_address,
         inner_dims_product * input_shape.dimensions(concat_dim), primitive_type,
-        target_array, source_array);
+        target_array, source_array, module, b);
 
     byte_offset_into_target_region += inner_dims_product *
                                       input_shape.dimensions(concat_dim) *
@@ -3245,10 +3246,9 @@ absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
   }
 
   if (!outer_dims.empty()) {
-    SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
+    SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b);
   }
-
-  return true;
+  return absl::OkStatus();
 }
 
 llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
@@ -3454,22 +3454,33 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      PrimitiveType primitive_type,
                                      const llvm_ir::IrArray& target_array,
                                      const llvm_ir::IrArray& source_array) {
+  ::xla::cpu::EmitTransferElements(target, source, element_count,
+                                   primitive_type, target_array, source_array,
+                                   module_, b_);
+}
+
+void EmitTransferElements(llvm::Value* target, llvm::Value* source,
+                          int64_t element_count, PrimitiveType primitive_type,
+                          const llvm_ir::IrArray& target_array,
+                          const llvm_ir::IrArray& source_array,
+                          llvm::Module* module, llvm::IRBuilder<>& b) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
-      primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
+      primitive_type_size,
+      ::xla::cpu::MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_llvm_type =
-      llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
+      llvm_ir::PrimitiveTypeToIrType(primitive_type, module);
 
   if (element_count == 1) {
     auto* load_instruction =
-        AlignedLoad(primitive_llvm_type, source, element_alignment);
+        b.CreateAlignedLoad(primitive_llvm_type, source, element_alignment);
     source_array.AnnotateLoadStoreInstructionWithMetadata(load_instruction);
     auto* store_instruction =
-        AlignedStore(load_instruction, target, element_alignment);
+        b.CreateAlignedStore(load_instruction, target, element_alignment);
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
-    auto* memcpy_instruction = b_.CreateMemCpy(
+    auto* memcpy_instruction = b.CreateMemCpy(
         target, /*DstAlign=*/llvm::Align(element_alignment), source,
         /*SrcAlign=*/llvm::Align(element_alignment),
         element_count * primitive_type_size);
@@ -3477,7 +3488,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
     // The memcpy does the load and the store internally.  The aliasing related
     // metadata has to reflect that.
     std::map<int, llvm::MDNode*> merged_metadata =
-        llvm_ir::MergeMetadata(&module_->getContext(), source_array.metadata(),
+        llvm_ir::MergeMetadata(&module->getContext(), source_array.metadata(),
                                target_array.metadata());
     for (const auto& kind_md_pair : merged_metadata) {
       memcpy_instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
@@ -3485,19 +3496,42 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
   }
 }
 
+absl::Status IrEmitter::CanDoFastConcatenate(
+    const HloInstruction* instr) const {
+  if (ShouldEmitParallelLoopFor(*instr)) {
+    return absl::Status(
+        absl::StatusCode::kFailedPrecondition,
+        "Cannot generate memcpy-based concat for the parallel CPU backend");
+  }
+  const auto* concatenate = Cast<HloConcatenateInstruction>(instr);
+
+  const Shape& output_shape = concatenate->shape();
+  for (auto* op : concatenate->operands()) {
+    if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
+      return absl::Status(absl::StatusCode::kFailedPrecondition,
+                          "Operand has mismatching layouts");
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  absl::Span<HloInstruction* const> operands(concatenate->operands());
-  std::string failure_reason;
-  TF_ASSIGN_OR_RETURN(
-      bool successful,
-      EmitFastConcatenate(concatenate, operands, &failure_reason));
-  if (successful) {
+  absl::Status fast_impl_reason = CanDoFastConcatenate(concatenate);
+  if (fast_impl_reason.ok()) {
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
+    llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
+    std::vector<llvm_ir::IrArray> source_arrays;
+    source_arrays.reserve(concatenate->operands().size());
+    for (HloInstruction* operand : concatenate->operands()) {
+      source_arrays.emplace_back(GetIrArrayFor(operand));
+    }
+    TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
+        concatenate, source_arrays, target_array, module_, b_));
     VLOG(1) << "Emitted fast concatenate for " << concatenate->ToString();
     return absl::OkStatus();
   }
-
   VLOG(1) << "Could not emit fast concatenate for " << concatenate->ToString()
-          << ": " << failure_reason;
+          << ": " << fast_impl_reason.message();
 
   return DefaultAction(concatenate);
 }

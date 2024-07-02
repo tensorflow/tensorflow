@@ -3067,6 +3067,23 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "concatenate_test",
+    srcs = ["concatenate_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:test",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],
