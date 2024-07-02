@@ -180,10 +180,20 @@ static absl::Status RegisterHandler(std::string_view name,
 
   auto emplaced = GetHandlerRegistry().try_emplace(
       MakeHandlerKey(name, platform), HandlerRegistration{bundle, traits});
-  if (!emplaced.second)
-    return absl::InvalidArgumentError(
-        absl::StrCat("Duplicate FFI handler registration for ", name,
-                     " on a platform ", platform));
+  if (!emplaced.second) {
+    auto existing = emplaced.first->second;
+    if (existing.traits != traits)
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicate FFI handler registration for ", name,
+                       " on a platform ", platform, " with different traits"));
+    if (existing.bundle.prepare != bundle.prepare ||
+        existing.bundle.initialize != bundle.initialize ||
+        existing.bundle.execute != bundle.execute) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate FFI handler registration for ", name, " on a platform ",
+          platform, " with different bundle addresses"));
+    }
+  }
   return absl::OkStatus();
 }
 
