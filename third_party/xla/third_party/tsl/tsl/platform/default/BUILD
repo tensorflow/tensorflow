@@ -233,6 +233,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//third_party/protobuf/util:json_util",
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
         "//tsl/platform:strcat",
