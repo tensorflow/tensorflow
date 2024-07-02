@@ -84,6 +84,35 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");
+ /* 
+    m.def(
+    "ExperimentalMlirQuantizeModel",
+    [](py::object input_contents_txt_raw, bool disable_per_channel,
+       bool fully_quantize, int inference_type, int input_data_type,
+       int output_data_type, bool enable_numeric_verify,
+       bool enable_whole_model_verify, py::object op_blocklist,
+       py::object node_blocklist, bool enable_variable_quantization,
+       bool disable_per_channel_for_dense_layers,
+       py::object debug_options_proto_txt_raw) {
+      try {
+        return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
+            input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
+            inference_type, input_data_type, output_data_type,
+            enable_numeric_verify, enable_whole_model_verify,
+            op_blocklist.ptr(), node_blocklist.ptr(),
+            enable_variable_quantization, disable_per_channel_for_dense_layers,
+            debug_options_proto_txt_raw.ptr()));
+      } catch (const std::exception& e) {
+        // Log the exception or handle it appropriately
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return nullptr;
+      }
+    },
+    ...
+
+*/
+
+    
   m.def(
       "ExperimentalMlirSparsifyModel",
       [](py::object input_contents_txt_raw) {
