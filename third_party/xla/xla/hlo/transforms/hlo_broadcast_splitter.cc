@@ -16,8 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -34,43 +32,22 @@ absl::StatusOr<bool> HloBroadcastSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  absl::flat_hash_map<HloInstruction*, HloComputation*> multi_user_broadcasts;
-  absl::flat_hash_map<HloInstruction*, HloComputation*> multi_usage_broadcasts;
+  HloInstructionSet seen_broadcasts;
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
-        if (instruction->user_count() > 1) {
-          multi_user_broadcasts[instruction] = computation;
-        } else if (instruction->user_count() == 1) {
-          HloInstruction* user = instruction->users()[0];
-          if (absl::c_count(user->operands(), instruction) > 1) {
-            multi_usage_broadcasts[instruction] = computation;
-          }
+      auto operands = instruction->unique_operands();
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        HloInstruction* op = instruction->mutable_operand(i);
+        if (op->opcode() != HloOpcode::kBroadcast) {
+          continue;
         }
-      }
-    }
-  }
-
-  for (auto& [broadcast, computation] : multi_user_broadcasts) {
-    for (HloInstruction* user : broadcast->users()) {
-      HloInstruction* cloned_broadcast =
-          user->AddInstruction(broadcast->Clone());
-      TF_RETURN_IF_ERROR(broadcast->ReplaceUseWith(user, cloned_broadcast));
-      changed = true;
-    }
-  }
-
-  for (auto& [broadcast, computation] : multi_usage_broadcasts) {
-    HloInstruction* user = broadcast->users()[0];
-    for (int64_t i = 0; i != user->operand_count(); ++i) {
-      const HloInstruction* operand = user->operand(i);
-      if (operand == broadcast) {
-        HloInstruction* cloned_broadcast =
-            user->AddInstruction(broadcast->Clone());
-        TF_RETURN_IF_ERROR(
-            broadcast->ReplaceUseWith(user, i, cloned_broadcast));
+        if (seen_broadcasts.insert(op).second) {
+          continue;
+        }
+        HloInstruction* clone = op->parent()->AddInstruction(op->Clone());
         changed = true;
+        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, clone));
       }
     }
   }
