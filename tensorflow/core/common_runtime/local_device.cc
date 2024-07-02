@@ -13,20 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/common_runtime/local_device.h"
-
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/numa.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
 

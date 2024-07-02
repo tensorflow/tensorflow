@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_ISOLATE_PLACER_INSPECTION_REQUIRED_OPS_PASS_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 // Adds Identities for each input/output of function-calling ops.

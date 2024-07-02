@@ -18,17 +18,28 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
-#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_case_op.h"
+#include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
