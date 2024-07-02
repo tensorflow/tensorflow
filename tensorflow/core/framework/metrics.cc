@@ -21,12 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tsl/lib/monitoring/counter.h"
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/lib/monitoring/sampler.h"
-#include "tsl/platform/types.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {

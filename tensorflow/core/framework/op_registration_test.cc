@@ -16,9 +16,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/op.h"
-
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
