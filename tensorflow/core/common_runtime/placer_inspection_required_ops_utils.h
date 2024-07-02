@@ -32,9 +32,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

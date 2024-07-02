@@ -21,20 +21,33 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

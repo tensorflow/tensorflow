@@ -17,16 +17,17 @@ limitations under the License.
 
 #include <map>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

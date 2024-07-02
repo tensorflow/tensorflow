@@ -19,11 +19,16 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

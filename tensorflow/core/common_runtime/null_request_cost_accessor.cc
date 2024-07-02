@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/null_request_cost_accessor.h"
 
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
+
 namespace tensorflow {
 
 RequestCost* NullRequestCostAccessor::GetRequestCost() const { return nullptr; }
