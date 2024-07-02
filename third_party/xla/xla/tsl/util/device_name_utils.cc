@@ -619,6 +619,57 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   return absl::OkStatus();
 }
 
+/*static*/ std::string DeviceNameUtils::GetStreamDeviceName(
+    const std::string& device_name, int stream_id) {
+  ParsedName p;
+  if (!ParseFullOrLocalName(device_name, &p)) {
+    VLOG(3) << "Device name cannot be parsed: " << device_name;
+    return device_name;
+  } else if (p.type != "GPU" && p.type != "gpu") {
+    VLOG(3) << "Device type not supported to covert to a stream device: "
+            << device_name;
+    return device_name;
+  }
+  size_t pos = device_name.rfind(p.type);
+  std::string base_name = device_name.substr(0, pos);
+  std::string new_type = "STREAM_GPU_" + std::to_string(p.id);
+  return base_name + new_type + ":" + std::to_string(stream_id);
+}
+
+/*static*/ std::string DeviceNameUtils::GetRealDeviceName(
+    const std::string& device_name) {
+  if (!IsStreamDeviceName(device_name)) {
+    VLOG(3) << "Device name is not a valid stream-encoded name: "
+            << device_name;
+    return device_name;
+  }
+  string output = device_name;
+  size_t pos = output.rfind("STREAM_GPU_");
+  output.replace(pos, 11, "GPU:");
+  output.erase(output.find_last_of(":"));
+  return output;
+}
+
+/*static*/ bool DeviceNameUtils::IsStreamDeviceName(
+    const std::string& device_name) {
+  ParsedName p;
+  if (!ParseFullOrLocalName(device_name, &p) || !p.has_type ||
+      p.type.rfind("STREAM_GPU_") != 0) {
+    return false;
+  }
+  int32_t device_id;
+  if (!strings::safe_strto32(p.type.substr(11), &device_id)) {
+    return false;
+  }
+  return true;
+}
+
+/*static*/ bool DeviceNameUtils::HaveSameDeviceName(
+    const std::string& device_name1, const std::string& device_name2) {
+  if (device_name1 == device_name2) return true;
+  return GetRealDeviceName(device_name1) == GetRealDeviceName(device_name2);
+}
+
 std::ostream& operator<<(std::ostream& os,
                          const DeviceNameUtils::ParsedName& x) {
   os << DeviceNameUtils::ParsedNameToString(x);
