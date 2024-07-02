@@ -127,7 +127,7 @@ func TestGraphInputMapping(t *testing.T) {
 		t.Error(err)
 	}
 
-	sess, err := NewSession(g, nil)
+	sess, err := NewSession(g, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestGraphAddGradients(t *testing.T) {
 		t.Fatalf("Got DataType %v, wanted %v", grads1[1].DataType(), Float)
 	}
 
-	sess, err := NewSession(g, nil)
+	sess, err := NewSession(g, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestGraphAddGradientsSums(t *testing.T) {
 		t.Fatalf("Got DataType %v, wanted %v", grad[0].DataType(), Float)
 	}
 
-	sess, err := NewSession(g, nil)
+	sess, err := NewSession(g, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestGraphAddGradientsWithInitialValues(t *testing.T) {
 		t.Fatalf("Got DataType %v, wanted %v", grads1[0].DataType(), Float)
 	}
 
-	sess, err := NewSession(g, nil)
+	sess, err := NewSession(g, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

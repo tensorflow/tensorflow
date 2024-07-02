@@ -99,7 +99,7 @@ func Example() {
 	}
 
 	// Create a session for inference over graph.
-	session, err := tf.NewSession(graph, nil)
+	session, err := tf.NewSession(graph, nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func makeTensorFromImage(filename string) (*tf.Tensor, error) {
 		return nil, err
 	}
 	// Execute that graph to normalize this one image
-	session, err := tf.NewSession(graph, nil)
+	session, err := tf.NewSession(graph, nil, nil)
 	if err != nil {
 		return nil, err
 	}

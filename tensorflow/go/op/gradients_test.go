@@ -63,7 +63,7 @@ func TestAddGradients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess, err := tf.NewSession(graph, nil)
+	sess, err := tf.NewSession(graph, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestAddGradientsSums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess, err := tf.NewSession(graph, nil)
+	sess, err := tf.NewSession(graph, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestAddGradientsWithInitialValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess, err := tf.NewSession(graph, nil)
+	sess, err := tf.NewSession(graph, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

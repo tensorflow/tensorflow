@@ -50,7 +50,7 @@ type SavedModel struct {
 // exported in other languages, such as using tf.saved_model.builder in Python.
 // See:
 // https://www.tensorflow.org/code/tensorflow/python/saved_model/
-func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*SavedModel, error) {
+func LoadSavedModel(exportDir string, tags []string, options *SessionOptions, runOptions *RunOptions) (*SavedModel, error) {
 	status := newStatus()
 	cOpt, doneOpt, err := options.c()
 	defer doneOpt()
@@ -86,7 +86,17 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 	if err := status.Err(); err != nil {
 		return nil, err
 	}
-	s := &Session{c: cSess}
+
+	var cRunOptions *C.TF_Buffer
+	if runOptions != nil {
+		// TF_NewBufferFromString makes a copy of the input and sets an appropriate deallocator.
+		// Useful for passing in read-only, input protobufs.
+		//
+		// This particular tfRunOptions structure with data inside would be deallocated with C.TF_DeleteBuffer during Session.Close().
+		cRunOptions = C.TF_NewBufferFromString(C.CBytes(runOptions), C.size_t(len(runOptions.Config)))
+	}
+
+	s := &Session{c: cSess, runOptions: cRunOptions}
 	runtime.SetFinalizer(s, func(s *Session) { s.Close() })
 	return &SavedModel{Session: s, Graph: graph, Signatures: signatures}, nil
 }
