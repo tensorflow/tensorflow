@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/profiling/atrace_profiler.h"
 
 #include <dlfcn.h>
+
+#include "tensorflow/lite/core/api/profiler.h"
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
 #endif
