@@ -22,6 +22,8 @@ limitations under the License.
 #include <cfloat>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -96,7 +98,6 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
               errors::InvalidArgument(
                   "input and filter must have the same depth: ", depth, " vs ",
                   filter.dim_size(2)));
-
   // Effective filter size, after introducing rate - 1 zeros between each
   // non-zero filter element.
   const int filter_rows_eff =
@@ -104,6 +105,11 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
 
+  const Tensor& out_backprop = context->input(2);
+  OP_REQUIRES(context, out_backprop.dims() == 4,
+              absl::InvalidArgumentError(
+                  absl::StrCat("out_backprop must be 4-dimensional",
+                               out_backprop.shape().DebugString())));
   OP_REQUIRES_OK(context, GetWindowedOutputSize(
                               input_rows, filter_rows_eff, /*dilation_rate=*/1,
                               *stride_rows, padding, out_rows, pad_top));
