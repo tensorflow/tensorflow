@@ -55,6 +55,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
     tpu_device_options.shape_size = ShapeSize;
     // Assume 1 FLOP per second for testing.
     tpu_device_options.set_flops_per_second(1);
+    // Assume 1 byte per second for testing.
+    tpu_device_options.set_bytes_per_second(1);
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(tpu_device_options);
     TF_RETURN_IF_ERROR(
         module->entry_computation()->Accept(hlo_cost_analysis_.get()));
@@ -119,8 +121,47 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerNestedLoop) {
   // The while loop has 42 iterations, and each iteration has 2 FLOP (for
   // %increment and %greater). Thus, the total FLOPs are 84 FLOPs.
   float expected_elapsed_time = 84;
-  EXPECT_EQ(runtime_simulator_->ComputeEstimatedElapsedTime(*hlo_live_range,
-                                                            allocations),
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range, allocations),
+            expected_elapsed_time);
+}
+
+TEST_F(MemorySpaceAssignmentSimulatorTest, AsyncCopyOverhead) {
+  absl::string_view hlo_string =
+      R"(HloModule module, is_scheduled=true
+      ENTRY Entry {
+        param_0 = f32[1,1,1024,2048] parameter(0)
+        copy-start.103 = (f32[1,1,1024,2048], f32[1,1,1024,2048], u32[]) copy-start(param_0)
+        ROOT copy-done.103 = f32[1,1,1024,2048] copy-done(copy-start.103)
+      }
+
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(Initialize(module.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+
+  // Since the HLO does not contain memory access, pass an empty allocation
+  // sequence for test.
+  memory_space_assignment::AllocationSequence allocations;
+  // The SimulateElapsedTimeWithoutAsyncCopies should not include the overhead
+  // of async copies.
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopies(
+                *hlo_live_range, allocations),
+            0);
+  // The SimulateElapsedTimeWithoutAsyncCopies should include the overhead
+  // of async copies.
+  float expected_elapsed_time =
+      (/* output size */ 1024 * 2048 * 4 +
+       /* shape size = tuple size * size of pointer */ 3 * kPointerSize) /
+      /* bytes per second */ 1;
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module.get(), *hlo_live_range, allocations),
             expected_elapsed_time);
 }
 

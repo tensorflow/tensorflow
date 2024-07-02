@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SIMULATOR_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_SIMULATOR_H_
 
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
@@ -32,9 +33,19 @@ class RuntimeSimulator {
   // This function is used to predict the effectiveness of the memory space
   // assignment solution. Specifically, it returns the estimated execution time
   // (in seconds) of the HLO module for the given memory space assignment (i.e.,
-  // ```allocations```).
-  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
-                                    const AllocationSequence& allocations);
+  // ```allocations```). This function provides a baseline
+  // estimate without considering the effect of async copies.
+  float SimulateElapsedTimeWithoutAsyncCopies(
+      const HloLiveRange& hlo_live_range,
+      const AllocationSequence& allocations);
+
+  // This function, compared with SimulateElapsedTimeWithoutAsyncCopies
+  // function, provides a more accurate estimated execution time, as it
+  // simulates the default memory communication to estimate the overhead of
+  // async copies.
+  float SimulateElapsedTime(const HloModule* hlo_module,
+                            const HloLiveRange& hlo_live_range,
+                            const AllocationSequence& allocations);
 
  private:
   const CostAnalysis* cost_analysis_;
