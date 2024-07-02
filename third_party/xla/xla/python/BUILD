@@ -266,10 +266,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -367,7 +367,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
@@ -423,6 +422,7 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
@@ -576,11 +576,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # build_cleaner: keep
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_config_python//:python_headers",  # build_cleaner: keep
     ],
 )
 
@@ -751,7 +751,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:lru_cache",
@@ -764,6 +763,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -799,7 +799,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -812,6 +811,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -914,9 +914,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform:logging",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ],
 )
 
@@ -1357,7 +1357,6 @@ tsl_pybind_extension(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "//third_party/nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
         "//xla:shape_util",
         "//xla:types",
@@ -1397,6 +1396,7 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
     ] + select({
         # gloo transport only builds on linux
         "//xla/tsl:macos": [],

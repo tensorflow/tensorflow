@@ -42,7 +42,7 @@ pytype_strict_library(
     deps = [
         ":_types",  # buildcleaner: keep
         "//third_party/py/numpy",
-        "//xla:xla_data_proto_py_pb2",
+        "//xla:xla_data_proto_py",
         "@ml_dtypes",
     ],
 )
@@ -86,7 +86,7 @@ py_strict_test(
         ":types",
         #internal proto upb dep
         "//third_party/py/numpy",
-        "//xla:xla_data_proto_py_pb2",
+        "//xla:xla_data_proto_py",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
