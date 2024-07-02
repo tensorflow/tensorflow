@@ -20,7 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {

@@ -17,19 +17,21 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/statusor.h"
 
 // #include <gmock/gmock.h>
 // #include <gtest/gtest.h>
