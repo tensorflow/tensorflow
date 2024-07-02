@@ -646,7 +646,7 @@ class MultiDeviceSaver:
     # of variables we are restoring to. In practice, this means that custom
     # devices need the AssignVariableOps along with the Restore op within the
     # same graph to infer shapes and shard specs for Restore op.
-    if context.executing_eagerly() and (self._num_unique_tasks > 1 or
+    if context.executing_eagerly() and (self._num_unique_tasks > 1 and
                                         has_custom_device_saver):
       @def_function.function(jit_compile=False, autograph=False)
       def tf_function_restore() -> Mapping[str, ops.Operation]:
