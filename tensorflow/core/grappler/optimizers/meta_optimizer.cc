@@ -1226,6 +1226,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
           false;
 
+      // ImplementationSelector needs whole library when optimizing each
+      // function body graph.
+      *func_item.graph.mutable_library() = flib.ToProto();
+
       // Optimize function body graph.
       GraphDef optimized_func_graph;
       if (is_tpu_graph) {
