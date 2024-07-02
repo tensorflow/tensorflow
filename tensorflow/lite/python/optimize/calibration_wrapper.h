@@ -15,19 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 #define TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 // Place `<locale>` before <Python.h> to avoid build failures in macOS.
-#include <locale>
 
 // The empty line above is on purpose as otherwise clang-format will
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/string_type.h"
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
@@ -95,6 +97,13 @@ class CalibrationWrapper {
   // TODO(suharshs): Allow providing multiple names.
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
                           bool allow_float, const char* operator_output_name);
+
+  // Disables per-channel quantization, can be used to produce smaller
+  // models but may cause accuracy issues.
+  PyObject* QuantizeModel(int input_py_type, int output_py_type,
+                          bool allow_float, int activations_py_type,
+                          int bias_py_type, bool disable_per_channel,
+                          std::unordered_set<string>& selected_op_names);
 
   // Disables per-channel quantization, can be used to produce smaller
   // models but may cause accuracy issues.

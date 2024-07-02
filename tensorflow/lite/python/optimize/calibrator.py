@@ -165,6 +165,7 @@ class Calibrator:
       bias_type=dtypes.int32,
       resize_input=True,
       disable_per_channel=False,
+      selected_op_names=None,
   ):
     """Calibrates the model with specified generator and then quantizes it.
 
@@ -189,8 +190,21 @@ class Calibrator:
         from the input.
       disable_per_channel: A boolean. True if disabling per-channel
         quantization.
+      selected_op_names: A set of strings. Only the ops with output
+        op_output_name will be quantized.
     """
     self._feed_tensors(dataset_gen, resize_input)
+    if selected_op_names is None:
+      selected_op_names = set()
+    if not selected_op_names:
+      return self._calibrator.QuantizeModel(
+          np.dtype(input_type.as_numpy_dtype()).num,
+          np.dtype(output_type.as_numpy_dtype()).num,
+          allow_float,
+          np.dtype(activations_type.as_numpy_dtype()).num,
+          np.dtype(bias_type.as_numpy_dtype()).num,
+          disable_per_channel,
+      )
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num,
@@ -198,6 +212,7 @@ class Calibrator:
         np.dtype(activations_type.as_numpy_dtype()).num,
         np.dtype(bias_type.as_numpy_dtype()).num,
         disable_per_channel,
+        selected_op_names,
     )
 
   @convert_phase(
