@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/light_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tsl/lib/core/status_test_util.h"
 
 // Note: branched from tensorflow/lite/tools/optimize/quantize_model_test.cc
@@ -100,7 +100,7 @@ absl::Status QuantizeModel(
     return status;
   }
 
-  auto flatbuffer_model = FlatBufferModel::BuildFromBuffer(
+  auto flatbuffer_model = mlir::LightFlatBufferModel::BuildFromBuffer(
       output_buffer.data(), output_buffer.size());
   *model = UnPackFlatBufferModel(*flatbuffer_model->GetModel());
   return absl::OkStatus();
@@ -157,9 +157,10 @@ absl::Status QuantizeModelAllOperators(
                        disable_per_channel_for_dense_layers);
 }
 
-std::unique_ptr<FlatBufferModel> ReadModel(const std::string& model_name) {
+std::unique_ptr<mlir::LightFlatBufferModel> ReadModel(
+    const std::string& model_name) {
   auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model_name);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return mlir::LightFlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 template <typename T>
@@ -198,7 +199,7 @@ class QuantizeModelTest : public testing::Test {
     model_ = UnPackFlatBufferModel(*readonly_model_);
   }
 
-  std::unique_ptr<FlatBufferModel> input_model_;
+  std::unique_ptr<mlir::LightFlatBufferModel> input_model_;
   const Model* readonly_model_;
   tflite::ModelT model_;
   std::string output_buffer_;  // Raw buffer for quantized output model.

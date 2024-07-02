@@ -27,6 +27,7 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/light_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tsl/platform/logging.h"
 
 // Note: branched from tensorflow/lite/tools/optimize/quantize_weights_test.cc
@@ -58,28 +58,28 @@ std::unique_ptr<ModelT> CreateMutableModelFromFile(const Model* input_model) {
   return copied_model;
 }
 
-std::unique_ptr<FlatBufferModel> ReadTestModel() {
+std::unique_ptr<mlir::LightFlatBufferModel> ReadTestModel() {
   auto model_path = tensorflow::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kConvModelWith0Plus10Weights);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return mlir::LightFlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
+std::unique_ptr<mlir::LightFlatBufferModel> ReadSharedWeightsTestModel() {
   auto model_path = tensorflow::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithSharedWeights);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return mlir::LightFlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
+std::unique_ptr<mlir::LightFlatBufferModel> ReadGatherTestModel() {
   auto model_path = tensorflow::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kQuantizedWithGather);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return mlir::LightFlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadCustomOpTestModel() {
+std::unique_ptr<mlir::LightFlatBufferModel> ReadCustomOpTestModel() {
   auto model_path = tensorflow::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithCustomOp);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return mlir::LightFlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
 template <typename T>
@@ -111,7 +111,7 @@ class QuantizeWeightsTest : public testing::Test {
     model_ = input_model_->GetModel();
   }
 
-  std::unique_ptr<FlatBufferModel> input_model_;
+  std::unique_ptr<mlir::LightFlatBufferModel> input_model_;
   const Model* model_;
 
   bool IsModelInputOrOutput(const Model* model, uint32_t tensor_idx) {
