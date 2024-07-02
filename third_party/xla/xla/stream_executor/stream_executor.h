@@ -66,6 +66,9 @@ class StreamExecutor {
   // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
 
+  // Returns the stream group ordinal.
+  virtual int stream_id() const { return -1; }
+
   // Creates and initializes a Stream.
   virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =

@@ -32,9 +32,12 @@ namespace stream_executor {
 
 // A StreamExecutor manages a single device, in terms of executing work (kernel
 // launches) and memory management (allocation/deallocation, memory copies to
-// and from the device). It is conceptually the "handle" for a device -- Stream
-// objects, which are used to enqueue work to run on the
-// coprocessor have a StreamExecutor instance as their "parent" object.
+// and from the device). One device can be managed by multiple StreamExecutors,
+// e.g., a GPU device has multiple stream groups enabled, and each
+// StreamExecutor should manage the operations in one stream group. It is
+// conceptually the "handle" for a device -- Stream objects, which are used to
+// enqueue work to run on the coprocessor have a StreamExecutor instance as
+// their "parent" object.
 //
 // StreamExecutor objects have an underlying platform that is specified up
 // front;

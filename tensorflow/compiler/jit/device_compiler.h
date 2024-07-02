@@ -466,6 +466,10 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
 
   if (state == DeviceCompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
+    if (options.stream_id > 0) {
+      VLOG(2) << "Not compiling for stream group " << options.stream_id;
+      return absl::OkStatus();
+    }
     if (!profiler->ShouldCompileCluster(function, compile_mode,
                                         current_request_count)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;

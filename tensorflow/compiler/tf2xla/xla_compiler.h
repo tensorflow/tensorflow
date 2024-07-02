@@ -153,6 +153,10 @@ class XlaCompiler {
     // -1 indicates the default device should be used.
     int device_ordinal = -1;
 
+    // The stream group to use during compilation to execute instructions on.
+    // The compilation should only work on stream group 0 for now.
+    int stream_id = 0;
+
     xla::Client* client = nullptr;
 
     // Function library in which to find function definitions. Must be non-null.

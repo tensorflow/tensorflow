@@ -63,7 +63,11 @@ class CudaPlatform : public Platform {
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override {
+    return ExecutorForDeviceAndStream(ordinal, 0);
+  }
+  absl::StatusOr<StreamExecutor*> ExecutorForDeviceAndStream(
+      int ordinal, int stream_id) override;
 
   absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;

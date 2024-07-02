@@ -54,6 +54,10 @@ struct StreamExecutorConfig {
 
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
+
+  // The ordinal of the stream group to be managed by the returned
+  // StreamExecutor.
+  int stream_id = 0;
 };
 
 // Abstract base class for a platform registered with the PlatformManager.
@@ -114,6 +118,13 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+
+  // Returns the executor with the given ordinal and stream_id on this
+  // platform. Only for a CUDA device the stream_id is useful.
+  virtual absl::StatusOr<StreamExecutor*> ExecutorForDeviceAndStream(
+      int ordinal, int stream_id) {
+    return ExecutorForDevice(ordinal);
+  }
 
   // Returns a device constructed with the options specified in "config".
   // Ownership of the executor is NOT transferred to the caller.
