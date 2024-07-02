@@ -64,6 +64,10 @@ class HostStream : public StreamCommon {
   absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                       uint64_t size) override;
 
+  void SetPriority(StreamPriority /*priority*/) override {}
+
+  void SetPriority(int /*priority*/) override {}
+
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
