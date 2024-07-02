@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h"  // from @eigen_archive
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 

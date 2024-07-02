@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {

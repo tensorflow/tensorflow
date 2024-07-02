@@ -19,12 +19,21 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace tensor {

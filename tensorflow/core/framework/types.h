@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/numeric/bits.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/bfloat16.h"
@@ -32,8 +34,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 

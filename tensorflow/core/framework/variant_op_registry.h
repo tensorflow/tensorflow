@@ -20,6 +20,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/tensor.pb.h"
