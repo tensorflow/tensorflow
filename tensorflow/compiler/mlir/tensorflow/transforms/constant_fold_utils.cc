@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -181,10 +183,24 @@ LogicalResult EvaluateOperation(Operation* inst,
   // Converts the outputs to MLIR attributes.
   Builder builder(inst->getContext());
 
+  // TODO(b/233827625): Remove TF_DISABLE_CONSTANT_FOLDING macro.
+#ifdef TF_DISABLE_CONSTANT_FOLDING
+  constexpr int64_t kResultsSizeThreshold = 0;
+#else
+  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 8 MB
+#endif
+
   for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
-    DCHECK(op_kernel_context.mutable_output(i));
-    absl::StatusOr<ElementsAttr> result_attr = tensorflow::ConvertTensor(
-        *op_kernel_context.mutable_output(i), &builder);
+    tensorflow::Tensor* output = op_kernel_context.mutable_output(i);
+    DCHECK(output);
+
+    if (output->AllocatedBytes() > kResultsSizeThreshold) {
+      // Stop constant-folding if the result is larger than the threshold.
+      return failure();
+    }
+
+    absl::StatusOr<ElementsAttr> result_attr =
+        tensorflow::ConvertTensor(*output, &builder);
     RETURN_FAILURE_IF_ERROR(result_attr.status());
     results.push_back(result_attr.value());
   }
