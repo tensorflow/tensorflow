@@ -525,9 +525,9 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](BufferR2<PrimitiveType::F32> buffer) {
-    EXPECT_EQ(buffer.data.opaque(), storage.data());
-    EXPECT_EQ(buffer.data.ElementCount(), storage.size());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
+    EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.element_count(), storage.size());
+    EXPECT_EQ(buffer.dimensions().size(), 2);
     return absl::OkStatus();
   };
 
@@ -554,8 +554,8 @@ TEST(FfiTest, ComplexBufferArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](BufferR2<PrimitiveType::C64> buffer) {
-    EXPECT_EQ(buffer.data.opaque(), storage.data());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
+    EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.dimensions().size(), 2);
     return absl::OkStatus();
   };
 
@@ -571,8 +571,8 @@ TEST(FfiTest, TokenArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](Token tok) {
-    EXPECT_EQ(tok.data.opaque(), nullptr);
-    EXPECT_EQ(tok.dimensions.size(), 0);
+    EXPECT_EQ(tok.untyped_data(), nullptr);
+    EXPECT_EQ(tok.dimensions().size(), 0);
     return absl::OkStatus();
   };
 
@@ -720,10 +720,10 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
   // `fn0` expects argument to be `memory0` and result to be `memory1`.
   auto fn0 = [&](BufferR2<PrimitiveType::F32> arg,
                  Result<BufferR2<PrimitiveType::F32>> ret, int32_t n) {
-    EXPECT_EQ(arg.data.opaque(), storage0.data());
-    EXPECT_EQ(ret->data.opaque(), storage1.data());
-    EXPECT_EQ(arg.dimensions, dims);
-    EXPECT_EQ(ret->dimensions, dims);
+    EXPECT_EQ(arg.untyped_data(), storage0.data());
+    EXPECT_EQ(ret->untyped_data(), storage1.data());
+    EXPECT_EQ(arg.dimensions(), dims);
+    EXPECT_EQ(ret->dimensions(), dims);
     EXPECT_EQ(n, 42);
     return absl::OkStatus();
   };
@@ -731,10 +731,10 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
   // `fn1` expects argument to be `memory1` and result to be `memory0`.
   auto fn1 = [&](BufferR2<PrimitiveType::F32> arg,
                  Result<BufferR2<PrimitiveType::F32>> ret, int32_t n) {
-    EXPECT_EQ(arg.data.opaque(), storage1.data());
-    EXPECT_EQ(ret->data.opaque(), storage0.data());
-    EXPECT_EQ(arg.dimensions, dims);
-    EXPECT_EQ(ret->dimensions, dims);
+    EXPECT_EQ(arg.untyped_data(), storage1.data());
+    EXPECT_EQ(ret->untyped_data(), storage0.data());
+    EXPECT_EQ(arg.dimensions(), dims);
+    EXPECT_EQ(ret->dimensions(), dims);
     EXPECT_EQ(n, 42);
     return absl::OkStatus();
   };

@@ -518,8 +518,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail", "Host",
                          kAlwaysFail);
 
 static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + 2.0f;
   return absl::OkStatus();
 }
@@ -573,8 +573,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
 
 static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32ResultBuffer out,
                                  float n) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + n;
   return absl::OkStatus();
 }
@@ -590,8 +590,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddN",
 
 static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32ResultBuffer out,
                                         float* n) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
   *out_data = *in_data + *n;
   return absl::OkStatus();
 }
@@ -606,16 +606,9 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddNPointer",
                          "Host", kFfiR0F32AddNPointer);
 
 static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
-
-  // Calculate the total size of the vector
-  // Manual calculation is used here instead of absl::c_accumulate to trigger
-  // sanitizer check for dimensions
-  auto size = 1;
-  for (auto dim : in.dimensions) {
-    size *= dim;
-  }
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
+  auto size = in.element_count();
 
   // Calculate the sum of the vector
   *out_data = absl::c_accumulate(absl::MakeSpan(in_data, size), 0.0f);
@@ -635,15 +628,15 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
 static absl::Status FfiF32Accumulate(F32Buffer in, InitMethod init,
                                      R0F32ResultBuffer out,
                                      BinaryOp binary_op) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
 
   // Init method is an artificial enum to demonstrate handling enums with
   // different underlying types. Normally it would be just a float scalar.
   float init_value = (init == InitMethod::kZero) ? 0.0f : 1.0f;
 
   // Calculate the total size of the vector
-  auto size = absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
+  auto size = in.element_count();
 
   // Calculate the sum or the product of the vector, based on binary_op value.
   switch (binary_op) {
@@ -670,14 +663,12 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Accumulate",
                          "Host", kFfiF32Accumulate);
 
 static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
-  auto in_data = in.data.base();
-  auto out_data = out->data.base();
+  auto in_data = in.typed_data();
+  auto out_data = out->typed_data();
 
   // Calculate and verify the total size of the vector
-  const auto in_size =
-      absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
-  const auto out_size =
-      absl::c_accumulate(out->dimensions, 1, std::multiplies<int>());
+  const auto in_size = in.element_count();
+  const auto out_size = out->element_count();
   if (in_size != out_size) {
     return absl::InternalError("Input and output sizes mismatch");
   }
@@ -701,10 +692,10 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Add1ToValues",
 static absl::Status FfiF32TupleSwap(R0F32Buffer in0, R0F32Buffer in1,
                                     R0F32ResultBuffer out0,
                                     R0F32ResultBuffer out1) {
-  auto in_data0 = in0.data.base();
-  auto in_data1 = in1.data.base();
-  auto out_data0 = out0->data.base();
-  auto out_data1 = out1->data.base();
+  auto in_data0 = in0.typed_data();
+  auto in_data1 = in1.typed_data();
+  auto out_data0 = out0->typed_data();
+  auto out_data1 = out1->typed_data();
   *out_data0 = *in_data1;
   *out_data1 = *in_data0;
   return absl::OkStatus();
@@ -727,14 +718,14 @@ static absl::Status FfiTupleRotate(R0F32Buffer in0, R0F32Buffer in1,
                                    R0F32ResultBuffer out1,
                                    R0F32ResultBuffer out2,
                                    R0F32ResultBuffer out3) {
-  auto in_data0 = in0.data.base();
-  auto in_data1 = in1.data.base();
-  auto in_data2 = in2.data.base();
-  auto in_data3 = in3.data.base();
-  auto out_data0 = out0->data.base();
-  auto out_data1 = out1->data.base();
-  auto out_data2 = out2->data.base();
-  auto out_data3 = out3->data.base();
+  auto in_data0 = in0.typed_data();
+  auto in_data1 = in1.typed_data();
+  auto in_data2 = in2.typed_data();
+  auto in_data3 = in3.typed_data();
+  auto out_data0 = out0->typed_data();
+  auto out_data1 = out1->typed_data();
+  auto out_data2 = out2->typed_data();
+  auto out_data3 = out3->typed_data();
   *out_data0 = *in_data1;
   *out_data1 = *in_data2;
   *out_data2 = *in_data3;
@@ -794,8 +785,8 @@ static absl::Status SwapTupleAnyBuffersToS16U32(ffi::AnyBuffer in_1,
                                                 ResultBufferR0<U32> out_2) {
   auto tuple_elem_1 = reinterpret_cast<uint32_t*>(in_1.untyped_data());
   auto tuple_elem_2 = reinterpret_cast<int16_t*>(in_2.untyped_data());
-  out_1->data.base()[0] = tuple_elem_2[0];
-  out_2->data.base()[0] = tuple_elem_1[0];
+  out_1->typed_data()[0] = tuple_elem_2[0];
+  out_2->typed_data()[0] = tuple_elem_1[0];
   return absl::OkStatus();
 }
 
@@ -815,10 +806,10 @@ static absl::Status SwapTupleU32S16ToS16U32(ffi::BufferR0<U32> in_1,
                                             ffi::BufferR0<S16> in_2,
                                             ResultBufferR0<S16> out_1,
                                             ResultBufferR0<U32> out_2) {
-  auto tuple_elem_1 = in_1.data.base();
-  auto tuple_elem_2 = in_2.data.base();
-  out_1->data.base()[0] = tuple_elem_2[0];
-  out_2->data.base()[0] = tuple_elem_1[0];
+  auto tuple_elem_1 = in_1.typed_data();
+  auto tuple_elem_2 = in_2.typed_data();
+  out_1->typed_data()[0] = tuple_elem_2[0];
+  out_2->typed_data()[0] = tuple_elem_1[0];
   return absl::OkStatus();
 }
 
@@ -839,25 +830,25 @@ static absl::Status HandleTupleDifferentRanks(ffi::BufferR0<U32> x_1,
                                               ffi::BufferR3<F32> y_2,
                                               ResultBuffer<S32, 1> x_out,
                                               ResultBuffer<F32, 3> y_out) {
-  if (x_2.data.ElementCount() != x_out->data.ElementCount()) {
+  if (x_2.element_count() != x_out->element_count()) {
     return absl::FailedPreconditionError(
         "`x_2` parameter should have the same number of elements as `x_out`");
   }
-  if (y_1.dimensions != y_out->dimensions.subspan(1) ||
-      y_2.dimensions.front() + 1 != y_out->dimensions.front()) {
+  if (y_1.dimensions() != y_out->dimensions().subspan(1) ||
+      y_2.dimensions().front() + 1 != y_out->dimensions().front()) {
     return absl::FailedPreconditionError(
         "Cannot concatenate `y_1` and `y_2` due to dimensions mismatch. "
         "`y_2` dimensions should represent a batched `y_1`");
   }
   // Multiply R1 vector by R0 scalar
-  const auto factor = x_1.data.base()[0];
-  for (int i = 0; i < x_2.data.ElementCount(); ++i) {
-    x_out->data.base()[i] = factor * x_2.data.base()[i];
+  const auto factor = x_1.typed_data()[0];
+  for (int i = 0; i < x_2.element_count(); ++i) {
+    x_out->typed_data()[i] = factor * x_2.typed_data()[i];
   }
   // Append R2 buffer to R3 buffer
   auto last_pos =
-      std::copy_n(y_2.data.base(), y_2.data.ElementCount(), y_out->data.base());
-  std::copy_n(y_1.data.base(), y_1.data.ElementCount(), last_pos);
+      std::copy_n(y_2.typed_data(), y_2.element_count(), y_out->typed_data());
+  std::copy_n(y_1.typed_data(), y_1.element_count(), last_pos);
   return absl::OkStatus();
 }
 
@@ -882,19 +873,19 @@ static absl::Status Concat3Vectors(ffi::BufferR2<F32> vec_1,
                                    ffi::BufferR2<F32> vec_2,
                                    ffi::BufferR2<F32> vec_3,
                                    ResultBuffer<F32, 2> out) {
-  if (out->dimensions.back() != 3) {
+  if (out->dimensions().back() != 3) {
     return absl::FailedPreconditionError("output dimension 0 expected to be 3");
   }
-  float* out_data = out->data.base();
+  float* out_data = out->typed_data();
 
   ffi::BufferR2<F32>* vecs[3] = {&vec_1, &vec_2, &vec_3};
-  for (int elem_idx = 0; elem_idx < out->dimensions.front(); ++elem_idx) {
+  for (int elem_idx = 0; elem_idx < out->dimensions().front(); ++elem_idx) {
     for (int vec_idx = 0; vec_idx < 3; ++vec_idx) {
       // {{vec_0[0], vec_1[0], vec_2[0]},
       //  {vec_0[1], vec_1[1], vec_2[1]},
       //  ...}
-      const auto out_idx = elem_idx * out->dimensions.back() + vec_idx;
-      out_data[out_idx] = vecs[vec_idx]->data.base()[elem_idx];
+      const auto out_idx = elem_idx * out->dimensions().back() + vec_idx;
+      out_data[out_idx] = vecs[vec_idx]->typed_data()[elem_idx];
     }
   }
   return absl::OkStatus();
