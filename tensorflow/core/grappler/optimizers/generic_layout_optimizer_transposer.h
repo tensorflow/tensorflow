@@ -581,6 +581,9 @@ Status PermuteSingle(absl::string_view location,
                      absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
+  if (values->size() <= 1 || permutation_size <= 1) {
+    return absl::OkStatus();
+  }
   if (values->size() != permutation_size) {
     return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
