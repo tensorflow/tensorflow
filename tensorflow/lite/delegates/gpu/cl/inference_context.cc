@@ -142,7 +142,7 @@ void GetUsages(const GpuModel& model,
   }
 }
 
-absl::Status GetBufferAsignment(
+absl::Status GetBufferAssignment(
     const GpuModel& gpu_model, const CreateGpuModelInfo* create_info,
     const GpuInfo& gpu_info,
     std::vector<TensorUsageRecord<size_t>>* buffer_usage_records,
@@ -547,7 +547,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
   OffsetsAssignment offset_assignment;
   bool use_offset_assignment;
   bool is_sub_buffers_supported;
-  RETURN_IF_ERROR(GetBufferAsignment(
+  RETURN_IF_ERROR(GetBufferAssignment(
       gpu_model, create_info, gpu_info, &buffer_usage_records,
       &graph_ids_to_shared_buffer_tensors_, &buffer_assignment,
       &offset_assignment, &use_offset_assignment, &is_sub_buffers_supported));
@@ -1123,7 +1123,7 @@ absl::Status GetTotalBufferSizeForTensors(const GpuModel& gpu_model,
   OffsetsAssignment offset_assignment;
   bool use_offset_assignment;
   bool is_sub_buffers_supported;
-  RETURN_IF_ERROR(GetBufferAsignment(
+  RETURN_IF_ERROR(GetBufferAssignment(
       gpu_model, &create_info, gpu_info, &buffer_usage_records, nullptr,
       &buffer_assignment, &offset_assignment, &use_offset_assignment,
       &is_sub_buffers_supported));
