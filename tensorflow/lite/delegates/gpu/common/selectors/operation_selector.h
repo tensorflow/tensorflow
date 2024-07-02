@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"

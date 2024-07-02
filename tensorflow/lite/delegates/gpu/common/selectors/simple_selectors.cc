@@ -19,8 +19,12 @@ limitations under the License.
 #include <set>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
@@ -50,6 +54,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/tile.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
