@@ -112,7 +112,10 @@ cc_library(
         ":hlo_module_importer",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
+        "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )
 
