@@ -28,10 +28,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -1264,6 +1266,24 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
   EXPECT_TRUE(visit_order.at(negate) == 1 || visit_order.at(negate) == 2);
   EXPECT_NE(visit_order.at(exp), visit_order.at(negate));
   EXPECT_EQ(3, visit_order.at(add));
+}
+
+TEST_F(HloInstructionTest, OperationsWithoutOperandsAreTriviallyElementwise) {
+  const Shape r1f32 = ShapeUtil::MakeShape(F32, {2});
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0.0, 1.0})));
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(r1f32, /*iota_dimension=*/0));
+  auto rng = builder.AddInstruction(HloInstruction::CreateRng(
+      r1f32, RandomDistribution::RNG_UNIFORM, {constant, constant}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(constant->IsElementwise());
+  EXPECT_TRUE(iota->IsElementwise());
+  EXPECT_TRUE(rng->IsElementwise());
 }
 
 TEST_F(HloInstructionTest, FullyElementwise) {

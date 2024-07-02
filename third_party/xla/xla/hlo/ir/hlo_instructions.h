@@ -2424,6 +2424,8 @@ class HloIotaInstruction : public HloInstruction {
   }
 
  private:
+  bool IsElementwiseImpl(
+      const std::optional<int64_t>& operand_idx) const override;
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
