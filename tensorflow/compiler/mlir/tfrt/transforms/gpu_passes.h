@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 
 namespace tensorflow {
 

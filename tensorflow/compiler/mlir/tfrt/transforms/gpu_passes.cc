@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/gpu_ops.h"
 
 namespace tensorflow {
