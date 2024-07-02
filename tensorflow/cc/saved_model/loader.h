@@ -103,7 +103,8 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
 // which provides an already initialized Metagraph, Session, and DebugInfo.
 Status RestoreSession(const RunOptions& run_options,
                       const MetaGraphDef& meta_graph, const string& export_dir,
-                      std::unique_ptr<Session>* session);
+                      std::unique_ptr<Session>* session,
+                      bool restore_variables_with_saver_def = true);
 
 // Initialize a session which wraps this metagraph.
 // The recommended way to load a saved model is to call LoadSavedModel,
@@ -121,7 +122,8 @@ Status LoadMetagraphIntoSession(const SessionOptions& session_options,
 Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
-                      SavedModelBundle* bundle);
+                      SavedModelBundle* bundle,
+                      bool restore_variables_with_saver_def = true);
 
 /// Loads a SavedModel from the specified export directory. The MetaGraphDef
 /// to be loaded is identified by the supplied tags, corresponding exactly to
