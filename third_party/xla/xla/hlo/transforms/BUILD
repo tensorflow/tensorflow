@@ -18,42 +18,6 @@ package_group(
 )
 
 cc_library(
-    name = "hlo_broadcast_splitter",
-    srcs = ["hlo_broadcast_splitter.cc"],
-    hdrs = ["hlo_broadcast_splitter.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_broadcast_splitter_test",
-    srcs = ["hlo_broadcast_splitter_test.cc"],
-    deps = [
-        ":hlo_broadcast_splitter",
-        "//xla:test",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
-        "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "hlo_constant_splitter",
     srcs = ["hlo_constant_splitter.cc"],
     hdrs = ["hlo_constant_splitter.h"],
