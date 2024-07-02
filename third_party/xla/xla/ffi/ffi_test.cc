@@ -494,9 +494,9 @@ TEST(FfiTest, AnyBufferArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](AnyBuffer buffer) {
-    EXPECT_EQ(buffer.dtype, PrimitiveType::F32);
-    EXPECT_EQ(buffer.data.opaque(), storage.data());
-    AnyBuffer::Dimensions dimensions = buffer.dimensions;
+    EXPECT_EQ(buffer.element_type(), PrimitiveType::F32);
+    EXPECT_EQ(buffer.untyped_data(), storage.data());
+    AnyBuffer::Dimensions dimensions = buffer.dimensions();
     EXPECT_EQ(dimensions.size(), 2);
     EXPECT_EQ(dimensions[0], 2);
     EXPECT_EQ(dimensions[1], 2);

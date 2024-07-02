@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -537,8 +538,8 @@ static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
   using NativeType =
       typename ::xla::primitive_util::PrimitiveTypeToNative<dtype>::type;
 
-  auto in_data = reinterpret_cast<const NativeType*>(in.data.opaque());
-  auto out_data = reinterpret_cast<NativeType*>(out->data.opaque());
+  auto in_data = reinterpret_cast<const NativeType*>(in.untyped_data());
+  auto out_data = reinterpret_cast<NativeType*>(out->untyped_data());
   *out_data = *in_data + 2.0f;
 
   return absl::OkStatus();
@@ -546,11 +547,11 @@ static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
 
 // This represents a kernel that is valid only for F32 and F64 types
 static absl::Status FfiR0FAdd2BufferBase(AnyBuffer in, ResultBufferBase out) {
-  if (in.dtype != out->dtype) {
+  if (in.element_type() != out->element_type()) {
     return absl::InternalError("Input and output dtypes mismatch");
   }
 
-  switch (in.dtype) {
+  switch (in.element_type()) {
     case PrimitiveType::F32:
       return R0FAdd2<PrimitiveType::F32>(in, out);
     case PrimitiveType::F64:
@@ -759,17 +760,17 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
 static absl::Status VerifyR2Dimensions(ffi::AnyBuffer in, int32_t rows,
                                        int32_t cols) {
   std::string message;
-  if (in.dimensions.size() != 2) {
+  if (in.dimensions().size() != 2) {
     message += absl::StrFormat("dimensions.size() != 2 because %d != 2\n",
-                               in.dimensions.size());
+                               in.dimensions().size());
   }
-  if (in.dimensions.front() != rows) {
+  if (in.dimensions().front() != rows) {
     message += absl::StrFormat("dimensions.front() != rows because %d != %d\n",
-                               in.dimensions.front(), rows);
+                               in.dimensions().front(), rows);
   }
-  if (in.dimensions.back() != cols) {
+  if (in.dimensions().back() != cols) {
     message += absl::StrFormat("dimensions.back() != cols because %d != %d\n",
-                               in.dimensions.back(), cols);
+                               in.dimensions().back(), cols);
   }
   if (!message.empty()) {
     return absl::Status(absl::StatusCode::kFailedPrecondition,
@@ -791,8 +792,8 @@ static absl::Status SwapTupleAnyBuffersToS16U32(ffi::AnyBuffer in_1,
                                                 ffi::AnyBuffer in_2,
                                                 ResultBufferR0<S16> out_1,
                                                 ResultBufferR0<U32> out_2) {
-  auto tuple_elem_1 = reinterpret_cast<uint32_t*>(in_1.data.opaque());
-  auto tuple_elem_2 = reinterpret_cast<int16_t*>(in_2.data.opaque());
+  auto tuple_elem_1 = reinterpret_cast<uint32_t*>(in_1.untyped_data());
+  auto tuple_elem_2 = reinterpret_cast<int16_t*>(in_2.untyped_data());
   out_1->data.base()[0] = tuple_elem_2[0];
   out_2->data.base()[0] = tuple_elem_1[0];
   return absl::OkStatus();

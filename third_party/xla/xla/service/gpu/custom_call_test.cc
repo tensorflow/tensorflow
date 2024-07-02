@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/stream_executor/device_memory.h"
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -380,10 +382,9 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  return stream->MemcpyD2D(
-      &dst->data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
+  se::DeviceMemoryBase dst_mem = dst->device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
