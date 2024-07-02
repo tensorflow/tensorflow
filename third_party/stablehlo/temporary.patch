@@ -164,4 +164,278 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo/dialect/StablehloEnums.td
+--- stablehlo/stablehlo/dialect/StablehloEnums.td
++++ stablehlo/stablehlo/dialect/StablehloEnums.td
+@@ -85,12 +85,15 @@
+     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+ def STABLEHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED :
+     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING_UNIFIED", 3>;
++def STABLEHLO_CUSTOM_CALL_API_VERSION_TYPED_FFI :
++    I32EnumAttrCase<"API_VERSION_TYPED_FFI", 4>;
+ def StableHLO_CustomCallApiVersionAttr :
+     I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
+         STABLEHLO_CUSTOM_CALL_API_VERSION_UNSPECIFIED,
+         STABLEHLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
+         STABLEHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING,
+-        STABLEHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED
++        STABLEHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED,
++        STABLEHLO_CUSTOM_CALL_API_VERSION_TYPED_FFI
+     ]> {
+   let cppNamespace = "::mlir::stablehlo";
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -477,6 +477,20 @@
+              << "operand part has type " << operandPart
+              << " and output part has type " << outputPart;
+   }
++  if (auto backendConfig = getBackendConfig()) {
++    if (getApiVersion() == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
++      if (!isa<mlir::DictionaryAttr>(*backendConfig))
++        return emitOpError() << "backend_config for api_version "
++                             << stringifyCustomCallApiVersion(getApiVersion())
++                             << " must be a dictionary attribute.";
++    } else {
++      if (!isa<mlir::StringAttr>(*backendConfig))
++        return emitOpError() << "backend_config for api_version "
++                             << stringifyCustomCallApiVersion(getApiVersion())
++                             << " must be a string attribute.";
++    }
++  }
++
+   return success();
+ }
+ 
+@@ -491,6 +505,16 @@
+   effects.emplace_back(MemoryEffects::Free::get());
+   effects.emplace_back(MemoryEffects::Write::get());
+   effects.emplace_back(MemoryEffects::Read::get());
++}
++
++mlir::Attribute CustomCallOp::getBackendConfigOrDefault() {
++  if (getBackendConfig().has_value()) return getBackendConfig().value();
++
++  if (getApiVersion() ==
++      mlir::stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
++    return DictionaryAttr::get(getContext());
++
++  return StringAttr::get(getContext(), "");
+ }
+ 
+ //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -2340,13 +2340,21 @@
+     Encapsulates an implementation-defined operation `call_target_name` that
+     takes `inputs` and `called_computations` and produces `results`.
+ 
++    Depending on the API version there are two ways to pass extra bits of static
++    information to the external function:
++
++    1. Use `API_VERSION_TYPED_FFI` which allows passing a dictionary attribute.
++
++    2. Use a previous API version with a StringAttr to encode backend config.
++
+     See:
+     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#custom_call
+ 
+     Example:
+     ```mlir
+     %results = stablehlo.custom_call @foo(%input0) {
+-      backend_config = "bar",
++      backend_config = {bar = 42 : i32},
++      api_version = 4 : i32,
+       called_computations = [@foo]
+     } : (tensor<f64>) -> tensor<f64>
+     ```
+@@ -2356,7 +2364,7 @@
+     Variadic<HLO_CustomCallValue>:$inputs,
+     StrAttr:$call_target_name,
+     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
+-    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
++    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config,
+     // TODO(b/189822916): Remove this field when all clients are migrated to
+     // the status-returning API.
+     DefaultValuedOptionalAttr<
+@@ -2379,6 +2387,11 @@
+   let assemblyFormat = [{
+     custom<CustomCallTarget>($call_target_name) `(` $inputs `)`
+       attr-dict `:` functional-type(operands, results)
++  }];
++
++  let extraClassDeclaration = commonClassDeclaration # [{
++    mlir::Attribute getBackendConfigOrDefault();
++
+   }];
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
+--- stablehlo/stablehlo/dialect/VhloEnums.td
++++ stablehlo/stablehlo/dialect/VhloEnums.td
+@@ -98,12 +98,14 @@
+ def VHLO_CUSTOM_CALL_API_VERSION_V1_ORIGINAL : I32EnumAttrCase<"API_VERSION_ORIGINAL", 1>;
+ def VHLO_CUSTOM_CALL_API_VERSION_V1_STATUS_RETURNING : I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+ def VHLO_CUSTOM_CALL_API_VERSION_V1_STATUS_RETURNING_UNIFIED : I32EnumAttrCase<"API_VERSION_STATUS_RETURNING_UNIFIED", 3>;
++def VHLO_CUSTOM_CALL_API_VERSION_V1_TYPED_FFI : I32EnumAttrCase<"API_VERSION_TYPED_FFI", 4>;
+ 
+ def VHLO_CustomCallApiVersionV1 : VHLO_I32EnumAttr<"CustomCallApiVersionV1", [
+     VHLO_CUSTOM_CALL_API_VERSION_V1_UNSPECIFIED,
+     VHLO_CUSTOM_CALL_API_VERSION_V1_ORIGINAL,
+     VHLO_CUSTOM_CALL_API_VERSION_V1_STATUS_RETURNING,
+-    VHLO_CUSTOM_CALL_API_VERSION_V1_STATUS_RETURNING_UNIFIED
++    VHLO_CUSTOM_CALL_API_VERSION_V1_STATUS_RETURNING_UNIFIED,
++    VHLO_CUSTOM_CALL_API_VERSION_V1_TYPED_FFI
+ ]> {}
+ 
+ def VHLO_CustomCallApiVersionAttrV1
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -333,6 +333,17 @@
+     return failure();
+   return success();
+ }
++
++LogicalResult verifyConstraint_1_1_0(mlir::Operation* op,
++                                     Version targetVersion) {
++  auto customCallOp = dyn_cast<mlir::vhlo::CustomCallOpV1>(op);
++  if (customCallOp &&
++      isa<vhlo::DictionaryV1Attr>(customCallOp.getBackendConfig()) &&
++      targetVersion < Version(1, 1, 0))
++    return failure();
++  return success();
++}
++
+ }  // namespace
+ 
+ LogicalResult AllReduceOpV1::validateConstraint(mlir::Operation* op,
+@@ -365,5 +376,10 @@
+   return verifyConstraint_0_17_0(op, targetVersion);
+ }
+ 
++LogicalResult CustomCallOpV1::validateConstraint(mlir::Operation* op,
++                                                 Version targetVersion) {
++  return verifyConstraint_1_1_0(op, targetVersion);
++}
++
+ }  // namespace vhlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -368,7 +368,8 @@
+ // TODO(#740): output_operand_aliases is not part of the spec.
+ // CustomCallOp has proven to be one of the trickiest ops to fully spec.
+ // We're aiming to address all these todos by the release of StableHLO v1.0.
+-def VHLO_CustomCallOpV1 : VHLO_Op<"custom_call_v1", "0.9.0", "current"> {
++def VHLO_CustomCallOpV1 : VHLO_Op<"custom_call_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins
+     Variadic<VHLO_AnyType>:$inputs,
+     VHLO_AnyAttr:$call_target_name,
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -4922,6 +4922,30 @@
+   // CHECK: stablehlo.custom_call {{.*}} : (tensor<*xf32>) -> tensor<*xf32>
+   %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<*xf32>) -> tensor<*xf32>
+   func.return %0 : tensor<*xf32>
++}
++
++// -----
++
++func.func @custom_call_with_dictionary_backend_config() {
++  // CHECK: stablehlo.custom_call @foo() {api_version = 4 : i32, backend_config = {foo = 42 : i32}}
++  "stablehlo.custom_call"() {api_version = 4 : i32, backend_config={foo = 42 : i32}, call_target_name = "foo"} : () -> ()
++  func.return
++}
++
++// -----
++
++func.func @custom_call_with_incompatible_backend_config() {
++  // expected-error@+1 {{backend_config for api_version API_VERSION_TYPED_FFI must be a dictionary attribute}}
++  "stablehlo.custom_call"() {api_version = 4 : i32, backend_config="bar=42", call_target_name = "foo"} : () -> ()
++  func.return
++}
++
++// -----
++
++func.func @custom_call_with_incompatible_backend_config() {
++  // expected-error@+1 {{backend_config for api_version API_VERSION_STATUS_RETURNING_UNIFIED must be a string attribute}}
++  "stablehlo.custom_call"() {api_version = 3 : i32, backend_config={bar = 42 : i32}, call_target_name = "foo"} : () -> ()
++  func.return
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_2_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_2_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_2_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_2_0.mlir
+@@ -1289,7 +1289,6 @@
+   // %0 = "vhlo.custom_call_v1"(%arg0) <{>}> : (!vhlo.tensor_v1<!vhlo.i64_v1>) -> !vhlo.tuple_v1<>
+   //      CHECK: "vhlo.custom_call_v1"(%[[ARG0]]) <{
+   // CHECK-SAME:   api_version = #vhlo<api_version_v1 API_VERSION_STATUS_RETURNING>,
+-  // CHECK-SAME:   backend_config = #vhlo.string_v1<"">,
+   // CHECK-SAME:   call_target_name = #vhlo.string_v1<"empty_output">,
+   // CHECK-SAME:   called_computations = #vhlo.array_v1<[]>,
+   // CHECK-SAME:   has_side_effect = #vhlo.bool_v1<true>,
+@@ -1299,7 +1298,6 @@
+   // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.i64_v1>) -> !vhlo.tuple_v1<>
+   %0 = "stablehlo.custom_call"(%arg0) <{
+     api_version = 2 : i32,
+-    backend_config = "",
+     call_target_name = "empty_output",
+     has_side_effect = true,
+     operand_layouts = [dense<> : tensor<0xindex>],
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+@@ -1299,7 +1299,6 @@
+   // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.i64_v1>) -> !vhlo.tuple_v1<>
+   %0 = "stablehlo.custom_call"(%arg0) <{
+     api_version = 2 : i32,
+-    backend_config = "",
+     call_target_name = "empty_output",
+     has_side_effect = true,
+     operand_layouts = [dense<> : tensor<0xindex>],
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_18_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_18_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_18_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_18_0.mlir
+@@ -12,3 +12,16 @@
+ func.func @composite_target(%arg0: tensor<f32>) -> tensor<f32> {
+   func.return %arg0 : tensor<f32>
+ }
++
++
++// -----
++
++func.func @custom_call_dictionary_attr(%arg0: tensor<f32>) -> tensor<f32> {
++// expected-error @+1 {{failed to legalize operation 'vhlo.custom_call_v1' that was explicitly marked illegal}}
++%0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    backend_config={foo = 42 : i32}
++  } : (tensor<f32>) -> tensor<f32>
++  func.return %0 : tensor<f32>
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
+@@ -13,3 +13,14 @@
+   %0 = stablehlo.add %arg0, %arg0 : tensor<ui2>
+   func.return %0 : tensor<ui2>
+ }
++
++// -----
++
++func.func @custom_call_dictionary_attr(%arg0: tensor<f32>) -> tensor<f32> {
++%0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    backend_config={foo = 42 : i32}
++  } : (tensor<f32>) -> tensor<f32>
++  func.return %0 : tensor<f32>
++}
 

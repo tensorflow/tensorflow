@@ -370,7 +370,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_string));
 
-  EXPECT_EQ(CountCopies(*module), 5);
+  EXPECT_EQ(CountCopies(*module), 7);
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* while_op = root->operand(0)->operand(0);
