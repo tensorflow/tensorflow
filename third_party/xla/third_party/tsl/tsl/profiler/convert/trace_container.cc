@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/trace_events.pb.h"
 
 namespace tsl {
 namespace profiler {
