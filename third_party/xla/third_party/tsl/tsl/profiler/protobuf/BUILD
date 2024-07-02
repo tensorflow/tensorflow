@@ -2,7 +2,7 @@
 # Placeholder: load py_proto_library
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tsl/platform:build_config.bzl", "tf_proto_library")
-
+load("//tsl/platform/default:build_config.bzl", "py_proto_library")  # copybara:comment(oss)
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 package_group(
@@ -115,14 +115,12 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "xplane_py_pb2",
-#     api_version = 2,
-#     visibility = internal_visibility([":friends"]),
-#     deps = [":xplane_proto"],
-# )
-# copybara:uncomment_end
+py_proto_library(
+    name = "xplane_py_pb2",
+    # copybara:uncomment(google-only) api_version = 2,
+    visibility = internal_visibility([":friends"]),
+    deps = [":xplane_proto"],
+)
 
 tf_proto_library(
     name = "profiled_instructions_proto",
