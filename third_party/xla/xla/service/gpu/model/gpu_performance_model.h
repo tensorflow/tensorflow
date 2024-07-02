@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 
-
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,15 +38,11 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
   // TODO(shyshkov): Unify interface with EstimateRunTimeForInstruction.
   static absl::Duration EstimateRunTimeForFusion(
       const HloInstruction* producer, const HloInstruction* consumer,
-      const EstimateRunTimeData& producer_runtime,
-      const EstimateRunTimeData& consumer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   static absl::Duration EstimateRunTimeForFusionCached(
       const HloInstruction* producer, const HloInstruction* consumer,
-      const EstimateRunTimeData& producer_runtime,
-      const EstimateRunTimeData& consumer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 

@@ -172,13 +172,16 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
 
 /*static*/ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusion(
     const HloInstruction* producer, const HloInstruction* consumer,
-    const EstimateRunTimeData& producer_runtime,
-    const EstimateRunTimeData& consumer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config) {
   VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
           << " consumer: " << consumer->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
+
+  EstimateRunTimeData producer_runtime =
+      EstimateRunTimeForInstructionCached(producer, cost_analysis, config);
+  EstimateRunTimeData consumer_runtime =
+      EstimateRunTimeForInstructionCached(consumer, cost_analysis, config);
 
   float utilization_by_this_consumer = 0;
   for (int64_t i = 0; i < consumer->operand_count(); ++i) {
@@ -255,8 +258,6 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
 /*static*/
 absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionCached(
     const HloInstruction* producer, const HloInstruction* consumer,
-    const EstimateRunTimeData& producer_runtime,
-    const EstimateRunTimeData& consumer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config) {
   if (config.gpu_performance_model_cache) {
@@ -267,8 +268,7 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionCached(
   }
 
   auto fusion_runtime =
-      EstimateRunTimeForFusion(producer, consumer, producer_runtime,
-                               consumer_runtime, cost_analysis, config);
+      EstimateRunTimeForFusion(producer, consumer, cost_analysis, config);
 
   if (config.gpu_performance_model_cache) {
     config.gpu_performance_model_cache->Set(*producer, *consumer,
@@ -356,14 +356,12 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
   for (auto fused_consumer : fused_consumers) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
-    EstimateRunTimeData consumer_runtime = EstimateRunTimeForInstructionCached(
-        fused_consumer, cost_analysis, config);
+    time_unfused += EstimateRunTimeForInstructionCached(fused_consumer,
+                                                        cost_analysis, config)
+                        .exec_time;
 
-    time_unfused += consumer_runtime.exec_time;
-
-    time_fused += EstimateRunTimeForFusionCached(
-        producer, fused_consumer, producer_runtime, consumer_runtime,
-        cost_analysis, config);
+    time_fused += EstimateRunTimeForFusionCached(producer, fused_consumer,
+                                                 cost_analysis, config);
   }
 
   // Multi-output fusion still writes the initial output of the producer.
