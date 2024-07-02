@@ -24,10 +24,7 @@ pytype_strict_library(
     name = "ifrt_proxy_internal",
     srcs = ["ifrt_proxy_internal.py"],
     # copybara:uncomment_begin
-    # visibility = [
-    # "//xla/python/ifrt_proxy/common/google:friends",
-    # "//xla/python/ifrt_proxy/common/google:jax_users",
-    # ],
+    # visibility = ["//xla/python/ifrt_proxy/common/google:friends"],
     # copybara:uncomment_end
     deps = [
         "//xla/python:xla_client",
