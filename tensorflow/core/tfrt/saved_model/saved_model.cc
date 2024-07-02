@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -49,7 +50,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -70,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
@@ -228,6 +232,60 @@ tensorflow::Status RunBefInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
+  return absl::OkStatus();
+}
+
+absl::Status AddHloShardingToIfrtModelContext(
+    const tensorflow::GraphDef& graph_def,
+    tensorflow::tfrt_stub::ModelRuntimeContext& context) {
+  std::optional<ifrt_serving::IfrtModelContext*> ifrt_model_context =
+      context.resource_context().GetResource<ifrt_serving::IfrtModelContext>(
+          ifrt_serving::kIfrtModelContextName);
+  if (!ifrt_model_context.has_value()) {
+    return absl::InternalError("IfrtModelContext was not found.");
+  }
+  bool found_sharding = false;
+  for (const auto& func_def : graph_def.library().function()) {
+    const auto& func_name = func_def.signature().name();
+    // According to the TPU Inference Converter sharding design,
+    // the sharding information is stored in the _XlaSharding arg attributes of
+    // of FunctionDef with name "tpu_fn_icv2_ ....._xla_sharded".
+    if (absl::StrContains(func_name, "tpu_fn_icv2_") &&
+        absl::StrContains(func_name, "_xla_sharded")) {
+      if (found_sharding) {
+        return absl::UnimplementedError("Multiple shardings not supported.");
+      }
+      int num_non_var = 0;
+      // The non-weight inputs precede the weight inputs; count them here.
+      for (const OpDef_ArgDef& arg : func_def.signature().input_arg()) {
+        if (arg.type() != tensorflow::DT_RESOURCE) {
+          num_non_var++;
+        } else {
+          break;
+        }
+      }
+      std::vector<std::unique_ptr<xla::HloSharding>> hlo_shardings(
+          func_def.signature().input_arg_size() - num_non_var);
+      for (const auto& arg_attr : func_def.arg_attr()) {
+        // For _XlaSharding these are each a single element, but they are still
+        // stored as a map.
+        for (const auto& [attr_name, attr_val] : arg_attr.second.attr()) {
+          if (attr_name == "_XlaSharding") {
+            xla::OpSharding sharding_proto;
+            if (!sharding_proto.ParseFromString(attr_val.s())) {
+              return absl::InternalError("Failed to parse _XlaSharding attr.");
+            }
+            TF_ASSIGN_OR_RETURN(
+                xla::HloSharding hlo_sharding,
+                xla::HloSharding::FromProto(std::move(sharding_proto)));
+            hlo_shardings[arg_attr.first - num_non_var] =
+                std::make_unique<xla::HloSharding>(std::move(hlo_sharding));
+          }
+        }
+      }
+      (*ifrt_model_context)->SetShardings(std::move(hlo_shardings));
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -586,6 +644,14 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     // since meta_graph_def will be moved.
     model_context.set_graph_def(nullptr);
     model_context.set_callable_options(nullptr);
+  }
+
+  if (options.graph_execution_options.enable_multihost_checkpoint_loading) {
+    if (!options.graph_execution_options.use_ifrt) {
+      return absl::UnimplementedError("This path requires IFRT to be enabled.");
+    }
+    TF_RETURN_IF_ERROR(AddHloShardingToIfrtModelContext(
+        meta_graph_def.graph_def(), model_context));
   }
 
   GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
