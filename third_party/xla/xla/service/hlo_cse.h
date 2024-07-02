@@ -34,14 +34,11 @@ class HloCSE : public HloModulePass {
   explicit HloCSE(bool is_layout_sensitive,
                   bool only_fusion_computations = false,
                   bool ignore_control_dependencies = false,
-                  bool only_scalars = false, bool is_sharding_sensitive = true,
-                  bool allow_compatible_sharding = false)
+                  bool only_scalars = false)
       : is_layout_sensitive_(is_layout_sensitive),
         only_fusion_computations_(only_fusion_computations),
         ignore_control_dependencies_(ignore_control_dependencies),
-        only_scalars_(only_scalars),
-        is_sharding_sensitive_(is_sharding_sensitive),
-        allow_compatible_sharding_(allow_compatible_sharding) {}
+        only_scalars_(only_scalars) {}
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
@@ -57,8 +54,6 @@ class HloCSE : public HloModulePass {
   const bool only_fusion_computations_;
   const bool ignore_control_dependencies_;
   const bool only_scalars_;
-  const bool is_sharding_sensitive_;
-  const bool allow_compatible_sharding_;
 };
 
 }  // namespace xla

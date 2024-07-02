@@ -15,23 +15,18 @@ limitations under the License.
 
 #include "xla/service/hlo_cse.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape_util.h"
@@ -41,18 +36,11 @@ namespace xla {
 
 namespace {
 
-template <bool kIsLayoutSensitive, bool kIsShardingSensitive>
+template <bool kIsLayoutSensitive>
 struct ConstantKey {
   template <typename H>
   friend H AbslHashValue(H h, const ConstantKey& key) {
     h = H::combine(std::move(h), key.domain);
-    if (kIsShardingSensitive) {
-      if (key.hlo->has_sharding()) {
-        h = H::combine(std::move(h), key.hlo->sharding());
-      } else {
-        h = H::combine(std::move(h), HloSharding::Replicate());
-      }
-    }
     return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
         std::move(h), key.hlo->literal());
   }
@@ -61,9 +49,7 @@ struct ConstantKey {
            (kIsLayoutSensitive ? Shape::Equal()
                                : Shape::Equal().IgnoreLayout())(
                lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive) &&
-           (!kIsShardingSensitive ||
-            hlo_instruction_utils::HasEquivalentShardings(*lhs.hlo, *rhs.hlo));
+           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive);
   }
   HloConstantInstruction* hlo;
   int64_t domain;
@@ -74,7 +60,7 @@ struct ConstantKey {
 //
 // While we're here, also combine identical iota instructions, since they need
 // similar treatment.
-template <bool kIsLayoutSensitive, bool kIsShardingSensitive>
+template <bool kIsLayoutSensitive>
 absl::StatusOr<bool> CombineConstants(HloComputation* computation,
                                       bool only_scalars) {
   // Populating the domain map is somewhat expensive -- only do it if there are
@@ -91,8 +77,7 @@ absl::StatusOr<bool> CombineConstants(HloComputation* computation,
   // Map from the literal hash of a constant or the shape hash of an iota all
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
-  absl::flat_hash_set<ConstantKey<kIsLayoutSensitive, kIsShardingSensitive>>
-      constants;
+  absl::flat_hash_set<ConstantKey<kIsLayoutSensitive>> constants;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -108,11 +93,9 @@ absl::StatusOr<bool> CombineConstants(HloComputation* computation,
 
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
-      auto insert_result = constants.insert(
-          ConstantKey<kIsLayoutSensitive, kIsShardingSensitive>{
-              constant_inst,
-              (domain_map != nullptr ? domain_map->GetDomainId(instruction)
-                                     : 0)});
+      auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
+          constant_inst,
+          (domain_map != nullptr ? domain_map->GetDomainId(instruction) : 0)});
       if (!insert_result.second) {
         match = insert_result.first->hlo;
       }
@@ -262,26 +245,9 @@ absl::StatusOr<bool> HloCSE::Run(
   };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
-    if (lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
-            *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
-            /*sharding_sensitive=*/false)) {
-      bool equal = true;
-      // Check if the shardings are equal or compatible.
-      if (is_sharding_sensitive_) {
-        equal =
-            hlo_instruction_utils::HasEquivalentShardings(*lhs.hlo, *rhs.hlo);
-        if (!equal && allow_compatible_sharding_ && lhs.hlo->has_sharding() &&
-            rhs.hlo->has_sharding()) {
-          HloSharding lhs_sharding = lhs.hlo->sharding();
-          equal |= (hlo_sharding_util::IsSubTilingOrEqualSharding(
-                        lhs.hlo->shape(), lhs_sharding, rhs.hlo->sharding()) ||
-                    hlo_sharding_util::IsSubTilingOrEqualSharding(
-                        lhs.hlo->shape(), rhs.hlo->sharding(), lhs_sharding));
-        }
-      }
-      return equal;
-    }
-    return false;
+    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
+        /*sharding_sensitive=*/true);
   };
 
   for (auto* computation : module->computations(execution_threads)) {
@@ -289,20 +255,11 @@ absl::StatusOr<bool> HloCSE::Run(
       continue;
     }
 
-    bool combined;
-    if (is_layout_sensitive_ && is_sharding_sensitive_) {
-      combined =
-          CombineConstants<true, true>(computation, only_scalars_).value();
-    } else if (is_layout_sensitive_ && !is_sharding_sensitive_) {
-      combined =
-          CombineConstants<true, false>(computation, only_scalars_).value();
-    } else if (!is_layout_sensitive_ && is_sharding_sensitive_) {
-      combined =
-          CombineConstants<false, true>(computation, only_scalars_).value();
-    } else {
-      combined =
-          CombineConstants<false, false>(computation, only_scalars_).value();
-    }
+    TF_ASSIGN_OR_RETURN(
+        bool combined,
+        is_layout_sensitive_
+            ? CombineConstants<true>(computation, only_scalars_)
+            : CombineConstants<false>(computation, only_scalars_));
     changed |= combined;
 
     // HLO instructions are grouped into equivalency classes by using the
@@ -331,17 +288,6 @@ absl::StatusOr<bool> HloCSE::Run(
       auto pair = representatives.insert(CseKey{instruction});
       if (!pair.second) {
         HloInstruction* equivalent_instruction = pair.first->hlo;
-        if (is_sharding_sensitive_ && allow_compatible_sharding_ &&
-            instruction->has_sharding() &&
-            equivalent_instruction->has_sharding() &&
-            instruction->sharding() != equivalent_instruction->sharding()) {
-          if (hlo_sharding_util::IsSubTilingOrEqualSharding(
-                  instruction->shape(), instruction->sharding(),
-                  equivalent_instruction->sharding())) {
-            equivalent_instruction->set_sharding(instruction->sharding());
-          }
-        }
-
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
         TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(

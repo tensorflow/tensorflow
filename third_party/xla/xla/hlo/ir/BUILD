@@ -28,7 +28,6 @@ cc_library(
         "hlo_frontend_attributes.cc",
         "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",
-        "hlo_instruction_utils.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
@@ -50,7 +49,6 @@ cc_library(
         "hlo_frontend_attributes.h",
         "hlo_input_output_alias_config.h",
         "hlo_instruction.h",
-        "hlo_instruction_utils.h",
         "hlo_instructions.h",
         "hlo_module.h",
         "hlo_module_metadata.h",
@@ -153,6 +151,16 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "hlo_instruction_utils",
+    srcs = ["hlo_instruction_utils.cc"],
+    hdrs = ["hlo_instruction_utils.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
