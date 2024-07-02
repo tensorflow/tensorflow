@@ -1,5 +1,13 @@
 # TensorFlow Lite Model Maker
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/models/modify/model_maker">
+  TensorFlow Lite Model Maker Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/model_maker">
+  MediaPipe Model Maker</a>.</p>
+</aside>
+
 ## Overview
 
 The TensorFlow Lite Model Maker library simplifies the process of training a

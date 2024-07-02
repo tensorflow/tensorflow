@@ -1,5 +1,13 @@
 # Integrate BERT natural language classifier
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 The Task Library `BertNLClassifier` API is very similar to the `NLClassifier`
 that classifies input text into different categories, except that this API is
 specially tailored for Bert related models that require Wordpiece and

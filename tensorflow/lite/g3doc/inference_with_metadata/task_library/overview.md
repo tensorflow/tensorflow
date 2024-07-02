@@ -1,5 +1,13 @@
 # TensorFlow Lite Task Library
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 TensorFlow Lite Task Library contains a set of powerful and easy-to-use
 task-specific libraries for app developers to create ML experiences with TFLite.
 It provides optimized out-of-box model interfaces for popular machine learning

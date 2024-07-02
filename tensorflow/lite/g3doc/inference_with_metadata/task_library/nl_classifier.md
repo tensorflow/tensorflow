@@ -1,5 +1,13 @@
 # Integrate Natural language classifier
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 The Task Library's `NLClassifier` API classifies input text into different
 categories, and is a versatile and configurable API that can handle most text
 classification models.

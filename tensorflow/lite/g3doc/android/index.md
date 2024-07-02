@@ -134,10 +134,18 @@ environment, which are described in the
 
 ### Development APIs and libraries {:#apis}
 
+<aside class="warning">
+  <p><b>Warning:</b> The
+  <a href="https://www.tensorflow.org/lite/inference_with_metadata/task_library/overview">
+  TensorFlow Lite Task Library</a> is deprecated and replaced by
+  <a href="https://ai.google.dev/edge/mediapipe/solutions/tasks">
+  MediaPipe Tasks</a>.</p>
+</aside>
+
 There are two main APIs you can use to integrate TensorFlow Lite machine
 learning models into your Android app:
 
-*   **[TensorFlow Lite Task API](../api_docs/java/org/tensorflow/lite/task/core/package-summary) (recommended)**
+*   [TensorFlow Lite Task API](../api_docs/java/org/tensorflow/lite/task/core/package-summary)
 *   [TensorFlow Lite Interpreter API](../api_docs/java/org/tensorflow/lite/InterpreterApi)
 
 The
