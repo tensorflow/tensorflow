@@ -66,6 +66,7 @@ class XlaLocalLaunchBase : public AsyncOpKernel {
   const XlaPlatformInfo platform_info_;
 
   bool has_ref_vars_;
+  bool is_weights_assume_frozen_ = false;
 };
 
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
