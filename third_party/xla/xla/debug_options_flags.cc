@@ -395,6 +395,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  // Custom "sub-parser" lambda for legacy_command_buffer_custom_call_targets.
+  auto setter_for_legacy_command_buffer_custom_call_targets =
+      [debug_options](std::string comma_separated_values) {
+        for (const auto& target : std::vector<std::string>(
+                 absl::StrSplit(comma_separated_values, ','))) {
+          debug_options->add_legacy_command_buffer_custom_call_targets(target);
+        }
+        return true;
+      };
+
   // Custom "sub-parser" lambda for xla_gpu_ptx_file.
   auto setter_for_xla_gpu_ptx_file = [debug_options](std::string value) {
     debug_options->add_xla_gpu_ptx_file(value);
@@ -1216,6 +1226,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " can either be a list of command types or a list of command types with"
       " + and - as prefix, which indicate adding or removing a command type"
       " to/from the default list."));
+
+  flag_list->push_back(
+      tsl::Flag("legacy_command_buffer_custom_call_targets",
+                setter_for_legacy_command_buffer_custom_call_targets, "",
+                "Comma-separated list of custom call targets with legacy "
+                "registry API (non FFI API), whose targets supports lowering "
+                "to command buffer custom command, i.e, custom call target "
+                "supports cuda-graph capturing for CUDA devices."));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_min_graph_size",
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),

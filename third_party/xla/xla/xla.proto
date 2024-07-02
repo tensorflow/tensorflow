@@ -839,7 +839,14 @@ message DebugOptions {
   // which is good for cuda-graph perf.
   bool xla_gpu_temp_buffer_use_separate_color = 312;
 
-  // Next id: 314
+  // Custom call targets with legacy registry API (non FFI API),
+  // that support recording to command buffer custom command,
+  // i.e, custom call target supports cuda-graph capturing for CUDA devices.
+  // This flag is read if CUSTOM_CALL command type is recorded into
+  // command buffer.
+  repeated string legacy_command_buffer_custom_call_targets = 314;
+
+  // Next id: 315
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
