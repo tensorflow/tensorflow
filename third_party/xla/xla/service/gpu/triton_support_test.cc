@@ -39,14 +39,14 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 using ::testing::Not;
-using ::testing::status::IsOk;
+using ::tsl::testing::IsOk;
 
 std::vector<xla::PrimitiveType> AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
