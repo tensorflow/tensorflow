@@ -62,6 +62,9 @@ bool BufferModelLoader::InitInternal() {
   }
   model_ = FlatBufferModel::VerifyAndBuildFromBuffer(caller_owned_buffer_,
                                                      model_size_);
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  model_ = FlatBufferModel::ByteConvertModel(std::move(model_));
+#endif
   return true;
 }
 
