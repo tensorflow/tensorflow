@@ -5534,6 +5534,26 @@ the behavior can be unexpected:
 
 This operation has a gradient and thus allows for training `min` and `max`
 values.
+
+>>> constant_input = tf.constant([[1.2, -0.3, 0.7], [2.1, 0.5, -1.0]], dtype=tf.float32)
+>>>
+>>> min_val = -0.5
+>>> max_val = 0.8
+>>> num_bits = 8
+>>> narrow_range = False #False:for the quantization range [0; 2^num_bits - 1]
+>>>
+>>> quantized_data = tf.quantization.fake_quant_with_min_max_vars(
+...   inputs=constant_input, min=min_val, max=max_val, num_bits=num_bits, narrow_range=narrow_range
+... )
+>>>
+>>> print("Input:\n", constant_input.numpy())
+Input:
+[[ 1.2 -0.3  0.7]
+[ 2.1  0.5 -1. ]]
+>>> print("Output:\n", quantized_data.numpy())
+Output:
+[[ 0.8003921 -0.3007843  0.6984313]
+[ 0.8003921  0.4996078 -0.4996078]]
   }];
 
   let arguments = (ins
@@ -15398,7 +15418,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned
+for num_segments more than the expected output size, last elements are assigned 
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15568,7 +15588,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned
+for num_segments more than the expected output size, last elements are assigned 
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15674,7 +15694,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is,
+With inconsistent num_segments, the op still runs. only difference is, 
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.
