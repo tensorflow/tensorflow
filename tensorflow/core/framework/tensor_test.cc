@@ -19,21 +19,34 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/ConfigureVectorization.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/Tensor.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h"  // from @eigen_archive
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/float8.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/framework/fixedpoint_types.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 

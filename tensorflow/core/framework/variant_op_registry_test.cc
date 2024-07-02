@@ -14,7 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include "tensorflow/core/lib/strings/str_util.h"
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 
@@ -22,12 +34,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "tensorflow/core/framework/variant_op_registry.h"
-
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

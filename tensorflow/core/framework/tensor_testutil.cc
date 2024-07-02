@@ -17,7 +17,14 @@ limitations under the License.
 
 #include <cmath>
 
+#include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
