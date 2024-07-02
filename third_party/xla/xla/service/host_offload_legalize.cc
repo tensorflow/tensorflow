@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -44,6 +45,8 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+namespace m = match;
 
 constexpr std::array<HloOpcode, 2> kUsersOpcodes = {HloOpcode::kSlice,
                                                     HloOpcode::kDynamicSlice};
@@ -132,6 +135,19 @@ absl::StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
       // original.
       for (int i = 1; i < uses.size(); ++i) {
         const HloUse& use = uses[i];
+        if (use.instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
+          continue;
+        }
+
+        // We can skip duplication if the DUS user is not offloaded.
+        const auto custom_call_pattern = m::CustomCall(
+            {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+        if (!Match(use.instruction->mutable_operand(1),
+                   m::AnyOf<HloInstruction>(m::Reshape(custom_call_pattern),
+                                            m::Bitcast(custom_call_pattern),
+                                            custom_call_pattern))) {
+          continue;
+        }
         HloInstruction* new_broadcast =
             instruction->parent()->AddInstruction(instruction->Clone());
         VLOG(5) << "New broadcast " << new_broadcast->ToString();

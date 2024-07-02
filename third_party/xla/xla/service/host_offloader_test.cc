@@ -1422,6 +1422,79 @@ ENTRY main {
   TestShapeHasMemorySpace(tanh->shape(), Layout::kDefaultMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, BasicDusDsWithoutRedundantBroadcastDuplications) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  tanh = f32[2,2048,2048] tanh(broadcast)
+  sin = f32[2,2048,2048] sine(broadcast)
+  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // "AllocateBuffer"  param_0  _...
+  //               |  /        /
+  //           dynamic-update-slice  _...
+  //                          |     /
+  //                       dynamic-slice
+  HloInstruction* param;
+  HloInstruction* allocate_buffer;
+  HloInstruction* dynamic_update_slice;
+  HloInstruction* dynamic_slice;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(
+                  &dynamic_slice,
+                  m::DynamicUpdateSlice(
+                      &dynamic_update_slice,
+                      m::CustomCall(&allocate_buffer, {"AllocateBuffer"}),
+                      m::Parameter(&param, 0), m::Op(), m::Op(), m::Op()),
+                  m::Op(), m::Op(), m::Op())));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(allocate_buffer->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_update_slice->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(dynamic_slice->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+
+  // Look for the tanh and make sure that it still uses the original broadcast.
+  HloInstruction* tanh = nullptr;
+  HloInstruction* sine = nullptr;
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kTanh) {
+      tanh = instruction;
+    } else if (instruction->opcode() == HloOpcode::kSin) {
+      sine = instruction;
+    }
+  }
+  ASSERT_NE(tanh, nullptr);
+  ASSERT_NE(sine, nullptr);
+  HloInstruction* broadcast;
+  EXPECT_THAT(tanh, GmockMatch(m::Tanh(m::Broadcast(&broadcast))));
+  EXPECT_THAT(sine, GmockMatch(m::Sin(m::Broadcast(&broadcast))));
+  // Check that the tanh and sine use the same broadcast (not a duplicate.)
+  EXPECT_TRUE(sine->operand(0) == tanh->operand(0));
+
+  TestShapeHasMemorySpace(broadcast->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(tanh->shape(), Layout::kDefaultMemorySpace);
+}
+
 TEST_F(HostOffloaderTest, BasicDusDsBitcastBeforeDus) {
   const std::string& hlo_string = R"(
 HloModule my_module
