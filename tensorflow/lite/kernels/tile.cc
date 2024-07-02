@@ -237,6 +237,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     case kTfLiteUInt8:
       Tile<int8_t>(*(input->dims), input, multipliers, output);
       break;
+    case kTfLiteInt16:
+      Tile<int16_t>(*(input->dims), input, multipliers, output);
+      break;
     case kTfLiteFloat32:
     case kTfLiteInt32:
       Tile<int32_t>(*(input->dims), input, multipliers, output);
@@ -284,6 +287,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        "Multipliers of type '%s' are not supported by tile.",
                        TfLiteTypeGetName(multipliers->type));
     return kTfLiteError;
+  }
+
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                      output->params.zero_point);
+  }
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
   }
 
   if (IsConstantOrPersistentTensor(multipliers)) {
