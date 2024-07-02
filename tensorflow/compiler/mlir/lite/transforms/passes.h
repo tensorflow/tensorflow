@@ -237,6 +237,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass();
 // so redudant ones may be grouped and removed.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePushTransposeThroughEwisePass();
 
+// Create a pass that canonicalize the boundary values.
+std::unique_ptr<OperationPass<ModuleOp>> CreateCanonicalizeBoundaryValuePass();
+
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();

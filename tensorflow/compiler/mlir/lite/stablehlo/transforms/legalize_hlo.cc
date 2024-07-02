@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -1998,7 +1999,7 @@ class ConvertReduceOpToTfMax
     if (mlir::isa<FloatType>(type)) {
       APFloat const_value(.0);
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
-          !const_value.isInfinity() || !const_value.isNegative())
+          !TFL::IsNegInfiniteValue(const_value))
         return failure();
     } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       APInt const_value;
@@ -2023,7 +2024,7 @@ class ConvertReduceOpToTfMin
     if (mlir::isa<FloatType>(type)) {
       APFloat const_value(.0);
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
-          !const_value.isInfinity() || const_value.isNegative())
+          !TFL::IsPosInfiniteValue(const_value))
         return failure();
     } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
       APInt const_value;
@@ -2081,7 +2082,7 @@ class ConvertReduceOpToTfArgmax
       return false;
     if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
-      return value.isNegative() && value.isInfinity();
+      return TFL::IsNegInfiniteValue(value);
     } else if (element_type.isInteger(1)) {
       auto value = *attr.value_begin<APInt>();
       return value.isZero();
@@ -2105,7 +2106,7 @@ class ConvertReduceOpToTfArgmin
       return false;
     if (mlir::isa<FloatType>(element_type)) {
       auto value = *attr.value_begin<APFloat>();
-      return !value.isNegative() && value.isInfinity();
+      return TFL::IsPosInfiniteValue(value);
     } else if (element_type.isInteger(1)) {
       auto value = *attr.value_begin<APInt>();
       return value.isZero();
@@ -2596,14 +2597,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     APFloat element = float_value.getValues<APFloat>()[0];
-    if (!element.isInfinity()) {
-      return false;
-    }
-    if (!element.isNegative()) {
-      return false;
-    }
-
-    return true;
+    return TFL::IsNegInfiniteValue(element);
   }
 
   LogicalResult replaceWithMaxPool(mhlo::ReduceWindowOp op, Value input,

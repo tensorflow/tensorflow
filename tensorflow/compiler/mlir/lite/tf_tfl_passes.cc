@@ -500,6 +500,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       pass_manager->addPass(mlir::TFL::CreateReduceTypePrecisionPass());
     }
 
+    // This pass should alway run before the end of the model conversion but
+    // not after the CreateSplitMergedOperandsPass below.
+    if (pass_config.canonicalizing_inf_as_min_max_float)
+      pass_manager->addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
+
     // This pass should be always at the end of the model
     // conversion (even after quantization). Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
@@ -514,7 +519,12 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // model dialect.
     pass_manager->addPass(
         mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
+  } else {
+    // This pass should alway run before the end of the model conversion.
+    if (pass_config.canonicalizing_inf_as_min_max_float)
+      pass_manager->addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
   }
+
   if (pass_config.unfold_large_splat_constant) {
     pass_manager->addPass(mlir::TFL::CreateUnfoldLargeSplatConstantPass());
   }

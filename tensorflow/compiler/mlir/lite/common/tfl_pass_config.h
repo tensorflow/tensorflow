@@ -102,6 +102,10 @@ struct PassConfig {
 
   // Enables the attempt to directly lower composites into tflite ops.
   bool enable_composite_direct_lowering = true;
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  bool canonicalizing_inf_as_min_max_float = true;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

@@ -476,3 +476,8 @@ def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
+def CanonicalizeBoundaryValuePass : Pass<"canonicalize-boundary-value", "mlir::ModuleOp"> {
+  let summary = "Canonicalize the IR representations of boundary values";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::arith::ArithDialect"];
+  let constructor = "CreateCanonicalizeBoundaryValuePass()";
+}
