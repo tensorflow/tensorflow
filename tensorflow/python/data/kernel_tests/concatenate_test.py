@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.concatenate()."""
 from absl.testing import parameterized
 import numpy as np
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -246,6 +247,22 @@ class ConcatenateRandomAccessTest(test_base.DatasetTestBase,
       self.assertAllEqual(random_access.at(concatenated, index=i), i)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(concatenated, index=5))
+
+
+class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+  """Tests for global shuffling of tf.data datasets."""
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffledOutput(self):
+    dataset1 = dataset_ops.Dataset.range(0, 5)
+    dataset2 = dataset_ops.Dataset.range(5, 17)
+
+    dataset = dataset1.concatenate(dataset2)
+
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    output = self.getDatasetOutput(dataset, requires_initialization=True)
+    self.assertCountEqual(output, range(0, 17))
 
 
 if __name__ == "__main__":

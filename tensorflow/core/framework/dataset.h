@@ -91,6 +91,9 @@ using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
+// Notes:
+// * `absl::OutOfRange` indicates end of sequence.
+// * `absl::NotFoundError` indicates we should skip this element.
 using IndexMapperFn = std::function<absl::StatusOr<size_t>(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
