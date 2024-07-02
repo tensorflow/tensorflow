@@ -245,10 +245,11 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       side_output_indices.push_back(input_indices(root));
-      side_outputs.append(mlir_converter::ProvideParameter(
+      ValueRange param_values = mlir_converter::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
-          builder));
+          builder);
+      side_outputs.append(param_values.begin(), param_values.end());
     }
 
     for (const auto& [value, indices, output] :

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -38,7 +39,7 @@ namespace gpu {
 namespace mlir_converter {
 
 using OperandProvider =
-    std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
+    std::function<absl::StatusOr<llvm::SmallVector<mlir::Value, 1>>(
         const HloInstruction* instr, int index, mlir::ValueRange indices)>;
 
 // Emits MLIR to produce the value of a parameter. The parameter must be located
@@ -46,7 +47,7 @@ using OperandProvider =
 // searching in 'computation' for the subgraph that contains 'instr'. If
 // 'instr' does not belong to 'computation', the caller subgraph can be passed
 // directly.
-llvm::SmallVector<mlir::Value> ProvideParameter(
+mlir::ValueRange ProvideParameter(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
@@ -55,7 +56,7 @@ llvm::SmallVector<mlir::Value> ProvideParameter(
 
 // Emits MLIR to produce the values of a range of parameters. The parameters
 // must all be scalars. The parameters are all evaluated at the same indices.
-llvm::SmallVector<mlir::Value> ProvideParameterRange(
+llvm::SmallVector<mlir::Value, 2> ProvideParameterRange(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
@@ -83,7 +84,7 @@ absl::Status SubgraphToMlirFunction(
 
 mlir::Value UnrealizedConversionCast(mlir::Type type, mlir::Value value,
                                      mlir::ImplicitLocOpBuilder& b);
-mlir::SmallVector<mlir::Value> UnrealizedConversionCast(
+mlir::SmallVector<mlir::Value, 2> UnrealizedConversionCast(
     mlir::TypeRange types, mlir::ValueRange values,
     mlir::ImplicitLocOpBuilder& b);
 
@@ -93,10 +94,10 @@ mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
                             mlir::ImplicitLocOpBuilder& b);
 
 // Creates an `apply_indexing` op for the given map.
-llvm::SmallVector<mlir::Value> ApplyIndexing(const IndexingMap& map,
-                                             mlir::ValueRange dims,
-                                             mlir::ValueRange symbols,
-                                             mlir::ImplicitLocOpBuilder& b);
+llvm::SmallVector<mlir::Value, 3> ApplyIndexing(const IndexingMap& map,
+                                                mlir::ValueRange dims,
+                                                mlir::ValueRange symbols,
+                                                mlir::ImplicitLocOpBuilder& b);
 
 // Checks all the constraints and dimension ranges in the map.
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
@@ -117,7 +118,7 @@ mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
 //   inits will be initialized with a vector splat. Passing a vector init is
 //   supported.
 // - Tensor arguments and results are unaffected.
-llvm::SmallVector<mlir::Value> EmitLoopNest(
+mlir::ValueRange EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
     mlir::function_ref<llvm::SmallVector<mlir::Value>(
@@ -128,7 +129,7 @@ llvm::SmallVector<mlir::Value> EmitLoopNest(
 
 // Same as EmitLoopNest, but the body building function can return an error
 // which gets returned from EmitLoopNestWithStatus.
-absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitLoopNestWithStatus(
+absl::StatusOr<mlir::ValueRange> EmitLoopNestWithStatus(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
     mlir::function_ref<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
