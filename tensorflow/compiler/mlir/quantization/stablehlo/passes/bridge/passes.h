@@ -18,6 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+
 #define GEN_PASS_DECL
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
