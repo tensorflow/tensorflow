@@ -18,10 +18,12 @@ cc_library(
     hdrs = ["error_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -32,10 +34,9 @@ cc_test(
         ":error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
