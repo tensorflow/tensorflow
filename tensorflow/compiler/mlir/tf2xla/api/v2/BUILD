@@ -159,6 +159,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2/testing:utils",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/status",
@@ -217,6 +218,7 @@ tf_cc_test(
     deps = [
         ":tf_dialect_to_executor",
         "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2/testing:utils",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/status",
