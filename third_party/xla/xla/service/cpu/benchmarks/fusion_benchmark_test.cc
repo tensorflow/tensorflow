@@ -62,6 +62,82 @@ static void BM_FusionF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_FusionF32_2(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule fusion_f32_2_$d0
+
+    ENTRY e {
+      p0 = f32[$d0,1] parameter(0)
+      p1 = f32[$d0,1] parameter(1)
+      p2 = f32[$d0,1] parameter(2)
+      p3 = s32[$d0,1] parameter(3)
+      p4 = s32[$d0,1] parameter(4)
+      p5 = f32[7,6] parameter(5)
+      p6 = f32[7,3] parameter(6)
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(7)
+      c2 = s32[] constant(6)
+      c3 = f32[] constant(nan)
+      bcast0 = s32[$d0,1] broadcast(c0), dimensions={}
+      cmp0 = pred[$d0,1] compare(p3, bcast0), direction=LT
+      bcast1 = s32[$d0,1] broadcast(c1), dimensions={}
+      add0 = s32[$d0,1] add(p3, bcast1)
+      select0 = s32[$d0,1] select(cmp0, add0, p3)
+      reshape0 = s32[$d0,1,1] reshape(select0)
+      bcast2 = s32[$d0,1,1] broadcast(c0), dimensions={}
+      cmp1 = pred[$d0,1,1] compare(reshape0, bcast2), direction=GE
+      bcast3 = s32[$d0,1,1] broadcast(c2), dimensions={}
+      cmp2 = pred[$d0,1,1] compare(reshape0, bcast3), direction=LE
+      and0 = pred[$d0,1,1] and(cmp1, cmp2)
+      reshape1 = pred[$d0] reshape(and0)
+      bcast4 = pred[$d0,1,6] broadcast(reshape1), dimensions={0}
+      gather0 = f32[$d0,1,6] gather(p5, reshape0), offset_dims={2},
+        collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,6}
+      bcast5 = f32[$d0,1,6] broadcast(c3), dimensions={}
+      select1 = f32[$d0,1,6] select(bcast4, gather0, bcast5)
+      reshape2 = f32[$d0,6] reshape(select1)
+      cmp3 = pred[$d0,1] compare(p4, bcast0), direction=LT
+      add1 = s32[$d0,1] add(p4, bcast1)
+      select2 = s32[$d0,1] select(cmp3, add1, p4)
+      reshape3 = s32[$d0,1,1] reshape(select2)
+      cmp4 = pred[$d0,1,1] compare(reshape3, bcast2), direction=GE
+      cmp5 = pred[$d0,1,1] compare(reshape3, bcast3), direction=LE
+      and1 = pred[$d0,1,1] and(cmp4, cmp5)
+      reshape4 = pred[$d0] reshape(and1)
+      bcast6 = pred[$d0,1,3] broadcast(reshape4), dimensions={0}
+      gather1 = f32[$d0,1,3] gather(p6, reshape3), offset_dims={2},
+        collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+        slice_sizes={1,3}
+      bcast7 = f32[$d0,1,3] broadcast(c3), dimensions={}
+      select3 = f32[$d0,1,3] select(bcast6, gather1, bcast7)
+      reshape5 = f32[$d0,3] reshape(select3)
+      ROOT concat = f32[$d0,12] concatenate(p0, p1, p2, reshape2, reshape5),
+        dimensions={1}
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape0 = ShapeUtil::MakeShape(F32, {d0, 1});
+  auto shape1 = ShapeUtil::MakeShape(S32, {d0, 1});
+  auto shape2 = ShapeUtil::MakeShape(F32, {7, 6});
+  auto shape3 = ShapeUtil::MakeShape(F32, {7, 3});
+
+  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape0, &engine, 1.0f, 0.1f);
+  auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape0, &engine, 1.0f, 0.1f);
+  auto p2 = *LiteralUtil::CreateRandomLiteral<F32>(shape0, &engine, 1.0f, 0.1f);
+  auto p3 = *LiteralUtil::CreateRandomLiteral<S32>(shape1, &engine, 1.0f, 0.1f);
+  auto p4 = *LiteralUtil::CreateRandomLiteral<S32>(shape1, &engine, 1.0f, 0.1f);
+  auto p5 = *LiteralUtil::CreateRandomLiteral<F32>(shape2, &engine, 1.0f, 0.1f);
+  auto p6 = *LiteralUtil::CreateRandomLiteral<F32>(shape3, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0, &p1, &p2, &p3, &p4, &p5, &p6};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
 static void BM_BcastFusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
@@ -122,6 +198,13 @@ BENCHMARK(BM_FusionF32)
     ->Arg(1024)
     ->Arg(8192)
     ->Arg(16384);
+
+BENCHMARK(BM_FusionF32_2)
+    ->MeasureProcessCPUTime()
+    ->Arg(40)
+    ->Arg(80)
+    ->Arg(160)
+    ->Arg(240);
 
 BENCHMARK(BM_BcastFusionF32)
     ->MeasureProcessCPUTime()
