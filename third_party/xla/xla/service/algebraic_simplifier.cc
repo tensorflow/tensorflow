@@ -5986,6 +5986,83 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     }
   }
 
+  // Rewrite reshape of broadcast into reduce-window if the reshape merely
+  // combines dimensions introduced by the broadcast with dimensions of the
+  // broadcast's operand (b/340966833)
+  if (operand->opcode() == HloOpcode::kBroadcast &&
+      operand->operand(0)->shape().rank() == reshape->shape().rank() &&
+      !ShapeUtil::HasDegenerateDimensions(operand->operand(0)->shape()) &&
+      reshape->shape().rank() >= 2) {
+    // Create a map that sends dimensions of broadcast to the corresponding
+    // dimensions of the reshape
+    auto maybe_bitcast_map =
+        ComputeBitcastDimMap(reshape->shape(), operand->shape());
+    if (maybe_bitcast_map.has_value()) {
+      auto bitcast_map = maybe_bitcast_map.value();
+      // If every dimension in the broadcast's operand corresponds to the same
+      // dimension in the reshape's shape, then we can do the rewrite
+      bool all_dims_match = true;
+      for (int64_t i = 0; i < operand->operand(0)->shape().rank(); ++i) {
+        if (bitcast_map[operand->dimensions(i)][0] != i) {
+          all_dims_match = false;
+          break;
+        }
+      }
+      if (all_dims_match) {
+        // We now construct the window for the reduce-window. For each dimension
+        // in the broadcast's operand's shape, deduce the corresponding
+        // dimension in the reshape's shape. From these, compute how much
+        // dilation is needed
+        Window window;
+        for (int64_t i = 0; i < operand->operand(0)->shape().rank(); ++i) {
+          int64_t reshape_dim = bitcast_map[operand->dimensions(i)][0];
+          int64_t window_size = 1;
+          int64_t base_dilation = 1;
+          int64_t window_dilation = 1;
+
+          for (int64_t j = 0; j < operand->shape().rank(); ++j) {
+            if (operand->shape().dimensions(j) != 1 &&
+                !absl::c_linear_search(operand->dimensions(), j) &&
+                bitcast_map[j][0] == reshape_dim) {
+              if (j < operand->dimensions(i)) {
+                window_dilation *=
+                    operand->shape().dimensions(operand->dimensions(i));
+              } else {
+                base_dilation *= operand->shape().dimensions(j);
+              }
+              window_size *= operand->shape().dimensions(j);
+            }
+          }
+          // Set size, base dilation, and padding of window dimension
+          auto* window_dim = window.add_dimensions();
+          window_dim->set_size(window_size);
+          window_dim->set_stride(1);
+          window_dim->set_window_dilation(window_dilation);
+          window_dim->set_base_dilation(base_dilation);
+
+          int64_t symmetric_padding = window_dilation * (window_size - 1);
+          window_dim->set_padding_low(symmetric_padding);
+          window_dim->set_padding_high(symmetric_padding);
+        }
+        if (window_util::HasDilation(window)) {
+          // Create constant zero and add computation, then reduce-window Hlo to
+          // replace the reshape
+          HloInstruction* zero =
+              reshape->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::Zero(reshape->shape().element_type())));
+          HloComputation* add_computation =
+              GetOrCreateScalarAddComputation(reshape->shape().element_type());
+          TF_ASSIGN_OR_RETURN(
+              HloInstruction * reduce_window,
+              MakeReduceWindowHlo(operand->mutable_operand(0), zero, window,
+                                  add_computation));
+          VLOG(10) << "Reordering reshape of broadcast to reduce window";
+          return ReplaceInstruction(reshape, reduce_window);
+        }
+      }
+    }
+  }
+
   // Make this a bitcast if possible.
   if (HloInstruction* bitcast_operand =
           BitcastingOperandOfReshapeOrCopyChain(reshape, options_)) {
