@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
