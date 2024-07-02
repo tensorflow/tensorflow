@@ -3,10 +3,10 @@ autoconf
 automake
 build-essential
 ca-certificates
-llvm-17
-clang-17
+llvm-18
+clang-18
 clang-format-12
-lld-17
+lld-18
 colordiff
 curl
 ffmpeg
@@ -18,7 +18,7 @@ libcurl3-dev
 libcurl4-openssl-dev
 libfreetype6-dev
 libhdf5-serial-dev
-libomp-17-dev
+libomp-18-dev
 libssl-dev
 libtool
 libxml2-dev
@@ -26,8 +26,8 @@ libxslt1-dev
 libzmq3-dev
 mlocate
 moreutils
-openjdk-11-jdk
-openjdk-11-jre-headless
+openjdk-21-jdk
+openjdk-21-jre-headless
 openssl
 patchelf
 pkg-config
