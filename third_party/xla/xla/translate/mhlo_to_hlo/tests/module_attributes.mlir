@@ -100,3 +100,26 @@ module @ModuleWithFrontendAttributes attributes {
     func.return %arg0 : tensor<1xf32>
   }
 }
+
+
+
+// -----
+
+module attributes {
+//      CHECK:   input_output_alias {
+// CHECK-NEXT:    entries {
+// CHECK-NEXT:      output_shape_index: 0
+// CHECK-NEXT:      kind: MAY_ALIAS
+// CHECK-NEXT:    }
+// CHECK-NEXT:    entries {
+// CHECK-NEXT:      output_shape_index: 1
+// CHECK-NEXT:      parameter_number: 1
+// CHECK-NEXT:      kind: MAY_ALIAS
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+  mhlo.input_output_alias = ["output_shape_index: 0 kind: MAY_ALIAS ", "output_shape_index: 1 parameter_number: 1 kind: MAY_ALIAS "]
+} {
+  func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32> ) -> (tensor<1xf32>, tensor<1xf32>) {
+    func.return %arg0, %arg1: tensor<1xf32>, tensor<1xf32>
+  }
+}

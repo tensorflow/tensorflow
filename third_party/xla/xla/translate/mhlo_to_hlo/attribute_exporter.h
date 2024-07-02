@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
@@ -59,6 +60,9 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // first, as serialized protobuf, and then as prettyprinted representation.
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
+
+std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
+    llvm::ArrayRef<mlir::Attribute> aliasing);
 
 DotDimensionNumbers ConvertDotDimensionNumbers(
     mlir::mhlo::DotDimensionNumbersAttr input);

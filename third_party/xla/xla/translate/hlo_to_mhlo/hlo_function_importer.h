@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -296,6 +297,12 @@ class HloFunctionImporter {
 
   bool flatten_computation_args_result_;
 };
+
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO C++ input_output_alias_config.
+// Always succeeds and returns a non-empty attribute.
+mlir::Attribute ConvertInputOutputAlias(const HloInputOutputAliasConfig& alias,
+                                        mlir::Builder* builder);
 
 // Returns a StringAttr that carries a prettyprinted representation of the
 // given HLO C++ sharding.

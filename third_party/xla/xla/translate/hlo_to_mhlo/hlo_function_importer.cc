@@ -53,9 +53,11 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -2462,6 +2464,20 @@ absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
     return absl::OkStatus();
   }
   return Internal("Couldn't convert layout.");
+}
+
+mlir::Attribute ConvertInputOutputAlias(const HloInputOutputAliasConfig& alias,
+                                        mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute> element_attrs;
+  HloInputOutputAliasProto alias_proto = alias.ToProto();
+  for (const HloInputOutputAliasProto::AliasEntryProto& entry :
+       alias_proto.entries()) {
+    std::string output;
+    proto2::TextFormat::PrintToString(entry, &output);
+    absl::c_replace(output, '\n', ' ');
+    element_attrs.push_back(builder->getStringAttr(output));
+  }
+  return builder->getArrayAttr(element_attrs);
 }
 
 mlir::Attribute ConvertSharding(const HloSharding& sharding,

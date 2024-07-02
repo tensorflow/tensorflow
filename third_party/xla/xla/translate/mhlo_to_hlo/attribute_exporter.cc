@@ -204,6 +204,20 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   return std::nullopt;
 }
 
+std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
+    llvm::ArrayRef<mlir::Attribute> aliasing) {
+  if (aliasing.empty()) return std::nullopt;
+  xla::HloInputOutputAliasProto input_output_alias_proto;
+  for (auto attr : aliasing) {
+    mlir::StringRef entry_str = mlir::cast<mlir::StringAttr>(attr).getValue();
+    HloInputOutputAliasProto::AliasEntryProto entry;
+    if (proto2::TextFormat::ParseFromString(entry_str.str(), &entry)) {
+      input_output_alias_proto.add_entries()->Swap(&entry);
+    }
+  }
+  return input_output_alias_proto;
+}
+
 DotDimensionNumbers ConvertDotDimensionNumbers(
     mlir::mhlo::DotDimensionNumbersAttr input) {
   DotDimensionNumbers output;
