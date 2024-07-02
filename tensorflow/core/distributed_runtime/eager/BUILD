@@ -135,7 +135,6 @@ tf_cc_test(
         ":cluster_function_library_runtime",
         ":eager_service_impl",
         ":remote_mgr",
-        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
