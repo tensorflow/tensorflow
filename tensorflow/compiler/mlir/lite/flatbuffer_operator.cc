@@ -92,6 +92,8 @@ std::string mlir::GetMlirOpNameFromOpCode(
     const tflite::OperatorCodeT& op_code) {
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
   if (builtin_code == tflite::BuiltinOperator_IF) {
+    // TODO(b/137395003): Import if ops as `tfl.functional_if` once
+    // it has been fully integrated.
     return std::string("tf.If");
   }
 
