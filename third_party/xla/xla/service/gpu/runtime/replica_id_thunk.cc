@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 
 #include "absl/status/status.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "tsl/platform/statusor.h"
 

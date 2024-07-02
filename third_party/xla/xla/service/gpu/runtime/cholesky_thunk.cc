@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/cusolver_context.h"
 #include "xla/service/gpu/make_batch_pointers.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
