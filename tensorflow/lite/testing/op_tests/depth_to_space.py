@@ -24,7 +24,7 @@ def make_depth_to_space_tests(options):
   """Make a set of tests to do depth_to_space."""
 
   test_parameters = [{
-      "dtype": [tf.int32, tf.uint8, tf.int64],
+      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
       "input_shape": [[2, 3, 4, 16]],
       "block_size": [2, 4],
       "fully_quantize": [False],
@@ -32,7 +32,8 @@ def make_depth_to_space_tests(options):
       "dtype": [tf.float32],
       "input_shape": [[2, 3, 4, 16]],
       "block_size": [2, 4],
-      "fully_quantize": [True, False],
+      "fully_quantize": [True],
+      "quant_16x8": [False, True],
   }]
 
   def build_graph(parameters):

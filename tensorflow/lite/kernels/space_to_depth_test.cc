@@ -49,10 +49,33 @@ class SpaceToDepthOpModel : public SingleOpModel {
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
- private:
+ protected:
   int input_;
   int output_;
 };
+
+class QuantizedSpaceToDepthOpModel : public SpaceToDepthOpModel {
+ public:
+  using SpaceToDepthOpModel::SpaceToDepthOpModel;
+
+  template <typename T>
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+};
+
+template <typename integer_type>
+float GetTolerance(float min, float max) {
+  float kQuantizedStep =
+      (max - min) / (std::numeric_limits<integer_type>::max() -
+                     std::numeric_limits<integer_type>::min());
+  return kQuantizedStep;
+}
 
 #if GTEST_HAS_DEATH_TEST
 TEST(SpaceToDepthOpModel, BadBlockSize) {
@@ -86,6 +109,15 @@ TEST(SpaceToDepthOpModel, int8) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(SpaceToDepthOpModel, int16) {
+  SpaceToDepthOpModel m({TensorType_INT16, {1, 2, 2, 2}}, 2);
+  m.SetInput<int16_t>({1, 2, 3, 4, 5, 6, 7, 8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 8));
+}
+
 TEST(SpaceToDepthOpModel, Int32) {
   SpaceToDepthOpModel m({TensorType_INT32, {1, 2, 2, 3}}, 2);
   m.SetInput<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
@@ -103,6 +135,35 @@ TEST(SpaceToDepthOpModel, Int64) {
               ElementsAreArray(
                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 4));
+}
+
+template <typename integer_dtype>
+void QuantizedSpaceToDepthOpModelTest() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  float kQuantizedTolerance = GetTolerance<integer_dtype>(-5, 5);
+  QuantizedSpaceToDepthOpModel m(
+      {GetTensorType<integer_dtype>(), {1, 2, 2, 1}, 5 * kMin, 5 * kMax}, 2);
+  m.SetInput<integer_dtype>({1.4, 2.3, 3.2, 4.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(
+                  ArrayFloatNear({1.4, 2.3, 3.2, 4.1}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(QuantizedSpaceToDepthOpModel, QuantUint8) {
+  QuantizedSpaceToDepthOpModelTest<uint8_t>();
+}
+
+TEST(QuantizedSpaceToDepthOpModel, QuantInt8) {
+  QuantizedSpaceToDepthOpModelTest<int8_t>();
+}
+
+TEST(QuantizedSpaceToDepthOpModel, QuantInt16) {
+  QuantizedSpaceToDepthOpModelTest<int16_t>();
 }
 
 }  // namespace

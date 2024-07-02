@@ -362,7 +362,11 @@ TEST(OpVersionTest, VersioningStridedSliceTest) {
 }
 
 TEST(OpVersionTest, VersioningSpaceToDepthTest) {
-  SimpleVersioningTest(BuiltinOperator_SPACE_TO_DEPTH);
+  SimpleVersioningTestExtended(BuiltinOperator_SPACE_TO_DEPTH);
+}
+
+TEST(OpVersionTest, VersioningDepthToSpaceTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_DEPTH_TO_SPACE);
 }
 
 TEST(OpVersionTest, VersioningSliceTest) {

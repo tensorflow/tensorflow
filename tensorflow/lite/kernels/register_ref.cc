@@ -333,8 +333,10 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE_REF());
+             /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE_REF(),
+             /* min_version = */ 1,
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
              /* max_version = */ 6);
