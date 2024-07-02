@@ -24,6 +24,7 @@ limitations under the License.
 #include "json/json.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/convert/trace_container.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 #include "tsl/profiler/utils/format_utils.h"
 #include "tsl/profiler/utils/math_utils.h"
