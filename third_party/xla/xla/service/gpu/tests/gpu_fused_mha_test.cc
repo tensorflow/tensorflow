@@ -125,7 +125,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
                             ParseAndReturnVerifiedModule(hlo_string));
     TF_ASSERT_OK_AND_ASSIGN(num_fmha_calls,
-                            CountFMHACalls(test_module->Clone()));
+                            CountFMHACalls(std::move(test_module->Clone())));
     EXPECT_EQ(num_fmha_calls, expected_num_fmha_calls);
     const Literal actual_result =
         ExecuteAndTransfer(std::move(test_module), literals);
