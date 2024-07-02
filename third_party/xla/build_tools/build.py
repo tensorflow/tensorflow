@@ -329,9 +329,9 @@ _TENSORFLOW_CPU_BUILD = Build(
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tensorrt/...",
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
         "-//tensorflow/python/integration_testing/...",
     ),
     options=dict(
@@ -353,9 +353,9 @@ _TENSORFLOW_GPU_BUILD = Build(
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tensorrt/...",
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
+        "-//tensorflow/python/compiler/tensorrt/...",
         "-//tensorflow/python/integration_testing/...",
     ),
     build_tag_filters=("-no_oss", "+gpu"),
