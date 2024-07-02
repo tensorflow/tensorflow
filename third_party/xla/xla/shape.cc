@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -167,6 +168,20 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
     layout_->DeleteDimension(dim_to_delete);  // NOLINT: optional-access
+  }
+}
+
+void Shape::DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete) {
+  CHECK(IsArray());
+  CHECK(absl::c_is_sorted(sorted_dims_to_delete));
+  dimensions_ = RemoveElements(sorted_dims_to_delete, dimensions_);
+  dynamic_dimensions_ =
+      RemoveElements(sorted_dims_to_delete, dynamic_dimensions_);
+  if (LayoutUtil::HasLayout(*this)) {
+    for (auto it = sorted_dims_to_delete.rbegin();
+         it != sorted_dims_to_delete.rend(); ++it) {
+      layout_->DeleteDimension(*it);  // NOLINT: optional-access
+    }
   }
 }
 
