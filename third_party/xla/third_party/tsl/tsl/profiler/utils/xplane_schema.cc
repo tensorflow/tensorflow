@@ -33,6 +33,7 @@ const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
 const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
 const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
+const char kTpuCorePlaneRegex[] = {"/device:TPU:.* ?([0-9]+)$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";

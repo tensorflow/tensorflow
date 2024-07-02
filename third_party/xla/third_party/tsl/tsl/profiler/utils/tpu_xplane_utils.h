@@ -28,6 +28,10 @@ namespace profiler {
 std::vector<const tensorflow::profiler::XPlane*> FindTensorCorePlanes(
     const tensorflow::profiler::XSpace& xspace);
 
+// Find and return TensorCore and SparseCore XPlanes from the XSpace.
+std::vector<const tensorflow::profiler::XPlane*> FindTpuCorePlanes(
+    const tensorflow::profiler::XSpace& xspace);
+
 // Find and return Mutable TensorCore XPlanes from the XSpace.
 std::vector<tensorflow::profiler::XPlane*> FindMutableTensorCorePlanes(
     tensorflow::profiler::XSpace* xspace);
@@ -35,6 +39,10 @@ std::vector<tensorflow::profiler::XPlane*> FindMutableTensorCorePlanes(
 // Get Tensorcore Id from TensorCore plane name if plane name is a valid
 // TensorCore plane name.
 std::optional<int> GetTensorCoreId(absl::string_view plane_name);
+
+// Get Sparsecore Id from SparseCore plane name if plane name is a valid
+// SparseCore plane name.
+std::optional<int> GetSparseCoreId(absl::string_view plane_name);
 
 }  // namespace profiler
 }  // namespace tsl

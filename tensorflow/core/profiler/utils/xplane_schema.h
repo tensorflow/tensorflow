@@ -61,6 +61,7 @@ using tsl::profiler::kTFStreamzPlaneName;            // NOLINT
 using tsl::profiler::kTpuPlanePrefix;                // NOLINT
 using tsl::profiler::kTpuPlaneRegex;                 // NOLINT
 using tsl::profiler::kTpuRuntimePlaneName;           // NOLINT
+using tsl::profiler::kTpuCorePlaneRegex;           // NOLINT
 using tsl::profiler::kXlaAsyncOpLineName;            // NOLINT
 using tsl::profiler::kXlaModuleLineName;             // NOLINT
 using tsl::profiler::kXlaOpLineName;                 // NOLINT

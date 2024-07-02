@@ -41,6 +41,8 @@ TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 // Regex for XPlanes that contain TensorCore planes.
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
+// Regex for XPlanes that contain TPU Core planes.
+TF_CONST_INIT extern const char kTpuCorePlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.

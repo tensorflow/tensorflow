@@ -32,6 +32,13 @@ std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace) {
   });
 }
 
+std::vector<const XPlane*> FindTpuCorePlanes(const XSpace& xspace) {
+  return FindPlanes(xspace, [](const XPlane& xplane) {
+    static const LazyRE2 re = {kTpuCorePlaneRegex};
+    return RE2::FullMatch(xplane.name(), *re);
+  });
+}
+
 std::vector<XPlane*> FindMutableTensorCorePlanes(XSpace* xspace) {
   return FindMutablePlanes(xspace, [](const XPlane& xplane) {
     static const LazyRE2 re = {kTpuPlaneRegex};
@@ -45,6 +52,14 @@ std::optional<int> GetTensorCoreId(absl::string_view plane_name) {
     return core_id;
   }
 
+  return std::nullopt;
+}
+
+std::optional<int> GetSparseCoreId(absl::string_view plane_name) {
+  int core_id = -1;
+  if (RE2::FullMatch(plane_name, {kTpuCorePlaneRegex}, &core_id)) {
+    return core_id;
+  }
   return std::nullopt;
 }
 
