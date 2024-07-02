@@ -746,9 +746,7 @@ class ConvertToHloModule {
   explicit ConvertToHloModule(mlir::ModuleOp module,
                               xla::XlaBuilder& module_builder,
                               MlirToHloConversionOptions options)
-      : module_(module),
-        module_builder_(module_builder),
-        options_(options) {}
+      : module_(module), module_builder_(module_builder), options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
@@ -1159,10 +1157,14 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
         Convert_channel_handle(op.getChannelHandle()));
     BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
+    std::optional<uint64_t> splitDimension = op.getSplitDimension();
+    std::optional<uint64_t> concatDimension = op.getConcatDimension();
+    std::optional<uint64_t> splitCount = op.getSplitCount();
+
     // ArrayAllToAll always has exactly one operand (checked in the verifier).
     value_map[op->getResults()[0]] = xla::AllToAll(
-        operands[0], *op.getSplitDimension(), *op.getConcatDimension(),
-        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()),
+        operands[0], *splitDimension, *concatDimension, *splitCount,
+        Convert_replica_groups(op.getReplicaGroups()),
         /*layout=*/std::nullopt, Convert_channel_handle(op.getChannelHandle()));
   }
 

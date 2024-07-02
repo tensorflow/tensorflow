@@ -398,7 +398,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloBytecode.cpp b/stablehlo/stabl
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2590,7 +2590,6 @@
+@@ -2581,7 +2581,6 @@
  
  using mlir::hlo::parseComplexOpType;
  using mlir::hlo::parseCustomCallTarget;
@@ -406,7 +406,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  using mlir::hlo::parseDotDimensionNumbers;
  using mlir::hlo::parseExponentMantissa;
  using mlir::hlo::parsePairwiseOpType;
-@@ -2602,7 +2601,6 @@
+@@ -2593,7 +2592,6 @@
  using mlir::hlo::parseVariadicSameOperandsAndResultType;
  using mlir::hlo::printComplexOpType;
  using mlir::hlo::printCustomCallTarget;
@@ -414,7 +414,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  using mlir::hlo::printDotDimensionNumbers;
  using mlir::hlo::printExponentMantissa;
  using mlir::hlo::printPairwiseOpType;
-@@ -3291,11 +3289,11 @@
+@@ -3282,11 +3280,11 @@
  }  // namespace
  
  void printWindowAttributes(OpAsmPrinter& p, Operation* /*op*/,
@@ -430,7 +430,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
    using pair_t = std::pair<Attribute, StringRef>;
    std::array<pair_t, 5> printedAttributes = {{
        {windowStrides ? *windowStrides : nullptr, "stride"},
-@@ -3327,20 +3325,12 @@
+@@ -3318,20 +3316,12 @@
    });
  }
  
@@ -456,7 +456,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
    StringRef attributeName;
  
    llvm::StringSet<> allowedAttributeNames{
-@@ -3419,15 +3409,6 @@
+@@ -3410,15 +3400,6 @@
    return success();
  }
  
@@ -521,7 +521,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1518,7 +1518,7 @@
+@@ -1520,7 +1520,7 @@
    let arguments = (ins
      Variadic<HLO_Tensor>:$inputs, /*reduce_i1*/
      Variadic<HLO_Tensor>:$init_values, /*reduce_i2*/
@@ -530,7 +530,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
    let regions = (region SizedRegion<1>:$body /*reduce_i4*/);
  
-@@ -1669,9 +1669,9 @@
+@@ -1671,9 +1671,9 @@
  
    let arguments = (ins
      HLO_Tensor:$operand,
@@ -543,7 +543,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let assemblyFormat = [{
-@@ -1702,15 +1702,14 @@
+@@ -1704,15 +1704,14 @@
    let arguments = (ins
      HLO_Tensor:$operand /*dynamic_slice_i1*/,
      Variadic<HLO_ScalarIntTensor>:$start_indices /*dynamic_slice_i2*/,
@@ -561,7 +561,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    }];
  }
  
-@@ -1904,13 +1903,13 @@
+@@ -1906,13 +1905,13 @@
    }];
    let arguments = (ins
      HLO_Tensor:$operand,
@@ -577,7 +577,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  }
-@@ -1933,7 +1932,7 @@
+@@ -1935,7 +1934,7 @@
    }];
    let arguments = (ins
      HLO_TensorOrPerAxisQuantizedTensor:$operand /*broadcast_in_dim_i1*/,
@@ -586,7 +586,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let results = (outs HLO_StaticShapeTensorOrPerAxisQuantizedTensor);
-@@ -1941,7 +1940,7 @@
+@@ -1943,7 +1942,7 @@
    let hasVerifier = 1;
  
    let assemblyFormat = [{
@@ -595,7 +595,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  
-@@ -1984,9 +1983,9 @@
+@@ -1986,9 +1985,9 @@
    let arguments = (ins
      HLO_TensorOrPerAxisQuantizedTensor:$operand /*dynamic_broadcast_in_dim_i1*/,
      HLO_StaticDimensionTensor:$output_dimensions /*dynamic_broadcast_in_dim_i2*/,
@@ -608,7 +608,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let results = (outs HLO_TensorOrPerAxisQuantizedTensor);
-@@ -2004,7 +2003,7 @@
+@@ -2006,7 +2005,7 @@
    let hasVerifier = 1;
  
    let assemblyFormat = [{
@@ -617,7 +617,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  
-@@ -2264,15 +2263,15 @@
+@@ -2266,15 +2265,15 @@
      HLO_Tensor:$lhs, /*convolution_i1*/
      HLO_TensorOrPerAxisQuantizedTensor:$rhs, /*convolution_i2*/
      // Default value: one for each of the spatial dimension.
@@ -635,9 +635,9 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
 -    OptionalAttr<GenericDenseBoolArrayAttr>:$window_reversal, /*convolution_i7*/
 +    OptionalAttr<DenseBoolArrayAttr>:$window_reversal, /*convolution_i7*/
      StableHLO_ConvDimensionNumbers:$dimension_numbers, /*convolution_i8...convolution_i16*/
-     I64Attr:$feature_group_count, /*convolution_i17*/
-     I64Attr:$batch_group_count, /*convolution_i18*/
-@@ -2533,13 +2532,13 @@
+     ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count, /*convolution_c21, convolution_i17*/
+     ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count, /*convolution_c22, convolution_i18*/
+@@ -2535,13 +2534,13 @@
    let arguments = (ins
      HLO_FpOrComplexTensor:$operand,
      StableHLO_FftTypeAttr:$fft_type,
@@ -653,7 +653,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  
-@@ -2581,7 +2580,7 @@
+@@ -2583,7 +2582,7 @@
      HLO_Tensor:$operand /*gather_i1*/,
      HLO_IntTensor:$start_indices /*gather_i2*/,
      StableHLO_GatherDimensionNumbers:$dimension_numbers /*gather_i3...gather_i8*/,
@@ -662,7 +662,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted /*gather_i10*/
    );
  
-@@ -2646,7 +2645,7 @@
+@@ -2648,7 +2647,7 @@
    }];
    let arguments = (ins
      Variadic<HLO_Tensor>:$inputs /*map_i1*/,
@@ -671,7 +671,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
    let regions = (region SizedRegion<1>:$computation /*map_i3*/);
    let results = (outs HLO_Tensor);
-@@ -2834,8 +2833,8 @@
+@@ -2836,8 +2835,8 @@
      HLO_Tensor:$operand, /*select_and_scatter_i1*/
      HLO_Tensor:$source, /*select_and_scatter_i2*/
      HLO_Tensor:$init_value, /*select_and_scatter_i3*/
@@ -682,7 +682,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      OptionalAttr<I64ElementsAttr>:$padding /*select_and_scatter_i6*/
    );
  
-@@ -2943,7 +2942,7 @@
+@@ -2945,7 +2944,7 @@
    }];
    let arguments = (ins
      HLO_Tensor:$operand,
@@ -691,7 +691,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let hasVerifier = 1;
-@@ -2951,7 +2950,7 @@
+@@ -2953,7 +2952,7 @@
    let results = (outs HLO_Tensor:$result);
  
    let assemblyFormat = [{
@@ -700,7 +700,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` custom<SameOperandsAndResultType>(type($operand), type($result))
    }];
  }
-@@ -2980,18 +2979,18 @@
+@@ -2982,18 +2981,18 @@
    let arguments = (ins
      HLO_Tensor:$operand /*pad_i1*/,
      HLO_ScalarTensor:$padding_value /*pad_i2*/,
@@ -725,7 +725,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  }
-@@ -3015,14 +3014,14 @@
+@@ -3017,14 +3016,14 @@
    }];
    let arguments = (ins
      HLO_TensorOrPerAxisQuantizedTensor:$operand,
@@ -742,7 +742,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
        attr-dict `:` functional-type(operands, results)
    }];
  
-@@ -3102,13 +3101,13 @@
+@@ -3104,13 +3103,13 @@
    let arguments = (ins
      Variadic<HLO_Tensor>:$inputs /*reduce_window_i1*/,
      Variadic<HLO_Tensor>:$init_values /*reduce_window_i2*/,
@@ -760,7 +760,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      OptionalAttr<I64ElementsAttr>:$padding /*reduce_window_i7*/
    );
  
-@@ -3530,10 +3529,10 @@
+@@ -3531,10 +3530,10 @@
         HLO_Tensor:$lhs, /*dynamic_conv_i1*/
         HLO_Tensor:$rhs, /*dynamic_conv_i2*/
         HLO_Static2DIntTensor:$padding, /*dynamic_conv_i3*/
@@ -773,8 +773,8 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
 +       OptionalAttr<DenseI64ArrayAttr>:$rhs_dilation, /*dynamic_conv_i6*/
 +       OptionalAttr<DenseBoolArrayAttr>:$window_reversal, /*dynamic_conv_i7*/
         StableHLO_ConvDimensionNumbers:$dimension_numbers, /*dynamic_conv_i8...dynamic_conv_i16*/
-        I64Attr:$feature_group_count, /*dynamic_conv_i17*/
-        I64Attr:$batch_group_count, /*dynamic_conv_i18*/
+        ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count, /*dynamic_conv_c21, dynamic_conv_i17*/
+        ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count, /*dynamic_conv_c22, dynamic_conv_i18*/
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -3609,7 +3609,7 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
-@@ -820,9 +820,9 @@
+@@ -819,9 +819,9 @@
        newInitVals.push_back(op.getOperand(i + numOperandPairs));
      }
  

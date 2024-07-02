@@ -1973,13 +1973,15 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, properties, regions);
+  std::optional<uint64_t> splitDimension = adaptor.getSplitDimension();
+  std::optional<uint64_t> concatDimension = adaptor.getConcatDimension();
+  std::optional<uint64_t> splitCount = adaptor.getSplitCount();
 
-  bool isArrayAllToAll = adaptor.getSplitDimension() &&
-                         adaptor.getConcatDimension() &&
-                         adaptor.getSplitCount();
+  bool isArrayAllToAll = splitDimension.has_value() &&
+                         concatDimension.has_value() && splitCount.has_value();
   if (!isArrayAllToAll) {
-    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
-        adaptor.getSplitCount()) {
+    if (splitDimension.has_value() || concatDimension.has_value() ||
+        splitCount.has_value()) {
       return emitOptionalError(location,
                                "TupleAllToAll should not have split_dimension, "
                                "concat_dimension or split_count attributes");
@@ -2005,10 +2007,9 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
                              "ArrayAllToAll should have exactly one operand");
   }
 
-  return hlo::inferAllToAllOp(
-      location, adaptor.getOperand()[0], *adaptor.getSplitDimension(),
-      *adaptor.getConcatDimension(), *adaptor.getSplitCount(),
-      adaptor.getReplicaGroups(), inferredReturnShapes);
+  return hlo::inferAllToAllOp(location, adaptor.getOperand()[0],
+                              *splitDimension, *concatDimension, *splitCount,
+                              adaptor.getReplicaGroups(), inferredReturnShapes);
 }
 
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
@@ -3470,20 +3471,6 @@ void ReduceWindowOp::build(
     odsState.addTypes(inferredReturnTypes);
   else
     llvm::report_fatal_error("Failed to infer result type(s).");
-}
-
-//===----------------------------------------------------------------------===//
-// ReducePrecisionOp
-//===----------------------------------------------------------------------===//
-
-// The following property is already enforced by the ODS:
-//  P0. operand element type is float
-//  P1. mantissa_bits >= 0
-// We intend to verify the following properties
-//  P2. exponent_bits >= 1
-LogicalResult ReducePrecisionOp::verify() {
-  return hlo::verifyReducePrecisionOp(getLoc(), getExponentBits(),
-                                      getMantissaBits());
 }
 
 //===----------------------------------------------------------------------===//
