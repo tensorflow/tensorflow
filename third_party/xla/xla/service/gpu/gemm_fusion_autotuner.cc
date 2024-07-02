@@ -1136,7 +1136,7 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
 
       for (const auto& autotune_result : results) {
         auto log_result = autotuning_log->add_results();
-        log_result->CopyFrom(autotune_result);
+        *log_result = autotune_result;
       }
 
       if (auto fusion_key_count = fusion_count_map.find(key);
