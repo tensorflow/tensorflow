@@ -22,14 +22,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
-class MklQuantizeV2OpTest : public OpsTestBase {};
+class MklQuantizeV2OpTest : public OpsTestBase,
+                            public ::testing::WithParamInterface<DataType> {};
 
-TEST_F(MklQuantizeV2OpTest, small_uint8) {
+TEST_P(MklQuantizeV2OpTest, small_uint8) {
+  const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
@@ -37,8 +44,16 @@ TEST_F(MklQuantizeV2OpTest, small_uint8) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}),
-                           {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0, 2.0});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(
+          TensorShape({8}), {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0, 2.0});
+      break;
+
+    default:
+      AddInputFromArray<float>(
+          TensorShape({8}), {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0, 2.0});
+  }
   // min_range = 0
   AddInputFromArray<float>(TensorShape({}), {0});
   // max_range = 255
@@ -56,9 +71,15 @@ TEST_F(MklQuantizeV2OpTest, small_uint8) {
   test::ExpectTensorEqual<float>(expected_min, *GetOutput(1));
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(2));
 }
-TEST_F(MklQuantizeV2OpTest, small_int8) {
+
+TEST_P(MklQuantizeV2OpTest, small_int8) {
+  const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<qint8>::v())
@@ -66,10 +87,18 @@ TEST_F(MklQuantizeV2OpTest, small_int8) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}), {0.0, -1.0, 1.25, -1.75, -24.5,
-                                              -255.0, -80.315, 256.0});
-  AddInputFromArray<float>(TensorShape({}), {-50.0});
-  AddInputFromArray<float>(TensorShape({}), {127.0});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(
+          TensorShape({8}),
+          {0.0, -1.0, 1.25, -1.75, -24.5, -255.0, -80.315, 256.0});
+      break;
+    default:
+      AddInputFromArray<float>(TensorShape({8}), {0.0, -1.0, 1.25, -1.75, -24.5,
+                                                  -255.0, -80.315, 256.0});
+  }
+  AddInputFromArray<float>(TensorShape({1}), {-50.0});
+  AddInputFromArray<float>(TensorShape({1}), {127.0});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({8}));
   Tensor expected_min(allocator(), DT_FLOAT, TensorShape({}));
@@ -82,9 +111,14 @@ TEST_F(MklQuantizeV2OpTest, small_int8) {
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(2));
 }
 
-TEST_F(MklQuantizeV2OpTest, small_minfirst) {
+TEST_P(MklQuantizeV2OpTest, small_minfirst) {
+  const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
@@ -92,10 +126,17 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}),
-                           {1.0, 1.25, 1.75, 2, 3.15, 127.0, 255.0, 500.0});
-  AddInputFromArray<float>(TensorShape({}), {0});
-  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(
+          TensorShape({8}), {1.0, 1.25, 1.75, 2.0, 3.15, 127.0, 255.0, 500.0});
+      break;
+    default:
+      AddInputFromArray<float>(
+          TensorShape({8}), {1.0, 1.25, 1.75, 2.0, 3.15, 127.0, 255.0, 500.0});
+  }
+  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({1}), {255.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {1, 1, 2, 2, 3, 127, 255, 255});
@@ -106,9 +147,14 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst) {
   EXPECT_NEAR(255.0f, output_max, 1e-5f);
 }
 
-TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
+TEST_P(MklQuantizeV2OpTest, small_minfirst_uint) {
+  const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
@@ -116,10 +162,17 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}),
-                           {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
-  AddInputFromArray<float>(TensorShape({}), {0.1});
-  AddInputFromArray<float>(TensorShape({}), {0.8});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(TensorShape({8}),
+                                 {0.1, 0.2, 0.3, 0.4, 0.5, 0.599, 0.7, 0.8});
+      break;
+    default:
+      AddInputFromArray<float>(TensorShape({8}),
+                               {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
+  }
+  AddInputFromArray<float>(TensorShape({1}), {0.1});
+  AddInputFromArray<float>(TensorShape({1}), {0.8});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {32, 64, 96, 128, 159, 191, 223, 255});
@@ -130,9 +183,14 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
   EXPECT_NEAR(0.8f, output_max, 1e-5f);
 }
 
-TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
+TEST_P(MklQuantizeV2OpTest, small_minfirst_int) {
+  const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
@@ -140,10 +198,18 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}),
-                           {-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8});
-  AddInputFromArray<float>(TensorShape({}), {-0.8});
-  AddInputFromArray<float>(TensorShape({}), {-0.1});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(
+          TensorShape({8}), {-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8});
+
+      break;
+    default:
+      AddInputFromArray<float>(
+          TensorShape({8}), {-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8});
+  }
+  AddInputFromArray<float>(TensorShape({1}), {-0.8});
+  AddInputFromArray<float>(TensorShape({1}), {-0.1});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   test::FillValues<quint8>(&expected, {223, 191, 159, 128, 96, 64, 32, 0});
@@ -153,6 +219,9 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
   EXPECT_NEAR(-0.8f, output_min, 1e-5f);
   EXPECT_NEAR(0.0f, output_max, 1e-5f);
 }
+
+INSTANTIATE_TEST_SUITE_P(All, MklQuantizeV2OpTest,
+                         ::testing::Values(DT_FLOAT, DT_BFLOAT16));
 
 }  // end namespace tensorflow
 #endif  // INTEL_MKL

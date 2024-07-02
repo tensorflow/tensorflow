@@ -1646,6 +1646,18 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &type));
 
+    // QuantizeV2 op supports bfloat16 to quantized types. However, oneDNN does
+    // not support this on all CPUs.
+    if (n->def().op() == MklLayoutRewritePass::csinfo_.quantize_v2) {
+      DataType input_type;
+      if (TryGetNodeAttr(n->def(), "dtype", &input_type) &&
+          !IsDataTypeSupportedByOneDNNOnThisCPU(input_type)) {
+        VLOG(1) << "QuantizeOpRewrite: Input type "
+                << DataTypeString(input_type)
+                << " is not suported by oneDNN on this CPU.";
+        return false;
+      }
+    }
     bool narrow_range;
     if (TryGetNodeAttr(n->def(), "narrow_range", &narrow_range) &&
         narrow_range) {
