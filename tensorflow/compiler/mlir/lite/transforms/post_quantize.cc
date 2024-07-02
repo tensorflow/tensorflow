@@ -353,10 +353,16 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
     auto custom_op = llvm::isa<CustomOp>(op);
     if (custom_op) {
       auto q = llvm::cast<CustomOp>(op);
-      std::string op_name = q.getCustomCode().str();
-      if ((custom_op_map.find(op_name) == custom_op_map.end()) ||
-          !custom_op_map.find(op_name)->second.no_side_effect)
+      bool no_side_effect = false;
+      const auto no_side_effect_attr = dyn_cast_or_null<BoolAttr>(
+          q.getOperation()->getAttr(quant::kNoSideEffectAttrName));
+      no_side_effect |= no_side_effect_attr && no_side_effect_attr.getValue();
+      const std::string op_name = q.getCustomCode().str();
+      no_side_effect |= (custom_op_map.find(op_name) != custom_op_map.end()) &&
+                        custom_op_map.find(op_name)->second.no_side_effect;
+      if (!no_side_effect) {
         return failure();
+      }
     }
     rewriter.eraseOp(op);
     return success();
