@@ -73,16 +73,20 @@ struct CudaComputeCapability {
     this->minor = proto.minor();
   }
 
-  static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{HOPPER, 0};
-  }
-
   static CudaComputeCapability Volta() {
     return CudaComputeCapability{VOLTA, 0};
   }
 
   static CudaComputeCapability Ampere() {
     return CudaComputeCapability{AMPERE, 0};
+  }
+
+  static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{HOPPER, 0};
+  }
+
+  static CudaComputeCapability Blackwell() {
+    return CudaComputeCapability{BLACKWELL, 0};
   }
 
   bool IsAtLeast(int other_major, int other_minor = 0) const {
@@ -105,6 +109,10 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::HOPPER;
   }
 
+  bool IsAtLeastBlackwell() const {
+    return major >= CudaComputeCapabilities::BLACKWELL;
+  }
+
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();
   }
@@ -115,32 +123,6 @@ struct CudaComputeCapability {
 
   bool operator!=(const CudaComputeCapability &other) const {
     return !(*this == other);
-  }
-
-  // Maximum resident blocks per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentBlocksPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 16;
-    } else if (IsAtLeast(8)) {
-      return 32;
-    } else if (IsAtLeast(7, 5)) {
-      return 16;
-    }
-    return 32;
-  }
-
-  // Maximum resident warps per multiprocessor, values taken from
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
-  int GetMaxResidentWarpsPerSM() const {
-    if (IsAtLeast(8, 6)) {
-      return 48;
-    } else if (IsAtLeast(8)) {
-      return 64;
-    } else if (IsAtLeast(7, 5)) {
-      return 32;
-    }
-    return 64;
   }
 
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
