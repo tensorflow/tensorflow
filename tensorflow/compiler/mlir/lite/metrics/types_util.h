@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
+#include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {
