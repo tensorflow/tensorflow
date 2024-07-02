@@ -69,7 +69,7 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
       const HloConstantInstruction* init_value_hlo =
           Cast<HloConstantInstruction>(
               while_op->operand(0)->operand(*indvar_index));
-      std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
+      std::optional<WhileLoopTripCount> trip_count = MatchTrivialLoopTripCount(
           while_op, indvar_index.value(), init_value_hlo->literal());
 
       if (trip_count.has_value()) {
@@ -101,7 +101,7 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
               }
               // x >= c + k && i < c + k --> i < x
               if (constant_value.value() >=
-                  init_value.value() + trip_count.value()) {
+                  init_value.value() + trip_count->trip_count) {
                 if (body_instr->comparison_direction() ==
                     ComparisonDirection::kLt) {
                   TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
@@ -935,9 +935,9 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   }
 
   // Remove while loops with static trip count of 0.
-  optional<int64_t> trip_count =
+  optional<WhileLoopTripCount> trip_count =
       ComputeWhileLoopTripCount(while_op, /*max_brute_force_iters=*/1);
-  if (trip_count && *trip_count == 0) {
+  if (trip_count && trip_count->trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
     // "init" operand.
     auto computation = while_op->parent();
@@ -956,7 +956,8 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   bool skip_trip_count_one_simplification =
       attrs.contains("skip-simplify-while-loops/trip-count-one") &&
       (attrs.at("skip-simplify-while-loops/trip-count-one") == "true");
-  if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification) {
+  if (trip_count && trip_count->trip_count == 1 &&
+      !skip_trip_count_one_simplification) {
     // Do not simplify the loop away when there is a side-effectful op,
     // otherwise the infeed op may not inherit the data dependency from
     // the while loop.

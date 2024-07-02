@@ -2138,9 +2138,9 @@ void ComputeInstructionExecutionCountsHelper(
     (instruction_execution_counts)[instruction] = computation_execution_count;
     if (instruction->opcode() == HloOpcode::kWhile) {
       int64_t loop_iteration_count = static_loop_iteration_count_estimate;
-      if (std::optional<int64_t> upper_bound =
+      if (std::optional<WhileLoopTripCount> upper_bound =
               ComputeWhileLoopTripCountUpperBound(instruction)) {
-        loop_iteration_count = *upper_bound;
+        loop_iteration_count = upper_bound->trip_count;
       }
       int64_t while_body_condition_execution_count =
           computation_execution_count * loop_iteration_count;

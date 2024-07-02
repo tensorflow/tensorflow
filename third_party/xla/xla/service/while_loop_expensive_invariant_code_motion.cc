@@ -139,7 +139,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   VLOG(2) << "Trying to hoist from " << while_instr_name;
 
   auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
-  if (maybe_upper_bound && *maybe_upper_bound <= 1) {
+  if (maybe_upper_bound && maybe_upper_bound->trip_count <= 1) {
     VLOG(2) << "Loop has a trip count of at most 1, skipping.";
     return false;
   }

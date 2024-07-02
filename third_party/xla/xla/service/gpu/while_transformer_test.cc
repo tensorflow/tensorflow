@@ -136,7 +136,7 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
-  EXPECT_EQ(10, *result);
+  EXPECT_EQ(10, result->trip_count);
 }
 
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
@@ -147,7 +147,7 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   auto while_hlo = BuildWhileInstruction(condition, body, 1, 0);
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
-  EXPECT_EQ(10, *result);
+  EXPECT_EQ(10, result->trip_count);
 }
 
 TEST_F(WhileTransformerTest, ImpossibleLoopLimit) {
@@ -158,7 +158,7 @@ TEST_F(WhileTransformerTest, ImpossibleLoopLimit) {
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 10);
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
-  EXPECT_EQ(0, *result);
+  EXPECT_EQ(0, result->trip_count);
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopIncrement) {

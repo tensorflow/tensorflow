@@ -43,12 +43,14 @@ namespace {
 
 class WhileLoopAnalysisTest : public HloTestBase {
  protected:
-  [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+  [[nodiscard]] absl::StatusOr<WhileLoopTripCount> MakeWhileLoopAndGetTripCount(
       int init, int limit, int step, ComparisonDirection dir);
 };
 
-absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
-    int init, int limit, int step, ComparisonDirection dir) {
+absl::StatusOr<WhileLoopTripCount>
+WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(int init, int limit,
+                                                    int step,
+                                                    ComparisonDirection dir) {
   std::string hlo_string_template = R"(
   HloModule ModuleWithWhile
 
@@ -87,7 +89,7 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
-  std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
+  std::optional<WhileLoopTripCount> trip_count = MatchTrivialLoopTripCount(
       while_op, 1,
       Cast<HloConstantInstruction>(
           module->GetComputationWithName("entry")->GetInstructionWithName(
@@ -127,7 +129,8 @@ TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
                           ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
-  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 1);
+  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op),
+            WhileLoopTripCount(1));
 }
 
 TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
@@ -161,7 +164,8 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
   EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
 }
 
-int CalculateTripCount(int init, int limit, int step, ComparisonDirection dir) {
+WhileLoopTripCount CalculateTripCount(int init, int limit, int step,
+                                      ComparisonDirection dir) {
   int trip_count = 0;
   if (dir == ComparisonDirection::kLt) {
     for (int i = init; i < limit; i += step) {
@@ -175,7 +179,7 @@ int CalculateTripCount(int init, int limit, int step, ComparisonDirection dir) {
     LOG(FATAL) << "Unknown comparison direction: "
                << ComparisonDirectionToString(dir);
   }
-  return trip_count;
+  return WhileLoopTripCount(trip_count, step);
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {

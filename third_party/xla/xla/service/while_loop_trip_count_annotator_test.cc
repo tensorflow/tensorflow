@@ -202,5 +202,154 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(TripCountAnnotatorTest, StepGreaterThanOne) {
+  // for(i = -10; i < 20; i+=3)
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      three = s64[] constant(3)
+      i_plus_three = s64[] add(i, three)
+      ROOT tuple = (s64[]) tuple(i_plus_three)
+    }
+
+    Cond {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      upper_bound = s64[] constant(20)
+      ROOT done = pred[] compare(i, upper_bound), direction=LE
+    }
+
+    ENTRY test {
+      i_start = s64[] constant(-10)
+      initial_tuple = (s64[]) tuple(i_start)
+      ROOT while = (s64[]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(11, config.known_trip_count().n());
+  ASSERT_TRUE(config.known_trip_count().has_step());
+  EXPECT_EQ(3, config.known_trip_count().step());
+}
+
+TEST_F(TripCountAnnotatorTest, StepLessThanZero) {
+  // for(i = 20; i >= -10; i-=3)
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      three = s64[] constant(-3)
+      i_minus_three = s64[] add(i, three)
+      ROOT tuple = (s64[]) tuple(i_minus_three)
+    }
+
+    Cond {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      lower_bound = s64[] constant(-10)
+      ROOT done = pred[] compare(i, lower_bound), direction=GE
+    }
+
+    ENTRY test {
+      i_start = s64[] constant(20)
+      initial_tuple = (s64[]) tuple(i_start)
+      ROOT while = (s64[]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(11, config.known_trip_count().n());
+  EXPECT_FALSE(config.known_trip_count().has_step());
+}
+
+TEST_F(TripCountAnnotatorTest, Subtract) {
+  // for(i = 20; i >= -10; i-=3)
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      three = s64[] constant(3)
+      i_minus_three = s64[] subtract(i, three)
+      ROOT tuple = (s64[]) tuple(i_minus_three)
+    }
+
+    Cond {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      lower_bound = s64[] constant(-10)
+      ROOT done = pred[] compare(i, lower_bound), direction=GE
+    }
+
+    ENTRY test {
+      i_start = s64[] constant(20)
+      initial_tuple = (s64[]) tuple(i_start)
+      ROOT while = (s64[]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(11, config.known_trip_count().n());
+  EXPECT_FALSE(config.known_trip_count().has_step());
+}
+
+TEST_F(TripCountAnnotatorTest, Multiply) {
+  // for(i = 3; i <= 82; i*=3)
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      three = s64[] constant(3)
+      i_times_three = s64[] multiply(i, three)
+      ROOT tuple = (s64[]) tuple(i_times_three)
+    }
+
+    Cond {
+      param = (s64[]) parameter(0)
+      i = s64[] get-tuple-element(param), index=0
+      upper_bound = s64[] constant(82)
+      ROOT done = pred[] compare(i, upper_bound), direction=LE
+    }
+
+    ENTRY test {
+      i_start = s64[] constant(3)
+      initial_tuple = (s64[]) tuple(i_start)
+      ROOT while = (s64[]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(4, config.known_trip_count().n());
+  EXPECT_FALSE(config.known_trip_count().has_step());
+}
+
 }  // namespace
 }  // namespace xla

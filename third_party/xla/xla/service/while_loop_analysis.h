@@ -22,6 +22,17 @@ limitations under the License.
 
 namespace xla {
 
+struct WhileLoopTripCount {
+  const int64_t trip_count;
+  const std::optional<int64_t> step;
+  explicit WhileLoopTripCount(int64_t trip_count,
+                              std::optional<int64_t> step = std::nullopt)
+      : trip_count(trip_count), step(step) {}
+  bool operator==(const WhileLoopTripCount &rhs) const {
+    return trip_count == rhs.trip_count && step == rhs.step;
+  }
+};
+
 // Returns the precise trip count of the loop if it's statically known,
 // nullopt otherwise.
 //
@@ -29,12 +40,12 @@ namespace xla {
 // trying to brute force a loop trip count. trip counts larger than
 // max_brute_force_iters may be returned if we can pattern-match the loop
 // condition.
-std::optional<int64_t> ComputeWhileLoopTripCount(
+std::optional<WhileLoopTripCount> ComputeWhileLoopTripCount(
     const HloInstruction *while_op, int64_t max_brute_force_iters = 128);
 
 // Returns an upper bound on the trip count of the loop if it's statically
 // known, nullopt otherwise.
-std::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
+std::optional<WhileLoopTripCount> ComputeWhileLoopTripCountUpperBound(
     const HloInstruction *while_op);
 
 // The below function identifies a subset of all possible auxiliary
@@ -54,9 +65,9 @@ std::optional<int64_t> GetLoopInductionVarTupleIdx(
 //  - the while body does `i++`.
 // If so, it's trivial to compute the loop bound as `N - k` or `N - k + 1`,
 // respectively.
-std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
-                                                 int64_t indvar_tuple_idx,
-                                                 const Literal &indvar_init);
+std::optional<WhileLoopTripCount> MatchTrivialLoopTripCount(
+    const HloInstruction *while_op, int64_t indvar_tuple_idx,
+    const Literal &indvar_init);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
