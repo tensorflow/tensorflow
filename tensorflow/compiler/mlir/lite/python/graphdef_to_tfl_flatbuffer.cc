@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,7 +43,6 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     const GraphDebugInfo& debug_info, const GraphDef& input,
     std::string* result) {
-  using ::tflite::optimize::ReducedPrecisionSupport;
   auto context = std::make_unique<mlir::MLIRContext>();
   GraphImportConfig specs;
   mlir::quant::QuantizationSpecs quant_specs;

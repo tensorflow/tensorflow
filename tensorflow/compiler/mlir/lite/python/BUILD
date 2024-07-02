@@ -70,7 +70,6 @@ cc_library(
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
-        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
     ],
