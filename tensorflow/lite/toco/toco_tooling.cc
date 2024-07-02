@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/mlir/lite/toco_flags.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/allocate_transient_arrays.h"
 #include "tensorflow/lite/toco/dump_graphviz.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tflite/export.h"
 #include "tensorflow/lite/toco/tflite/import.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {

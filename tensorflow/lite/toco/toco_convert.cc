@@ -17,16 +17,16 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/lite/toco_flags.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_cmdline_flags.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_cmdline_flags.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 namespace {

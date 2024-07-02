@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
+#include "tensorflow/compiler/mlir/lite/toco_flags.pb.h"
 #include "tensorflow/lite/toco/args.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {

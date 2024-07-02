@@ -1475,7 +1475,7 @@ cc_library(
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
-        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc_impl",
         "//tensorflow/lite/toco:model_flags_proto_cc_impl",
         "//tensorflow/lite/toco:types_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),

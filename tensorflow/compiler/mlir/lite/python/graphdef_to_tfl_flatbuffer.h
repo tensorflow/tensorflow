@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "tensorflow/compiler/mlir/lite/toco_flags.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {
 

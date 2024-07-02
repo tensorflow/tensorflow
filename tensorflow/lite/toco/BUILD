@@ -28,21 +28,28 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# OSS only: This target is header-only. Link `toco_flags_proto_cc_impl` only to
-# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `toco_flags_proto_cc_impl`
-# directly unless the target does not link `libtensorflow_framework.so`.
-tf_proto_library(
+# # OSS only: This target is header-only. Link `toco_flags_proto_cc_impl` only to
+# # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `toco_flags_proto_cc_impl`
+# # directly unless the target does not link `libtensorflow_framework.so`.
+# tf_proto_library(
+#     name = "toco_flags_proto",
+#     # third_party/tensorflow/compiler/mlir/lite/BUILD
+#     # third_party/tensorflow/lite/toco/BUILD
+#     src = glob(["../../**/toco_flags.proto*"]),
+#     cc_api_version = 2,
+#     make_default_target_header_only = True,
+#     protodeps = [
+#         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+#         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
+#         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
+#         ":types_proto",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
+
+alias(
     name = "toco_flags_proto",
-    srcs = ["toco_flags.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
-        ":types_proto",
-    ],
-    visibility = ["//visibility:public"],
+    actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto",
 )
 
 # OSS only: This target is header-only. Link `model_flags_proto_cc_impl` only to
@@ -123,9 +130,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":model_cmdline_flags",
-        ":toco_flags_proto_cc",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -332,11 +339,11 @@ cc_library(
         ":model",
         ":model_flags_proto_cc",
         ":runtime",
-        ":toco_flags_proto_cc",
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":tooling_util",
         ":types_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -383,10 +390,10 @@ cc_library(
         ":model",
         ":model_flags_proto_cc",
         ":runtime",
-        ":toco_flags_proto_cc",
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/memory",
@@ -421,11 +428,11 @@ cc_library(
         ":model_cmdline_flags",
         ":model_flags_proto_cc",
         ":toco_cmdline_flags",
-        ":toco_flags_proto_cc",
         ":toco_port",
         ":toco_tooling",
-        ":types_proto_cc",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
         # it can conflict with downstream deps when toco is used as a library.
@@ -443,7 +450,7 @@ tf_cc_binary(
         ":model_flags_proto_cc",
         ":toco_cmdline_flags",
         ":toco_convert",
-        ":toco_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
@@ -465,7 +472,7 @@ tf_cc_test(
         ":model_flags_proto_cc",
         ":toco_cmdline_flags",
         ":toco_convert",
-        ":toco_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
@@ -512,7 +519,7 @@ tf_cc_test(
     ],
     deps = [
         ":toco_cmdline_flags",
-        ":toco_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -526,11 +533,54 @@ tf_cc_test(
 #     deps = [":model_flags_proto"],
 # )
 #
-# py_proto_library(
+# alias(
 #     name = "toco_flags_proto_py",
-#     api_version = 2,
-#     visibility = ["//visibility:public"],
-#     deps = [":toco_flags_proto"],
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto_py",
+# )
+#
+# alias(
+#     name = "toco_flags_proto_cc",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_dart_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_dart_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_go_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_go_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_kt_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_kt_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_kt_proto_DO_NOT_DEPEND_java_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_kt_proto_DO_NOT_DEPEND_java_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_proto_cc_impl",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto_cc_impl",
+# )
+#
+# alias(
+#     name = "toco_flags_proto_java_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto_java_proto",
+# )
+#
+# alias(
+#     name = "toco_flags_proto_java_proto_lite",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto_java_proto_lite",
+# )
+#
+# alias(
+#     name = "toco_flags_proto_py_proto",
+#     actual = "//tensorflow/compiler/mlir/lite:toco_flags_proto_py_proto",
 # )
 #
 # py_proto_library(
@@ -539,4 +589,5 @@ tf_cc_test(
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )
+#
 # copybara:uncomment_end
