@@ -32,43 +32,39 @@ limitations under the License.
 namespace tf {
 namespace libtf {
 
-using tensorflow::AbstractContext;
-using tensorflow::AbstractFunctionPtr;
-using tensorflow::AbstractOperationPtr;
-using tensorflow::AbstractTensorHandle;
-using tensorflow::Status;
-using tensorflow::StatusOr;
+namespace tf = tensorflow;
 
-// TODO(srbs): Move this to unified execution API.
-tensorflow::Status ExecuteFunction(
+// Helper function to retrieve the function name from an AbstractFunctionPtr.
+tf::StatusOr<std::string> GetFunctionName(AbstractFunctionPtr trace) {
+  const tf::FunctionDef* fdef = nullptr;
+  TF_RETURN_IF_ERROR(trace->GetFunctionDef(&fdef));
+  return fdef->signature().name();
+}
+
+// Function to execute a traced function with the given context and inputs.
+tf::Status ExecuteFunction(
     AbstractFunctionPtr trace, AbstractContext* ctx,
-    absl::Span<tensorflow::AbstractTensorHandle* const> inputs,
-    absl::Span<tensorflow::AbstractTensorHandle*> outputs) {
-  // TODO(srbs): Provide a function execution API on ctx so that we do not
-  // expose the internals of how functions are to be executed here.
-  std::string fname;
-  {
-    const tensorflow::FunctionDef* fdef = nullptr;
-    TF_RETURN_IF_ERROR(trace->GetFunctionDef(&fdef));
-    fname = fdef->signature().name();
-  }
-  // TODO(srbs): Update RegisterFunction to accept AbstractFunctionPtr.
+    absl::Span<tf::AbstractTensorHandle* const> inputs,
+    absl::Span<tf::AbstractTensorHandle*> outputs) {
+  TF_ASSIGN_OR_RETURN(std::string fname, GetFunctionName(trace));
+  
   TF_RETURN_IF_ERROR(ctx->RegisterFunction(trace.get()));
-  auto cleanup = absl::MakeCleanup(
-      [fname, ctx]() { ctx->RemoveFunction(fname).IgnoreError(); });
+  auto cleanup = absl::MakeCleanup([&]() { ctx->RemoveFunction(fname).IgnoreError(); });
+
   auto call_op = AbstractOperationPtr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      call_op->Reset(fname.c_str(), /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(call_op->Reset(fname.c_str(), /*raw_device_name=*/nullptr));
   for (auto t : inputs) {
     TF_RETURN_IF_ERROR(call_op->AddInput(t));
   }
+
   int num_outputs = outputs.size();
   return call_op->Execute(outputs, &num_outputs);
 }
 
-Status VerifySupportedSignature(TaggedValue signature) {
+// Verify if the given signature is supported.
+tf::Status VerifySupportedSignature(const TaggedValue& signature) {
   if (signature.type() == TaggedValue::Type::TENSOR_SPEC) {
-    return ::tensorflow::OkStatus();
+    return tf::OkStatus();
   }
   if (signature.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : signature.tuple()) {
@@ -76,16 +72,15 @@ Status VerifySupportedSignature(TaggedValue signature) {
         break;
       }
     }
-    return ::tensorflow::OkStatus();
+    return tf::OkStatus();
   }
-  return tensorflow::errors::Unimplemented(
-      "Only functions with inputs/outputs containing a single tensor or a tuple"
-      " of tensors are supported right now.");
+  return tf::errors::Unimplemented("Only functions with inputs/outputs containing a single tensor or a tuple of tensors are supported right now.");
 }
 
-Status VerifySupportedArgs(TaggedValue args) {
+// Verify if the given arguments are supported.
+tf::Status VerifySupportedArgs(const TaggedValue& args) {
   if (args.type() == TaggedValue::Type::TENSOR) {
-    return ::tensorflow::OkStatus();
+    return tf::OkStatus();
   }
   if (args.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : args.tuple()) {
@@ -93,63 +88,57 @@ Status VerifySupportedArgs(TaggedValue args) {
         break;
       }
     }
-    return ::tensorflow::OkStatus();
+    return tf::OkStatus();
   }
-  return tensorflow::errors::Unimplemented(
-      "Only functions with inputs/outputs containing a single tensor or a tuple"
-      " of tensors are supported right now.");
+  return tf::errors::Unimplemented("Only functions with inputs/outputs containing a single tensor or a tuple of tensors are supported right now.");
 }
 
-Status Function::RegisterTrace(AbstractFunctionPtr fn,
-                               TaggedValue input_signature,
-                               TaggedValue output_signature) {
+// Register a traced function with its input and output signatures.
+tf::Status Function::RegisterTrace(AbstractFunctionPtr fn, TaggedValue input_signature, TaggedValue output_signature) {
   TF_RETURN_IF_ERROR(VerifySupportedSignature(input_signature));
   TF_RETURN_IF_ERROR(VerifySupportedSignature(output_signature));
-  concrete_fns_.push_back({fn, input_signature, output_signature});
-  return ::tensorflow::OkStatus();
+  concrete_fns_.emplace_back(fn, input_signature, output_signature);
+  return tf::OkStatus();
 }
 
-bool Match(TaggedValue signature, TaggedValue value) {
-  // TODO(b/187216309): Extend this to handle more elaborate signatures and
-  // values.
+// Helper function to match a value against a signature.
+bool Match(const TaggedValue& signature, const TaggedValue& value) {
   switch (signature.type()) {
     case TaggedValue::Type::TENSOR_SPEC: {
       if (value.type() != TaggedValue::Type::TENSOR) {
         return false;
       }
-      auto spec = signature.tensor_spec();
+      const auto& spec = signature.tensor_spec();
       const auto& tensor = value.tensor();
       if (tensor->DataType() != spec.dtype) {
         return false;
       }
-      tensorflow::PartialTensorShape tensor_shape;
+      tf::PartialTensorShape tensor_shape;
       DCHECK(tensor->Shape(&tensor_shape).ok());
       if (!tensor_shape.IsCompatibleWith(spec.shape)) {
         return false;
       }
-    } break;
+      break;
+    }
     case TaggedValue::Type::TUPLE: {
-      if (value.type() != TaggedValue::Type::TUPLE) {
+      if (value.type() != TaggedValue::Type::TUPLE || value.tuple().size() != signature.tuple().size()) {
         return false;
       }
-      if (value.tuple().size() != signature.tuple().size()) {
-        return false;
-      }
-      for (auto i = 0; i < value.tuple().size(); i++) {
+      for (size_t i = 0; i < value.tuple().size(); ++i) {
         if (!Match(signature.tuple()[i], value.tuple()[i])) {
           return false;
         }
       }
-    } break;
+      break;
+    }
     default:
       return false;
   }
   return true;
 }
 
-// TODO(b/190203981): Move to a separate nest-like library.
-void Flatten(const TaggedValue& value,
-             std::vector<AbstractTensorHandle*>* flat_args) {
+// Flatten the given value into a list of tensor handles.
+void Flatten(const TaggedValue& value, std::vector<AbstractTensorHandle*>* flat_args) {
   if (value.type() == TaggedValue::Type::TENSOR) {
     flat_args->emplace_back(value.tensor().get());
   } else if (value.type() == TaggedValue::Type::TUPLE) {
@@ -157,53 +146,39 @@ void Flatten(const TaggedValue& value,
       Flatten(t, flat_args);
     }
   } else {
-    // TODO(b/190203981): Supported arbitrary structures.
     LOG(ERROR) << "Unimplemented";
   }
 }
 
-StatusOr<TaggedValue> Unflatten(
-    absl::Span<AbstractTensorHandle* const> flat_args, TaggedValue structure) {
+// Unflatten the given tensor handles into a structured TaggedValue.
+tf::StatusOr<TaggedValue> Unflatten(absl::Span<AbstractTensorHandle* const> flat_args, const TaggedValue& structure) {
   if (structure.type() == TaggedValue::Type::TENSOR_SPEC) {
     if (flat_args.size() != 1) {
-      // Denotes a corrupted SavedModel in which output_signature does not match
-      // FunctionDef outputs.
-      return tensorflow::errors::Internal("Expected single tensor but found ",
-                                          flat_args.size());
+      return tf::errors::Internal("Expected single tensor but found ", flat_args.size());
     }
-    TaggedValue wrapped_t =
-        TaggedValue(impl::TaggedValueTensor(flat_args[0], /*add_ref=*/true));
+    TaggedValue wrapped_t = TaggedValue(impl::TaggedValueTensor(flat_args[0], /*add_ref=*/true));
     if (!Match(structure, wrapped_t)) {
-      // Denotes a corrupted SavedModel in which output_signature does not match
-      // FunctionDef outputs.
       std::stringstream stream;
-      stream << "Shape and dtype of tensor " << wrapped_t
-             << " does not match that in signature " << structure;
-      return tensorflow::errors::Internal(stream.str());
+      stream << "Shape and dtype of tensor " << wrapped_t << " does not match that in signature " << structure;
+      return tf::errors::Internal(stream.str());
     }
     return wrapped_t;
-  } else if (structure.type() == TaggedValue::Type::TUPLE) {
-    // TODO(b/190203981): Remove this check when handling nested structures
-    // inside tuples.
+  }
+  if (structure.type() == TaggedValue::Type::TUPLE) {
     if (flat_args.size() != structure.tuple().size()) {
-      return tensorflow::errors::InvalidArgument(
-          "Tuple length ", structure.tuple().size(),
-          " does not match length of flat args ", flat_args.size());
+      return tf::errors::InvalidArgument("Tuple length ", structure.tuple().size(), " does not match length of flat args ", flat_args.size());
     }
     auto result = impl::TaggedValue::Tuple();
-    for (auto i = 0; i < structure.tuple().size(); i++) {
-      TF_ASSIGN_OR_RETURN(TaggedValue ele,
-                          Unflatten({flat_args[i]}, structure.tuple()[i]));
+    for (size_t i = 0; i < structure.tuple().size(); ++i) {
+      TF_ASSIGN_OR_RETURN(TaggedValue ele, Unflatten({flat_args[i]}, structure.tuple()[i]));
       result.tuple().emplace_back(std::move(ele));
     }
     return result;
-  } else {
-    // TODO(b/190203981): Support arbitrary structures.
-    return tensorflow::errors::Unimplemented(
-        "Only tensors and tuples of tensors are supported right now.");
   }
+  return tf::errors::Unimplemented("Only tensors and tuples of tensors are supported right now.");
 }
 
+// Get the flat size of a TaggedValue.
 size_t GetFlatSize(const TaggedValue& value) {
   if (value.type() == TaggedValue::Type::TUPLE) {
     size_t result = 0;
@@ -211,13 +186,15 @@ size_t GetFlatSize(const TaggedValue& value) {
       result += GetFlatSize(t);
     }
     return result;
-  } else if (value.type() == TaggedValue::Type::LIST) {
+  }
+  if (value.type() == TaggedValue::Type::LIST) {
     size_t result = 0;
     for (const auto& t : value.list()) {
       result += GetFlatSize(t);
     }
     return result;
-  } else if (value.type() == TaggedValue::Type::DICT) {
+  }
+  if (value.type() == TaggedValue::Type::DICT) {
     size_t result = 0;
     for (const auto& t : value.dict()) {
       result += GetFlatSize(t.second);
@@ -227,36 +204,37 @@ size_t GetFlatSize(const TaggedValue& value) {
   return 1;
 }
 
-StatusOr<TaggedValue> Function::Execute(AbstractContext* ctx,
-                                        TaggedValue value) const {
+// Execute a function with the given context and value.
+tf::StatusOr<TaggedValue> Function::Execute(AbstractContext* ctx, const TaggedValue& value) const {
   TF_RETURN_IF_ERROR(VerifySupportedArgs(value));
   TF_ASSIGN_OR_RETURN(auto concrete_fn, GetConcreteFunction(value));
+  
   std::vector<AbstractTensorHandle*> args;
   Flatten(value, &args);
-  std::vector<AbstractTensorHandle*> outs(
-      GetFlatSize(concrete_fn.output_signature));
-  TF_RETURN_IF_ERROR(
-      ExecuteFunction(concrete_fn.trace, ctx, args, absl::MakeSpan(outs)));
-  auto cleanup_tensors = absl::MakeCleanup([outs]() {
+  
+  std::vector<AbstractTensorHandle*> outs(GetFlatSize(concrete_fn.output_signature));
+  TF_RETURN_IF_ERROR(ExecuteFunction(concrete_fn.trace, ctx, args, absl::MakeSpan(outs)));
+
+  auto cleanup_tensors = absl::MakeCleanup([&outs]() {
     for (auto t : outs) {
       t->Unref();
     }
   });
+
   return Unflatten(outs, concrete_fn.output_signature);
 }
 
-StatusOr<Function::ConcreteFunction> Function::GetConcreteFunction(
-    TaggedValue value) const {
+// Get the concrete function matching the given value.
+tf::StatusOr<Function::ConcreteFunction> Function::GetConcreteFunction(const TaggedValue& value) const {
   if (concrete_fns_.empty()) {
-    return tensorflow::errors::FailedPrecondition(
-        "No registered ConcreteFunctions.");
+    return tf::errors::FailedPrecondition("No registered ConcreteFunctions.");
   }
-  for (auto& spec : concrete_fns_) {
+  for (const auto& spec : concrete_fns_) {
     if (Match(spec.input_signature, value)) {
       return spec;
     }
   }
-  return tensorflow::errors::InvalidArgument("No match found.");
+  return tf::errors::InvalidArgument("No match found.");
 }
 
 }  // namespace libtf
