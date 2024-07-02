@@ -16,14 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
 #define TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
 #include <optional>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -42,15 +53,19 @@ namespace tensorflow {
 // its execution, the caller needs to lock the variable mutex outside and call
 // this function with `lock_held = true` to avoid double locking.
 template <typename Device, typename T>
-Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var,
-                                  bool lock_held = false) {
+absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   if (var->copy_on_read_mode.load()) {
     return absl::OkStatus();
   }
 
-  std::optional<mutex_lock> ml;
-  if (!lock_held) {
-    ml.emplace(*var->mu());
+  tsl::mutex_lock ml(*var->mu());
+
+  // It may be possible that there are multiple threads that invoke
+  // `EnsureSparseVariableAccess` at the same time. If so, the first thread that
+  // enters this critical section will set the `copy_on_read_mode` flag to true.
+  // All other threads can then exit this critical section immediately.
+  if (var->copy_on_read_mode.load()) {
+    return absl::OkStatus();
   }
 
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
@@ -62,7 +77,7 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var,
   }
   Tensor tmp;
   if (std::is_same<T, Variant>::value) {
-    AllocatorAttributes attr;
+    tsl::AllocatorAttributes attr;
     attr.set_on_host(true);
     TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
                                           var->tensor()->shape(), &tmp, attr));
@@ -73,7 +88,7 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var,
       elements_out(i) = elements_in(i);
     }
   } else {
-    AllocatorAttributes attr;
+    tsl::AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
     attr.set_nic_compatible(true);
     TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
@@ -89,11 +104,12 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var,
 
 // Utility structure that releases a sequence of borrowed mutexes when it is
 // deleted.
-struct VariableInputLockHolder {
+class VariableInputLockHolder {
  public:
   VariableInputLockHolder(
-      std::vector<Var*> vars, std::unique_ptr<std::vector<mutex_lock>> locks,
-      std::unique_ptr<std::vector<tf_shared_lock>> shared_locks)
+      std::vector<Var*> vars,
+      std::unique_ptr<std::vector<tsl::mutex_lock>> locks,
+      std::unique_ptr<std::vector<tsl::tf_shared_lock>> shared_locks)
       : vars_(std::move(vars)),
         locks_(std::move(locks)),
         shared_locks_(std::move(shared_locks)) {}
@@ -104,7 +120,7 @@ struct VariableInputLockHolder {
         shared_locks_(std::move(other.shared_locks_)) {}
 
   ~VariableInputLockHolder() {
-    // Release the locks before unreffing the Vars, because each lock
+    // Release the locks before unrefing the Vars, because each lock
     // is potentially borrowed from a Var in vars_.
     locks_.reset();
     for (Var* var : vars_) {
@@ -116,8 +132,8 @@ struct VariableInputLockHolder {
   std::vector<Var*> vars_;
   // NOTE: Use a `std::unique_ptr` instead of moving in a vector directly,
   // because a `std::vector<mutex_lock>` is not movable on all platforms.
-  std::unique_ptr<std::vector<mutex_lock>> locks_;
-  std::unique_ptr<std::vector<tf_shared_lock>> shared_locks_;
+  std::unique_ptr<std::vector<tsl::mutex_lock>> locks_;
+  std::unique_ptr<std::vector<tsl::tf_shared_lock>> shared_locks_;
 };
 
 // Returns a borrowed pointer to the mutex for the variable `input` in `ctx`.
@@ -126,15 +142,15 @@ struct VariableInputLockHolder {
 // `*maybe_resource` will be updated to contain the underlying resource, and the
 // caller will be responsible for calling `Unref()` on that resource.
 template <typename Device, typename T>
-mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
-                                Var** maybe_resource) {
+tsl::mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
+                                     Var** maybe_resource) {
   *maybe_resource = nullptr;
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     if (LookupResource(ctx, HandleFromInput(ctx, input), maybe_resource).ok()) {
       return (*maybe_resource)->mu();
     } else {
       ctx->CtxFailureWithWarning(
-          errors::Internal("Invalid variable reference."));
+          absl::InternalError("Invalid variable reference."));
       return nullptr;
     }
   }
@@ -144,13 +160,13 @@ mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
 // MaybeLockVariableInputMutexesInOrder is a helper function to acquire mutexes
 // in address order to mitigate deadlock.  Returns a structure that, when
 // deleted, will release the acquired mutexes. Safe to pass duplicates - will
-// only lock each distinct mutex once. If sparse is true will ensure the
+// only lock each distinct mutex once. If sparse is true, will ensure the
 // variable gets switched to copy-on-read mode before trying to acquire the
 // locks. If do_lock is false, returns immediately for reference variables. For
-// resource variables in copy-on-read-mode it will grab a shared lock if do_lock
-// is false, exclusive lock otherwise.  Note that this silently doesn't lock
-// mutexes for invalid variable references; in all usages this is followed by
-// GetInputTensor which will signal a failure.
+// resource variables in copy-on-read-mode, it will grab a shared lock if
+// do_lock is false, exclusive lock otherwise.  Note that this silently doesn't
+// lock mutexes for invalid variable references; in all usages this is followed
+// by GetInputTensor which will signal a failure.
 template <typename Device, typename T>
 VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
     OpKernelContext* ctx, bool do_lock, bool sparse,
@@ -166,11 +182,11 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
     return VariableInputLockHolder({}, {}, {});
   }
   std::vector<Var*> vars;
-  std::vector<mutex*> mutexes;
+  std::vector<tsl::mutex*> mutexes;
   std::vector<int> acquire_order;
   for (auto input : input_ids) {
     Var* var;
-    mutex* mutex = GetTrainingVariableMutex<Device, T>(ctx, input, &var);
+    tsl::mutex* mutex = GetTrainingVariableMutex<Device, T>(ctx, input, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
     if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
@@ -178,15 +194,22 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
       mutexes.push_back(mutex);
     }
   }
+
+  if (sparse) {
+    for (Var* var : vars) {
+      EnsureSparseVariableAccess<Device, T>(ctx, var).IgnoreError();
+    }
+  }
+
   std::sort(acquire_order.begin(), acquire_order.end(),
             [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
 
-  auto locks = std::make_unique<std::vector<mutex_lock>>();
-  auto shared_locks = std::make_unique<std::vector<tf_shared_lock>>();
+  auto locks = std::make_unique<std::vector<tsl::mutex_lock>>();
+  auto shared_locks = std::make_unique<std::vector<tsl::tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
   for (auto acquire : acquire_order) {
-    mutex* mu = mutexes[acquire];
+    tsl::mutex* mu = mutexes[acquire];
     if (mu != nullptr) {
       if (!sparse || do_lock) {
         locks->emplace_back(*mu);
@@ -197,19 +220,6 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
   }
   auto variableInputLock =
       VariableInputLockHolder(vars, std::move(locks), std::move(shared_locks));
-  if (sparse) {
-    // Enable sparse variables' access.
-    // NOTE: This can not be done before the variable input locks are held,
-    // because a race condition can happen between this and another thread that
-    // turns off some variable's `copy_on_read_mode` after this thread enables
-    // sparse access; when a later function sees `copy_on_read_mode` is off, it
-    // will try to lock the variable again for updating `copy_on_read_mode` and
-    // cause the deadlock, since the variable mutex is non-re-entrant.
-    for (auto* var : vars) {
-      EnsureSparseVariableAccess<Device, T>(ctx, var, /*lock_held=*/true)
-          .IgnoreError();
-    }
-  }
   return variableInputLock;
 }
 
@@ -220,14 +230,14 @@ void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
 // reference count of 1 before you update it.
 // REQUIRES: If you pass in variable->tensor(), *variable->mu() must be held.
 template <typename Device, typename T>
-Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
-                               bool copy_on_read_mode) {
+absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
+                                     bool copy_on_read_mode) {
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
     Tensor tmp;
     if (std::is_same<T, Variant>::value) {
-      AllocatorAttributes attr;
+      tsl::AllocatorAttributes attr;
       attr.set_on_host(true);
       TF_RETURN_IF_ERROR(
           ctx->allocate_temp(tensor->dtype(), tensor->shape(), &tmp, attr));
@@ -238,7 +248,7 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
         elements_out(i) = elements_in(i);
       }
     } else {
-      AllocatorAttributes attr;
+      tsl::AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
       attr.set_nic_compatible(true);
       TF_RETURN_IF_ERROR(
@@ -254,20 +264,24 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
 
 // This gives you `*out`, a tensor you can update, corresponding to a variable
 // passed as input index `input`.  This handles the differences between
-// reference and resource variables. For reference variables we can just grab
-// the tensor, grabbing the lock if lock_held is False.
+// reference and resource variables.
+
+// For reference variables we can just grab the tensor, grabbing the lock if
+// `lock_held` is False.
 //
-// For resource variables we, if sparse is true, ensure it's in copy-on-read
-// mode, and then, regardless of the value of sparse, ensure its refcount is 1
-// (by potentially copying its contents). In this case lock_held is ignored.
+// For resource variables:
+// * If sparse is true: return the underlying tensor.
+// * If sparse is false: ensure its refcount is 1 (by potentially copying its
+//   contents), and then return the underlying tensor.
+// `lock_held` is ignored for resource variables.
 template <typename Device, typename T>
-Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
-                                  bool lock_held, bool sparse, Tensor* out) {
+absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
+                                        bool lock_held, bool sparse,
+                                        Tensor* out) {
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     core::RefCountPtr<Var> var;
     TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
     if (sparse) {
-      TF_RETURN_IF_ERROR(EnsureSparseVariableAccess<Device, T>(ctx, var.get()));
       *out = *var->tensor();
       return absl::OkStatus();
     }
