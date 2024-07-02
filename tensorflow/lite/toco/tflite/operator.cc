@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 
 // graph_transformation module.
+#include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
