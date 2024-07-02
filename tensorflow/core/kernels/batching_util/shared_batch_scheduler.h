@@ -920,7 +920,7 @@ Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
 template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
-  profiler::TraceMe trace_me([task] {
+  tsl::profiler::TraceMe trace_me([task] {
     return profiler::TraceMeEncode(
         "ScheduleWithLazySplit",
         {{"batching_input_task_size", (*task)->size()}});
@@ -1055,7 +1055,7 @@ template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     std::unique_ptr<TaskType>* task) {
   const bool large_batch_splitting = options_.enable_large_batch_splitting;
-  profiler::TraceMe trace_me([task, large_batch_splitting] {
+  tsl::profiler::TraceMe trace_me([task, large_batch_splitting] {
     return profiler::TraceMeEncode(
         large_batch_splitting ? "ScheduleWithEagerSplit"
                               : "ScheduleWithoutSplit",
