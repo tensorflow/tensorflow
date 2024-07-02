@@ -1270,6 +1270,57 @@ func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*
 
 // -----
 
+// CHECK-LABEL: test_strided_slice_padding_even
+// CHECK-DAG: %[[PAD_VAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+// CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() <{value = dense<{{\[\[}}0, 1], [0, 1], [0, 0]]> : tensor<3x2xi32>}> : () -> tensor<3x2xi32>
+// CHECK-DAG: %[[PAD_OP:.*]] = tosa.pad %arg0, %[[PADDING]], %[[PAD_VAL]] : (tensor<7x7x64xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<8x8x64xf32>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %[[PAD_OP]] {new_shape = array<i64: 4, 2, 4, 2, 64>}
+// CHECK-DAG: %[[SLICE:.*]] = tosa.slice %[[RESHAPE1]] {size = array<i64: 4, 1, 4, 1, 64>, start = array<i64: 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[SLICE]] {new_shape = array<i64: 4, 4, 64>}
+func.func @test_strided_slice_padding_even(%arg0: tensor<7x7x64xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 64]> : tensor<3xi32>
+  %stride = arith.constant dense<[2, 2, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<7x7x64xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_padding_odd
+// CHECK-DAG: %[[PAD_VAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+// CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() <{value = dense<{{\[\[}}0, 1], [0, 1], [0, 0]]> : tensor<3x2xi32>}> : () -> tensor<3x2xi32>
+// CHECK-DAG: %[[PAD_OP:.*]] = tosa.pad %arg0, %[[PADDING]], %[[PAD_VAL]] : (tensor<14x14x32xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<15x15x32xf32>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %[[PAD_OP]] {new_shape = array<i64: 5, 3, 5, 3, 32>}
+// CHECK-DAG: %[[SLICE:.*]] = tosa.slice %[[RESHAPE1]] {size = array<i64: 5, 1, 5, 1, 32>, start = array<i64: 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[SLICE]] {new_shape = array<i64: 5, 5, 32>}
+func.func @test_strided_slice_padding_odd(%arg0: tensor<14x14x32xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 32]> : tensor<3xi32>
+  %stride = arith.constant dense<[3, 3, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<14x14x32xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_strided_slice_padding_pad_greater_than_1
+// CHECK-DAG: %[[PAD_VAL:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+// CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() <{value = dense<{{\[\[}}0, 2], [0, 2], [0, 0]]> : tensor<3x2xi32>}> : () -> tensor<3x2xi32>
+// CHECK-DAG: %[[PAD_OP:.*]] = tosa.pad %arg0, %[[PADDING]], %[[PAD_VAL]] : (tensor<13x13x32xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<15x15x32xf32>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %[[PAD_OP]] {new_shape = array<i64: 5, 3, 5, 3, 32>}
+// CHECK-DAG: %[[SLICE:.*]] = tosa.slice %[[RESHAPE1]] {size = array<i64: 5, 1, 5, 1, 32>, start = array<i64: 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[SLICE]] {new_shape = array<i64: 5, 5, 32>}
+func.func @test_strided_slice_padding_pad_greater_than_1(%arg0: tensor<13x13x32xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 0, 0]> : tensor<3xi32>
+  %end = arith.constant dense<[0, 0, 32]> : tensor<3xi32>
+  %stride = arith.constant dense<[3, 3, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x13x32xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_select
 // CHECK: %[[VAR1:.*]] = tosa.reshape %arg2 {new_shape = array<i64: 1, 1, 1>} : (tensor<1xi1>) -> tensor<1x1x1xi1>
 // CHECK: %[[VAR2:.*]] = tosa.select %[[VAR1]], %arg0, %arg1

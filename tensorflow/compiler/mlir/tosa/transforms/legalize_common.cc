@@ -2555,6 +2555,9 @@ std::optional<Value> convertStridedSliceOp(
     }
   }
 
+  SmallVector<int32_t> input_pads(
+      input_rank * 2);  // Stores pads on either side of a dimension
+
   // Step 0: Process the begin/end masks and build the begin/sizes for the
   // first slice
   SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
@@ -2579,6 +2582,44 @@ std::optional<Value> convertStridedSliceOp(
       a1_size[i] = 1;
       strides[i] = 1;
     }
+
+    // Add padding if needed (in case of odd input dimension coupled with an
+    // even stride).
+    // Note: no padding added to dynamic dimensions
+    auto stride_remainder = a1_size[i] % strides[i];
+    if (a1_size[i] > 0 && stride_remainder != 0) {
+      input_pads[2 * i] = 0;  // No padding at beginning of dimension
+      auto pad_up_value = strides[i] - stride_remainder;
+      input_pads[2 * i + 1] = pad_up_value;  // Pad end of dimension up to the
+                                             // next multiple of strides[i]
+      a1_size[i] += pad_up_value;
+    } else {
+      input_pads[2 * i] = 0;
+      input_pads[2 * i + 1] = 0;
+    }
+  }
+
+  // Step 0.5: Add tosa.Pad if required
+  const bool need_padding =
+      llvm::any_of(input_pads, [](int64_t i) { return i != 0; });
+  if (need_padding) {
+    RankedTensorType a0_pad_const_attr_type =
+        tensorflow::GetTypeFromTFTensorShape({(input_rank), 2},
+                                             rewriter.getIntegerType(32));
+
+    auto a0_pad_const_op = rewriter.create<tosa::ConstOp>(
+        op->getLoc(), a0_pad_const_attr_type,
+        DenseElementsAttr::get(a0_pad_const_attr_type,
+                               llvm::ArrayRef(input_pads)));
+
+    auto a0_pad_input_op = CreateOpAndInfer<tosa::PadOp>(
+        rewriter, op->getLoc(),
+        tensorflow::GetTypeFromTFTensorShape(a1_size,
+                                             result_type.getElementType()),
+        input_value, a0_pad_const_op.getResult());
+
+    input_value =
+        a0_pad_input_op.getResult();  // overwrite input_value parameter
   }
 
   // Step 1: Slice the input array
