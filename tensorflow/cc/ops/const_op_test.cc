@@ -148,4 +148,46 @@ TEST(ConstOpTest, TemplatedConst) {
   ExpectTypeAndShape(c2.node(), DT_STRING, {4, 1});
 }
 
+// New Features
+TEST(ConstOpTest, ComplexNumbers) {
+  Scope root = Scope::NewRootScope();
+  auto c = ops::Const(root, std::complex<float>(1.0, 2.0));
+  TF_CHECK_OK(root.status());
+  EXPECT_EQ(c.op().output_type(0), DT_COMPLEX64);
+  ExpectNodeEqual<std::complex<float>>(c.node(), {std::complex<float>(1.0, 2.0)}, {});
+}
+
+TEST(ConstOpTest, BooleanValues) {
+  Scope root = Scope::NewRootScope();
+  auto c = ops::Const(root, true);
+  TF_CHECK_OK(root.status());
+  EXPECT_EQ(c.op().output_type(0), DT_BOOL);
+  ExpectNodeEqual<bool>(c.node(), {true}, {});
+}
+
+TEST(ConstOpTest, LargeTensor) {
+  Scope root = Scope::NewRootScope();
+  std::vector<float> values(1000, 1.0);
+  auto c = ops::Const(root, values, {1000});
+  TF_CHECK_OK(root.status());
+  EXPECT_EQ(c.op().output_type(0), DT_FLOAT);
+  ExpectNodeEqual<float>(c.node(), values, {1000});
+}
+
+TEST(ConstOpTest, MixedDataTypes) {
+  Scope root = Scope::NewRootScope();
+  ops::Const(root, {1.0, "test"});
+  EXPECT_FALSE(root.status().ok());
+}
+
+TEST(ConstOpTest, RangeValues) {
+  Scope root = Scope::NewRootScope();
+  std::vector<int> values(10);
+  std::iota(values.begin(), values.end(), 0);
+  auto c = ops::Const(root, values, {10});
+  TF_CHECK_OK(root.status());
+  EXPECT_EQ(c.op().output_type(0), DT_INT32);
+  ExpectNodeEqual<int>(c.node(), values, {10});
+}
+
 }  // namespace tensorflow
