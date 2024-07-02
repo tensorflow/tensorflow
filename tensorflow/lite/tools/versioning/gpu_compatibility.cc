@@ -433,6 +433,9 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
                               /*required_runtime_inputs=*/2,
                               /*required_outputs=*/1);
   }
+  if (op_sig.custom_name == "GroupNormalization") {
+    return absl::OkStatus();
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Not supported custom op ", op_sig.custom_name));
 }

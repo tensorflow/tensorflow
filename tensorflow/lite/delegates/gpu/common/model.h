@@ -132,6 +132,9 @@ class GraphFloat32 {
   // depends on a value from node B should be created after node B.
   Node* NewNode();
 
+  // Insert Node before another in the execution plan.
+  absl::Status InsertNodeBefore(NodeId id, Node** new_node);
+
   // Insert Node after another in the execution plan.
   absl::Status InsertNodeAfter(NodeId id, Node** new_node);
 
