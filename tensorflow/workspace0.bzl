@@ -5,8 +5,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
-load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
+load("@local_xla//:workspace0.bzl", "xla_workspace0")
 load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 
@@ -52,6 +52,8 @@ def _tf_bind():
     )
 
 def workspace():
+    xla_workspace0()
+
     http_archive(
         name = "inception_v1",
         build_file = "//:models.BUILD",
@@ -132,7 +134,7 @@ def workspace():
     # at the end of the WORKSPACE file.
     _tf_bind()
 
-    grpc_extra_deps()
+    # grpc_extra_deps()
     rules_foreign_cc_dependencies()
     config_googleapis()
 
