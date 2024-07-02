@@ -274,7 +274,7 @@ TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
 
 TfLiteOperator* CreateDelegateKernelRegistrationImpl(
     SimpleOpaqueDelegateInterface* delegate) {
-  TfLiteOperator* kernel_registration = TfLiteOperatorCreateWithData(
+  TfLiteOperator* kernel_registration = TfLiteOperatorCreate(
       kTfLiteBuiltinDelegate, delegate->Name(), 1, /*user_data=*/nullptr);
   TfLiteOperatorSetFreeWithData(
       kernel_registration,

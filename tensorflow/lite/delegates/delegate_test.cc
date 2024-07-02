@@ -448,7 +448,7 @@ struct OpaqueTestDelegate {
     delegate_state->delegate_prepared = true;
 
     TfLiteRegistration registration{};
-    registration.registration_external = TfLiteOperatorCreateWithData(
+    registration.registration_external = TfLiteOperatorCreate(
         kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1,
         /*user_data=*/nullptr);
 
@@ -1133,7 +1133,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
 };
 
 TfLiteOperator* CreateTfLiteOperator() {
-  auto* registration = TfLiteOperatorCreateWithData(
+  auto* registration = TfLiteOperatorCreate(
       kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1, /*user_data=*/nullptr);
   TfLiteOperatorSetPrepareWithData(
       registration,

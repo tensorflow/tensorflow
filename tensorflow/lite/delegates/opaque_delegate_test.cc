@@ -71,10 +71,10 @@ TEST(TestOpaqueDelegate, AddDelegate) {
     // Test that an unnamed delegate kernel can be passed to the TF Lite
     // runtime.
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
-                                     /*name*/ nullptr,
-                                     /*version=*/1,
-                                     /*user_data=*/nullptr);
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1,
+                             /*user_data=*/nullptr);
     TfLiteOperatorSetInitWithData(
         registration_external,
         [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
@@ -129,10 +129,10 @@ TEST(TestOpaqueDelegate, ModelWithCustomOpAndInitData) {
                                        TfLiteOpaqueDelegate* opaque_delegate,
                                        void* data) -> TfLiteStatus {
     TfLiteOperator* registration_external =
-        TfLiteOperatorCreateWithData(kTfLiteBuiltinDelegate,
-                                     /*name*/ nullptr,
-                                     /*version=*/1,
-                                     /*user_data=*/nullptr);
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1,
+                             /*user_data=*/nullptr);
     TfLiteOperatorSetInitWithData(
         registration_external,
         [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
