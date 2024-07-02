@@ -151,7 +151,8 @@ class CuptiTracer {
                                   const CUpti_CallbackData* cbdata);
   absl::Status HandleDriverApiCallback(CUpti_CallbackId cbid,
                                        const CUpti_CallbackData* cbdata);
-
+  absl::Status HandleResourceCallback(CUpti_CallbackId cbid,
+                                      const CUpti_CallbackData* cbdata);
   int num_gpus_;
   std::optional<CuptiTracerOptions> option_;
   CuptiInterface* cupti_interface_ = nullptr;

@@ -87,6 +87,11 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
                             uint8_t per_thread_stream,
                             uint32_t* stream_id) override;
 
+  CUptiResult GetGraphId(CUgraph graph, uint32_t* graph_id) override;
+
+  CUptiResult GetGraphExecId(CUgraphExec graph_exec,
+                             uint32_t* graph_id) override;
+
   void CleanUp() override {}
   bool Disabled() const override { return false; }
 
@@ -158,6 +163,11 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
   CUptiResult GetStreamIdEx(CUcontext context, CUstream stream,
                             uint8_t per_thread_stream,
                             uint32_t* stream_id) override;
+
+  CUptiResult GetGraphId(CUgraph graph, uint32_t* graph_id) override;
+
+  CUptiResult GetGraphExecId(CUgraphExec graph_exec,
+                             uint32_t* graph_id) override;
 
   void CleanUp() override {}
   bool Disabled() const override { return false; }

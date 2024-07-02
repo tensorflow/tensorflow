@@ -252,6 +252,21 @@ CUptiResult CuptiErrorManager::GetStreamIdEx(CUcontext context, CUstream stream,
   return error;
 }
 
+CUptiResult CuptiErrorManager::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphId(graph, graph_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
+                                              uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphExecId(graph_exec, graph_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 void CuptiErrorManager::CleanUp() {
   if (undo_disabled_) {  // prevent deadlock
     return;

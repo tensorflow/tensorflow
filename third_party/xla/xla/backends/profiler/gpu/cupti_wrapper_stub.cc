@@ -109,5 +109,14 @@ CUptiResult CuptiWrapperStub::GetStreamIdEx(CUcontext context, CUstream stream,
   return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
 }
 
+CUptiResult CuptiWrapperStub::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::GetGraphExecId(CUgraphExec graph_exec,
+                                             uint32_t* graph_id) {
+  return CUPTI_SUCCESS;
+}
+
 }  // namespace profiler
 }  // namespace xla
