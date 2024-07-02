@@ -18,15 +18,25 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/strip.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

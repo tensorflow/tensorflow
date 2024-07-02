@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
 
 namespace {
 using ::tensorflow::metrics::IncrementPhase2XlaCompilerCounter;
