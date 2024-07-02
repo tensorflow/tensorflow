@@ -1,0 +1,155 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+
+# Description: Integrates Shardy into the current XLA pipeline.
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":friends",
+        "//xla:internal",
+    ]),
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+    deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        ":constants",
+        "//xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@shardy//src/shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
+    name = "shardonnay_call_inliner",
+    srcs = ["shardonnay_call_inliner.cc"],
+    hdrs = ["shardonnay_call_inliner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:call_inliner",
+    ],
+)
+
+cc_test(
+    name = "shardonnay_call_inliner_test",
+    srcs = ["shardonnay_call_inliner_test.cc"],
+    env = {"XLA_FLAGS": "--xla_use_shardonnay=true"},
+    deps = [
+        ":shardonnay_call_inliner",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "shardonnay_xla_pass",
+    srcs = ["shardonnay_xla_pass.cc"],
+    hdrs = ["shardonnay_xla_pass.h"],
+    deps = [
+        ":constants",
+        ":utils",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
+        "//xla:shape_layout",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service:computation_layout",
+        "//xla/service:hlo_dce",
+        "//xla/service:hlo_pass",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:tuple_simplifier",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_export",
+        "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_import",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@shardy//src/shardy/common:file_utils",
+        "@shardy//src/shardy/dialect/sdy/transforms/propagation:passes",
+    ],
+)
+
+cc_test(
+    name = "shardonnay_xla_pass_test",
+    srcs = ["shardonnay_xla_pass_test.cc"],
+    deps = [
+        ":shardonnay_xla_pass",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "sdy_opt",
+    srcs = ["sdy_opt_main.cc"],
+    deps = [
+        "//xla/mlir_hlo",
+        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service/spmd/shardy/mhlo_round_trip:export_ops",
+        "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
+        "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_export",
+        "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_import",
+        "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_export",
+        "//xla/service/spmd/shardy/round_trip_common:convert_sharding_custom_calls",
+        "//xla/service/spmd/shardy/round_trip_common:identity_to_pass_through_while_args",
+        "//xla/service/spmd/shardy/round_trip_common:import_constants",
+        "//xla/service/spmd/shardy/round_trip_common:shard_map_import",
+        "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
+        "//xla/service/spmd/shardy/sdy_round_trip:export_shardings",
+        "//xla/service/spmd/shardy/sdy_round_trip:import_shardings",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/service/spmd/shardy/sdy_round_trip/test_utils:mhlo_to_hlo_to_mhlo",
+        "//xla/service/spmd/shardy/sdy_round_trip/test_utils:testing_pipeline",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+        "@shardy//src/shardy/dialect/sdy/ir:dialect",
+        "@shardy//src/shardy/dialect/sdy/transforms:passes",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)

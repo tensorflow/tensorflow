@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
-#define XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_UTILS_H_
+#define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
 
@@ -63,7 +63,9 @@ void removeFrontendAttribute(mlir::Operation* op,
 void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
 
+void loadAllRequiredDialects(mlir::MLIRContext* context);
+
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDONNAY_UTILS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_UTILS_H_

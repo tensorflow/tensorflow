@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDONNAY_CONSTANTS_H_
-#define XLA_SERVICE_SPMD_SHARDONNAY_CONSTANTS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_CONSTANTS_H_
+#define XLA_SERVICE_SPMD_SHARDY_CONSTANTS_H_
 
 #include "llvm/ADT/StringRef.h"
 
@@ -75,4 +75,4 @@ inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 }  //  namespace sdy
 }  //  namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDONNAY_CONSTANTS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_CONSTANTS_H_
