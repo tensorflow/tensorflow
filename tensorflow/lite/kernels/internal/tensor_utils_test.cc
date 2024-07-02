@@ -19,10 +19,13 @@ limitations under the License.
 #include <algorithm>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 #ifdef DOTPROD_BENCHMARKS
