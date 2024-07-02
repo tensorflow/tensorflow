@@ -2727,4 +2727,29 @@ def XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp : TF_Op<"XlaSparseDens
     TF_Float32Tensor:$updated_linear
   );
 }
+
+def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
+  let summary = "A XLA op which performs the custom optimizer per-row update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    Variadic<TF_Float32Tensor>:$tables,
+    Variadic<TF_Float32Tensor>:$hyperparameters,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    SymbolRefAttr:$custom_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    Variadic<TF_Float32Tensor>:$updated_tables
+  );
+
+  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
+}
 #endif // TF_OPS

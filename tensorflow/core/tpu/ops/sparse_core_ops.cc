@@ -498,4 +498,24 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize")
       c->set_output(2, c->input(8));
       return absl::OkStatus();
     });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("tables: N * float32")
+    .Input("hyperparameters: M * float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_tables: N * float32")
+    .Attr("N: int >= 1")
+    .Attr("M: int >= 1")
+    .Attr("custom_computation: func")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      c->set_output(0, c->input(5));
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

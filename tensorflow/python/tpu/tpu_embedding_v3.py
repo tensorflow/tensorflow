@@ -310,20 +310,6 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 )
 
 
-def _clone_feature_config(feature_config):
-  old_to_new_table = {}
-  new_features = []
-
-  for old_feature in nest.flatten(feature_config):
-    feature = copy.copy(old_feature)
-    if feature.table not in old_to_new_table:
-      old_to_new_table[feature.table] = copy.copy(feature.table)
-    feature.table = old_to_new_table[feature.table]
-    new_features.append(feature)
-
-  return nest.pack_sequence_as(feature_config, new_features)
-
-
 def _stack_tables_with_same_table_dim_and_optimizer(
     table_config: Sequence[TableConfig],
     flat_features: Sequence[Tuple[Any, FeatureConfig]],
@@ -500,7 +486,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     # We do a clone on the feature_config here as we will alter settings in it
     # and we don't want the user to see these. We can't just use clone here
     # as we need to maintain some object relationships.
-    super().__init__(_clone_feature_config(feature_config), optimizer)
+    super().__init__(feature_config, optimizer)
     self._strategy = distribute_lib.get_strategy()
     if not isinstance(
         self._strategy, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
@@ -1119,7 +1105,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ) -> Tuple[Any, Any]:
     """Computes the max_ids/unique ids settings from the input features."""
-    copy_feature_config = _clone_feature_config(feature_config)
+    copy_feature_config = tpu_embedding_base._clone_feature_config(  # pylint: disable=protected-access
+        feature_config
+    )
     table_config = []
     for feature in nest.flatten(copy_feature_config):
       table_config.append(feature.table)

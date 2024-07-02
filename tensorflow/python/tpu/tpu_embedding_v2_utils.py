@@ -186,6 +186,163 @@ class _Optimizer(metaclass=abc.ABCMeta):
     return hash(tuple(self.__dict__.items()))
 
 
+class CustomOptimizer(_Optimizer):
+  """Optimization parameters for custom optimizer for TPU embeddings.
+
+  This optimizer gives the user the ability to define a custom optimizer
+  for running embedding lookups on TPU v5p.
+
+  The custom computation should be a function which takes gradient, a list of
+  tables (embedding tables + slot variables) and a list of hyperparameters
+  (learning_rate + other hyperparameters). The function should perform the
+  gradient update on the tables and return the updated tables. e.g.
+
+  ```python
+  @def_function.function
+  def sgd_optimizer_computation(gradient, tables, hyperparameters):
+    return tables[0] - gradient * hyperparameters[0]
+  ```
+
+  Above is a simple example of a sgd optimizer. You can also define a more
+  complex optimizer which updates multiple tables and slot variables.
+
+  ```python
+  @def_function.function
+  def adagrad_optimizer_computation(gradient, tables, hyperparameters):
+    embedding_table = tables[0]
+    accumulator = tables[1]
+    learning_rate = hyperparameters[0]
+    new_accumulator = accumulator + gradient * gradient
+    updated_embedding_table = (
+        embedding_table
+        - learning_rate * gradient / math_ops.sqrt(new_accumulator)
+    )
+    return (updated_embedding_table, new_accumulator)
+  ```
+
+  The custom computation is defined as a per-row update function and it will be
+  auto scaled for the entire table (slot variables).
+
+  NOTE: This optimizer can only be used with the `TPUEmbeddingV2` class.
+
+  Before passing the custom computation to the CustomOptimizer, you have to
+  trace the function and get the concrete function. The shape of each input
+  should be [1, embedding_dim]. e.g.
+
+  ```python
+  sgd_optimizer_computation = sgd_optimizer_computation.get_concrete_function(
+      gradient=tf.TensorSpec([1, embedding_dim]),
+      tables=[tf.TensorSpec([1, embedding_dim])],
+      hyperparameters=[tf.TensorSpec([1, embedding_dim])],
+  )
+  ```
+
+  NOTE: the hyperparameters also have shape [1, embedding_dim] even though they
+  are scalar values.
+
+  Pass this to `tf.tpu.experimental.embedding.TPUEmbeddingV2` via the
+  `optimizer` argument to set the global optimizer and its parameters:
+
+  ```python
+  optimizer = tf.tpu.experimental.embedding.CustomOptimizer(
+        custom_computation=custom_computation,
+        learning_rate=1.0,
+    )
+  embedding = tf.tpu.experimental.embedding.TPUEmbeddingV2(
+      ...
+      optimizer=optimizer)
+  ```
+
+  This can also be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  optimizer parameter to set a table specific optimizer. This will override the
+  optimizer and parameters for global embedding optimizer defined above:
+
+  ```python
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      optimizer=optimizer)
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...
+      optimizer=optimizer)
+  ```
+  """
+
+  def __init__(
+      self,
+      custom_computation: core.ConcreteFunction,
+      learning_rate: Union[float, Callable[[], float]] = 0.01,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+      clipvalue: Optional[ClipValueType] = None,
+      low_dimensional_packing_status: bool = False,
+      slot_names: Optional[List[Text]] = None,
+      slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
+      hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
+  ) -> Any:
+    super().__init__(
+        learning_rate,
+        use_gradient_accumulation,
+        clip_weight_min,
+        clip_weight_max,
+        weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate,
+        clipvalue,
+        None,
+        low_dimensional_packing_status,
+    )
+    # We need to convert the slot names and initializers to tuples to make
+    # them hashable.
+    self._slot_names_attr = tuple(slot_names if slot_names else [])
+    self._slot_initializers_attr = tuple(
+        slot_initializers if slot_initializers else []
+    )
+    num_slot_names = len(self._slot_names_attr)
+    num_slot_initializers = len(self._slot_initializers_attr)
+    if num_slot_names != num_slot_initializers:
+      raise ValueError(
+          f"The number of slot_names ({num_slot_names}) must match"
+          " the number of slot_initializers"
+          f" ({num_slot_initializers})."
+      )
+    self._hyperparameters = hyperparameters
+    self._custom_computation = custom_computation
+
+  def _slot_names(self) -> List[Text]:
+    return list(self._slot_names_attr)
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return list(self._slot_initializers_attr)
+
+  def _load(self) -> Callable[..., ops.Operation]:
+    raise NotImplementedError
+
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    raise NotImplementedError
+
+  @property
+  def hyperparameters(self) -> List[Union[float, Callable[[], float]]]:
+    return self._hyperparameters or []
+
+  @property
+  def custom_computation(self) -> core.ConcreteFunction:
+    return self._custom_computation
+
+
 @tf_export("tpu.experimental.embedding.SGD")
 class SGD(_Optimizer):
   """Optimization parameters for stochastic gradient descent for TPU embeddings.

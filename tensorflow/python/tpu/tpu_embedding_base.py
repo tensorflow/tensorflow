@@ -14,14 +14,29 @@
 # ==============================================================================
 """Base Class for TPU Embeddings Mid level APIs."""
 
+import copy
 import functools
-from typing import Any, Dict, Iterable, Optional, Union, Text
+from typing import Any, Dict, Iterable, Optional, Text, Union
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
+
+
+def _clone_feature_config(feature_config):
+  old_to_new_table = {}
+  new_features = []
+
+  for old_feature in nest.flatten(feature_config):
+    feature = copy.copy(old_feature)
+    if feature.table not in old_to_new_table:
+      old_to_new_table[feature.table] = copy.copy(feature.table)
+    feature.table = old_to_new_table[feature.table]
+    new_features.append(feature)
+
+  return nest.pack_sequence_as(feature_config, new_features)
 
 
 class TPUEmbeddingBase(autotrackable.AutoTrackable):
@@ -36,16 +51,16 @@ class TPUEmbeddingBase(autotrackable.AutoTrackable):
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer] = None):  # pylint:disable=protected-access
     """Creates the TPUEmbeddingBase object."""
-    self._feature_config = feature_config
+    self._feature_config = _clone_feature_config(feature_config)
     self._output_shapes = []
-    for feature in nest.flatten(feature_config):
+    for feature in nest.flatten(self._feature_config):
       self._output_shapes.append(feature.output_shape)
     # Set table order here to the order of the first occurrence of the table in
     # a feature provided by the user. The order of this struct must be fixed
     # to provide the user with deterministic behavior over multiple
     # instantiations.
     self._table_config = []
-    for feature in nest.flatten(feature_config):
+    for feature in nest.flatten(self._feature_config):
       if feature.table not in self._table_config:
         self._table_config.append(feature.table)
 
