@@ -454,14 +454,12 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
         xla_launch_callees.contains(func.getSymName()))
       continue;
 
-    // Skips hoisting if this function runs on TPU. This is will happen when
-    // fallback to TPUPartitionedCallOp is enabled for SPMD.
-    // TODO(b/214039254): remove this once tfrt support native SPMD.
-    bool has_tpu_op = false;
-    func.walk([&has_tpu_op](mlir::Operation *op) {
-      if (op->hasAttr("_tpu_replicate")) has_tpu_op = true;
+    func.walk([&module](mlir::Operation *op) {
+      if (op->hasAttr("_tpu_replicate")) {
+        module->emitError(
+            "Fallback to TPUPartitionedCallOp for SPMD should not occur.");
+      }
     });
-    if (has_tpu_op) continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,
                                 side_effect_analysis.GetAnalysisForFunc(func),
