@@ -72,6 +72,8 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
 
   CUptiResult ActivityUsePerThreadBuffer() override;
 
+  CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
+
   // Returns device ID for a given context.
   CUptiResult GetDeviceId(CUcontext context, uint32_t* device_id) override;
 

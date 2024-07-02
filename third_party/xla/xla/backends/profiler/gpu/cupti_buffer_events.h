@@ -310,15 +310,23 @@ class CuptiActivityBufferManager {
     cached_buffers_.emplace_back(p, sz);
   }
 
-  void AddCachedActivityEventsTo(CuptiEventCollectorDelegate& receiver,
-                                 size_t max_activity_event_count,
-                                 size_t& dropped_activity_event_count);
+  std::list<ActivityBufferAndSize> PopCachedBuffers() {
+    std::list<ActivityBufferAndSize> result;
+    tsl::mutex_lock lock(buffer_mutex_);
+    std::swap(result, cached_buffers_);
+    return result;
+  }
 
  private:
   tsl::profiler::BufferPool buffer_pool_;
   tsl::mutex buffer_mutex_;
   std::list<ActivityBufferAndSize> cached_buffers_ TF_GUARDED_BY(buffer_mutex_);
 };
+
+void AddActivityBufferListEventsTo(
+    CuptiEventCollectorDelegate& receiver,
+    std::list<CuptiActivityBufferManager::ActivityBufferAndSize>& buffer_list,
+    size_t max_activity_event_count, size_t& dropped_activity_event_count);
 
 class CallbackAnnotationsAndEvents {
  public:

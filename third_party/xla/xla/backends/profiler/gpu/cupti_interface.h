@@ -62,6 +62,8 @@ class CuptiInterface {
 
   virtual CUptiResult ActivityUsePerThreadBuffer() = 0;
 
+  virtual CUptiResult SetActivityFlushPeriod(uint32_t period_ms) = 0;
+
   virtual CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) = 0;
 
   virtual CUptiResult GetTimestamp(uint64_t* timestamp) = 0;

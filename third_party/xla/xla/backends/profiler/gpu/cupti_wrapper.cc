@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
-#include <type_traits>
+#include "third_party/gpus/cuda/include/cuda.h"
 
 namespace xla {
 namespace profiler {
@@ -67,6 +67,14 @@ CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
   // cuptiActivitySetAttribute returns CUPTI_ERROR_INVALID_PARAMETER if invoked
   // with an invalid first parameter.
   return CUPTI_ERROR_INVALID_PARAMETER;
+#endif
+}
+
+CUptiResult CuptiWrapper::SetActivityFlushPeriod(uint32_t period_ms) {
+#if CUDA_VERSION >= 11010
+  return cuptiActivityFlushPeriod(period_ms);
+#else
+  return CUPTI_ERROR_NOT_SUPPORTED;
 #endif
 }
 
