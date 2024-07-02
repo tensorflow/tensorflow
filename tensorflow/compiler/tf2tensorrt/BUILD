@@ -531,6 +531,7 @@ tf_cuda_library(
     hdrs = ["utils/trt_allocator.h"],
     features = ["-layering_check"],
     deps = [
+        ":common_utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

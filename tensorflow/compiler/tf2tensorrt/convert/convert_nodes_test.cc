@@ -135,9 +135,16 @@ using ::testing::PrintToString;
 using ::tensorflow::testing::IsOk;
 using ::tensorflow::testing::StatusIs;
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
-    TrtTestMode::kImplicitBatch, TrtTestMode::kExplicitBatch,
+    TrtTestMode::kImplicitBatch,
+    TrtTestMode::kExplicitBatch,
     TrtTestMode::kDynamicShape};
+#else
+constexpr std::array<TrtTestMode, 2> ValidTrtModes = {
+    TrtTestMode::kExplicitBatch,
+    TrtTestMode::kDynamicShape};
+#endif
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
@@ -299,7 +306,11 @@ class ValidatorTest : public ::testing::Test {
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                                /*use_calibration=*/false,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                                /*use_implicit_batch=*/true,
+#else
+                               /*use_implicit_batch=*/false,
+#endif
                                /*use_explicit_precision=*/false);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
@@ -336,8 +347,15 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         convert_to_tensor_or_weights(
             std::vector<int64_t>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
         StatusIs(absl::StatusCode::kOutOfRange,
-                 HasSubstr("Input tensor rank is greater than 9")));
+                 HasSubstr("Input tensor rank is greater than "
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                           "9"
+#else
+                           "8"
+#endif
+                           )));
   }
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   // Convert non-Const with #dims < 1.
   {
     TRT_TensorOrWeights output;
@@ -360,6 +378,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     EXPECT_NE(nullptr, output.tensor()->simple_tensor());
     EXPECT_THAT(output.GetTrtDims(), DimsAreArray({non_batch_dim}));
   }
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
 }
 
 TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
@@ -375,7 +394,11 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                              /*use_implicit_batch=*/true,
+#else
+                             /*use_implicit_batch=*/false,
+#endif
                              /*use_explicit_precision=*/false);
 
   // Override the Add converter.
@@ -462,15 +485,21 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
                                /*use_calibration=*/false,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                                /*use_implicit_batch=*/true,
+#else
+                               /*use_implicit_batch=*/false,
+#endif
                                /*use_explicit_precision=*/false);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     EXPECT_THAT(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
         StatusIs(absl::StatusCode::kInvalidArgument,
                  HasSubstr("MatMul with 2D tensors requires explicit batch "
                            "mode, or that tensor A "
                            "is not transposed and B is a constant tensor.")));
+#endif
     EXPECT_THAT(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
                 StatusIs(absl::StatusCode::kUnimplemented,
                          HasSubstr("Op type Erfc is not supported")));
@@ -501,7 +530,11 @@ class ConverterTest : public ::testing::Test {
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                                     /*use_implicit_batch=*/true,
+#else
+                                    /*use_implicit_batch=*/false,
+#endif
                                     /*engine_name=*/"TRTEngineOp_000_000",
                                     /*use_explicit_precision=*/false)
                       .value());
@@ -690,15 +723,23 @@ TEST_F(ConverterTest, TransposeTensor) {
                                  "with that of the input")));
 
   // Transpose at batch dimension.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   EXPECT_THAT(
       converter_->TransposeTensor(input_tensor, {1, 0, 2, 3}, &output_tensor,
                                   dummy_node_def, "sub2"),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("Transpose at batch dimension is not supported.")));
+#endif
 
   // OK.
   TF_EXPECT_OK(converter_->TransposeTensor(
-      input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
+      input_tensor,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+      {0, 3, 1, 2},
+#else
+      {2, 0, 1},
+#endif
+      &output_tensor, dummy_node_def, "sub3"));
   EXPECT_THAT(output_tensor->getDimensions(), DimsAreArray({5, 2, 3}));
   EXPECT_THAT(
       converter_->network(),
@@ -813,14 +854,18 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
   // Add a tensor.
   ITensorProxyPtr simple_tensor;
   TRT_TensorOrWeights tensor(simple_tensor);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   EXPECT_EQ(-1, tensor.batch_size());
+#endif
   TF_EXPECT_OK(MaybeUpdateBatchSize(123));
   TF_EXPECT_OK(AddTensorOrWeights("my_tensor", tensor));
 
   // Get the added tensor.
   TRT_TensorOrWeights added_tensor;
   TF_EXPECT_OK(GetTensorOrWeights("my_tensor", &added_tensor));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   EXPECT_EQ(123, added_tensor.batch_size());
+#endif
 
   // Add the same tensor again.
   EXPECT_THAT(AddTensorOrWeights("my_tensor", tensor),
@@ -873,7 +918,11 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   Logger& logger = *Logger::GetLogger();
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
                                           /*use_implicit_batch=*/true,
+#else
+                                          /*use_implicit_batch=*/false,
+#endif
                                           /*engine_name=*/"")
                             .value();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
@@ -1014,6 +1063,10 @@ TEST_F(ConverterTest, CreateConstantLayer) {
 
 class ConvertGraphDefToEngineTest : public ::testing::Test {
  public:
+  ConvertGraphDefToEngineTest() {
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
+  }
+
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
@@ -1038,13 +1091,20 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
     return ConvertGraphDefToEngine(
         gdef, /*ctx=*/nullptr, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
-        /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
-        /*use_calibration=*/false, /*use_implicit_batch=*/true,
+        /*allocator=*/nullptr, runtime_.get(),
+        /*calibrator=*/nullptr, &engine_,
+        /*use_calibration=*/false,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+        /*use_implicit_batch=*/true,
+#else
+        /*use_implicit_batch=*/false,
+#endif
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
         "TRTEngineOp_000_000", /*use_explicit_precision=*/false);
   }
 
  protected:
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
 
  private:
@@ -1125,11 +1185,17 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void Reset(TrtPrecisionMode precision_mode_to_test = TrtPrecisionMode::FP32,
-             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch,
+             TrtTestMode trt_mode =
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                 TrtTestMode::kImplicitBatch,
+#else
+                 TrtTestMode::kDynamicShape,
+#endif
              OpKernelContext* ctx = nullptr) {
     // Destroy existing TRT objects in a proper order.
     converter_.reset(nullptr);
     engine_.reset(nullptr);
+    runtime_.reset(nullptr);
 
     // Re-create them in proper order.
     converter_ =
@@ -1143,6 +1209,8 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();
+
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
   }
 
   // Constructs a flat tensor with 'vals' in Unified Memory.
@@ -1228,18 +1296,32 @@ class OpConverterTest : public ::testing::Test {
 
   void CheckDataTypeMatches(const DataVec& datas) {
     if (VLOG_IS_ON(2)) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       int nbBindings = engine_->getNbBindings();
+#else
+      int nbBindings = engine_->getNbIOTensors();
+#endif
       VLOG(2) << "Number of engine bindings: " << nbBindings;
       for (int i = 0; i < nbBindings; i++) {
-        VLOG(2) << "Binding " << i << " name: " << engine_->getBindingName(i);
+        VLOG(2) << "Binding " << i << " name: " <<
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+            engine_->getBindingName(i);
+#else
+            engine_->getIOTensorName(i);
+#endif
       }
     }
     for (const auto& data : datas) {
       VLOG(2) << "Checking if data type matches for tensor " << data.name;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       const int input_index = engine_->getBindingIndex(data.name.c_str());
       ASSERT_NE(-1, input_index);
       const nvinfer1::DataType trt_dtype =
           engine_->getBindingDataType(input_index);
+#else
+      const nvinfer1::DataType trt_dtype =
+          engine_->getTensorDataType(data.name.c_str());
+#endif
       DataType tf_type;
       TF_ASSERT_OK(TrtTypeToTfType(trt_dtype, &tf_type));
       ASSERT_EQ(data.tensor.dtype(), tf_type)
@@ -1285,7 +1367,7 @@ class OpConverterTest : public ::testing::Test {
         converter_->BuildCudaEngine(&engine_,
                                     /*max_batch_size=*/batch_size,
                                     /*max_workspace_size_bytes=*/1 << 26,
-                                    /*allocator=*/nullptr,
+                                    /*allocator=*/nullptr, runtime_.get(),
                                     /*calibrator=*/nullptr,
                                     /*profiles=*/&profiles));
     CHECK_NOTNULL(engine_.get());
@@ -1295,7 +1377,12 @@ class OpConverterTest : public ::testing::Test {
     const int num_bindings = input_data.size() + output_data->size();
     std::vector<void*> buffers(num_bindings);
 
-    if (engine_->getNbBindings() != num_bindings) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+    const int actual_num_bindings = engine_->getNbBindings();
+#else
+    const int actual_num_bindings = engine_->getNbIOTensors();
+#endif
+    if (actual_num_bindings != num_bindings) {
       return errors::Internal("Number of bindings do not match");
     }
     // Since we have only 1 optimization profile (which is enabled by default)
@@ -1306,16 +1393,25 @@ class OpConverterTest : public ::testing::Test {
 
     // Prepare input bindings.
     TF_RETURN_IF_ERROR(
-        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0, buffers,
+        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                           buffers,
+#endif
                            converter_->use_implicit_batch(), batch_size,
                            profiles, nullptr, &input_data));
     // Prepare output bindings.
     TF_RETURN_IF_ERROR(SetTrtEngineOutputs(
-        engine_.get(), execution_context.get(), 0, buffers,
+        engine_.get(), execution_context.get(), 0,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+        buffers,
+#endif
         converter_->use_implicit_batch(), batch_size, nullptr, output_data));
     // Execute the TRT engine.
-    TF_RETURN_IF_ERROR(TrtEnqueue(execution_context.get(), buffers, stream_,
-                                  converter_->use_implicit_batch(),
+    TF_RETURN_IF_ERROR(TrtEnqueue(execution_context.get(),
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                  buffers,
+#endif
+                                  stream_, converter_->use_implicit_batch(),
                                   batch_size));
     cudaStreamSynchronize(stream_);
     return OkStatus();
@@ -1370,9 +1466,11 @@ class OpConverterTest : public ::testing::Test {
     std::vector<int32_t> dims_vec;
     TF_CHECK_OK(adap.Prepend(batch_size).Vector(&dims_vec));
     AddTestTensorWithTFDims(name, dims_vec, trt_dtype);
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     if (adap.IsStatic()) {
       ASSERT_EQ(batch_size, converter_->batch_size_);
     }
+#endif
   }
 
   // Adds weights for both validation and conversion. The type of the weight is
@@ -1568,6 +1666,7 @@ class OpConverterTest : public ::testing::Test {
   Logger& logger_ = *Logger::GetLogger();
 
  private:
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
@@ -1590,7 +1689,13 @@ class OpConverterTest : public ::testing::Test {
 class VariableOpConverterTest : public OpConverterTest {
  public:
   void Reset(TrtPrecisionMode precision_mode_to_test = TrtPrecisionMode::FP32,
-             TrtTestMode trt_mode = TrtTestMode::kImplicitBatch) {
+             TrtTestMode trt_mode =
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                 TrtTestMode::kImplicitBatch
+#else
+                 TrtTestMode::kDynamicShape
+#endif
+  ) {
     OpConverterTest::Reset(precision_mode_to_test, trt_mode, context_.get());
   }
 
@@ -8043,6 +8148,9 @@ void TestConvertSplit(OpConverterTest* test) {
   }
 }
 
+// TODO(benbarsdell): This test needs to be fixed in many places to support
+// non-implicit-batch for TRT10.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 TEST_F(OpConverterTest, ConvertSplit) {
   {
     // Axis is a tensor, should fail.
@@ -8119,6 +8227,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
   TestConvertSplit<DT_HALF>(this);
   TestConvertSplit<DT_INT32>(this);
 }
+#endif
 
 // Get the NodeDef for Unpack (Unstack in TF API).
 auto get_unpack_nodedef = [](DataType dtype, int num, int axis) -> NodeDef {

@@ -77,13 +77,21 @@ class TrtShapeOptimizationProfileTest
  protected:
   TrtShapeOptimizationProfileTest() {
     strategy_ = GetParam();
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
+#endif
     builder_ = TrtUniquePtrType<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(logger_));
     network_ = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
         builder_->createNetworkV2(flags_));
     builder_config_ = TrtUniquePtrType<nvinfer1::IBuilderConfig>(
         builder_->createBuilderConfig());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     builder_config_->setMaxWorkspaceSize(1 << 10);
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+    builder_config_->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
+                                        1 << 10);
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   }
 
   // Defines a simple network: output = input1 + input2.
@@ -117,12 +125,24 @@ class TrtShapeOptimizationProfileTest
     int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
     for (int j = 0; j < dimvec.size(); j++) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       nvinfer1::Dims min = engine->getProfileDimensions(
           j, prof_idx, nvinfer1::OptProfileSelector::kMIN);
       nvinfer1::Dims max = engine->getProfileDimensions(
           j, prof_idx, nvinfer1::OptProfileSelector::kMAX);
       nvinfer1::Dims opt = engine->getProfileDimensions(
           j, prof_idx, nvinfer1::OptProfileSelector::kOPT);
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+      nvinfer1::Dims min =
+          engine->getProfileShape(engine->getIOTensorName(j), prof_idx,
+                                  nvinfer1::OptProfileSelector::kMIN);
+      nvinfer1::Dims max =
+          engine->getProfileShape(engine->getIOTensorName(j), prof_idx,
+                                  nvinfer1::OptProfileSelector::kMAX);
+      nvinfer1::Dims opt =
+          engine->getProfileShape(engine->getIOTensorName(j), prof_idx,
+                                  nvinfer1::OptProfileSelector::kOPT);
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
 
       // This should always hold.
       EXPECT_TRUE(DimsContained(dimvec[j], min, max));
@@ -135,6 +155,7 @@ class TrtShapeOptimizationProfileTest
   }
 
   Logger& logger_ = *Logger::GetLogger();
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
@@ -168,8 +189,16 @@ TEST_P(TrtShapeOptimizationProfileTest, Static) {
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_, *builder_config_));
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  TrtUniquePtrType<nvinfer1::IHostMemory> serialized(
+      builder_->buildSerializedNetwork(*network_, *builder_config_));
+  engine.reset(
+      runtime_->deserializeCudaEngine(serialized->data(), serialized->size()));
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
+
   EXPECT_NE(nullptr, engine);
   TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
   // A single execution context should be created for a graph with static input.
@@ -213,8 +242,16 @@ TEST_P(TrtShapeOptimizationProfileTest, Dynamic) {
   // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  TrtUniquePtrType<nvinfer1::IHostMemory> serialized(
+      builder_->buildSerializedNetwork(*network_.get(),
+                                       *builder_config_.get()));
+  engine.reset(
+      runtime_->deserializeCudaEngine(serialized->data(), serialized->size()));
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   ASSERT_NE(nullptr, engine);
 
   TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));

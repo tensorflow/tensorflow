@@ -77,7 +77,14 @@ TEST(INetworkDefinitionMatchers, CorrectlyMatch) {
   ASSERT_NE(input, nullptr);
 
   const char* fc_layer_name = "my-fc-layer";
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   auto layer = network->addFullyConnected(*input, 1, weights, weights);
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  auto layer =
+      network->addMatrixMultiply(*input, nvinfer1::MatrixOperation::kNONE,
+                                 *input, nvinfer1::MatrixOperation::kNONE);
+  (void)weights;  // Not used
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   ASSERT_NE(layer, nullptr);
   layer->setName(fc_layer_name);
 
@@ -86,7 +93,12 @@ TEST(INetworkDefinitionMatchers, CorrectlyMatch) {
               AllOf(LayerNamesNonEmpty(), LayerNamesAreArray({fc_layer_name})));
 
   // Add layer with default name and check layer name.
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   layer = network->addFullyConnected(*input, 1, weights, weights);
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+  layer = network->addMatrixMultiply(*input, nvinfer1::MatrixOperation::kNONE,
+                                     *input, nvinfer1::MatrixOperation::kNONE);
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
   EXPECT_THAT(network.get(), AllOf(LayerNamesNonEmpty(),
                                    Not(LayerNamesAreArray({fc_layer_name}))));
 }
