@@ -22,20 +22,6 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-void XfeedManager::Reset() {
-  infeed()->Reset();
-  outfeed()->Reset();
-}
-
-void XfeedQueueManager::Reset() {
-  absl::MutexLock l(&mu_);
-  CHECK(current_buffer_ == nullptr);
-  for (auto buffer : enqueued_buffers_) {
-    buffer->Done(ShapeUtil::MakeNil());
-  }
-  enqueued_buffers_.clear();
-}
-
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
   absl::MutexLock l(&mu_);
