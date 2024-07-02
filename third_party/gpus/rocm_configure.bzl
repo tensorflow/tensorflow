@@ -23,11 +23,14 @@ load(
     "which",
 )
 load(
+    ":compiler_common_tools.bzl",
+    "to_list_of_strings",
+)
+load(
     ":cuda_configure.bzl",
     "enable_cuda",
     "make_copy_dir_rule",
     "make_copy_files_rule",
-    "to_list_of_strings",
 )
 load(
     ":sycl_configure.bzl",

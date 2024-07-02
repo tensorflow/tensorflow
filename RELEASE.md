@@ -9,6 +9,14 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* Hermetic CUDA support is added.
+
+  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
+  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
+  distributions, and then use CUDA libraries and tools as dependencies in
+  various Bazel targets. This enables more reproducible builds for Google ML
+  projects and supported CUDA versions.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>

@@ -73,6 +73,7 @@ load(
     "tsl_gpu_library",
     _cc_header_only_library = "cc_header_only_library",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_hermetic_cuda_tools = "if_hermetic_cuda_tools",
     _if_nccl = "if_nccl",
     _transitive_hdrs = "transitive_hdrs",
 )
@@ -803,7 +804,7 @@ def tf_cc_shared_object(
     testonly = kwargs.pop("testonly", False)
 
     for name_os, name_os_major, name_os_full in names:
-        # Windows DLLs cant be versioned
+        # Windows DLLs can't be versioned
         if name_os.endswith(".dll"):
             name_os_major = name_os
             name_os_full = name_os
@@ -3578,3 +3579,6 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
 
 def tf_python_framework_friends():
     return ["//tensorflow:__subpackages__"]
+
+def if_hermetic_cuda_tools(if_true, if_false = []):
+    return _if_hermetic_cuda_tools(if_true, if_false)

@@ -50,3 +50,59 @@ tsl_workspace1()
 load(":workspace0.bzl", "tsl_workspace0")
 
 tsl_workspace0()
+
+load(
+    "//third_party/gpus/cuda:hermetic_cuda_json_init_repository.bzl",
+    "hermetic_cuda_json_init_repository",
+)
+load(
+    "//third_party/gpus/cuda:hermetic_cuda_redist_versions.bzl",
+    "CUDA_DIST_PATH_PREFIX",
+    "CUDA_NCCL_WHEELS",
+    "CUDA_REDIST_JSON_DICT",
+    "CUDNN_DIST_PATH_PREFIX",
+    "CUDNN_REDIST_JSON_DICT",
+)
+
+hermetic_cuda_json_init_repository(
+    cuda_json_dict = CUDA_REDIST_JSON_DICT,
+    cudnn_json_dict = CUDNN_REDIST_JSON_DICT,
+)
+
+load(
+    "@cuda_redist_json//:distributions.bzl",
+    "CUDA_DISTRIBUTIONS",
+    "CUDNN_DISTRIBUTIONS",
+)
+load(
+    "//third_party/gpus/cuda:hermetic_cuda_redist_init_repositories.bzl",
+    "hermetic_cuda_redist_init_repositories",
+    "hermetic_cudnn_redist_init_repository",
+)
+
+hermetic_cuda_redist_init_repositories(
+    cuda_dist_path_prefix = CUDA_DIST_PATH_PREFIX,
+    cuda_distributions = CUDA_DISTRIBUTIONS,
+)
+
+hermetic_cudnn_redist_init_repository(
+    cudnn_dist_path_prefix = CUDNN_DIST_PATH_PREFIX,
+    cudnn_distributions = CUDNN_DISTRIBUTIONS,
+)
+
+load("//third_party/gpus:hermetic_cuda_configure.bzl", "hermetic_cuda_configure")
+
+hermetic_cuda_configure(name = "local_config_cuda")
+
+load(
+    "//third_party/nccl:hermetic_nccl_redist_init_repository.bzl",
+    "hermetic_nccl_redist_init_repository",
+)
+
+hermetic_nccl_redist_init_repository(
+    cuda_nccl_wheels = CUDA_NCCL_WHEELS,
+)
+
+load("//third_party/nccl:hermetic_nccl_configure.bzl", "hermetic_nccl_configure")
+
+hermetic_nccl_configure(name = "local_config_nccl")

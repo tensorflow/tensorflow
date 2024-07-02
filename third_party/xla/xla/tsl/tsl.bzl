@@ -224,6 +224,17 @@ def if_with_tpu_support(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+# These configs are used to determine whether we should use the hermetic CUDA
+# tools in cc_libraries.
+# They are intended for the OSS builds only.
+def if_hermetic_cuda_tools(if_true, if_false = []):  # buildifier: disable=unused-variable
+    """Shorthand for select()'ing on whether we're building with hermetic CUDA tools."""
+    return select({"@local_config_cuda//cuda:hermetic_cuda_tools": if_true, "//conditions:default": if_false})  # copybara:comment_replace return if_false
+
+def if_hermetic_cuda_libs(if_true, if_false = []):  # buildifier: disable=unused-variable
+    """Shorthand for select()'ing on whether we need to include hermetic CUDA libraries."""
+    return select({"@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": if_true, "//conditions:default": if_false})  # copybara:comment_replace return if_false
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         # copybara:uncomment_begin(no MSVC flags in google)

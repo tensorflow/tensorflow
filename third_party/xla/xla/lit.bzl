@@ -1,6 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//xla/tsl:tsl.bzl", "if_hermetic_cuda_tools")
 
 def enforce_glob(files, **kwargs):
     """A utility to enforce that a list matches a glob expression.
@@ -49,6 +50,7 @@ def lit_test_suite(
         timeout = None,
         default_tags = None,
         tags_override = None,
+        hermetic_cuda_data_dir = None,
         **kwargs):
     """Creates one lit test per source file and a test suite that bundles them.
 
@@ -73,6 +75,8 @@ def lit_test_suite(
       timeout: timeout argument passed to the individual tests.
       default_tags: string list. Tags applied to all tests.
       tags_override: string_dict. Tags applied in addition to only select tests.
+      hermetic_cuda_data_dir: string. If set, the tests will be run with a
+        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       **kwargs: additional keyword arguments to pass to all generated rules.
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
@@ -104,6 +108,7 @@ def lit_test_suite(
             env = env,
             timeout = timeout,
             tags = default_tags + tags_override.get(test_file, []),
+            hermetic_cuda_data_dir = hermetic_cuda_data_dir,
             **kwargs
         )
 
@@ -111,6 +116,23 @@ def lit_test_suite(
         name = name,
         tests = tests,
         **kwargs
+    )
+
+def lit_script_with_xla_gpu_cuda_data_dir(
+        name,
+        input_file,
+        output_file,
+        xla_gpu_cuda_data_dir):
+    """Adds a line to the LIT script to set the XLA_FLAGS environment variable."""
+    return native.genrule(
+        name = name,
+        srcs = [input_file],
+        outs = [output_file],
+        cmd = if_hermetic_cuda_tools(
+            """echo -e '// RUN: export XLA_FLAGS=\"--xla_gpu_cuda_data_dir={}\"' > $@;
+cat $< >> $@;""".format(xla_gpu_cuda_data_dir),
+            "cat $< >> $@;",
+        ),
     )
 
 def lit_test(
@@ -123,6 +145,7 @@ def lit_test(
         visibility = None,
         env = None,
         timeout = None,
+        hermetic_cuda_data_dir = None,
         **kwargs):
     """Runs a single test file with LLVM's lit tool.
 
@@ -145,6 +168,8 @@ def lit_test(
       env: string_dict. Environment variables available during test execution.
         See the common Bazel test attribute.
       timeout: bazel test timeout string, as per common bazel definitions.
+      hermetic_cuda_data_dir: string. If set, the tests will be run with a
+        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       **kwargs: additional keyword arguments to pass to all generated rules.
 
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
@@ -194,6 +219,18 @@ def lit_test(
     )
 
     # copybara:comment_end
+
+    if hermetic_cuda_data_dir:
+        output_file = "with_xla_gpu_cuda_data_dir_{}".format(test_file)
+        rule_name = "script_{}".format(output_file)
+        lit_script_with_xla_gpu_cuda_data_dir(
+            rule_name,
+            test_file,
+            output_file,
+            hermetic_cuda_data_dir,
+        )
+        test_file = output_file
+
     native_test(
         name = name,
         src = lit_name,

@@ -64,6 +64,15 @@ docker exec xla ./configure.py --backend=CUDA
 docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
+**NB:** please note that if your machine has NVIDIA driver installed, you don't 
+have to build XLA in Docker. You can build XLA for GPU on your machine:
+
+```sh
+./configure.py --backend=CUDA
+
+bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
+```
+
 Your first build will take quite a while because it has to build the entire
 stack, including XLA, MLIR, and StableHLO.
 

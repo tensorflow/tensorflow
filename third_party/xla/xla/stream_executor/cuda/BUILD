@@ -24,7 +24,14 @@ load(
     "tf_additional_gpu_compilation_copts",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+    "if_hermetic_cuda_tools",
+    "if_nccl",
+    "internal_visibility",
+    "tsl_copts",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -114,9 +121,21 @@ cuda_only_cc_library(
 
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
-cc_library(name = "ptxas_wrapper")
+cc_library(
+    name = "ptxas_wrapper",
+    data = if_hermetic_cuda_tools(
+        ["@cuda_nvcc//:ptxas"],
+        [],
+    ),
+)
 
-cc_library(name = "nvlink_wrapper")
+cc_library(
+    name = "nvlink_wrapper",
+    data = if_hermetic_cuda_tools(
+        ["@cuda_nvcc//:nvlink"],
+        [],
+    ),
+)
 
 cuda_only_cc_library(
     name = "cuda_driver",
@@ -577,6 +596,13 @@ cuda_only_cc_library(
     # "@local_config_cuda//cuda:runtime_ptxas",
     # ],
     # copybara:uncomment_end
+    # copybara:comment_begin
+    data = if_hermetic_cuda_tools([
+        "@cuda_nvcc//:fatbinary",
+        "@cuda_nvcc//:nvlink",
+        "@cuda_nvcc//:ptxas",
+    ]),
+    # copybara:comment_end
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",

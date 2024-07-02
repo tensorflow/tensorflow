@@ -8,7 +8,6 @@
     files.
   * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
     `/usr/local/cuda,usr/`.
-  * `TF_CUDA_CLANG`: "1" if using Clang, "0" if using NVCC.
   * `TF_NCCL_USE_STUB`: "1" if a NCCL stub that loads NCCL dynamically should
     be used, "0" if NCCL should be linked in statically.
 
@@ -33,7 +32,6 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
 _TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_CUDA_PATHS = "TF_CUDA_PATHS"
-_TF_CUDA_CLANG = "TF_CUDA_CLANG"
 _TF_NCCL_USE_STUB = "TF_NCCL_USE_STUB"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
@@ -129,7 +127,11 @@ def _create_local_nccl_repository(repository_ctx):
             _label("build_defs.bzl.tpl"),
             {
                 "%{cuda_version}": "(%s, %s)" % tuple(cuda_version),
-                "%{cuda_clang}": repr(get_host_environ(repository_ctx, _TF_CUDA_CLANG)),
+                "%{nvlink_label}": "@local_config_cuda//cuda:cuda/bin/nvlink",
+                "%{fatbinary_label}": "@local_config_cuda//cuda:cuda/bin/fatbinary",
+                "%{bin2c_label}": "@local_config_cuda//cuda:cuda/bin/bin2c",
+                "%{link_stub_label}": "@local_config_cuda//cuda:cuda/bin/crt/link.stub",
+                "%{nvprune_label}": "@local_config_cuda//cuda:cuda/bin/nvprune",
             },
         )
     else:
@@ -181,7 +183,6 @@ _ENVIRONS = [
     _TF_CUDA_COMPUTE_CAPABILITIES,
     _TF_NEED_CUDA,
     _TF_CUDA_PATHS,
-    _TF_CUDA_CLANG,
 ]
 
 remote_nccl_configure = repository_rule(
