@@ -23,7 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
