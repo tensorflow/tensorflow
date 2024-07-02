@@ -258,7 +258,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
 
 class FileBasedCacheTest : public AutotunerUtilTest {
  public:
-  static std::string ToString(const proto2::Message& message) {
+  static std::string ToString(const AutotuneResult& message) {
     std::string textproto;
     CHECK(tsl::protobuf::TextFormat::PrintToString(message, &textproto));
     return textproto;
