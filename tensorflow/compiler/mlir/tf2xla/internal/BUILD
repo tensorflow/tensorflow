@@ -193,6 +193,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
@@ -207,6 +209,8 @@ tf_cc_test(
     srcs = ["clustering_bridge_passes_test.cc"],
     deps = [
         ":clustering_bridge_passes",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Pass",
     ],
