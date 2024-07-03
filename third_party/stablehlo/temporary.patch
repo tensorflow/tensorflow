@@ -209,6 +209,60 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/api/PortableApi.cpp b/stablehlo/stablehlo/api/PortableApi.cpp
+--- stablehlo/stablehlo/api/PortableApi.cpp
++++ stablehlo/stablehlo/api/PortableApi.cpp
+@@ -59,9 +59,9 @@
+   return mlir::vhlo::Version::getMinimumVersion().toString();
+ }
+ 
+-LogicalResult serializePortableArtifact(StringRef moduleStr,
+-                                        StringRef targetVersion,
+-                                        raw_ostream& os) {
++LogicalResult serializePortableArtifact(llvm::StringRef moduleStr,
++                                        llvm::StringRef targetVersion,
++                                        llvm::raw_ostream& os) {
+   MLIRContext context;
+   loadSerializationDialects(context);
+   auto module = mlir::parseSourceString<mlir::ModuleOp>(moduleStr, &context);
+@@ -70,8 +70,8 @@
+   return serializePortableArtifact(*module, targetVersion, os);
+ }
+ 
+-LogicalResult deserializePortableArtifact(StringRef artifactStr,
+-                                          raw_ostream& os) {
++LogicalResult deserializePortableArtifact(llvm::StringRef artifactStr,
++                                          llvm::raw_ostream& os) {
+   MLIRContext context;
+   loadSerializationDialects(context);
+   auto module = deserializePortableArtifact(artifactStr, &context);
+diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
+--- stablehlo/stablehlo/api/PortableApi.h
++++ stablehlo/stablehlo/api/PortableApi.h
+@@ -63,9 +63,9 @@
+ // Can fail if `moduleStr` cannot be parsed, or if it cannot be expressed in the
+ // `targetVersion` version of StableHLO, e.g. if it's using new or removed
+ // features, or if it involves unsupported dialects.
+-LogicalResult serializePortableArtifact(StringRef moduleStr,
+-                                        StringRef targetVersion,
+-                                        raw_ostream& os);
++LogicalResult serializePortableArtifact(llvm::StringRef moduleStr,
++                                        llvm::StringRef targetVersion,
++                                        llvm::raw_ostream& os);
+ 
+ // Read a StableHLO program from a portable artifact, returning the module as
+ // MLIR bytecode. Note, this bytecode returned is not a portable artifact,
+@@ -74,8 +74,8 @@
+ // Can fail if `artifactStr` cannot be expressed in the current version of
+ // StableHLO, e.g. if it's using incompatible features. Returns failure if
+ // `artifactStr` is invalid or fails to deserialize.
+-LogicalResult deserializePortableArtifact(StringRef artifactStr,
+-                                          raw_ostream& os);
++LogicalResult deserializePortableArtifact(llvm::StringRef artifactStr,
++                                          llvm::raw_ostream& os);
+ 
+ }  // namespace stablehlo
+ }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
 --- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
 +++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
