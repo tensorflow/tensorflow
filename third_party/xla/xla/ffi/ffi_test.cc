@@ -767,6 +767,43 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
   }
 }
 
+TEST(FfiTest, DuplicateHandlerTraits) {
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-traits", "Host", NoOp,
+                           XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "duplicate-traits", "Host", NoOp));
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Duplicate FFI handler registration"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
+TEST(FfiTest, DuplicateHandlerAddress) {
+  static constexpr auto* noop1 = +[] { return absl::OkStatus(); };
+  static constexpr auto* noop2 = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(NoOp1, noop1, Ffi::Bind());
+  XLA_FFI_DEFINE_HANDLER(NoOp2, noop2, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-address", "Host", NoOp1);
+  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "duplicate-address", "Host", NoOp2));
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Duplicate FFI handler registration"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
+TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-when-equal", "Host",
+                           NoOp);
+  auto status = TakeStatus(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
+  TF_ASSERT_OK(status);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
