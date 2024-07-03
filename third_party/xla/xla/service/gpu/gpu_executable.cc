@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -255,6 +256,15 @@ class ResourceRequests : public Thunk::ResourceRequests {
             << params.collective_max_nchannels
             << "; max number of channels for p2p " << params.p2p_max_nchannels;
 
+    std::vector<CliqueRequest> ordered_cliques = GetOrderedCliqueRequests();
+    for (size_t i = 0; i < ordered_cliques.size(); ++i) {
+      const CliqueRequest& r = ordered_cliques[i];
+      VLOG(2) << "  clique #" << i << " (for global device id "
+              << params.global_device_id.value() << ")"
+              << ": num_local_participants=" << r.num_local_participants
+              << "; id=" << r.id << "; key=" << r.key.ToString();
+    }
+
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
                                           {{"num_cliques", cliques_.size()}});
@@ -264,7 +274,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     NcclClique::AcquiredCliquesMap cliques_map;
 
-    for (const CliqueRequest& r : GetOrderedCliqueRequests()) {
+    for (const CliqueRequest& r : ordered_cliques) {
       std::optional<int64_t> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
