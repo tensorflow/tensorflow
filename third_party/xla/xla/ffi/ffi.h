@@ -92,11 +92,13 @@ class AnyBuffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if (ABSL_PREDICT_TRUE(primitive_util::IsArrayType(element_type()))) {
-      return absl::c_accumulate(dimensions(),
-                                primitive_util::ByteWidth(element_type()),
-                                std::multiplies<int64_t>());
+      return primitive_util::ByteWidth(element_type()) * element_count();
     }
     return 0;
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
+    return absl::c_accumulate(dimensions(), int64_t{1}, std::multiplies<>());
   }
 
   se::DeviceMemoryBase device_memory() const {
@@ -112,11 +114,45 @@ class AnyBuffer {
 // The dtype and rank are checked at decoding time. If rank is not specified,
 // any rank is accepted.
 template <PrimitiveType dtype, size_t rank = internal::kDynamicRank>
-struct Buffer {
+class Buffer {
+ public:
   using Dimensions = AnyBuffer::Dimensions;
 
-  se::DeviceMemory<internal::NativeType<dtype>> data;
-  Dimensions dimensions;
+  explicit Buffer(absl::Nonnull<const XLA_FFI_Buffer*> buf) : buf_(buf) {
+    DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
+  }
+
+  PrimitiveType element_type() const { return dtype; }
+
+  void* untyped_data() const { return buf_->data; }
+
+  internal::NativeType<dtype>* typed_data() const {
+    return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
+  }
+
+  Dimensions dimensions() const {
+    return Dimensions(buf_->dims,
+                      rank == internal::kDynamicRank ? buf_->rank : rank);
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
+    if constexpr (primitive_util::IsArrayType(dtype)) {
+      return primitive_util::ByteWidth(dtype) * element_count();
+    }
+    return 0;
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
+    return absl::c_accumulate(dimensions(), int64_t{1}, std::multiplies<>());
+  }
+
+  se::DeviceMemory<internal::NativeType<dtype>> device_memory() const {
+    return se::DeviceMemory<internal::NativeType<dtype>>(
+        se::DeviceMemoryBase(untyped_data(), size_bytes()));
+  }
+
+ private:
+  const XLA_FFI_Buffer* buf_;
 };
 
 // clang-format off
@@ -127,7 +163,7 @@ template <PrimitiveType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <PrimitiveType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
-using Token = BufferR0<PrimitiveType::TOKEN>;
+using Token = BufferR0<PrimitiveType::TOKEN>;  // NOLINT
 
 namespace internal {
 
@@ -148,20 +184,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
     }
   }
 
-  size_t size_bytes = 0;
-  if constexpr (primitive_util::IsArrayType(dtype)) {
-    size_bytes = primitive_util::ByteWidth(dtype);
-    for (int64_t i = 0, r = rank == internal::kDynamicRank ? buf->rank : rank;
-         i < r; ++i) {
-      size_bytes *= buf->dims[i];
-    }
-  }
-
-  Buffer<dtype, rank> buffer;
-  buffer.data = se::DeviceMemory<NativeType<dtype>>(
-      se::DeviceMemoryBase(buf->data, size_bytes));
-  buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
-  return buffer;
+  return Buffer<dtype, rank>(buf);
 }
 
 }  // namespace internal

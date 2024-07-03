@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
@@ -318,8 +319,8 @@ static absl::Status MemsetFromValue(
   uint32_t pattern;
   std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->data;
-  return stream->Memset32(&base, pattern, result->data.size());
+  se::DeviceMemoryBase base = result->device_memory();
+  return stream->Memset32(&base, pattern, base.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemsetFromValue, MemsetFromValue,
