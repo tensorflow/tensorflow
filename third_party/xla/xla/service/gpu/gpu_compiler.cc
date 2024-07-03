@@ -1432,10 +1432,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  // Triton compilation needs normalized operations on bf16 (i.e. converted to
-  // f32).
-  add_float_normalization(pipeline);
-
   TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(&pipeline, hlo_module,
                                                    autotune_config, thread_pool,
                                                    options.key_value_store));
@@ -1456,8 +1452,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
       &pipeline, hlo_module, autotune_config, thread_pool));
 
-  // The GEMM fusion autotuner can insert new bf16 reductions that need to be
-  // normalized again.
+  // Normalize floats to match what's supported by the emitters.
   add_float_normalization(pipeline);
 
   // Clean up new_tuple described above.
