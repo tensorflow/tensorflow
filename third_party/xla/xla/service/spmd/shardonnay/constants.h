@@ -72,6 +72,9 @@ inline constexpr llvm::StringRef kPythonIntegrationComplete =
 // XLA pipeline, so no HLO<->MLIR round-tripping.
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 
+// The name of the global mesh.
+inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
+
 }  //  namespace sdy
 }  //  namespace xla
 
