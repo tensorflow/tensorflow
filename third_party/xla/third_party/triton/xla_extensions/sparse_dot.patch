@@ -1,8 +1,8 @@
 diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-index bf8f2dc18..73a230342 100644
+index 04ba95196..192d8fab4 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-@@ -1298,6 +1298,18 @@ elements along the K dim, or they use all elements of the tensor along the K dim
+@@ -1302,6 +1302,18 @@ elements along the K dim, or they use all elements of the tensor along the K dim
    }];
  }
  
@@ -54,10 +54,10 @@ index a87e1c44a..456a4f224 100644
 +
  #endif
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-index a5c96c18b..83777c686 100644
+index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -497,6 +497,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -498,6 +498,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -178,7 +178,7 @@ index a5c96c18b..83777c686 100644
  } // namespace triton
  } // namespace mlir
 diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-index c47558fa6..35f0cca95 100644
+index eb26ffe3b..ba87d671e 100644
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 @@ -39,8 +39,8 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
@@ -262,7 +262,7 @@ index c47558fa6..35f0cca95 100644
  } // namespace triton
  } // namespace mlir
 diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
-index 5cb992714..cdafdffce 100644
+index d74e0a224..4e45f7c4c 100644
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 @@ -51,6 +51,10 @@ struct LoadInfo {
@@ -276,7 +276,7 @@ index 5cb992714..cdafdffce 100644
  // Replace the ForOp's yield with a new one with the given operands appended.
  static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
    // Fix up the yield op.
-@@ -245,19 +249,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
+@@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -316,8 +316,8 @@ index 5cb992714..cdafdffce 100644
 +      }
      }
      // Check that the shared encodings needed by the users are compatible.
-     if (!tempAttr || (attr != nullptr && attr != tempAttr))
-@@ -364,7 +377,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+     if (attr != nullptr && attr != tempAttr) {
+@@ -369,7 +382,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -326,7 +326,7 @@ index 5cb992714..cdafdffce 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -441,7 +454,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -446,7 +459,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
@@ -335,7 +335,7 @@ index 5cb992714..cdafdffce 100644
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
-@@ -463,7 +476,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -472,7 +485,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          // The codegen bug is caught by an assertion, so if you think you've
          // fixed it, feel free to delete this code and see if the assert still
          // fails.  :)
@@ -413,7 +413,7 @@ index fb0e7f6fd..37795c20c 100644
      // reach convertlayout
      if (op && isa<ttg::LocalAllocOp>(op) &&
 diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
-index ca9d18873..d39bc6ec4 100644
+index 7affd8840..52aa2c131 100644
 --- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 +++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 @@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []> {
@@ -433,18 +433,24 @@ index ca9d18873..d39bc6ec4 100644
    let arguments = (ins BoolAttr:$bCluster);
    let assemblyFormat = "attr-dict";
 diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
-index 1aba5f85b..5eb1d0811 100644
+index 8c87f9a90..ae7d88e1f 100644
 --- a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
 +++ b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
-@@ -694,6 +694,84 @@ public:
+@@ -502,6 +528,90 @@ public:
    }
  };
  
 +class SparseWGMMAOpPattern
-+    : public NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern> {
++    : public OpRewritePattern<ttn::SparseWGMMAOp> {
 +public:
-+  using Base = NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern>;
-+  using Base::Base;
++  using OpRewritePattern<ttn::SparseWGMMAOp>::OpRewritePattern;
++
++  LogicalResult matchAndRewrite(ttn::SparseWGMMAOp op,
++                                PatternRewriter &rewriter) const override {
++    return rewriteAsPtxAsm(op, rewriter, getPtxAsm(op),
++                           getOperandsAndConstraints(op),
++                           getOutputConstraints(op));
++  }
 +
 +  std::vector<std::string> getOutputConstraints(ttn::SparseWGMMAOp op) const {
 +    auto outputStructType = cast<LLVM::LLVMStructType>(op.getType());
@@ -521,8 +527,7 @@ index 1aba5f85b..5eb1d0811 100644
  class ConvertNVGPUToLLVM : public ConvertNVGPUToLLVMBase<ConvertNVGPUToLLVM> {
  
  public:
-@@ -598,7 +676,10 @@ public:
-     patterns
+@@ -526,6 +636,9 @@ public:
          .add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
               ClusterArriveOpPattern, WGMMAOpPattern, WGMMAWaitGroupOpPattern>(
              context);
@@ -547,11 +552,11 @@ index baed96a29..e9d7f5859 100644
    // Create descriptor based on the format described in the spec:
    // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor
    union WGMMADescriptor {
-==== triton/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp#5 - triton/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp ====
-# action=edit type=text
---- triton/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2024-05-14 06:33:36.000000000 -0700
-+++ triton/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2024-06-30 23:29:40.000000000 -0700
-@@ -68,6 +68,7 @@
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
+index f2742218e..4cb1fae93 100644
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -68,6 +68,7 @@ public:
      addIllegalDialect<triton::nvidia_gpu::TritonNvidiaGPUDialect>();
      addIllegalDialect<mlir::gpu::GPUDialect>();
      addLegalOp<mlir::UnrealizedConversionCastOp>();
