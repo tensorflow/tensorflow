@@ -56,7 +56,6 @@ enum class Int64BasedEnum : int64_t {
 };
 
 }  // namespace
-
 }  // namespace xla::ffi
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);

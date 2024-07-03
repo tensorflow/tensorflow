@@ -1331,10 +1331,13 @@ class Handler : public Ffi {
     std::tuple<std::optional<FnArgType<Ts>>...> args = {
         internal::Decode<Ts>::call(offsets, ctx, diagnostic)...};
 
-    bool all_decoded = (std::get<Is>(args).has_value() && ...);
-    if (XLA_FFI_PREDICT_FALSE(!all_decoded)) {
-      return FailedDecodeError(call_frame, {std::get<Is>(args).has_value()...},
-                               diagnostic);
+    if constexpr (sizeof...(Ts) > 0) {
+      // We intentionally use `&`, as it generates fewer branch instructions.
+      bool all_decoded = (std::get<Is>(args).has_value() & ...);
+      if (XLA_FFI_PREDICT_FALSE(!all_decoded)) {
+        return FailedDecodeError(
+            call_frame, {std::get<Is>(args).has_value()...}, diagnostic);
+      }
     }
 
     auto result = fn_(std::move(*std::get<Is>(args))...);
