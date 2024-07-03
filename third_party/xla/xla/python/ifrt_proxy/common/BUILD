@@ -13,8 +13,8 @@
 # limitations under the License.
 
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-
 # copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 

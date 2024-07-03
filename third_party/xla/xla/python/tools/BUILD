@@ -84,10 +84,10 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":types",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
         #internal proto upb dep
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

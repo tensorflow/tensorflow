@@ -26,9 +26,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "dnnl.hpp"
 #include "absl/base/dynamic_annotations.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "dnnl.hpp"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"

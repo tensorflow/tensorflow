@@ -1,9 +1,9 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
-load("package_groups.bzl", "tsl_package_groups")
-load("tsl.bzl", "if_google", "if_oss")
-load("tsl.default.bzl", "tsl_google_bzl_deps")
+load("//xla/tsl:package_groups.bzl", "tsl_package_groups")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
+load("//xla/tsl:tsl.default.bzl", "tsl_google_bzl_deps")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -518,7 +518,7 @@ bzl_library(
 
 bzl_library(
     name = "tsl_google_bzl",
-    srcs = if_google(["tsl.default.bzl"]),
+    srcs = if_google(["tsl.google.bzl"]),
     visibility = ["//visibility:public"],
     deps = [
         ":tsl_bzl",

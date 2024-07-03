@@ -23,9 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "dnnl.hpp"
 #include "absl/base/dynamic_annotations.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "dnnl.hpp"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
