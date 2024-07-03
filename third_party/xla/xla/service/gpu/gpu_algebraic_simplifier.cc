@@ -52,7 +52,7 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
   }
 
   absl::StatusOr<bool> is_too_small =
-      IsMatrixMultiplicationTooSmallForRewriting(*hlo, /*threshold=*/1000000);
+      IsMatrixMultiplicationTooSmallForRewriting(*hlo, /*threshold=*/10000000);
   CHECK_OK(is_too_small.status());
   if (is_too_small.value()) {
     return true;
