@@ -185,6 +185,20 @@ config_setting(
 )
 
 config_setting(
+    name = "visionos_arm64",
+    values = {
+        "cpu": "visionos_arm64",
+    },
+)
+
+config_setting(
+    name = "visionos_sim_arm64",
+    values = {
+        "cpu": "visionos_sim_arm64",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -281,6 +295,8 @@ selects.config_setting_group(
         ":ios_sim_arm64",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ] + tflite_extra_arm_config_settings(),
 )
 
@@ -437,6 +453,8 @@ selects.config_setting_group(
         ":ios_arm64",
         ":ios_arm64e",
         ":ios_sim_arm64",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ],
 )
 
