@@ -1371,14 +1371,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<AlgorithmChecker>(gpu_version);
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
 
+    // Rewrite FP8 GEMMs ahead of Triton which currently lacks support for FP8
+    // and may rewrite quantized FP8 GEMMs as higher-precision GEMMs.
+    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
+                                   /*f8_rewrite=*/true);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
     }
-
-    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                   /*f8_rewrite=*/true);
+    // Rewrite non-FP8 GEMMs.
     pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
                                    /*f8_rewrite=*/false);
 
@@ -1441,10 +1443,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
-  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                 /*f8_rewrite=*/true);
-  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                 /*f8_rewrite=*/false);
+  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion());
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 

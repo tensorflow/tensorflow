@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_float_support.h"
 
-#include <array>
-#include <tuple>
 #include <variant>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -41,19 +38,8 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
       const PrimitiveType result_type = hlo.shape().element_type();
-
-      static constexpr std::array<
-          std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>, 6>
-          kSupportedMixedPrecisions = {
-              {std::make_tuple(F8E5M2, F8E5M2, F16),
-               std::make_tuple(F8E4M3FN, F8E4M3FN, F16),
-               std::make_tuple(F8E5M2, F8E4M3FN, F16),
-               std::make_tuple(F8E4M3FN, F8E5M2, F16),
-               std::make_tuple(F16, F16, F32),
-               std::make_tuple(BF16, BF16, F32)}};
-      return absl::c_linear_search(
-          kSupportedMixedPrecisions,
-          std::make_tuple(lhs_type, rhs_type, result_type));
+      return (lhs_type == F16 && rhs_type == F16 && result_type == F32) ||
+             (lhs_type == BF16 && rhs_type == BF16 && result_type == F32);
     }
     default:
       return false;
@@ -69,16 +55,6 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kReduceScatter:
     // Handled by Triton GEMM.
     case HloOpcode::kDot:
-      if (auto* ccc =
-              std::get_if<se::CudaComputeCapability>(&compute_capability_);
-          ccc != nullptr) {
-        if (ccc->IsAtLeastAmpere() && LowPrecisionType() == F8E5M2) {
-          return true;
-        }
-        if (ccc->IsAtLeastHopper() && LowPrecisionType() == F8E4M3FN) {
-          return true;
-        }
-      }
       return LowPrecisionType() == BF16;
     // Data movement only ops.
     case HloOpcode::kAllGather:
