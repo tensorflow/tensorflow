@@ -237,7 +237,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   }
 
   // Set read/write access to all GPUs.
-  static auto* all_pools_ = new std::vector<CUmemoryPool*>();
+  static auto* all_pools_ = new std::vector<CUmemoryPool>();
   static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   if (!create_new_pool_) {
     DCHECK(all_pools_->size() == all_ids_->size());
@@ -248,8 +248,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     // actually share the same CUDA memory pool. So the following pool
     // initialization steps should be skipped to avoid duplicated initialization
     // of the same pool.
-    for (auto& pool_item_ : *all_pools_) {
-      if (*pool_item_ == pool_) {
+    for (auto pool_item_ : *all_pools_) {
+      if (pool_item_ == pool_) {
         VLOG(2) << Name()
                 << " GpuCudaMallocAsyncAllocator pool already initialized. "
                    "PoolSize "
@@ -299,7 +299,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
             << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
       }
       if (canAccessPeer == 1) {
-        if (auto status = cuMemPoolSetAccess(*(*all_pools_)[i], &map, 1)) {
+        if (auto status = cuMemPoolSetAccess((*all_pools_)[i], &map, 1)) {
           pool_ = nullptr;
           LOG(FATAL)  // Crash OK.
               << "Error when setting access to the pool id: "
@@ -308,7 +308,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         }
       }
     }
-    all_pools_->push_back(&pool_);
+    all_pools_->push_back(pool_);
     all_ids_->push_back(platform_device_id);
   }
 
