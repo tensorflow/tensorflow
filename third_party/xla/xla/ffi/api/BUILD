@@ -76,6 +76,7 @@ xla_cc_test(
     srcs = ["ffi_test.cc"],
     deps = [
         ":ffi",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
