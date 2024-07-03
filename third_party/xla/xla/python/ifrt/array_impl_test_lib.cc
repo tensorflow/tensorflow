@@ -40,6 +40,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
@@ -292,6 +293,48 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithByteStrides) {
                                         ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+  absl::Span<Device* const> devices = client->addressable_devices();
+  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+      DeviceList(DeviceList::Devices(devices.begin(), devices.end())),
+      MemoryKind(), shape, /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      client->MakeArrayFromHostBuffer(
+          data->data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, sharding,
+          Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  // Once the `Array` has become ready, the host buffer is not accessed.
+  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  data = nullptr;
+  // There should be no use-after-free.
+
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_EQ(single_device_arrays.size(), devices.size());
+  for (int i = 0; i < single_device_arrays.size(); ++i) {
+    EXPECT_THAT(single_device_arrays[i]->sharding().devices(),
+                ElementsAre(devices[i]));
+
+    std::vector<float> out_data(6);
+    auto future = single_device_arrays[i]->CopyToHostBuffer(
+        out_data.data(),
+        /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAre(0, 1, 2, 3, 4, 5));
+  }
 }
 
 TEST(ArrayImplTest, AssembleArray) {
