@@ -79,6 +79,20 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   BufferUsageVector buffer_usage;
 };
 
+class FakeCmd : public CommandBufferCmd {
+ public:
+  FakeCmd(ExecutionStreamId execution_stream_id)
+      : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
+                         execution_stream_id) {}
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override {
+    return absl::OkStatus();
+  }
+  BufferUsageVector buffers() override { return BufferUsageVector{}; }
+};
+
 TEST(CommandBufferCmdTest, SerializeExecution) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
@@ -404,6 +418,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::StreamExecutor* executor = GpuExecutor();
 
     auto stream = executor->CreateStream().value();
+    auto traced_cmd = FakeCmd(ExecutionStreamId(0));
     BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
@@ -411,7 +426,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
         {BufferAllocation::Slice(&alloc0, 0, 1024), MemoryAccess::kRead},
         {BufferAllocation::Slice(&alloc1, 0, 1024), MemoryAccess::kWrite}};
 
-    TracedCommandBuffer traced_cmd_buffer(buffers,
+    TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
 
     se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
@@ -513,7 +528,8 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   };
 
   int32_t index = 0;
-  TracedCommandBuffer traced_cmd_buffer(buffers);
+  auto traced_cmd = FakeCmd(ExecutionStreamId(0));
+  TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers);
 
   auto trace = [](se::Stream*) { return absl::OkStatus(); };
   absl::FunctionRef<absl::Status(se::Stream*)> trace_ref(trace);
