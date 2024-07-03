@@ -249,8 +249,9 @@ class RendezvousMap {
   absl::flat_hash_map<K, std::shared_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
 };
 
-void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
-                        size_t num_threads, absl::Duration warn_stuck_timeout,
+void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
+                        std::string_view name, size_t num_threads,
+                        absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout);
 }  // namespace internal
 
@@ -303,7 +304,7 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
   if (id < num_threads - 1) {
     // Threads arriving before the last one wait for a result to be computed by
     // the last joining thread.
-    internal::AwaitAndLogIfStuck(state->ready, name, num_threads,
+    internal::AwaitAndLogIfStuck(state->ack, state->ready, name, num_threads,
                                  warn_stuck_timeout, terminate_timeout);
   } else {
     // Last thread to arrive executes the function and completes rendezvous by
