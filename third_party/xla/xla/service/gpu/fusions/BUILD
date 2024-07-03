@@ -146,6 +146,7 @@ cc_library(
         "//xla/service/gpu/runtime:dynamic_slice_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",
+        "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime:thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
