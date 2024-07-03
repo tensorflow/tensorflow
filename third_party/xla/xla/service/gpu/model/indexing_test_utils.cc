@@ -17,16 +17,27 @@ limitations under the License.
 
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -35,13 +46,24 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/status_macros.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
+
+std::string FormatDimsAndSyms(absl::Span<int64_t const> dims,
+                              absl::Span<int64_t const> syms) {
+  return absl::StrCat("(", absl::StrJoin(dims, ", "), ")[",
+                      absl::StrJoin(syms, ", "), "]");
+}
+
+}  // namespace
 
 HloInstruction* IndexingTestBase::ParseAndGetRoot(
     absl::string_view hlo_string) {
@@ -159,6 +181,149 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
     }
   }
   return l == lhs_length && r == rhs_length;
+}
+
+std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
+                                              absl::Span<int64_t const> dims,
+                                              absl::Span<int64_t const> syms) {
+  if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(expr)) {
+    return syms[sym.getPosition()];
+  }
+  if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
+    return dims[dim.getPosition()];
+  }
+  if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
+    return cst.getValue();
+  }
+  auto binary = mlir::cast<mlir::AffineBinaryOpExpr>(expr);
+  auto lhs = SafeEvaluateAffineExpr(binary.getLHS(), dims, syms);
+  auto rhs = SafeEvaluateAffineExpr(binary.getRHS(), dims, syms);
+  if (!lhs || !rhs) return std::nullopt;
+
+  int64_t result;
+  bool result_division_is_undefined =
+      rhs == 0 || (lhs == std::numeric_limits<int64_t>::min() && rhs == -1);
+  switch (binary.getKind()) {
+    case mlir::AffineExprKind::Add:
+      if (llvm::AddOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case mlir::AffineExprKind::Mul:
+      if (llvm::MulOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case mlir::AffineExprKind::FloorDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideFloorSigned(*lhs, *rhs));
+    case mlir::AffineExprKind::CeilDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideCeilSigned(*lhs, *rhs));
+    case mlir::AffineExprKind::Mod:
+      return rhs <= 0 ? std::nullopt
+                      : std::make_optional(llvm::mod(*lhs, *rhs));
+    default:
+      LOG(FATAL) << "Unknown binary op: " << static_cast<int>(binary.getKind());
+  }
+}
+
+absl::Status EnumerateDomain(
+    const IndexingMap& indexing_map,
+    const std::function<absl::Status(absl::Span<int64_t const> dims,
+                                     absl::Span<int64_t const> syms)>&
+        callback) {
+  std::vector<int64_t> dims(indexing_map.GetDimensionCount());
+  std::vector<int64_t> syms(indexing_map.GetSymbolCount());
+  std::function<absl::Status(int64_t dim, int64_t sym)> enumerate;
+
+  absl::Status status = absl::OkStatus();
+  auto enumerate_range = [&](int64_t next_dim, int64_t next_sym, Interval range,
+                             int64_t& induction_var) -> absl::Status {
+    for (int64_t i = range.lower; i <= range.upper; ++i) {
+      induction_var = i;
+      TF_RETURN_IF_ERROR(enumerate(next_dim, next_sym));
+    }
+    return absl::OkStatus();
+  };
+
+  enumerate = [&](int64_t dim_id, int64_t sym_id) -> absl::Status {
+    if (dim_id < dims.size()) {
+      return enumerate_range(dim_id + 1, sym_id,
+                             indexing_map.GetDimensionBound(dim_id),
+                             dims[dim_id]);
+    }
+
+    if (sym_id < syms.size()) {
+      return enumerate_range(dim_id, sym_id + 1,
+                             indexing_map.GetSymbolBound(sym_id), syms[sym_id]);
+    }
+
+    for (auto [expr, interval] : indexing_map.GetConstraints()) {
+      auto constraint_value = SafeEvaluateAffineExpr(expr, dims, syms);
+      TF_RET_CHECK(constraint_value.has_value())
+          << "Constraint evaluation triggered undefined behavior at "
+          << FormatDimsAndSyms(dims, syms);
+      if (!interval.Contains(*constraint_value)) return absl::OkStatus();
+    }
+
+    return callback(dims, syms);
+  };
+
+  return enumerate(0, 0);
+}
+
+absl::Status VerifyBijection(const IndexingMap& indexing_map,
+                             absl::Span<Interval const> expected_codomain) {
+  mlir::AffineMap affine_map = indexing_map.GetAffineMap();
+  absl::flat_hash_map<absl::InlinedVector<int64_t, 4>,
+                      std::pair<absl::InlinedVector<int64_t, 6>,
+                                absl::InlinedVector<int64_t, 3>>>
+      codomain_to_domain;
+  TF_RETURN_IF_ERROR(EnumerateDomain(
+      indexing_map,
+      [&](absl::Span<int64_t const> dims,
+          absl::Span<int64_t const> syms) -> absl::Status {
+        absl::InlinedVector<int64_t, 4> codomain_point;
+        for (auto result : affine_map.getResults()) {
+          auto value = SafeEvaluateAffineExpr(result, dims, syms);
+          TF_RET_CHECK(value.has_value())
+              << "Indexing map evaluation triggered undefined behavior at "
+              << FormatDimsAndSyms(dims, syms);
+          codomain_point.push_back(*value);
+        }
+
+        for (auto [coordinate, interval] :
+             llvm::zip(codomain_point, expected_codomain)) {
+          TF_RET_CHECK(interval.Contains(coordinate))
+              << "Indexing map maps " << FormatDimsAndSyms(dims, syms)
+              << " to [" << absl::StrJoin(codomain_point, ", ")
+              << "], which lies outside the expected codomain.";
+        }
+
+        auto& entry = codomain_to_domain[codomain_point];
+        TF_RET_CHECK(entry.first.empty() && entry.second.empty())
+            << "Indexing map is not a bijection. Domain points "
+            << FormatDimsAndSyms(entry.first, entry.second) << " and "
+            << FormatDimsAndSyms(dims, syms) << " map to the same point ["
+            << absl::StrJoin(codomain_point, ", ") << "].";
+
+        entry = {{dims.begin(), dims.end()}, {syms.begin(), syms.end()}};
+        return absl::OkStatus();
+      }));
+
+  int64_t num_expected_points = 1;
+  for (auto interval : expected_codomain) {
+    num_expected_points *= interval.GetLoopTripCount();
+  }
+
+  TF_RET_CHECK(codomain_to_domain.size() == num_expected_points)
+      << "Indexing map codomain has " << codomain_to_domain.size()
+      << " points, expected " << num_expected_points;
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

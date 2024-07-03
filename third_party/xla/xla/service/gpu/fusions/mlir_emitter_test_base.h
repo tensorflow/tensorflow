@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_EMITTER_TEST_BASE_H_
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_EMITTER_TEST_BASE_H_
 
-#include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -62,6 +64,22 @@ class MlirEmitterTestBase : public MlirEmitterTestBaseImpl {
       const HloFusionAnalysis& analysis) override {
     return std::make_unique<EmitterType>(analysis);
   }
+
+  // Given an HLO string whose entry function is a single fusion, instantiates
+  // `EmitterType` for that fusion and returns it.
+  std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
+      absl::string_view hlo_string) {
+    auto& module =
+        modules_.emplace_back(ParseAndReturnVerifiedModule(hlo_string).value());
+    auto* root = module->entry_computation()->root_instruction();
+    analyses_.push_back(AnalyzeFusion(*root, device_info_));
+    return GetEmitter(analyses_.back());
+  }
+
+ private:
+  std::vector<std::unique_ptr<VerifiedHloModule>> modules_;
+  // We use a deque for pointer stability.
+  std::deque<HloFusionAnalysis> analyses_;
 };
 
 }  // namespace gpu
