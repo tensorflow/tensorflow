@@ -2005,6 +2005,23 @@ xla_test(
 )
 
 xla_test(
+    name = "rng_test",
+    srcs = ["rng_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
     shard_count = 30,

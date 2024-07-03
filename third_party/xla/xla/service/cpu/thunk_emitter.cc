@@ -269,6 +269,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kReduceWindow:
       return EmitReductionKernelThunk(instruction);
 
+    case HloOpcode::kRng:
+      return EmitRngThunk(instruction);
+
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateStateThunk(instruction);
 
@@ -577,6 +580,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
       kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
+    const HloInstruction* instruction) {
+  return Unimplemented("Rng should be expanded for CPU.");
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
