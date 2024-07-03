@@ -14,11 +14,16 @@
 # ==============================================================================
 """Tests for K8sClusterResolver."""
 
+import sys
+
 from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver, ExecutableLocation
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 mock = test.mock
+
+def _mock_kubernetes_module():
+  sys.modules['kubernetes'] = mock.MagicMock()
 
 
 def _mock_kubernetes_client(ret):
@@ -101,6 +106,15 @@ class KubernetesClusterResolverTest(test.TestCase):
     }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
+
+  def testValueErrorRaisedOnInvalidExecutableLocation(self):
+
+    _mock_kubernetes_module()
+
+    with self.assertRaisesRegexp(ValueError, ".*"):
+      KubernetesClusterResolver(
+        executable_location=None
+            )
 
   def testSuccessfulRetrievalWithSort(self):
     ret = _create_pod_list(

@@ -21,7 +21,7 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import forma
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
-@tf_export('distribute.cluster_resolver.KubernetesClusterResolver.ExecutableLocation')
+@tf_export('distribute.cluster_resolver.KubernetesClusterResolver.ExecutableLocation')  # pylint: disable=line-too-long
 class ExecutableLocation(Enum):
   """Defines where the executable runs on.
   
@@ -107,14 +107,19 @@ class KubernetesClusterResolver(ClusterResolver):
       ImportError: If the Kubernetes Python client is not installed and no
         `override_client` is passed in.
       RuntimeError: If autoresolve_task is not a boolean or a callable.
+      ValueError: If the executable locations is neither within or off cluster.
+
     """
     try:
       from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
 
+
       if executable_location == ExecutableLocation.OFF_CLUSTER:
         k8sconfig.load_kube_config()
-      if executable_location == ExecutableLocation.WITHIN_CLUSTER:
+      elif executable_location == ExecutableLocation.WITHIN_CLUSTER:
         k8sconfig.load_incluster_config()
+      else:
+        raise ValueError('The executable location provided is invalid.')
     except ImportError:
       if not override_client:
         raise ImportError('The Kubernetes Python client must be installed '
