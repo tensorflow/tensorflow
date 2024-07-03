@@ -194,9 +194,18 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       /*num_slices=*/1,
       /*num_hosts_per_slice=*/1,
       /*num_devices_per_host=*/device_ids.size());
+
+  // Determine the platform ID and name based on the platform.
+  xla::PjRtPlatformId platform_id =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmId()
+                                                             : xla::CudaId();
+  std::string platform_name =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
+                                                             : xla::CudaName();
+
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
-          xla::CudaId(), xla::CudaName(), std::move(gpu_topology),
+          platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
               {"target_config",
                gpu_target_config.ToProto().SerializeAsString()}});
