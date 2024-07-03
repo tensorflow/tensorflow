@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -190,6 +192,58 @@ static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_ChainOfAddF32(benchmark::State& state) {
+  int64_t size = state.range(0);
+
+  // In this benchmark we create a chain of additions starting from `p2` and
+  // ending with `p$size`. The chain is fused into a single fusion node.
+  std::string_view hlo = R"(
+    HloModule chain_of_add_f32_$size
+
+    ENTRY e {
+      p0 = f32[3844] parameter(0)
+      p1 = f32[3844] parameter(1)
+      $parameters
+      $additions
+      bcast_p0 = f32[12,3844] broadcast(p0), dimensions={1}
+      bcast_p1 = f32[12,3844] broadcast(p1), dimensions={1}
+      bcast_add = f32[12,3844] broadcast(add$size), dimensions={0}
+      mul = f32[12,3844] multiply(bcast_p0, bcast_add)
+      ROOT sub = f32[12,3844] subtract(mul, bcast_p1)
+    }
+  )";
+
+  // Initialize [`p2`, `p$size`] parameters.
+  std::string parameters;
+  for (int i = 2; i <= size; ++i) {
+    parameters += absl::StrFormat("\n p%d = f32[12] parameter(%d)", i, i);
+  }
+
+  // Create a chain of additions starting from `p2`.
+  std::string additions = "add2 = f32[12] add(p2, p2)";
+  for (int i = 3; i <= size; ++i) {
+    additions +=
+        absl::StrFormat("\n add%d = f32[12] add(add%d, p%d)", i, i - 1, i);
+  }
+
+  std::minstd_rand0 engine;
+
+  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {3844}), &engine, 1.0f, 0.1f);
+  auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {3844}), &engine, 1.0f, 0.1f);
+  auto pN = *LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {12}), &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0, &p1};
+  for (int i = 2; i <= size; ++i) args.push_back(&pN);
+
+  CHECK_OK(RunHloBenchmark(state, hlo, args,
+                           {{"$size", absl::StrCat(size)},
+                            {"$parameters", parameters},
+                            {"$additions", additions}}));
+}
+
 BENCHMARK(BM_FusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
@@ -223,5 +277,14 @@ BENCHMARK(BM_DynamicUpdateSliceFusionF32)
     ->Arg(1024)
     ->Arg(8192)
     ->Arg(16384);
+
+BENCHMARK(BM_ChainOfAddF32)
+    ->MeasureProcessCPUTime()
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512);
 
 }  // namespace xla::cpu
