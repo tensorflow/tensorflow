@@ -134,6 +134,14 @@ struct GenericDetails {
   uint32_t cbid;
 };
 
+struct CudaGraphDetails {
+  uint32_t cbid;  // 0 for activity events, otherwise the cbid of the callback
+  uint32_t orig_graph_id;  // The original graph from which new graph is
+                           // instantiated. Note graph_id is put into general
+                           // fields as if trace in node mode, many activity
+                           // events will contains graph id.
+};
+
 inline std::string ToXStat(const KernelDetails& kernel_info,
                            double occupancy_pct) {
   return absl::StrCat(
@@ -165,6 +173,7 @@ enum class CuptiTracerEventType {
   MemoryResidency = 12,
   HostRegister = 13,
   HostUnregister = 14,
+  CudaGraph = 15,
   Generic = 100,
 };
 
@@ -203,6 +212,7 @@ struct CuptiTracerEvent {
   uint32_t thread_id = kInvalidThreadId;
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
+  uint32_t graph_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -222,6 +232,8 @@ struct CuptiTracerEvent {
     MemoryResidencyDetails memory_residency_info;
     // Used for `source` DriverCallback, `type` must be Generic.
     GenericDetails generic_info;
+    // Used for `source` DriverCallback, `type` must be CudaGraph.
+    CudaGraphDetails cuda_graph_info;
   };
 };
 

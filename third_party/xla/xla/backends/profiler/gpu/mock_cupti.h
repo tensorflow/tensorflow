@@ -80,6 +80,12 @@ class MockCupti : public xla::profiler::CuptiInterface {
                uint32_t* stream_id),
               (override));
 
+  MOCK_METHOD(CUptiResult, GetGraphId, (CUgraph graph, uint32_t* graph_id),
+              (override));
+
+  MOCK_METHOD(CUptiResult, GetGraphExecId,
+              (CUgraphExec graph_exec, uint32_t* graph_id), (override));
+
   MOCK_METHOD(void, CleanUp, (), (override));
   MOCK_METHOD(bool, Disabled, (), (const, override));
 };

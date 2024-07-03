@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "tsl/platform/errors.h"
@@ -26,6 +27,11 @@ namespace profiler {
 namespace {
 
 using absl::StatusCode;
+
+template <typename CuptiActivity>
+struct CuptiActivityHasGraphId {
+  static constexpr bool value = false;
+};
 
 // CUPTI from CUDA 11.6 adds information about the hardware channel that ops
 // run on; this makes its way into the channel_id and channel_type fields in the
@@ -39,18 +45,57 @@ using CuptiActivityKernelTy = CUpti_ActivityKernel9;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemcpyTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemcpyP2PTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
+  static constexpr bool value = true;
+};
 #elif CUDA_VERSION >= 11060  // CUDA 11.6
 #define TF_CUPTI_HAS_CHANNEL_ID 1
 using CuptiActivityKernelTy = CUpti_ActivityKernel7;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemcpyTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemcpyP2PTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
+  static constexpr bool value = true;
+};
 #else
 using CuptiActivityKernelTy = CUpti_ActivityKernel4;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset;
 #endif
+
+// TODO: (b/350105610), Using Cupti_ActivityGraphTrace2 for CUDA 12.3 and later
+#if CUDA_VERSION >= 11070
+using CuptiActivityGraphTraceTy = CUpti_ActivityGraphTrace;
+#endif  // CUDA_VERSION >= 11070
 
 // Maps an OverheadKind enum to a const string.
 const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
@@ -94,6 +139,14 @@ const char *getActivityUnifiedMemoryKindString(
   return "<UNKNOWN>";
 }
 
+template <typename CuptiActivity>
+void SetEventGraphId(CuptiTracerEvent &event,
+                     const CuptiActivity *cupti_activity) {
+  if constexpr (CuptiActivityHasGraphId<CuptiActivity>::value) {
+    event.graph_id = cupti_activity->graphId;
+  }
+}
+
 template <bool cupti_has_channel_id, typename CuptiActivityKernel>
 void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
                             const CuptiActivityKernel *kernel) {
@@ -111,6 +164,7 @@ void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
       collector.annotation_map.LookUp(event.device_id, event.correlation_id);
   event.annotation = info.annotation;
   event.nvtx_range = info.nvtx_range;
+  SetEventGraphId(event, kernel);
   event.kernel_info.registers_per_thread = kernel->registersPerThread;
   event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
   event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
@@ -125,6 +179,26 @@ void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
     event.kernel_info.channel_type = kernel->channelType;
   }
   collector.receive(std::move(event));
+}
+
+void AddGraphTraceActivityEvent(CuptiEventCollectorDelegate &collector,
+                                CuptiActivityGraphTraceTy *graph_trace) {
+  AnnotationMap::AnnotationInfo info = collector.annotation_map.LookUp(
+      graph_trace->deviceId, graph_trace->correlationId);
+  collector.receive(CuptiTracerEvent{
+      .type = CuptiTracerEventType::CudaGraph,
+      .source = CuptiTracerEventSource::Activity,
+      .name = absl::StrCat("CudaGraphExec:", graph_trace->graphId),
+      .annotation = info.annotation,
+      .nvtx_range = info.nvtx_range,
+      .start_time_ns = graph_trace->start,
+      .end_time_ns = graph_trace->end,
+      .device_id = graph_trace->deviceId,
+      .correlation_id = graph_trace->correlationId,
+      .context_id = graph_trace->contextId,
+      .stream_id = graph_trace->streamId,
+      .graph_id = graph_trace->graphId,
+  });
 }
 
 void AddMemcpyActivityEvent(CuptiEventCollectorDelegate &collector,
@@ -163,6 +237,7 @@ void AddMemcpyActivityEvent(CuptiEventCollectorDelegate &collector,
   AnnotationMap::AnnotationInfo info =
       collector.annotation_map.LookUp(event.device_id, event.correlation_id);
   event.annotation = info.annotation;
+  SetEventGraphId(event, memcpy);
   event.memcpy_info.copy_kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
@@ -192,6 +267,7 @@ void AddMemcpyP2PActivityEvent(CuptiEventCollectorDelegate &collector,
   AnnotationMap::AnnotationInfo info =
       collector.annotation_map.LookUp(event.device_id, event.correlation_id);
   event.annotation = info.annotation;
+  SetEventGraphId(event, memcpy);
   event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->dstDeviceId;
@@ -320,6 +396,7 @@ void AddMemsetActivityEvent(CuptiEventCollectorDelegate &collector,
   event.correlation_id = memset->correlationId;
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
+  SetEventGraphId(event, memset);
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
@@ -418,6 +495,12 @@ static absl::Status ConvertActivityBuffer(
               collector,
               reinterpret_cast<CUpti_ActivitySynchronization *>(record));
           break;
+#if CUDA_VERSION >= 11070
+        case CUPTI_ACTIVITY_KIND_GRAPH_TRACE:
+          AddGraphTraceActivityEvent(
+              collector, reinterpret_cast<CuptiActivityGraphTraceTy *>(record));
+          break;
+#endif
         default:
           VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;

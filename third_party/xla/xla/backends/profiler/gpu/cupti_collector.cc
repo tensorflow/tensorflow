@@ -183,7 +183,11 @@ class PerDeviceCollector {
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
           absl::StrCat("$$", static_cast<uint64_t>(event.context_id)));
     }
-
+    if (event.graph_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaGraphId)),
+                          event.graph_id);
+    }
     if (event.type == CuptiTracerEventType::Kernel &&
         event.source == CuptiTracerEventSource::Activity) {
       DeviceOccupancyParams params{};
@@ -268,6 +272,15 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                               StatType::kMemoryResidencyDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
+    } else if (event.type == CuptiTracerEventType::CudaGraph) {
+      if (event.cuda_graph_info.orig_graph_id) {
+        std::string value =
+            absl::StrCat("orig_graph_id:", event.cuda_graph_info.orig_graph_id);
+        VLOG(7) << "Add CudaGraph stat. " << value;
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kCudaGraphDetails)),
+                            *plane->GetOrCreateStatMetadata(std::move(value)));
+      }
     }
 
     std::vector<Annotation> annotation_stack =

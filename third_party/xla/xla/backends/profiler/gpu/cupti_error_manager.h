@@ -110,6 +110,11 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
                             uint8_t per_thread_stream,
                             uint32_t* stream_id) override;
 
+  CUptiResult GetGraphId(CUgraph graph, uint32_t* graph_id) override;
+
+  CUptiResult GetGraphExecId(CUgraphExec graph_exec,
+                             uint32_t* graph_id) override;
+
   // Clears Undo stack. We are maintaining undo stack for each profiling phase.
   // Once the profiling is done, we need to clear the undo stack.
   void CleanUp() override;
