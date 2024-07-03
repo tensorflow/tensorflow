@@ -128,6 +128,33 @@ constexpr auto kMultiRowReductionX8 = R"(
       ROOT fusion = f32[1024] fusion(a, c), kind=kInput, calls=fused_computation
     })";
 
+constexpr auto kMultiRowReductionX2VectorX4 = R"(
+    or {
+      tmp_0 = pred[] parameter(0)
+      tmp_1 = pred[] parameter(1)
+      ROOT tmp_2 = pred[] or(tmp_0, tmp_1)
+    }
+
+    fusion {
+      tmp_0 = f32[76800,16]{1,0} parameter(0)
+      tmp_1 = f32[] constant(-1.70141173e+38)
+      tmp_2 = f32[76800,16]{1,0} broadcast(tmp_1), dimensions={}
+      tmp_3 = pred[76800,16]{1,0} compare(tmp_0, tmp_2), direction=GT
+      tmp_4 = pred[] constant(false)
+      tmp_5 = pred[76800]{0} reduce(tmp_3, tmp_4), dimensions={1}, to_apply=or
+      tmp_6 = f32[76800,16]{1,0} parameter(1)
+      tmp_7 = pred[76800,16]{1,0} compare(tmp_6, tmp_2), direction=GT
+      tmp_8 = pred[76800]{0} reduce(tmp_7, tmp_4), dimensions={1}, to_apply=or
+      ROOT tmp_9 = (pred[76800]{0}, pred[76800]{0}) tuple(tmp_5, tmp_8)
+    }
+
+    ENTRY main {
+      p0 = f32[76800,16]{1,0} parameter(0)
+      p1 = f32[76800,16]{1,0} parameter(1)
+
+      ROOT fusion = (pred[76800]{0}, pred[76800]{0}) fusion(p0, p1), kind=kInput, calls=fusion
+    })";
+
 constexpr std::string_view kRowReductionSideOutput = R"(
     Add {
       lhs = f32[] parameter(0)
@@ -301,15 +328,13 @@ TEST_F(MlirRowReductionTest, RowReductionMinorAndMajorCorrectness) {
 TEST_F(MlirMultiRowReductionTest, MultiRowReductionIndexing) {
   auto fusion = GetEmitter(kMultiRowReductionX8);
 
-  std::vector<Interval> input_shape{{0, 1023}, {0, 3}};
-  std::vector<Interval> output_shape{{0, 1023}};
-
-  TF_EXPECT_OK(VerifyBijection(
-      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-      input_shape));
-  TF_EXPECT_OK(VerifyBijection(
-      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-      output_shape));
+  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+                {1024, 4});
+  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
+                {1024});
+  EXPECT_THAT(GetLoopTripCounts(*fusion->ComputeThreadIdToInputIndexing(
+                  0, 0, &mlir_context_)),
+              ::testing::IsEmpty());
 }
 
 TEST_F(MlirMultiRowReductionTest, MultiRowReductionIr) {
@@ -1047,6 +1072,23 @@ TEST_F(MlirColumnReductionTest, ThreadIndexingColumn_Complex) {
         (d3 mod 48) * 32 + d0 floordiv 32 in [0, 1536)
         d0 mod 32 in [0, 1)
       )"));
+}
+
+TEST_F(MlirMultiRowReductionTest, VectorizedX4Indexing) {
+  auto fusion = GetEmitter(kMultiRowReductionX2VectorX4);
+
+  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+                {76800, 16});
+  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
+                {76800});
+  EXPECT_THAT(GetLoopTripCounts(*fusion->ComputeThreadIdToInputIndexing(
+                  0, 0, &mlir_context_)),
+              ElementsAre(1 /* major reduced */, 4 /* vector size */));
+}
+
+TEST_F(MlirMultiRowReductionTest, VectorizedX4Correctness) {
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kMultiRowReductionX2VectorX4, ErrorSpec{1e-3}));
 }
 
 }  // namespace

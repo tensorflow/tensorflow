@@ -142,7 +142,7 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
 
   absl::InlinedVector<int64_t, 4> num_threads_;
   absl::InlinedVector<int64_t, 4> num_blocks_;
-  int64_t vector_size_ = -1;
+  int64_t vector_size_ = 1;
 
   ReductionDimensions reduction_dimensions_;
   ReductionGroups groups_;

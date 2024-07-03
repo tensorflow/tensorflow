@@ -326,5 +326,14 @@ absl::Status VerifyBijection(const IndexingMap& indexing_map,
   return absl::OkStatus();
 }
 
+std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map) {
+  std::vector<int64_t> trip_counts;
+  trip_counts.reserve(indexing_map.GetSymbolCount());
+  for (int i = 0; i < indexing_map.GetSymbolCount(); ++i) {
+    trip_counts.push_back(indexing_map.GetSymbolBound(i).GetLoopTripCount());
+  }
+  return trip_counts;
+}
+
 }  // namespace gpu
 }  // namespace xla

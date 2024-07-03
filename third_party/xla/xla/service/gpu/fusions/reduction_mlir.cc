@@ -328,6 +328,9 @@ IndexingMap MlirMultiRowReductionFusion::ComputeReductionOutputIndexing(
       GetIndexingMap(block_id * num_threads_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1] % (WarpSize() / GetRowsPerWarp()),
                                 {0, 0});
+  // We don't need a constraint on the loop dimensions, because they are removed
+  // by GetIndexingMap (since they don't show up in the output index
+  // computation).
   return projected_index;
 }
 
@@ -340,7 +343,8 @@ IndexingMap MlirMultiRowReductionFusion::ComputeReductionInputIndexing(
   auto major_reduced = GetLoopSymbol(0, ctx);
 
   SmallVector<AffineExpr> indices{
-      major_reduced, block_id * num_threads_[0] + thread_id[0], thread_id[1]};
+      major_reduced, block_id * num_threads_[0] + thread_id[0],
+      thread_id[1] * tile_sizes_per_thread_[1] + GetLoopSymbol(1, ctx)};
 
   auto map = GetIndexingMap(indices);
   for (auto [result, input_dim] : llvm::zip(indices, input_shape_)) {
@@ -714,8 +718,6 @@ MlirRowReductionFusion::MlirRowReductionFusion(
                            minor_reduced_tile_size * num_threads_reduced};
   num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
                  CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
-
-  vector_size_ = 1;
 }
 
 MlirMultiRowReductionFusion::MlirMultiRowReductionFusion(
@@ -724,30 +726,54 @@ MlirMultiRowReductionFusion::MlirMultiRowReductionFusion(
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
   int64_t rows_per_warp = RowReductionGetRowsPerWarp(shape[kRowMinorReduced]);
+  input_shape_ = {shape[0], shape[1], shape[2]};
   CHECK_GT(rows_per_warp, 1);
 
-  int64_t num_threads_reduced = shape[kRowMinorReduced];
+  auto compute_block_size = [&](int vector_size) {
+    int64_t num_threads_reduced = shape[kRowMinorReduced] / vector_size;
 
-  constexpr int64_t kThreadsPerBlockTarget = 256;
-  int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
-  int64_t num_threads_kept = 1;
-  if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
-    num_threads_kept = kept_size;
-  } else {
-    num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
+    constexpr int64_t kThreadsPerBlockTarget = 256;
+    int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
+    int64_t num_threads_kept = 1;
+    if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
+      num_threads_kept = kept_size;
+    } else {
+      num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
+    }
+    num_threads_ = {num_threads_kept, num_threads_reduced};
+    tile_sizes_per_thread_ = {shape[0], vector_size};
+    num_blocks_ = {CeilOfRatio(input_shape_[kRowKept], num_threads_kept)};
+  };
+
+  // Compute the launch grid without vectorization. We use the results to
+  // compute the vectorized launch grid.
+  compute_block_size(1);
+
+  // Normally, we only consider input types for vectorization. However, in
+  // multi-row reductions, the input:output ratio is much higher, so we consider
+  // both inputs and outputs.
+  int smallest_input_or_output_bits =
+      std::min(analysis.input_output_info().smallest_input_dtype_bits,
+               analysis.input_output_info().smallest_output_dtype_bits);
+
+  // This vector size is always valid: we know that the reduced dimension is a
+  // power of 2, since otherwise RowReductionGetRowsPerWarp would have
+  // returned 1.
+  int vector_size = 32 / smallest_input_or_output_bits;
+
+  // We target 8 warps per block, which means there could be up to 8 blocks per
+  // SM, but we have no good way of knowing. In practice, enabling vectorization
+  // for decently sized reductions at least does not hurt.
+  if (num_blocks_.front() > analysis.device_info().core_count() &&
+      vector_size > 1) {
+    compute_block_size(vector_size);
   }
-
-  num_threads_ = {num_threads_kept, num_threads_reduced};
-  input_shape_ = {shape[0], shape[1], shape[2]};
-  tile_sizes_per_thread_ = {shape[0]};
-  num_blocks_ = {CeilOfRatio(input_shape_[kRowKept], num_threads_kept)};
-
-  vector_size_ = 1;
 }
 
 int MlirMultiRowReductionFusion::GetRowsPerWarp() const {
   return RowReductionGetRowsPerWarp(
-      input_shape_[ReductionDimensions::kRowMinorReducedDimension]);
+             input_shape_[ReductionDimensions::kRowMinorReducedDimension]) *
+         tile_sizes_per_thread_[1];
 }
 
 int MlirRowReductionFusion::GetWarpsPerRow() const {

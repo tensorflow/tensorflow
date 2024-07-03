@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
@@ -110,6 +111,9 @@ absl::Status EnumerateDomain(
 // shape.
 absl::Status VerifyBijection(const IndexingMap& indexing_map,
                              absl::Span<Interval const> expected_codomain);
+
+// Returns the trip counts for each symbol in the indexing map.
+std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map);
 
 }  // namespace gpu
 }  // namespace xla
