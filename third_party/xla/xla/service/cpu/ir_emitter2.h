@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMITTER2_H_
 #define XLA_SERVICE_CPU_IR_EMITTER2_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -31,10 +30,12 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -61,6 +62,14 @@ class IrEmitter2 {
  public:
   IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
              IrEmitter* nested_ir_emitter);
+
+  // Kernel parameter (argument or result buffer) passed to a kernel function.
+  // We rely on buffer allocation slice information to infer buffer aliasing
+  // scopes for LLVM codegen.
+  struct KernelParameter {
+    Shape shape;
+    BufferAllocation::Slice slice;
+  };
 
   // Thread dimensions of the kernel invocation.
   struct KernelThreadDims {
@@ -129,12 +138,13 @@ class IrEmitter2 {
 
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
-  KernelPrototype EmitKernelPrototype(std::string_view name,
-                                      absl::Span<const Shape> arguments,
-                                      absl::Span<const Shape> results);
+  KernelPrototype EmitKernelPrototype(
+      std::string_view name, absl::Span<const KernelParameter> arguments,
+      absl::Span<const KernelParameter> results);
 
   // Emits a host kernel prototype for the given HLO instruction.
-  KernelPrototype EmitKernelPrototype(const HloInstruction* instr);
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
+      const HloInstruction* instr);
 
  private:
   class ElementalIrEmitter;
@@ -150,6 +160,19 @@ class IrEmitter2 {
   struct ParallelConfig {
     std::vector<int64_t> outer_dimension_partitions;
   };
+
+  // Returns the buffer allocation slice assigned to the given instruction at
+  // the given shape index. Instruction must have a unique slice assigned to it!
+  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+      const HloInstruction* instruction, const ShapeIndex& index = {});
+
+  // We do not materialize buffers for tuples at run time, and work only with
+  // leaf arrays. These are the helper functions to flatten HLO instruction
+  // parameters and results into a list of leaf shapes.
+  absl::StatusOr<std::vector<KernelParameter>> GetKernelArgumentsParameters(
+      const HloInstruction* instruction);
+  absl::StatusOr<std::vector<KernelParameter>> GetKernelResultsParameters(
+      const HloInstruction* instruction);
 
   KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
                                         llvm::Value* call_frame);

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
@@ -71,28 +72,6 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
-
-// We do not materialize buffers for tuples at run time, and work only with leaf
-// arrays. These are the helper functions to flatten HLO instruction parameters
-// and results into a list of leaf shapes.
-
-static std::vector<Shape> FlattenedParameters(const HloInstruction* instr) {
-  std::vector<Shape> parameters;
-  for (auto* operand : instr->operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      parameters.push_back(indexed.shape);
-    }
-  }
-  return parameters;
-}
-
-static std::vector<Shape> FlattenedResults(const HloInstruction* instr) {
-  std::vector<Shape> results;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(instr->shape())) {
-    results.push_back(indexed.shape);
-  }
-  return results;
-}
 
 // Following struct types correspond to HostKernel C API.
 // See: xla/stream_executor/host/host_kernel_c_api.h
@@ -239,7 +218,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit elemental host kernel: " << instr->name();
 
-  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
 
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
@@ -279,7 +259,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
                     fusion->ToString());
   }
 
-  KernelPrototype kernel_prototype = EmitKernelPrototype(fusion);
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(fusion));
 
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
@@ -355,7 +336,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
     return Internal("Unsupported dot implementation strategy");
   }
 
-  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
 
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
@@ -411,7 +393,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
   int64_t dot_rhs_pnum = dot->operand(1)->parameter_number();
   int64_t addend_pnum = add->operand(addend_op_index)->parameter_number();
 
-  KernelPrototype kernel_prototype = EmitKernelPrototype(fusion);
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(fusion));
 
   llvm::IRBuilder<> b(module_->getContext());
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
@@ -435,7 +418,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
 // Emits a host kernel for the given select-and-scatter instruction.
 absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
-  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(instr));
 
   llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
   llvm_ir::IrArray source_array = kernel_prototype.arguments[1];
@@ -453,6 +437,36 @@ IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
 //===----------------------------------------------------------------------===//
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//
+
+absl::StatusOr<BufferAllocation::Slice> IrEmitter2::GetAllocationSlice(
+    const HloInstruction* instruction, const ShapeIndex& index) {
+  return nested_ir_emitter_->assignment().GetUniqueSlice(instruction, index);
+}
+
+absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
+IrEmitter2::GetKernelArgumentsParameters(const HloInstruction* instruction) {
+  std::vector<KernelParameter> arguments;
+
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                          GetAllocationSlice(operand, indexed.index));
+      arguments.push_back(KernelParameter{indexed.shape, slice});
+    }
+  }
+  return arguments;
+}
+
+absl::StatusOr<std::vector<IrEmitter2::KernelParameter>>
+IrEmitter2::GetKernelResultsParameters(const HloInstruction* instruction) {
+  std::vector<KernelParameter> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        GetAllocationSlice(instruction, indexed.index));
+    results.push_back(KernelParameter{indexed.shape, slice});
+  }
+  return results;
+}
 
 IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
     llvm::IRBuilder<>& b, llvm::Value* call_frame) {
@@ -500,16 +514,18 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
 }
 
 IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
-    std::string_view name, absl::Span<const Shape> arguments,
-    absl::Span<const Shape> results) {
+    std::string_view name, absl::Span<const KernelParameter> arguments,
+    absl::Span<const KernelParameter> results) {
   VLOG(3) << "Emit kernel prototype: " << name
           << ", #arguments=" << arguments.size()
           << ", #results=" << results.size();
-  for (const Shape& argument : arguments) {
-    VLOG(3) << "  argument: " << argument.ToString(true);
+  for (const KernelParameter& argument : arguments) {
+    VLOG(3) << "  argument: " << argument.shape.ToString(true) << " in "
+            << argument.slice.ToString();
   }
-  for (const Shape& result : results) {
-    VLOG(3) << "  result: " << result.ToString(true);
+  for (const KernelParameter& result : results) {
+    VLOG(3) << "  result: " << result.shape.ToString(true) << " in "
+            << result.slice.ToString();
   }
 
   llvm::LLVMContext& ctx = module_->getContext();
@@ -544,14 +560,16 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
 
   // IrArrays for the parameters.
   std::vector<llvm_ir::IrArray> ir_arguments;
-  for (const Shape& argument : arguments) {
-    ir_arguments.push_back(EmitKernelArgument(b, call_frame, idx++, argument));
+  for (const KernelParameter& argument : arguments) {
+    ir_arguments.push_back(
+        EmitKernelArgument(b, call_frame, idx++, argument.shape));
   }
 
   // IrArrays for the results.
   std::vector<llvm_ir::IrArray> ir_results;
-  for (const Shape& result : results) {
-    ir_results.push_back(EmitKernelArgument(b, call_frame, idx++, result));
+  for (const KernelParameter& result : results) {
+    ir_results.push_back(
+        EmitKernelArgument(b, call_frame, idx++, result.shape));
   }
 
   // Return null pointer to signal success as we do not support error handling
@@ -563,10 +581,14 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
                          std::move(ir_arguments), std::move(ir_results)};
 }
 
-IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
+absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
-  return EmitKernelPrototype(instr->name(), FlattenedParameters(instr),
-                             FlattenedResults(instr));
+  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
+                      GetKernelArgumentsParameters(instr));
+  TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
+                      GetKernelResultsParameters(instr));
+  return EmitKernelPrototype(instr->name(), std::move(arguments),
+                             std::move(results));
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(

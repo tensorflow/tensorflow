@@ -15,16 +15,21 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emitter2.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/ir_emitter.h"
+#include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
@@ -44,12 +49,13 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   auto module = std::make_unique<llvm::Module>("test", context);
 
   auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
-  std::vector<Shape> parameters = {shape};
-  std::vector<Shape> results = {shape};
+
+  std::vector<IrEmitter2::KernelParameter> arguments = {{shape}};
+  std::vector<IrEmitter2::KernelParameter> results = {{shape}};
 
   IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   IrEmitter2::KernelPrototype prototype =
-      ir_emitter.EmitKernelPrototype("test", parameters, results);
+      ir_emitter.EmitKernelPrototype("test", arguments, results);
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: define ptr @test(ptr %0) #0 {
@@ -102,7 +108,20 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
   HloInstruction* convert = FindInstruction(hlo.get(), "convert");
   ASSERT_NE(convert, nullptr);
 
-  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
+
+  IrEmitter nested_ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(),
+                              {}, {}, {}, &target_machine, false);
+
+  IrEmitter2 ir_emitter(*hlo, module.get(), &nested_ir_emitter);
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           ir_emitter.EmitElementalHostKernel(convert));
 
@@ -129,7 +148,20 @@ TEST_F(IrEmitter2Test, EmitParallelKernel) {
   HloInstruction* convert = FindInstruction(hlo.get(), "convert");
   ASSERT_NE(convert, nullptr);
 
-  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
+
+  IrEmitter nested_ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(),
+                              {}, {}, {}, &target_machine, false);
+
+  IrEmitter2 ir_emitter(*hlo, module.get(), &nested_ir_emitter);
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           ir_emitter.EmitElementalHostKernel(convert));
 
