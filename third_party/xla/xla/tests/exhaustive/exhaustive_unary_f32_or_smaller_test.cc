@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <random>
@@ -26,12 +27,17 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
+#include "xla/client/lib/constants.h"
 #include "xla/client/lib/math.h"
 #include "xla/client/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/literal.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
+#include "xla/tests/test_macros.h"
 #include "xla/types.h"
-#include "xla/util.h"
+#include "tsl/platform/test.h"
 
 #ifdef __FAST_MATH__
 #error "Can't be compiled with fast math on"

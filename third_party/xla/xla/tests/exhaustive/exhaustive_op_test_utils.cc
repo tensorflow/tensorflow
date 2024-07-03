@@ -16,10 +16,25 @@ limitations under the License.
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 
 #include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/meta/type_traits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/literal.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace exhaustive_op_test {

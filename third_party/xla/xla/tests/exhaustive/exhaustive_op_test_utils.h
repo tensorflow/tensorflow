@@ -19,24 +19,38 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/bit_cast.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/executable_run_options.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace exhaustive_op_test {
@@ -512,7 +526,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
   // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
-  // a negative number) or -inf (flush the denormal to sign-perserving zero,
+  // a negative number) or -inf (flush the denormal to sign-preserving zero,
   // then sqrt(-0)).  But with this as true, we'll also accept 0 (sqrt(0)).
   //
   // XLA:GPU preserves denormal signs, but other backends don't.
@@ -927,7 +941,7 @@ std::vector<FpValues> CreateFpValuesForBoundaryTest() {
 }
 
 inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
-  // We break up the 2^32-element space into small'ish chunks to keep peak
+  // We break up the 2^32-element space into small-ish chunks to keep peak
   // memory usage low.
   std::vector<std::pair<int64_t, int64_t>> result;
   const int64_t step = 1 << 25;
