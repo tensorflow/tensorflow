@@ -376,7 +376,7 @@ TEST(HloShardingUtilTest, ReshapeToTileDimension2D) {
   for (const HloSharding& sharding : shardings) {
     EXPECT_EQ(ReshapeToTileDimension(sharding, /*dim=*/0, /*dims=*/{0, 1})
                   .tile_assignment(),
-              TileAssignment((absl::Span<const int64_t>){4, 1}));
+              TileAssignment({4, 1}));
     EXPECT_EQ(ReshapeToTileDimension(sharding, /*dim=*/1, /*dims=*/{0, 1})
                   .tile_assignment(),
               TileAssignment({1, 4}, {2, 2}, {1, 0}));
@@ -554,8 +554,7 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
   GroupedSharding group_sharding = GetManualSubgroupSharding(sharding);
 
   // Expect group_sharding.sharding to be {devices=[1,2]0,1}
-  EXPECT_EQ(group_sharding.sharding.tile_assignment(),
-            TileAssignment((absl::Span<const int64_t>){1, 2}));
+  EXPECT_EQ(group_sharding.sharding.tile_assignment(), TileAssignment({1, 2}));
 
   // Expect the device groups are: {0, 2} and {1, 3}
   EXPECT_THAT(group_sharding.device_groups[0],
@@ -734,8 +733,7 @@ TEST(HloShardingUtilTest, UngroupShardingWithUnsortedGroupDims) {
 }
 
 TEST(HloShardingUtilTest, DeviceGroupsDoesNotMatch) {
-  HloSharding sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   DimensionVector group_dim_sizes = {2};
 
   std::vector<std::vector<int64_t>> lhs_device_groups = {{0, 2, 4, 6},
@@ -770,8 +768,7 @@ TEST(HloShardingUtilTest, DeviceGroupsMatch) {
       group_dim_sizes, 2, lhs_sharding,
       /*subgroup_manual=*/true);
 
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   auto rhs = GroupedSharding(
       device_groups, DimensionVector(group_dims.begin(), group_dims.end()),
       group_dim_sizes, 2, rhs_sharding,
@@ -796,23 +793,20 @@ TEST(HloShardingUtilTest, IsSubShardingReplicatedTiled) {
 
 TEST(HloShardingUtilTest, IsSubShardingTiledPartialReplicated) {
   HloSharding rhs_sharding = HloSharding::Replicate();
-  HloSharding lhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
 TEST(HloShardingUtilTest, IsSubShardingReplicatedTiledPartial) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::Replicate();
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
 TEST(HloShardingUtilTest, IsSubShardingPartialTiledTiled) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
@@ -826,8 +820,7 @@ TEST(HloShardingUtilTest, IsSubShardingIncompatibleTiled) {
 }
 
 TEST(HloShardingUtilTest, IsSubShardingIncompatibleShapeTiledPartialTiled) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
@@ -842,8 +835,7 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
   std::vector<int64_t> success = {1, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20};
   std::vector<int64_t> fail = {2, 5, 6, 9, 10, 13, 14, 17, 18};
@@ -858,16 +850,14 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut1) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   Array<int64_t> lhs_array({4});
   lhs_array.SetValues({1, 0, 2, 3});
   HloSharding lhs_sharding = HloSharding::Tile(lhs_array);
@@ -876,8 +866,7 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut3) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(
-      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));

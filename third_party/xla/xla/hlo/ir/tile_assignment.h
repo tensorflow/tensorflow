@@ -173,6 +173,8 @@ class TileAssignment {
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
+  explicit TileAssignment(std::initializer_list<int64_t> dims)
+      : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims,
