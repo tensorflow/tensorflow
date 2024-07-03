@@ -41,8 +41,28 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
       input, context, import_all_computations, flatten_computation_args_result);
 }
 
+static mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  return xla::HloToStablehloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+}
+
+static mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  return xla::HloTextToStablehloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+}
+
 static mlir::TranslateToMLIRRegistration HloToMlirHloTranslateRegistration(
     "hlo-to-mlir-hlo", "hlo-to-mlir-hlo", HloToMlirHloTranslate);
 
 static mlir::TranslateToMLIRRegistration HloTextToMlirHloTranslateRegistration(
     "hlo-text-to-mlir-hlo", "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
+
+static mlir::TranslateToMLIRRegistration HloToStablehloTranslateRegistration(
+    "hlo-to-stablehlo", "hlo-to-stablehlo", HloToStablehloTranslate);
+
+static mlir::TranslateToMLIRRegistration
+    HloTextToStablehloTranslateRegistration("hlo-text-to-stablehlo",
+                                            "hlo-text-to-stablehlo",
+                                            HloTextToStablehloTranslate);

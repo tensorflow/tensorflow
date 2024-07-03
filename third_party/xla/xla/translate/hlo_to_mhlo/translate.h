@@ -30,7 +30,7 @@ class OwningOpRef;
 namespace xla {
 
 // Converts a HloModuleProto stored in the file with the given `input_filename`
-// into a MLIR module. Creates MLIR entities into the given MLIR `context`.
+// into a MHLO module. Creates MLIR entities into the given MLIR `context`.
 //
 // If `import_all_computation` is set to true, imports all computations
 // irrespective if transitively called from entry computation.
@@ -43,7 +43,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     bool flatten_computation_args_result = false);
 
 // Converts a HloModule stored in text form for a file with the given
-// `input_filename` into a MLIR module. Creates MLIR entities into the given
+// `input_filename` into a MHLO module. Creates MLIR entities into the given
 // MLIR `context`.
 //
 // If `import_all_computation` is set to true, imports all computations
@@ -52,6 +52,33 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 // If `flatten_computation_args_result` is set to true, flattens all tuple
 // arguments and result of every computation when importing them as func ops.
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations = false,
+    bool flatten_computation_args_result = false);
+
+// Converts a HloModuleProto stored in the file with the given `input_filename`
+// into a StableHLO module. Creates MLIR entities into the given MLIR `context`.
+//
+// If `import_all_computation` is set to true, imports all computations
+// irrespective if transitively called from entry computation.
+//
+// If `flatten_computation_args_result` is set to true, flattens all tuple
+// arguments and result of every computation when importing them as func ops.
+mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations = false,
+    bool flatten_computation_args_result = false);
+
+// Converts a HloModule stored in text form for a file with the given
+// `input_filename` into a StableHLO module. Creates MLIR entities into the
+// given MLIR `context`.
+//
+// If `import_all_computation` is set to true, imports all computations
+// irrespective if transitively called from entry computation.
+//
+// If `flatten_computation_args_result` is set to true, flattens all tuple
+// arguments and result of every computation when importing them as func ops.
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations = false,
     bool flatten_computation_args_result = false);
