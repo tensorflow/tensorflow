@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -971,6 +972,139 @@ TEST(StreamExecutorGpuClientTest,
   EXPECT_EQ(memory_kinds[0].size(), 2);
   EXPECT_EQ(memory_kinds[0][0], "device");
   EXPECT_EQ(memory_kinds[0][1], "pinned_host");
+}
+
+TEST(StreamExecutorGpuClientTest, MlirParameterHostMemorySpaceIsSetInHlo) {
+  constexpr char kMlirH2D[] =
+      R"(
+    func.func public @main(%arg0: tensor<8x2xi32> {
+            mhlo.layout_mode = "{1,0}",
+            mhlo.memory_kind = "pinned_host",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"
+        }) -> (tensor<8x2xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "default",
+            mhlo.memory_kind = "device",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"}) {
+      %0 = stablehlo.custom_call @annotate_device_placement(%arg0) {
+              has_side_effect = true,
+              mhlo.frontend_attributes = {_xla_buffer_placement = "device"}
+          } : (tensor<8x2xi32>) -> tensor<8x2xi32>
+      return %0 : tensor<8x2xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseMlirModuleString(kMlirH2D, context));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout.memory_space(), Layout::kHostMemorySpace);
+  auto result_layout =
+      modules[0]->entry_computation_layout().result_layout().layout();
+  EXPECT_EQ(result_layout.memory_space(), Layout::kDefaultMemorySpace);
+}
+
+TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
+  constexpr char kMlirD2H[] =
+      R"(
+    func.func public @main(%arg0: tensor<8x2xi32> {
+            mhlo.layout_mode = "{1,0}",
+            mhlo.memory_kind = "device",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"
+        }) -> (tensor<8x2xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "default",
+            mhlo.memory_kind = "pinned_host",
+            mhlo.sharding = "{devices=[2,2]<=[4]}"}) {
+      %0 = stablehlo.custom_call @annotate_device_placement(%arg0) {
+              has_side_effect = true,
+              mhlo.frontend_attributes = {_xla_buffer_placement = "pinned_host"}
+          } : (tensor<8x2xi32>) -> tensor<8x2xi32>
+      return %0 : tensor<8x2xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseMlirModuleString(kMlirD2H, context));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout.memory_space(), Layout::kDefaultMemorySpace);
+  auto result_layout =
+      modules[0]->entry_computation_layout().result_layout().layout();
+  EXPECT_EQ(result_layout.memory_space(), Layout::kHostMemorySpace);
+}
+
+TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
+  constexpr char kMlirWithParameterLayout[] =
+      R"(
+    func.func public @main(%arg0: tensor<2x2x2xi32> {
+            mhlo.layout_mode = "{0, 2, 1}"
+        }) -> (tensor<2x2x2xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "default"}) {
+      return %arg0 : tensor<2x2x2xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
+                                           kMlirWithParameterLayout, context));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout, Layout({0, 2, 1}));
+}
+
+TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
+  constexpr char kMlirCopy[] =
+      R"(
+    func.func public @main(%arg0: tensor<2x2x2xi32> {
+            mhlo.layout_mode = "default"
+        }) -> (tensor<2x2x2xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "default"}) {
+      return %arg0 : tensor<2x2x2xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseMlirModuleString(kMlirCopy, context));
+
+  xla::CompileOptions options;
+  options.argument_layouts = {
+      {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout, Layout({0, 2, 1}));
 }
 
 }  // namespace
