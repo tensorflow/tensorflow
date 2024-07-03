@@ -20,7 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
@@ -51,15 +55,32 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+  BufferAllocation::Slice arg0(&alloc, /*offset=*/0, /*size=*/256);
+  BufferAllocation::Slice arg1(&alloc, /*offset=*/256, /*size=*/256);
+  BufferAllocation::Slice res0(&alloc, /*offset=*/512, /*size=*/256);
+  BufferAllocation::Slice res1(&alloc, /*offset=*/768, /*size=*/256);
 
-  std::vector<IrEmitter2::KernelParameter> arguments = {{shape, slice}};
-  std::vector<IrEmitter2::KernelParameter> results = {{shape, slice}};
+  std::vector<IrEmitter2::KernelParameter> arguments = {{shape, arg0},
+                                                        {shape, arg1}};
+  std::vector<IrEmitter2::KernelParameter> results = {{shape, res0},
+                                                      {shape, res1}};
 
   IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
       IrEmitter2::KernelPrototype prototype,
       ir_emitter.EmitKernelPrototype("test", arguments, results));
+
+  llvm::IRBuilder<> b(context);
+  b.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
+
+  auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+  llvm_ir::IrArray::Index index(zero, shape, &b);
+
+  // Emit loads from arguments and results buffers to test alias scope metadata.
+  EXPECT_NE(prototype.arguments[0].EmitReadArrayElement(index, &b), nullptr);
+  EXPECT_NE(prototype.arguments[1].EmitReadArrayElement(index, &b), nullptr);
+  EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &b), nullptr);
+  EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &b), nullptr);
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: define ptr @test(ptr %0) #0 {
@@ -83,17 +104,48 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      load ptr, {{.*}} !align !0
+    CHECK:      %[[ARG0:.+]] = load ptr
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      load ptr, {{.*}} !align !0
+    CHECK:      %[[ARG1:.+]] = load ptr
 
-    CHECK:   ret ptr null
+    CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 2, i32 0
+    CHECK:      %[[ARG2:.+]] = load ptr
+
+    CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 3, i32 0
+    CHECK:      %[[ARG3:.+]] = load ptr
+
+    CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
+    CHECK:      load float, ptr %[[PTR0]], align 4, !invariant.load !1,
+    CHECK-SAME:                                     !noalias !2
+
+    CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
+    CHECK:      load float, ptr %[[PTR1]], align 4, !invariant.load !1,
+    CHECK-SAME:                                     !noalias !2
+
+    CHECK-NEXT: %[[PTR2:.+]] = getelementptr inbounds float, ptr %[[ARG2]]
+    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope !6, !noalias !7
+
+    CHECK-NEXT: %[[PTR3:.+]] = getelementptr inbounds float, ptr %[[ARG3]]
+    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope !7, !noalias !6
+
+    CHECK:      ret ptr null
     CHECK: }
 
-    CHECK: !0 = !{i64 16}
+    CHECK-DAG: !0 = !{i64 16}
+    CHECK-DAG: !1 = !{}
+    CHECK-DAG: !2 = !{!3, !5}
+    CHECK-DAG: !3 = !{!"result slice: {{.*}}", !4}
+    CHECK-DAG: !4 = !{!"XLA host kernel test AA domain"}
+    CHECK-DAG: !5 = !{!"result slice: {{.*}}", !4}
+    CHECK-DAG: !6 = !{!5}
+    CHECK-DAG: !7 = !{!3}
   )"));
 }
 
