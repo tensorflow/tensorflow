@@ -1,5 +1,6 @@
 """Wrapper around proto libraries used inside the XLA codebase."""
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -83,3 +84,16 @@ def xla_internal(targets, otherwise = []):
 
 def tests_build_defs_bzl_deps():
     return []
+
+def xla_bzl_library(name = "xla_bzl_library"):
+    bzl_library(
+        name = "xla_bzl",
+        srcs = ["xla.bzl"],
+        deps = [
+            "//xla/tsl:tsl_bzl",
+            "@local_config_rocm//rocm:build_defs_bzl",
+            "@local_tsl//tsl/platform:build_config_root_bzl",
+            "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+            "@bazel_skylib//:bzl_library",
+        ],
+    )

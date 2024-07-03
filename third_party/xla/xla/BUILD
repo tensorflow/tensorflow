@@ -12,7 +12,7 @@ load(
 # Placeholder: load py_proto_library
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//xla:package_groups.bzl", "xla_package_groups")
-load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
@@ -1289,13 +1289,4 @@ bzl_library(
     deps = ["@bazel_skylib//lib:paths"],
 )
 
-bzl_library(
-    name = "xla_bzl",
-    srcs = ["xla.bzl"],
-    deps = [
-        "//xla/tsl:tsl_bzl",
-        "@local_config_rocm//rocm:build_defs_bzl",
-        "@local_tsl//tsl/platform:build_config_root_bzl",
-        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
-    ],
-)
+xla_bzl_library()
