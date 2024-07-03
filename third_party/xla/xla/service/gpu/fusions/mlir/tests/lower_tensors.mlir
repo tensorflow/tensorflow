@@ -411,7 +411,7 @@ module {
 // CHECK: @direct_atomic_rmw_overwrite
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 32 : i64}
+// CHECK: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 4 : i64}
 
 // -----
 
