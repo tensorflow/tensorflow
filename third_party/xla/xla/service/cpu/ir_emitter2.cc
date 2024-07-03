@@ -468,6 +468,72 @@ IrEmitter2::GetKernelResultsParameters(const HloInstruction* instruction) {
   return results;
 }
 
+absl::Status IrEmitter2::VerifyKernelParameters(
+    absl::Span<const KernelParameter> arguments,
+    absl::Span<const KernelParameter> results) {
+  // IMPORTANT: Buffer slice non-overlapping property checked below does not
+  // necessarily mean that the buffers do not alias. Parameter allocations
+  // might have different index but at run time might be backed by the same
+  // memory (or aliased memory). We conservatively do not emit noalias metadata
+  // for buffers coming from parameter allocations.
+
+  // Check that all kernel arguments are coming from non-overlapping slices. It
+  // is fine to pass same slice as different arguments. This property is not
+  // used anywhere during the codegen, it acts mostly as a sanity check for
+  // the buffer assignment. In the future we might emit better aliasing metadata
+  // based on this property.
+  for (size_t i = 0; i < arguments.size(); ++i) {
+    for (size_t j = i + 1; j < arguments.size(); ++j) {
+      const KernelParameter& a = arguments[i];
+      const KernelParameter& b = arguments[j];
+
+      if (a.slice != b.slice && a.slice.OverlapsWith(b.slice)) {
+        return Internal(
+            "Kernel arguments must not overlap: result #%d (%s) overlaps "
+            "with result #%d (%s)",
+            i, a.slice.ToString(), j, b.slice.ToString());
+      }
+    }
+  }
+
+  // Check that all kernel results are unique and coming from non-overlapping
+  // slices. We rely on this property to create LLVM `!alias.scope` for each
+  // kernel result buffer and to construct `!noalias` metadata for arguments.
+  for (size_t i = 0; i < results.size(); ++i) {
+    for (size_t j = i + 1; j < results.size(); ++j) {
+      const KernelParameter& a = results[i];
+      const KernelParameter& b = results[j];
+
+      if (a.slice.OverlapsWith(b.slice)) {
+        return Internal(
+            "Kernel results must not overlap: result #%d (%s) overlaps "
+            "with result #%d (%s)",
+            i, a.slice.ToString(), j, b.slice.ToString());
+      }
+    }
+  }
+
+  // Check that results do not overlap with arguments, or if they do, they must
+  // be the same as one of the arguments, which can happen for inplace kernels.
+  for (size_t i = 0; i < results.size(); ++i) {
+    for (size_t j = 0; j < arguments.size(); ++j) {
+      const KernelParameter& result = results[i];
+      const KernelParameter& argument = arguments[j];
+
+      if (result.slice.OverlapsWith(argument.slice) &&
+          result.slice != argument.slice) {
+        return Internal(
+            "Kernel results must not partially overlap with arguments: result "
+            "#%d (%s) overlaps with argument #%d (%s)",
+            i, result.slice.ToString(), j, argument.slice.ToString());
+        break;
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
     llvm::IRBuilder<>& b, llvm::Value* call_frame) {
   auto* td_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 0, "tdims_gep");
@@ -513,7 +579,7 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
-IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
+absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     std::string_view name, absl::Span<const KernelParameter> arguments,
     absl::Span<const KernelParameter> results) {
   VLOG(3) << "Emit kernel prototype: " << name
@@ -527,6 +593,8 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
     VLOG(3) << "  result: " << result.shape.ToString(true) << " in "
             << result.slice.ToString();
   }
+
+  TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
 
   llvm::LLVMContext& ctx = module_->getContext();
   llvm::IRBuilder<> b(ctx);

@@ -50,12 +50,16 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
 
   auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
 
-  std::vector<IrEmitter2::KernelParameter> arguments = {{shape}};
-  std::vector<IrEmitter2::KernelParameter> results = {{shape}};
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+
+  std::vector<IrEmitter2::KernelParameter> arguments = {{shape, slice}};
+  std::vector<IrEmitter2::KernelParameter> results = {{shape, slice}};
 
   IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
-  IrEmitter2::KernelPrototype prototype =
-      ir_emitter.EmitKernelPrototype("test", arguments, results);
+  TF_ASSERT_OK_AND_ASSIGN(
+      IrEmitter2::KernelPrototype prototype,
+      ir_emitter.EmitKernelPrototype("test", arguments, results));
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
     CHECK: define ptr @test(ptr %0) #0 {

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
@@ -138,7 +139,7 @@ class IrEmitter2 {
 
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
-  KernelPrototype EmitKernelPrototype(
+  absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       std::string_view name, absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
 
@@ -173,6 +174,11 @@ class IrEmitter2 {
       const HloInstruction* instruction);
   absl::StatusOr<std::vector<KernelParameter>> GetKernelResultsParameters(
       const HloInstruction* instruction);
+
+  // Verifies kernel parameters preconditions that are required for codegen.
+  absl::Status VerifyKernelParameters(
+      absl::Span<const KernelParameter> arguments,
+      absl::Span<const KernelParameter> results);
 
   KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
                                         llvm::Value* call_frame);
