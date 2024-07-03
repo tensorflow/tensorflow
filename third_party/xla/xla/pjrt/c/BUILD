@@ -361,6 +361,7 @@ xla_test(
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",
         ":pjrt_c_api_gpu_extension_hdrs",
+        ":pjrt_c_api_gpu_internal",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_test_base",
