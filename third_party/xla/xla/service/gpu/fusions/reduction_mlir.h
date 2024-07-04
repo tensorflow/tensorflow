@@ -83,7 +83,7 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   llvm::SmallVector<mlir::Value> EvaluateEpilogue(
       mlir::ImplicitLocOpBuilder& b, const HloValueMap& results,
       llvm::SmallVector<mlir::Value> outputs, EmitterState& state, int group_id,
-      mlir::MLIRContext* ctx, mlir::ValueRange symbol_values) const;
+      mlir::ValueRange symbol_values) const;
 
   virtual llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const = 0;
