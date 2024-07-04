@@ -9,7 +9,7 @@ load(
     "if_cuda_is_configured",
 )
 
-# Placeholder: load py_proto_library
+# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
@@ -1252,7 +1252,6 @@ cc_library(
 )
 
 # -----------------------------------------------------------------------------
-
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xla_data_proto_py_pb2",
@@ -1265,7 +1264,7 @@ cc_library(
 #     name = "xla_py_pb2",
 #     testonly = 0,
 #     api_version = 2,
-#     compatible_with = ["//buildenv/target:non_prod"],
+#     compatible_with = get_compatible_with_portable(),
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xla_proto"],
 # )

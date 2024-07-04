@@ -4,7 +4,7 @@ load(
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
-# Placeholder: load py_proto_library
+# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
