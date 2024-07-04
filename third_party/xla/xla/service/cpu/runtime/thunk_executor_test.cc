@@ -575,32 +575,19 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_SequentialThunkExecutor)
-    ->MeasureProcessCPUTime()
-    ->Arg(1)
-    ->Arg(16)
-    ->Arg(64)
-    ->Arg(128)
-    ->Arg(258)
-    ->Arg(512);
+#define BENCHMARK_THUNK_EXECUTOR(name) \
+  BENCHMARK(name)                      \
+      ->MeasureProcessCPUTime()        \
+      ->Arg(1)                         \
+      ->Arg(16)                        \
+      ->Arg(64)                        \
+      ->Arg(128)                       \
+      ->Arg(256)                       \
+      ->Arg(512)
 
-BENCHMARK(BM_SyncThunkExecutor)
-    ->MeasureProcessCPUTime()
-    ->Arg(1)
-    ->Arg(16)
-    ->Arg(64)
-    ->Arg(128)
-    ->Arg(258)
-    ->Arg(512);
-
-BENCHMARK(BM_AsyncThunkExecutor)
-    ->MeasureProcessCPUTime()
-    ->Arg(1)
-    ->Arg(16)
-    ->Arg(64)
-    ->Arg(128)
-    ->Arg(258)
-    ->Arg(512);
+BENCHMARK_THUNK_EXECUTOR(BM_SequentialThunkExecutor);
+BENCHMARK_THUNK_EXECUTOR(BM_SyncThunkExecutor);
+BENCHMARK_THUNK_EXECUTOR(BM_AsyncThunkExecutor);
 
 }  // namespace
 }  // namespace xla::cpu

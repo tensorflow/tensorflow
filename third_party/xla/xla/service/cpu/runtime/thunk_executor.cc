@@ -227,7 +227,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
                             const Thunk::ExecuteParams& params,
                             ReadyQueue ready_queue) {
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
-  if (ready_queue.empty()) return;  // Nothing to execute.
+  CHECK(!ready_queue.empty()) << "Ready queue must not be empty";  // Crash Ok
 
   bool has_runner = state->runner != nullptr;
 
@@ -243,13 +243,35 @@ void ThunkExecutor::Execute(ExecuteState* state,
     // threshold. Also we might want to add a limit on the number of concurrent
     // tasks processing the same execute session.
 
-    // Push the tail of the ready queue to the task runner.
-    if (has_runner && i < ready_queue.size() - 1) {
-      ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
+    // We use recursive work splitting to push the tail of the ready queue to
+    // the task runner. Recursive work splitting creates a more uniform work
+    // distribution across the task runner threads and avoids a situation when
+    // we have a long tail of work that is processed by a single thread.
+    if (ABSL_PREDICT_FALSE(has_runner && i < ready_queue.size() - 1)) {
+      int64_t start_index = i + 1;
+      int64_t end_index = ready_queue.size();
+
+      // Execute [mid_index, end_index) nodes in the task runner.
+      while (end_index - start_index > 1) {
+        int64_t mid_index = (start_index + end_index) / 2;
+        (*state->runner)([&params, state,
+                          ready_queue = ReadyQueue(
+                              ready_queue.begin() + mid_index,
+                              ready_queue.begin() + end_index)]() mutable {
+          state->executor->Execute(state, params, std::move(ready_queue));
+        });
+        end_index = mid_index;
+      }
+
+      // Execute the last remaining ready node in the task runner.
+      (*state->runner)(
+          [&params, state,
+           ready_queue = ReadyQueue({ready_queue[start_index]})]() mutable {
+            state->executor->Execute(state, params, std::move(ready_queue));
+          });
+
+      // Erase ready nodes passed to the task runner.
       ready_queue.erase(ready_queue.begin() + i + 1, ready_queue.end());
-      (*state->runner)([&params, state, tail = std::move(tail)]() mutable {
-        state->executor->Execute(state, params, std::move(tail));
-      });
     }
 
     // Execute thunk for the given node id. If execution is aborted, we keep
@@ -259,19 +281,26 @@ void ThunkExecutor::Execute(ExecuteState* state,
                              ? Thunk::OkExecuteEvent()
                              : thunk.Execute(params);
 
-    // If thunk execution is not completed yet, attach a continuation to the
-    // event and resume execution on the continuation thread (ready queue
-    // processing will continue on a thread that marked event completed).
-    if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
-      execute_event.AndThen([&, state, execute_event = execute_event.AsPtr()] {
-        ReadyQueue ready_queue;
-        ProcessOutEdges(state, execute_event, node, ready_queue);
-        Execute(state, params, std::move(ready_queue));
-      });
-    } else {
+    if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {
       // If thunk execution is completed, process out edges in the current
       // thread and keep working on the ready queue.
       ProcessOutEdges(state, execute_event.AsPtr(), node, ready_queue);
+
+    } else {
+      // If thunk execution is not completed yet, attach a continuation to the
+      // event and resume execution on the continuation thread (ready queue
+      // processing will continue on a thread that marked event completed).
+      execute_event.AndThen(
+          [&params, &node, state, execute_event = execute_event.AsPtr()] {
+            ReadyQueue ready_queue;
+            state->executor->ProcessOutEdges(state, execute_event, node,
+                                             ready_queue);
+            // If ready queue is empty it might mean that we have completed an
+            // execution and destroyed the `state`.
+            if (ABSL_PREDICT_TRUE(!ready_queue.empty())) {
+              state->executor->Execute(state, params, std::move(ready_queue));
+            }
+          });
     }
   }
 }
@@ -326,28 +355,31 @@ void ThunkExecutor::ProcessOutEdges(
   }
 }
 
+// Erases edge from `from` node to `to` node if it exists.
+//
+// TODO(ezhulenev): Out and In-edges are sorted in increasing and decreasing
+// order respectively. We can use binary search to speed up this function.
+static int64_t EraseEdge(ThunkExecutor::NodeDef& from,
+                         ThunkExecutor::NodeDef& to) {
+  auto out_edge_it = absl::c_find(from.out_edges, to.id);
+  auto in_edge_it = absl::c_find(to.in_edges, from.id);
+
+  bool has_out_edge = out_edge_it != from.out_edges.end();
+  bool has_in_edge = in_edge_it != to.in_edges.end();
+
+  DCHECK_EQ(has_out_edge, has_in_edge) << "Edges must be symmetric";
+
+  if (has_out_edge && has_in_edge) {
+    from.out_edges.erase(out_edge_it);
+    to.in_edges.erase(in_edge_it);
+    return 1;
+  }
+
+  return 0;
+}
+
 int64_t ThunkExecutor::TransitiveReduction() {
   int64_t num_erased_edges = 0;
-
-  // Erases edge from `from` node to `to` node if it exists.
-  //
-  // TODO(ezhulenev): Out and In-edges are sorted in increasing and decreasing
-  // order respectively. We can use binary search to speed up this function.
-  auto erase_edge = [&](NodeDef& from, NodeDef& to) {
-    auto out_edge_it = absl::c_find(from.out_edges, to.id);
-    auto in_edge_it = absl::c_find(to.in_edges, from.id);
-
-    bool has_out_edge = out_edge_it != from.out_edges.end();
-    bool has_in_edge = in_edge_it != to.in_edges.end();
-
-    DCHECK_EQ(has_out_edge, has_in_edge) << "Edges must be symmetric";
-
-    if (has_out_edge && has_in_edge) {
-      from.out_edges.erase(out_edge_it);
-      to.in_edges.erase(in_edge_it);
-      ++num_erased_edges;
-    }
-  };
 
   // Keep workspace for DFS traversal between iterations.
   std::vector<int64_t> stack;
@@ -383,7 +415,7 @@ int64_t ThunkExecutor::TransitiveReduction() {
       stack.pop_back();
 
       NodeDef& node = nodes_defs_[node_id];
-      erase_edge(source_node, node);
+      num_erased_edges += EraseEdge(source_node, node);
 
       for (int64_t out_id : node.out_edges) add_to_stack(out_id);
     }
