@@ -21,7 +21,7 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import forma
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
-@tf_export('distribute.cluster_resolver.KubernetesClusterResolver.ExecutableLocation')  # pylint: disable=line-too-long
+@tf_export('distribute.cluster_resolver.KubernetesExecutableLocation')
 class ExecutableLocation(Enum):
   """Defines where the executable runs on.
   
@@ -108,7 +108,7 @@ class KubernetesClusterResolver(ClusterResolver):
         `override_client` is passed in.
       RuntimeError: If autoresolve_task is not a boolean or a callable.
       ValueError: If the executable locations is neither within or off cluster.
-
+  
     """
     try:
       from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
