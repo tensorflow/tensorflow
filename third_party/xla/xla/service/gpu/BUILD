@@ -705,7 +705,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "ir_emitter_triton_mem_utils_test",
     srcs = if_cuda_is_configured(["ir_emitter_triton_mem_utils_test.cc"]),
     deps = [

@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "third_party/triton/include/triton/Dialect/Triton/IR/Dialect.h"
-#include "third_party/triton/include/triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu::ir_emitter_triton_internal {
 namespace {
