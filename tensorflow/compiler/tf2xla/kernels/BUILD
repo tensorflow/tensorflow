@@ -1,5 +1,9 @@
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
+    "@local_xla//xla/tsl:tsl.bzl",
+    "check_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cuda_library",
@@ -20,6 +24,15 @@ package(
         "//tensorflow/compiler/tf2xla:internal",
     ],
     licenses = ["notice"],
+)
+
+check_deps(
+    name = "xla_ops_check_deps",
+    disallowed_deps = [
+        "@local_xla//xla/service/cpu:cpu_compiler",
+        "@local_xla//xla/service/gpu:gpu_compiler",
+    ],
+    deps = [":xla_ops"],
 )
 
 cc_library(
