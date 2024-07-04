@@ -2,7 +2,7 @@
 
 // RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
 
-// CHECK-LABEL: entry:
+// CHECK-LABEL: ModuleID = 'TensorFlowScatterV1'
 // CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
 // CHECK-PTX:     %[[VAL_1:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
 // CHECK-GCN:     %[[VAL_1:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
@@ -40,124 +40,6 @@
 // CHECK:         %[[VAL_30:.*]] = load i32, ptr %[[VAL_0]], align 4
 // CHECK:         store atomic i32 %[[VAL_30]], ptr %[[VAL_24]] unordered, align 4
 // CHECK:         br label %[[VAL_15]]
-// CHECK:       entry:
-// CHECK:         %[[VAL_31:.*]] = alloca i32, align 4
-// CHECK-PTX:     %[[VAL_32:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
-// CHECK-GCN:     %[[VAL_32:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
-// CHECK-PTX:     %[[VAL_33:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
-// CHECK-GCN:     %[[VAL_33:.*]] = call i32 @llvm.amdgcn.workitem.id.x
-// CHECK:         %[[VAL_34:.*]] = mul nuw nsw i32 %[[VAL_32]], 1
-// CHECK:         %[[VAL_35:.*]] = add nuw nsw i32 %[[VAL_34]], %[[VAL_33]]
-// CHECK:         %[[VAL_36:.*]] = icmp ult i32 %[[VAL_35]], 1
-// CHECK:         call void @llvm.assume(i1 %[[VAL_36]])
-// CHECK:         %[[VAL_37:.*]] = add nuw nsw i32 %[[VAL_35]], 0
-// CHECK:         %[[VAL_38:.*]] = icmp ult i32 %[[VAL_35]], 1
-// CHECK:         br i1 %[[VAL_38]], label %[[VAL_39:.*]], label %[[VAL_40:.*]]
-// CHECK:       scatter_ScatterIntoScalar.in_bounds-after:        ; preds = %[[VAL_41:.*]], %[[VAL_42:.*]]
-// CHECK:         ret void
-// CHECK:       scatter_ScatterIntoScalar.in_bounds-true:         ; preds = %[[VAL_42]]
-// CHECK:         br i1 true, label %[[VAL_43:.*]], label %[[VAL_41]]
-// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_43]], %[[VAL_39]]
-// CHECK:         br label %[[VAL_40]]
-// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_39]]
-// CHECK:         %[[VAL_44:.*]] = load i32, ptr %[[VAL_45:.*]], align 4, !invariant.load !3
-// CHECK:         store i32 %[[VAL_44]], ptr %[[VAL_31]], align 4
-// CHECK:         %[[VAL_46:.*]] = load i32, ptr %[[VAL_31]], align 4
-// CHECK:         store atomic i32 %[[VAL_46]], ptr %[[VAL_47:.*]] unordered, align 4
-// CHECK:         br label %[[VAL_41]]
-// CHECK:       entry:
-// CHECK:         %[[VAL_48:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_49:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_50:.*]] = alloca i32, align 4
-// CHECK-PTX:     %[[VAL_51:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
-// CHECK-GCN:     %[[VAL_51:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
-// CHECK-PTX:     %[[VAL_52:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
-// CHECK-GCN:     %[[VAL_52:.*]] = call i32 @llvm.amdgcn.workitem.id.x
-// CHECK:         %[[VAL_53:.*]] = mul nuw nsw i32 %[[VAL_51]], 6
-// CHECK:         %[[VAL_54:.*]] = add nuw nsw i32 %[[VAL_53]], %[[VAL_52]]
-// CHECK:         %[[VAL_55:.*]] = icmp ult i32 %[[VAL_54]], 6
-// CHECK:         call void @llvm.assume(i1 %[[VAL_55]])
-// CHECK:         %[[VAL_56:.*]] = add nuw nsw i32 %[[VAL_54]], 0
-// CHECK:         %[[VAL_57:.*]] = udiv i32 %[[VAL_56]], 1
-// CHECK:         %[[VAL_58:.*]] = urem i32 %[[VAL_57]], 3
-// CHECK:         %[[VAL_59:.*]] = udiv i32 %[[VAL_56]], 3
-// CHECK:         %[[VAL_60:.*]] = icmp ult i32 %[[VAL_54]], 6
-// CHECK:         br i1 %[[VAL_60]], label %[[VAL_61:.*]], label %[[VAL_62:.*]]
-// CHECK:       scatter_TensorFlowScatter_Mul.in_bounds-after:    ; preds = %[[VAL_63:.*]], %[[VAL_64:.*]]
-// CHECK:         ret void
-// CHECK:       scatter_TensorFlowScatter_Mul.in_bounds-true:     ; preds = %[[VAL_64]]
-// CHECK:         %[[VAL_65:.*]] = getelementptr inbounds [2 x i32], ptr %[[VAL_66:.*]], i32 0, i32 %[[VAL_59]]
-// CHECK:         %[[VAL_67:.*]] = load i32, ptr %[[VAL_65]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_68:.*]] = add i32 0, %[[VAL_67]]
-// CHECK:         %[[VAL_69:.*]] = icmp ult i32 %[[VAL_67]], 3
-// CHECK:         %[[VAL_70:.*]] = and i1 true, %[[VAL_69]]
-// CHECK:         br i1 %[[VAL_70]], label %[[VAL_71:.*]], label %[[VAL_63]]
-// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_72:.*]], %[[VAL_61]]
-// CHECK:         br label %[[VAL_62]]
-// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_61]]
-// CHECK:         %[[VAL_73:.*]] = getelementptr inbounds [3 x [3 x i32]], ptr %[[VAL_74:.*]], i32 0, i32 %[[VAL_68]], i32 %[[VAL_58]]
-// CHECK:         %[[VAL_75:.*]] = getelementptr i32, ptr %[[VAL_76:.*]], i32 %[[VAL_54]]
-// CHECK:         %[[VAL_77:.*]] = getelementptr inbounds i32, ptr %[[VAL_75]], i32 0
-// CHECK:         %[[VAL_78:.*]] = load i32, ptr %[[VAL_77]], align 4, !invariant.load !4
-// CHECK:         store i32 %[[VAL_78]], ptr %[[VAL_50]], align 4
-// CHECK:         %[[VAL_79:.*]] = load i32, ptr %[[VAL_50]], align 4
-// CHECK:         %[[VAL_80:.*]] = load i32, ptr %[[VAL_73]], align 4
-// CHECK:         store i32 %[[VAL_80]], ptr %[[VAL_49]], align 4
-// CHECK:         br label %[[VAL_81:.*]]
-// CHECK:       atomic_op_loop_exit:                              ; preds = %[[VAL_82:.*]], %[[VAL_81]]
-// CHECK:         br label %[[VAL_63]]
-// CHECK:       atomic_op_loop_body:                              ; preds = %[[VAL_82]], %[[VAL_71]]
-// CHECK:         %[[VAL_83:.*]] = load i32, ptr %[[VAL_49]], align 4
-// CHECK:         store i32 %[[VAL_83]], ptr %[[VAL_48]], align 4
-// CHECK:         call void @mul_{{.*}}(ptr %[[VAL_48]], ptr %[[VAL_50]], ptr %[[VAL_48]])
-// CHECK:         %[[VAL_84:.*]] = load i32, ptr %[[VAL_48]], align 4
-// CHECK:         %[[VAL_85:.*]] = icmp eq i32 %[[VAL_83]], %[[VAL_84]]
-// CHECK:         br i1 %[[VAL_85]], label %[[VAL_72]], label %[[VAL_82]]
-// CHECK:       atomic_op_loop_cas:                               ; preds = %[[VAL_81]]
-// CHECK:         %[[VAL_86:.*]] = cmpxchg ptr %[[VAL_73]], i32 %[[VAL_83]], i32 %[[VAL_84]] seq_cst seq_cst, align 4
-// CHECK:         %[[VAL_87:.*]] = extractvalue { i32, i1 } %[[VAL_86]], 0
-// CHECK:         store i32 %[[VAL_87]], ptr %[[VAL_49]], align 4
-// CHECK:         %[[VAL_88:.*]] = extractvalue { i32, i1 } %[[VAL_86]], 1
-// CHECK:         br i1 %[[VAL_88]], label %[[VAL_72]], label %[[VAL_81]]
-// CHECK:       entry:
-// CHECK:         %[[VAL_89:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_90:.*]] = load i32, ptr %[[VAL_91:.*]], align 4
-// CHECK:         %[[VAL_92:.*]] = load i32, ptr %[[VAL_93:.*]], align 4
-// CHECK:         %[[VAL_94:.*]] = mul i32 %[[VAL_90]], %[[VAL_92]]
-// CHECK:         store i32 %[[VAL_94]], ptr %[[VAL_89]], align 4
-// CHECK:         %[[VAL_95:.*]] = load i32, ptr %[[VAL_89]], align 4
-// CHECK:         store i32 %[[VAL_95]], ptr %[[VAL_96:.*]], align 4
-// CHECK:         ret void
-// CHECK:       entry:
-// CHECK:         %[[VAL_97:.*]] = alloca i32, align 4
-// CHECK-PTX:     %[[VAL_98:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
-// CHECK-GCN:     %[[VAL_98:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
-// CHECK-PTX:     %[[VAL_99:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
-// CHECK-GCN:     %[[VAL_99:.*]] = call i32 @llvm.amdgcn.workitem.id.x
-// CHECK:         %[[VAL_100:.*]] = mul nuw nsw i32 %[[VAL_98]], 1
-// CHECK:         %[[VAL_101:.*]] = add nuw nsw i32 %[[VAL_100]], %[[VAL_99]]
-// CHECK:         %[[VAL_102:.*]] = icmp ult i32 %[[VAL_101]], 1
-// CHECK:         call void @llvm.assume(i1 %[[VAL_102]])
-// CHECK:         %[[VAL_103:.*]] = add nuw nsw i32 %[[VAL_101]], 0
-// CHECK:         %[[VAL_104:.*]] = icmp ult i32 %[[VAL_101]], 1
-// CHECK:         br i1 %[[VAL_104]], label %[[VAL_105:.*]], label %[[VAL_106:.*]]
-// CHECK:       scatter_ScalarUpdate.in_bounds-after:             ; preds = %[[VAL_107:.*]], %[[VAL_108:.*]]
-// CHECK:         ret void
-// CHECK:       scatter_ScalarUpdate.in_bounds-true:              ; preds = %[[VAL_108]]
-// CHECK:         %[[VAL_109:.*]] = load i32, ptr %[[VAL_110:.*]], align 4, !invariant.load !3
-// CHECK:         %[[VAL_111:.*]] = add i32 0, %[[VAL_109]]
-// CHECK:         %[[VAL_112:.*]] = icmp ult i32 %[[VAL_109]], 4
-// CHECK:         %[[VAL_113:.*]] = and i1 true, %[[VAL_112]]
-// CHECK:         br i1 %[[VAL_113]], label %[[VAL_114:.*]], label %[[VAL_107]]
-// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_114]], %[[VAL_105]]
-// CHECK:         br label %[[VAL_106]]
-// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_105]]
-// CHECK:         %[[VAL_115:.*]] = getelementptr inbounds [4 x i32], ptr %[[VAL_116:.*]], i32 0, i32 %[[VAL_111]]
-// CHECK:         %[[VAL_117:.*]] = load i32, ptr %[[VAL_118:.*]], align 4, !invariant.load !3
-// CHECK:         store i32 %[[VAL_117]], ptr %[[VAL_97]], align 4
-// CHECK:         %[[VAL_119:.*]] = load i32, ptr %[[VAL_97]], align 4
-// CHECK:         store atomic i32 %[[VAL_119]], ptr %[[VAL_115]] unordered, align 4
-// CHECK:         br label %[[VAL_107]]
 
 HloModule TensorFlowScatterV1, is_scheduled=true
 
@@ -188,35 +70,71 @@ ENTRY main {
 
 // -----
 
-
-HloModule ScatterIntoScalar, is_scheduled=true
-
-update_s32 {
-  lhs = s32[] parameter(0)
-  ROOT rhs = s32[] parameter(1)
-}
-
-fused_computation {
-  parameter.1 = s32[] parameter(0)
-  parameter.2 = s32[0]{0} parameter(1)
-  parameter.3 = s32[] parameter(2)
-  ROOT scatter_ScatterIntoScalar = s32[] scatter(parameter.1, parameter.2, parameter.3),
-      update_window_dims={},
-      inserted_window_dims={},
-      scatter_dims_to_operand_dims={},
-      index_vector_dim=0,
-      to_apply=update_s32
-}
-
-ENTRY main {
-  p0 = s32[] parameter(0)
-  p1 = s32[0]{0} parameter(1)
-  p2 = s32[] parameter(2)
-  ROOT wrapped_scatter = s32[] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
-}
-
-
-// -----
+// CHECK-LABEL: ModuleID = 'TensorFlowScatter_Mul'
+// CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_1:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_2:.*]] = alloca i32, align 4
+// CHECK-PTX:     %[[VAL_3:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
+// CHECK-GCN:     %[[VAL_3:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
+// CHECK-PTX:     %[[VAL_4:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
+// CHECK-GCN:     %[[VAL_4:.*]] = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK:         %[[VAL_5:.*]] = mul nuw nsw i32 %[[VAL_3]], 6
+// CHECK:         %[[VAL_6:.*]] = add nuw nsw i32 %[[VAL_5]], %[[VAL_4]]
+// CHECK:         %[[VAL_7:.*]] = icmp ult i32 %[[VAL_6]], 6
+// CHECK:         call void @llvm.assume(i1 %[[VAL_7]])
+// CHECK:         %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_6]], 0
+// CHECK:         %[[VAL_9:.*]] = udiv i32 %[[VAL_8]], 1
+// CHECK:         %[[VAL_10:.*]] = urem i32 %[[VAL_9]], 3
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_8]], 3
+// CHECK:         %[[VAL_12:.*]] = urem i32 %[[VAL_11]], 1
+// CHECK:         %[[VAL_13:.*]] = udiv i32 %[[VAL_8]], 3
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_6]], 6
+// CHECK:         br i1 %[[VAL_14]], label %[[VAL_15:.*]], label %[[VAL_16:.*]]
+// CHECK:       scatter_TensorFlowScatter_Mul.in_bounds-after:    ; preds = %[[VAL_17:.*]], %[[VAL_18:.*]]
+// CHECK:         ret void
+// CHECK:       scatter_TensorFlowScatter_Mul.in_bounds-true:     ; preds = %[[VAL_18]]
+// CHECK:         %[[VAL_19:.*]] = getelementptr inbounds [2 x [1 x i32]], ptr %[[VAL_20:.*]], i32 0, i32 %[[VAL_13]], i32 0
+// CHECK:         %[[VAL_21:.*]] = load i32, ptr %[[VAL_19]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_22:.*]] = add i32 %[[VAL_12]], %[[VAL_21]]
+// CHECK:         %[[VAL_23:.*]] = icmp ult i32 %[[VAL_21]], 3
+// CHECK:         %[[VAL_24:.*]] = and i1 true, %[[VAL_23]]
+// CHECK:         br i1 %[[VAL_24]], label %[[VAL_25:.*]], label %[[VAL_17]]
+// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_26:.*]], %[[VAL_15]]
+// CHECK:         br label %[[VAL_16]]
+// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_15]]
+// CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [3 x [3 x i32]], ptr %[[VAL_28:.*]], i32 0, i32 %[[VAL_22]], i32 %[[VAL_10]]
+// CHECK:         %[[VAL_29:.*]] = getelementptr i32, ptr %[[VAL_30:.*]], i32 %[[VAL_6]]
+// CHECK:         %[[VAL_31:.*]] = getelementptr inbounds i32, ptr %[[VAL_29]], i32 0
+// CHECK:         %[[VAL_32:.*]] = load i32, ptr %[[VAL_31]], align 4, !invariant.load !4
+// CHECK:         store i32 %[[VAL_32]], ptr %[[VAL_2]], align 4
+// CHECK:         %[[VAL_33:.*]] = load i32, ptr %[[VAL_2]], align 4
+// CHECK:         %[[VAL_34:.*]] = load i32, ptr %[[VAL_27]], align 4
+// CHECK:         store i32 %[[VAL_34]], ptr %[[VAL_1]], align 4
+// CHECK:         br label %[[VAL_35:.*]]
+// CHECK:       atomic_op_loop_exit:                              ; preds = %[[VAL_36:.*]], %[[VAL_35]]
+// CHECK:         br label %[[VAL_17]]
+// CHECK:       atomic_op_loop_body:                              ; preds = %[[VAL_36]], %[[VAL_25]]
+// CHECK:         %[[VAL_37:.*]] = load i32, ptr %[[VAL_1]], align 4
+// CHECK:         store i32 %[[VAL_37]], ptr %[[VAL_0]], align 4
+// CHECK:         call void @mul_s32_{{.*}}(ptr %[[VAL_0]], ptr %[[VAL_2]], ptr %[[VAL_0]])
+// CHECK:         %[[VAL_38:.*]] = load i32, ptr %[[VAL_0]], align 4
+// CHECK:         %[[VAL_39:.*]] = icmp eq i32 %[[VAL_37]], %[[VAL_38]]
+// CHECK:         br i1 %[[VAL_39]], label %[[VAL_26]], label %[[VAL_36]]
+// CHECK:       atomic_op_loop_cas:                               ; preds = %[[VAL_35]]
+// CHECK:         %[[VAL_40:.*]] = cmpxchg ptr %[[VAL_27]], i32 %[[VAL_37]], i32 %[[VAL_38]] seq_cst seq_cst, align 4
+// CHECK:         %[[VAL_41:.*]] = extractvalue { i32, i1 } %[[VAL_40]], 0
+// CHECK:         store i32 %[[VAL_41]], ptr %[[VAL_1]], align 4
+// CHECK:         %[[VAL_42:.*]] = extractvalue { i32, i1 } %[[VAL_40]], 1
+// CHECK:         br i1 %[[VAL_42]], label %[[VAL_26]], label %[[VAL_35]]
+// CHECK:       entry:
+// CHECK:         %[[VAL_43:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_44:.*]] = load i32, ptr %[[VAL_45:.*]], align 4
+// CHECK:         %[[VAL_46:.*]] = load i32, ptr %[[VAL_47:.*]], align 4
+// CHECK:         %[[VAL_48:.*]] = mul i32 %[[VAL_44]], %[[VAL_46]]
+// CHECK:         store i32 %[[VAL_48]], ptr %[[VAL_43]], align 4
+// CHECK:         %[[VAL_49:.*]] = load i32, ptr %[[VAL_43]], align 4
+// CHECK:         store i32 %[[VAL_49]], ptr %[[VAL_50:.*]], align 4
+// CHECK:         ret void
 
 
 HloModule TensorFlowScatter_Mul, is_scheduled=true
@@ -229,25 +147,62 @@ mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 
 fused_computation {
   operand = s32[3,3] parameter(0)
-  indices = s32[2] parameter(1)
-  updates = s32[2,3] parameter(2)
+  indices = s32[2,1] parameter(1)
+  updates = s32[2,1,3] parameter(2)
   ROOT scatter_TensorFlowScatter_Mul = s32[3,3] scatter(operand, indices, updates),
       to_apply=mul_s32,
-      update_window_dims={1},
-      inserted_window_dims={0},
+      update_window_dims={1,2},
+      inserted_window_dims={},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
 }
 
 ENTRY main {
   p0 = s32[3,3] parameter(0)
-  p1 = s32[2] parameter(1)
-  p2 = s32[2,3] parameter(2)
+  p1 = s32[2,1] parameter(1)
+  p2 = s32[2,1,3] parameter(2)
   ROOT wrapped_scatter = s32[3,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
 
 // -----
 
+
+// CHECK-LABEL: ModuleID = 'ScalarUpdate'
+// CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
+// CHECK-PTX:     %[[VAL_1:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
+// CHECK-GCN:     %[[VAL_1:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
+// CHECK-PTX:     %[[VAL_2:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
+// CHECK-GCN:     %[[VAL_2:.*]] = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK:         %[[VAL_3:.*]] = mul nuw nsw i32 %[[VAL_1]], 1
+// CHECK:         %[[VAL_4:.*]] = add nuw nsw i32 %[[VAL_3]], %[[VAL_2]]
+// CHECK:         %[[VAL_5:.*]] = icmp ult i32 %[[VAL_4]], 1
+// CHECK:         call void @llvm.assume(i1 %[[VAL_5]])
+// CHECK:         %[[VAL_6:.*]] = add nuw nsw i32 %[[VAL_4]], 0
+// CHECK:         %[[VAL_7:.*]] = udiv i32 %[[VAL_6]], 1
+// CHECK:         %[[VAL_8:.*]] = urem i32 %[[VAL_7]], 1
+// CHECK:         %[[VAL_9:.*]] = udiv i32 %[[VAL_6]], 1
+// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_4]], 1
+// CHECK:         br i1 %[[VAL_10]], label %[[VAL_11:.*]], label %[[VAL_12:.*]]
+// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_13:.*]], %[[VAL_14:.*]]
+// CHECK:         ret void
+// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_14]]
+// CHECK:         %[[VAL_15:.*]] = getelementptr inbounds [1 x [1 x i32]], ptr %[[VAL_16:.*]], i32 0, i32 0, i32 0
+// CHECK:         %[[VAL_17:.*]] = load i32, ptr %[[VAL_15]], align 4, !invariant.load !3
+// CHECK:         %[[VAL_18:.*]] = add i32 %[[VAL_8]], %[[VAL_17]]
+// CHECK:         %[[VAL_19:.*]] = icmp ult i32 %[[VAL_17]], 4
+// CHECK:         %[[VAL_20:.*]] = and i1 true, %[[VAL_19]]
+// CHECK:         br i1 %[[VAL_20]], label %[[VAL_21:.*]], label %[[VAL_13]]
+// CHECK:       scatter.in_bounds-after3:                         ; preds = %[[VAL_21]], %[[VAL_11]]
+// CHECK:         br label %[[VAL_12]]
+// CHECK:       scatter.in_bounds-true2:                          ; preds = %[[VAL_11]]
+// CHECK:         %[[VAL_22:.*]] = getelementptr inbounds [4 x i32], ptr %[[VAL_23:.*]], i32 0, i32 %[[VAL_18]]
+// CHECK:         %[[VAL_24:.*]] = getelementptr i32, ptr %[[VAL_25:.*]], i32 %[[VAL_4]]
+// CHECK:         %[[VAL_26:.*]] = getelementptr inbounds i32, ptr %[[VAL_24]], i32 0
+// CHECK:         %[[VAL_27:.*]] = load i32, ptr %[[VAL_26]], align 4, !invariant.load !3
+// CHECK:         store i32 %[[VAL_27]], ptr %[[VAL_0]], align 4
+// CHECK:         %[[VAL_28:.*]] = load i32, ptr %[[VAL_0]], align 4
+// CHECK:         store atomic i32 %[[VAL_28]], ptr %[[VAL_22]] unordered, align 4
+// CHECK:         br label %[[VAL_13]]
 
 HloModule ScalarUpdate, is_scheduled=true
 
@@ -258,25 +213,64 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 
 fused_computation {
   operand = s32[4]{0} parameter(0)
-  index = s32[] parameter(1)
-  updates = s32[] parameter(2)
-  ROOT scatter_ScalarUpdate = s32[4]{0} scatter(operand, index, updates),
+  index = s32[1,1] parameter(1)
+  updates = s32[1,1] parameter(2)
+  ROOT scatter = s32[4]{0} scatter(operand, index, updates),
       to_apply=update_s32,
-      update_window_dims={},
-      inserted_window_dims={0},
+      update_window_dims={1},
+      inserted_window_dims={},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=0
+      index_vector_dim=1
 }
 
 ENTRY main {
   p0 = s32[4]{0} parameter(0)
-  p1 = s32[] parameter(1)
-  p2 = s32[] parameter(2)
+  p1 = s32[1,1] parameter(1)
+  p2 = s32[1,1] parameter(2)
   ROOT wrapped_scatter = s32[4] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
 
 // -----
 
+
+// CHECK-LABEL: ModuleID = 'TensorFlowScatter_Add'
+// CHECK:         %[[VAL_0:.*]] = alloca half, align 2
+// CHECK-PTX:     %[[VAL_1:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x
+// CHECK-GCN:     %[[VAL_1:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
+// CHECK-PTX:     %[[VAL_2:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x
+// CHECK-GCN:     %[[VAL_2:.*]] = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK:         %[[VAL_3:.*]] = mul nuw nsw i32 %[[VAL_1]], 6
+// CHECK:         %[[VAL_4:.*]] = add nuw nsw i32 %[[VAL_3]], %[[VAL_2]]
+// CHECK:         %[[VAL_5:.*]] = icmp ult i32 %[[VAL_4]], 6
+// CHECK:         call void @llvm.assume(i1 %[[VAL_5]])
+// CHECK:         %[[VAL_6:.*]] = add nuw nsw i32 %[[VAL_4]], 0
+// CHECK:         %[[VAL_7:.*]] = udiv i32 %[[VAL_6]], 1
+// CHECK:         %[[VAL_8:.*]] = urem i32 %[[VAL_7]], 3
+// CHECK:         %[[VAL_9:.*]] = udiv i32 %[[VAL_6]], 3
+// CHECK:         %[[VAL_10:.*]] = urem i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_6]], 3
+// CHECK:         %[[VAL_12:.*]] = icmp ult i32 %[[VAL_4]], 6
+// CHECK:         br i1 %[[VAL_12]], label %[[VAL_13:.*]], label %[[VAL_14:.*]]
+// CHECK:       scatter_TensorFlowScatter_Add.in_bounds-after:    ; preds = %[[VAL_15:.*]], %[[VAL_16:.*]]
+// CHECK:         ret void
+// CHECK:       scatter_TensorFlowScatter_Add.in_bounds-true:     ; preds = %[[VAL_16]]
+// CHECK:         %[[VAL_17:.*]] = getelementptr inbounds [2 x [1 x i32]], ptr %[[VAL_18:.*]], i32 0, i32 %[[VAL_11]], i32 0
+// CHECK:         %[[VAL_19:.*]] = load i32, ptr %[[VAL_17]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_20:.*]] = add i32 %[[VAL_10]], %[[VAL_19]]
+// CHECK:         %[[VAL_21:.*]] = icmp ult i32 %[[VAL_19]], 3
+// CHECK:         %[[VAL_22:.*]] = and i1 true, %[[VAL_21]]
+// CHECK:         br i1 %[[VAL_22]], label %[[VAL_23:.*]], label %[[VAL_15]]
+// CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_23]], %[[VAL_13]]
+// CHECK:         br label %[[VAL_14]]
+// CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_13]]
+// CHECK:         %[[VAL_24:.*]] = getelementptr inbounds [3 x [3 x half]], ptr %[[VAL_25:.*]], i32 0, i32 %[[VAL_20]], i32 %[[VAL_8]]
+// CHECK:         %[[VAL_26:.*]] = getelementptr half, ptr %[[VAL_27:.*]], i32 %[[VAL_4]]
+// CHECK:         %[[VAL_28:.*]] = getelementptr inbounds half, ptr %[[VAL_26]], i32 0
+// CHECK:         %[[VAL_29:.*]] = load half, ptr %[[VAL_28]], align 2, !invariant.load !4
+// CHECK:         store half %[[VAL_29]], ptr %[[VAL_0]], align 2
+// CHECK:         %[[VAL_30:.*]] = load half, ptr %[[VAL_0]], align 2
+// CHECK:         %[[VAL_31:.*]] = atomicrmw fadd ptr %[[VAL_24]], half %[[VAL_30]] seq_cst, align 2
+// CHECK:         br label %[[VAL_15]]
 
 HloModule TensorFlowScatter_Add, is_scheduled=true
 
@@ -288,21 +282,19 @@ add_f16 (lhs: f16[], rhs: f16[]) -> f16[] {
 
 fused_computation {
   operand = f16[3,3] parameter(0)
-  indices = s32[2] parameter(1)
-  updates = f16[2,3] parameter(2)
-  ROOT scatter_TensorFlowScatter_Mul = f16[3,3] scatter(operand, indices, updates),
+  indices = s32[2,1] parameter(1)
+  updates = f16[2,1,3] parameter(2)
+  ROOT scatter_TensorFlowScatter_Add = f16[3,3] scatter(operand, indices, updates),
       to_apply=add_f16,
-      update_window_dims={1},
-      inserted_window_dims={0},
+      update_window_dims={1,2},
+      inserted_window_dims={},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
 }
 
 ENTRY main {
   p0 = f16[3,3] parameter(0)
-  p1 = s32[2] parameter(1)
-  p2 = f16[2,3] parameter(2)
+  p1 = s32[2,1] parameter(1)
+  p2 = f16[2,1,3] parameter(2)
   ROOT wrapped_scatter = f16[3,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
 }
-
-// CHECK-PTX: atomicrmw fadd
