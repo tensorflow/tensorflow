@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -163,8 +164,13 @@ bool IsPositive(const HloInstruction* hlo,
   }
 }
 
+static bool IsScalarConstant(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kConstant &&
+         ShapeUtil::IsEffectiveScalar(hlo->shape());
+}
+
 std::optional<double> GetConstantValue(const HloInstruction* inst) {
-  if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
+  if (!IsScalarConstant(inst)) {
     return std::nullopt;
   }
   return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
@@ -180,27 +186,66 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
       inst->shape().element_type());
 }
 
-static bool IsScalarConstant(const HloInstruction* hlo,
-                             const LiteralSlice& literal) {
-  return hlo->opcode() == HloOpcode::kConstant &&
-         ShapeUtil::IsEffectiveScalar(hlo->shape()) &&
-         literal_comparison::Equal(hlo->literal(), literal).ok();
-}
-
 static bool IsScalarConstantZero(const HloInstruction* hlo) {
-  return IsScalarConstant(hlo, LiteralUtil::Zero(hlo->shape().element_type()));
+  if (!IsScalarConstant(hlo)) {
+    return false;
+  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return hlo->literal().GetFirstElement<NativeT>() ==
+                 static_cast<NativeT>(0);
+        }
+        return false;
+      },
+      hlo->shape().element_type());
 }
 
 static bool IsScalarConstantNegInf(const HloInstruction* hlo) {
-  return !primitive_util::IsComplexType(hlo->shape().element_type()) &&
-         IsScalarConstant(hlo,
-                          LiteralUtil::MinValue(hlo->shape().element_type()));
+  if (!IsScalarConstant(hlo)) {
+    return false;
+  }
+  if (primitive_util::IsComplexType(hlo->shape().element_type())) {
+    return false;
+  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          if constexpr (std::numeric_limits<NativeT>::has_infinity) {
+            return hlo->literal().GetFirstElement<NativeT>() ==
+                   -std::numeric_limits<NativeT>::infinity();
+          }
+          return hlo->literal().GetFirstElement<NativeT>() ==
+                 std::numeric_limits<NativeT>::lowest();
+        }
+        return false;
+      },
+      hlo->shape().element_type());
 }
 
 static bool IsScalarConstantInf(const HloInstruction* hlo) {
-  return !primitive_util::IsComplexType(hlo->shape().element_type()) &&
-         IsScalarConstant(hlo,
-                          LiteralUtil::MaxValue(hlo->shape().element_type()));
+  if (!IsScalarConstant(hlo)) {
+    return false;
+  }
+  if (primitive_util::IsComplexType(hlo->shape().element_type())) {
+    return false;
+  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          if constexpr (std::numeric_limits<NativeT>::has_infinity) {
+            return hlo->literal().GetFirstElement<NativeT>() ==
+                   std::numeric_limits<NativeT>::infinity();
+          }
+          return hlo->literal().GetFirstElement<NativeT>() ==
+                 std::numeric_limits<NativeT>::max();
+        }
+        return false;
+      },
+      hlo->shape().element_type());
 }
 
 // Checks whether `op` is a floating-point constant or broadcast of a constant

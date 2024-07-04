@@ -891,9 +891,11 @@ using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla
 
+// Note that STRING is evaluated regardless of whether it will be logged.
 #define XLA_LOG_LINES(SEV, STRING) \
   ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
+// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
 #define XLA_VLOG_LINES(LEVEL, STRING)                          \
   do {                                                         \
     if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \

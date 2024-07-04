@@ -318,7 +318,7 @@ class LiteralBase {
   bool IsAllFloat(float value) const;
   bool IsAllComplex(complex64 value) const;
 
-  // Deetermines if this literal consists entirely of the first element of the
+  // Determines if this literal consists entirely of the first element of the
   // literal.
   //
   // Returns false if this literal is not an array.

@@ -878,10 +878,12 @@ absl::Status EmitLiteralsInErrorMessage(const absl::Status& result,
 }  // namespace
 
 absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
-  VLOG(1) << "expected:";
-  XLA_VLOG_LINES(1, expected.ToString());
-  VLOG(1) << "actual:";
-  XLA_VLOG_LINES(1, actual.ToString());
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "expected:";
+    XLA_LOG_LINES(::tsl::INFO, expected.ToString());
+    LOG(INFO) << "actual:";
+    XLA_LOG_LINES(::tsl::INFO, actual.ToString());
+  }
   absl::Status result = EqualHelper(expected, actual, {}, nullptr);
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
@@ -889,10 +891,12 @@ absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 absl::Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ErrorSpec& error, std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
-  VLOG(1) << "Expected literal:";
-  XLA_VLOG_LINES(1, expected.ToString());
-  VLOG(1) << "Actual literal:";
-  XLA_VLOG_LINES(1, actual.ToString());
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Expected literal:";
+    XLA_LOG_LINES(::tsl::INFO, expected.ToString());
+    LOG(INFO) << "Actual literal:";
+    XLA_LOG_LINES(::tsl::INFO, actual.ToString());
+  }
   absl::Status result = NearHelper(expected, actual, /*shape_index=*/{}, error,
                                    detailed_message, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);
