@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -159,6 +160,12 @@ void GpuStream::Destroy() {
 
 bool GpuStream::IsIdle() const {
   return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
+}
+
+void GpuStream::set_name(absl::string_view name) {
+  name_ = name;
+  tsl::profiler::NameStream(
+      reinterpret_cast<tsl::profiler::StreamHandle>(gpu_stream()), name_);
 }
 
 GpuStream* AsGpuStream(Stream* stream) {
