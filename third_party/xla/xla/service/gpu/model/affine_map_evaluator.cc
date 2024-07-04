@@ -85,6 +85,9 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
 std::vector<int64_t> EvaluateAffineMap(
     AffineMap affine_map, absl::Span<int64_t const> dim_values,
     absl::Span<int64_t const> symbol_values) {
+  CHECK_EQ(affine_map.getNumDims(), dim_values.size());
+  CHECK_EQ(affine_map.getNumSymbols(), symbol_values.size());
+
   std::vector<int64_t> results;
   results.reserve(affine_map.getNumResults());
   for (auto expr : affine_map.getResults()) {

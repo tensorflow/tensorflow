@@ -577,11 +577,11 @@ xla_cc_test(
     name = "symbolic_tile_test",
     srcs = ["symbolic_tile_test.cc"],
     deps = [
+        ":affine_map_evaluator",
         ":indexing_analysis",
         ":indexing_test_utils",
         ":symbolic_tile",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -600,10 +600,7 @@ cc_library(
         ":indexing_analysis",
         ":symbolic_tile",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )
 

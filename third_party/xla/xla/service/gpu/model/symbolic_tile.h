@@ -20,7 +20,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -140,9 +139,9 @@ class ConstraintExpression {
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
-// offset_map(): ()[size0, ..., size{M-1}] -> (offset0, ..., offset{N-1})
-// size_map():   ()[size0, ..., size{M-1}] -> (size'0, ..., size'{N-1})
-// stride_map(): ()[size0, ..., size{M-1}] -> (stride0, ..., stride{N-1})
+// offset_map(): (size0, ..., size{M-1}) -> (offset0, ..., offset{N-1})
+// size_map():   (size0, ..., size{M-1}) -> (size'0, ..., size'{N-1})
+// stride_map(): (size0, ..., size{M-1}) -> (stride0, ..., stride{N-1})
 //
 // The maps respectively encode the offset, size, and stride component of each
 // strided expression in the result tile.
@@ -223,9 +222,9 @@ class ConstraintExpression {
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
-// offset_map(): ()[sizes..., rt_vars...] -> offsets'
-// size_map():   ()[sizes...] -> sizes'
-// stride_map(): ()[sizes...] -> strides'
+// offset_map(): (sizes...)[rt_vars...] -> offsets'
+// size_map():   (sizes...) -> sizes'
+// stride_map(): (sizes...) -> strides'
 //
 // The size parameters of the projections may be arbitrarily constrained, in
 // order to ensure that applying the symbolic tile on an input tile yields a

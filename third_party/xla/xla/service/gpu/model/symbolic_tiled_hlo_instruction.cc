@@ -29,20 +29,20 @@ namespace gpu {
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileOffsets(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateAffineMap(symbolic_tile_.offset_map(), /*dim_values=*/{},
-                           /*symbol_values=*/tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.offset_map(),
+                           /*dim_values=*/tile_parameters);
 }
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileSizes(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateAffineMap(symbolic_tile_.size_map(), /*dim_values=*/{},
-                           /*symbol_values=*/tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.size_map(),
+                           /*dim_values=*/tile_parameters);
 }
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileStrides(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateAffineMap(symbolic_tile_.stride_map(), /*dim_values=*/{},
-                           /*symbol_values=*/tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.stride_map(),
+                           /*dim_values=*/tile_parameters);
 }
 
 std::string SymbolicTiledHloInstruction::ToString() const {

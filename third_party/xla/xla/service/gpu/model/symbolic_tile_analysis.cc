@@ -321,8 +321,7 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     bool conjunction_is_satisfied = true;
     for (const auto& [constrained_expr, interval] : conjunction) {
       int64_t constrained_value =
-          EvaluateAffineExpr(constrained_expr, /*dim_values=*/{},
-                             /*symbol_values=*/tile_parameters);
+          EvaluateAffineExpr(constrained_expr, /*dim_values=*/tile_parameters);
 
       if (constrained_value < interval.lower ||
           constrained_value > interval.upper) {
