@@ -37,17 +37,17 @@ class RequestCost {
   void RecordCost(
       const std::vector<std::pair<absl::string_view, absl::Duration>>& costs);
 
+  // Gets all types of costs for processing an rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the costs have been collected.
+  absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
+
   // Records metrics. The inputs should be pairs of metric name and value.
   // It's thread-safe, and can be called from different threads. Unlike
   // RecordCosts where costs are summed up if recorded with the same key,
   // metrics are replaced.
   void RecordMetrics(
       const std::vector<std::pair<absl::string_view, double>>& metrics);
-
-  // Gets all types of costs for processing an rpc request.
-  // It's thread-safe. It's expected to be called at the end of processing an
-  // rpc request, when all the costs have been collected.
-  absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
 
   // Gets all types of metrics for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
