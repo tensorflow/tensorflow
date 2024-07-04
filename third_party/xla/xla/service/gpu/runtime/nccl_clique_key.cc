@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <ios>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -119,6 +121,14 @@ absl::Span<const char> NcclCliqueId::data() const { return data_; }
 
 std::string NcclCliqueId::ToString() const {
   return std::string(data_.data(), data_.size());
+}
+
+std::string NcclCliqueId::ToDebugString() const {
+  std::stringstream ss;
+  for (int64_t i = 0; i < data_.size(); ++i) {
+    ss << std::hex << static_cast<int>(data_.data()[i]);
+  }
+  return ss.str();
 }
 
 }  // namespace xla::gpu

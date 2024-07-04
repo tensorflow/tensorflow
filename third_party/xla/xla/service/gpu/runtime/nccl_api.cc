@@ -376,8 +376,9 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
 #endif
   if (config.max_nchannels > 0) {
     comm_config.maxCTAs = config.max_nchannels;
-    VLOG(1) << "Maximum number of channels for hash(id)="
-            << absl::HashOf(clique_id) << " is set to: " << comm_config.maxCTAs;
+    VLOG(1) << "Maximum number of channels for hash="
+            << clique_id.ToDebugString()
+            << " is set to: " << comm_config.maxCTAs;
   }
 
   std::vector<ncclComm_t> comm_handles;

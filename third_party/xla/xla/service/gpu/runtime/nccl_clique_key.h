@@ -144,6 +144,7 @@ class NcclCliqueId {
 
   absl::Span<const char> data() const;
   std::string ToString() const;
+  std::string ToDebugString() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const NcclCliqueId& id);
