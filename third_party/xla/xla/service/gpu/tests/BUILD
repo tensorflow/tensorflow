@@ -840,15 +840,15 @@ lit_test_suite(
 #     srcs = glob(["*.mlir"]),
 #     cfg = "//xla:lit.cfg.py",
 #     tools = [
-#         ":sparse-opt",
+#         ":xla-opt",
 #         "@llvm-project//llvm:FileCheck",
 #         "@triton//:triton-opt",
 #     ],
 # )
 #
 # cc_binary(
-#     name = "sparse-opt",
-#     srcs = ["sparse-opt.cc"],
+#     name = "xla-opt",
+#     srcs = ["xla-opt.cc"],
 #     deps = [
 #         "//xla/service/gpu:triton_sparse_extensions",
 #         "@llvm-project//mlir:AllExtensions",

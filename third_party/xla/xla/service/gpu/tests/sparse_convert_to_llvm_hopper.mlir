@@ -1,4 +1,4 @@
-// RUN: sparse-opt %s \
+// RUN: xla-opt %s \
 // RUN:   --allocate-shared-memory \
 // RUN:   --sparse-local-load-to-llvm \
 // RUN:   --convert-triton-gpu-to-llvm=compute-capability=90 \

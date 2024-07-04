@@ -25,5 +25,5 @@ int main(int argc, char **argv) {
   xla::gpu::registerSparsePasses();
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(
-      argc, argv, "sparse-opt modular optimizer driver\n", registry));
+      argc, argv, "xla-opt modular optimizer driver\n", registry));
 }
