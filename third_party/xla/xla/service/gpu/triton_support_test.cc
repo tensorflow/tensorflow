@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(b/343158720): Simplify the tests in this file after a generic emitter
-// has landed.
 #include "xla/service/gpu/triton_support.h"
 
 #include <cstdint>
