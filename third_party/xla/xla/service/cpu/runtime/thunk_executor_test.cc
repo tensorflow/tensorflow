@@ -507,6 +507,26 @@ INSTANTIATE_TEST_SUITE_P(
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
+static void BM_SequentialThunkExecutor(benchmark::State& state) {
+  const size_t num_thunks = state.range(0);
+
+  auto g =
+      GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
+                            /*shared_resource_use=*/SharedResourceUse::kAll,
+                            /*inject_errors=*/false)
+          .value();
+  auto e = ThunkExecutor::Create(std::move(g->sequence)).value();
+
+  BufferAllocations allocations(g->buffers);
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+
+  for (auto _ : state) {
+    auto execute_event = e.Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    CHECK(execute_event.IsConcrete());
+  }
+}
+
 static void BM_SyncThunkExecutor(benchmark::State& state) {
   const size_t num_thunks = state.range(0);
 
@@ -554,6 +574,15 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
     CHECK(execute_event.IsConcrete());
   }
 }
+
+BENCHMARK(BM_SequentialThunkExecutor)
+    ->MeasureProcessCPUTime()
+    ->Arg(1)
+    ->Arg(16)
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(258)
+    ->Arg(512);
 
 BENCHMARK(BM_SyncThunkExecutor)
     ->MeasureProcessCPUTime()
