@@ -83,22 +83,19 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   llvm::SmallVector<mlir::Value> EvaluateEpilogue(
       mlir::ImplicitLocOpBuilder& b, const HloValueMap& results,
       llvm::SmallVector<mlir::Value> outputs, EmitterState& state, int group_id,
-      mlir::MLIRContext* ctx, mlir::Value vector_index = nullptr) const;
+      mlir::MLIRContext* ctx, mlir::ValueRange symbol_values) const;
 
   virtual llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const = 0;
 
-  // Returns a reduction indexing map with the given results. Symbols are
-  // derived from tile_sizes_per_thread_. Symbols not occurring in the results
-  // have their ranges set to 1 (instead of the size).
-  IndexingMap GetIndexingMap(llvm::ArrayRef<mlir::AffineExpr> results) const;
-  // Returns an indexing map whose domain is (thread ID, vector_index).
-  IndexingMap GetThreadVectorIndexingMap(
+  // Returns a reduction indexing map with the given results.
+  IndexingMap GetIndexingMap(llvm::ArrayRef<mlir::AffineExpr> results,
+                             absl::Span<int64_t const> symbol_sizes = {}) const;
+  // Returns an indexing map whose domain is (thread ID)[s...].
+  IndexingMap GetThreadIndexingMap(
       llvm::ArrayRef<mlir::AffineExpr> results,
-      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints)
-      const;
-  // Returns the loop symbol corresponding to the thread tile index.
-  mlir::AffineExpr GetLoopSymbol(int index, mlir::MLIRContext* ctx) const;
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints,
+      absl::Span<int64_t const> symbol_sizes = {}) const;
 
   Shape GetReduceOperandShape() const {
     return first_reduce_->operand(0)->shape();

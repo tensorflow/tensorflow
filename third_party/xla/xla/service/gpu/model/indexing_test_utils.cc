@@ -187,9 +187,15 @@ std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
                                               absl::Span<int64_t const> dims,
                                               absl::Span<int64_t const> syms) {
   if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(expr)) {
+    if (sym.getPosition() < 0 || sym.getPosition() >= syms.size()) {
+      return std::nullopt;
+    }
     return syms[sym.getPosition()];
   }
   if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
+    if (dim.getPosition() < 0 || dim.getPosition() >= dims.size()) {
+      return std::nullopt;
+    }
     return dims[dim.getPosition()];
   }
   if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
