@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
@@ -91,12 +92,23 @@ class Thunk {
     int64_t module_id;
   };
 
-  virtual ~Thunk() = default;
+  // An abstract task runner that can be used by a ThunkExecutor (including
+  // thunk executors for nested computations in conditional or while thunks) for
+  // running tasks corresponding to thunk execution. It can be a simple inline
+  // executor that runs tasks on the same thread, or a runner backed by a thread
+  // pool. By default XLA:CPU uses task runner that shares underlying thread
+  // pool with the intra-op thread pool used for compute tasks. We deliberately
+  // do not prescribe task runner to be Eigen or any other particular thread
+  // pool, and let users make the choice.
+  using Task = absl::AnyInvocable<void()>;
+  using TaskRunner = absl::AnyInvocable<void(Task)>;
+
+  Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
 
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
-  explicit Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
+  virtual ~Thunk() = default;
 
   Kind kind() const { return kind_; }
   const Info& info() const { return info_; }
@@ -188,6 +200,7 @@ class Thunk {
     const BufferAllocations* buffer_allocations = nullptr;
     runtime::XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
+    TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
   };

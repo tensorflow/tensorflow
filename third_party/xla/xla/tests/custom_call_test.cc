@@ -395,13 +395,11 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
 
   auto constant_1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto constant_2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
   auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {}), {constant_2}, "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {res_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
@@ -422,9 +420,8 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
     }
     ENTRY test {
       c0 = f32[] constant(1.0)
-      c1 = f32[] constant(2.0)
       call0 = f32[] call(f32[] %c0), to_apply=sub
-      call1 = f32[] call(f32[] %c1), to_apply=sub
+      call1 = f32[] call(f32[] %call0), to_apply=sub
       ROOT sum = f32[] add(%call0, %call1)
     }
   )";
@@ -952,7 +949,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsFirstFailure) {
+XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -969,12 +966,15 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFirstFailure) {
 
   module->AddEntryComputation(builder.Build());
 
+  // Execution order is undefined because custom calls do not have data
+  // dependency, and we check that the error message contains one of the two
+  // error codes.
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1"));
+  EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsFirstFailure) {
+XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   const char* const kModuleStr = R"(
     HloModule m
     sub_2 {
@@ -992,9 +992,12 @@ XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsFirstFailure) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
+  // Execution order is undefined because custom calls do not have data
+  // dependency, and we check that the error message contains one of the two
+  // error codes.
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), HasSubstr("Failed: 2"));
+  EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {

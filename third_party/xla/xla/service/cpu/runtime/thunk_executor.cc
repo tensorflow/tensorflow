@@ -109,14 +109,17 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
 }
 
 ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
-                                          TaskRunner runner)
+                                          Thunk::TaskRunner* runner)
     : executor(executor),
-      runner(std::move(runner)),
+      runner(runner),
       counters(executor->nodes_defs().size()),
       nodes(executor->nodes_defs().size()),
       abort(false),
       pending_sink_nodes(executor->sink().size()),
       execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()) {
+  DCHECK(runner == nullptr || static_cast<bool>(*runner))
+      << "`runner` must be nullptr or a valid TaskRunner";
+
   for (NodeId id = 0; id < nodes.size(); ++id) {
     const NodeDef& node_def = executor->node_def(id);
     counters[id].store(node_def.in_edges.size(), std::memory_order_release);
@@ -125,7 +128,7 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
 }
 
 tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
-    const Thunk::ExecuteParams& params, TaskRunner runner) {
+    const Thunk::ExecuteParams& params) {
   // Short-circuit execution of trivial thunk sequences.
   if (ABSL_PREDICT_FALSE(thunk_sequence_.empty())) {
     return Thunk::OkExecuteEvent();
@@ -141,7 +144,7 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   }
 
   // Create async execution state on heap and kick-off execution.
-  auto state = std::make_unique<ExecuteState>(this, std::move(runner));
+  auto state = std::make_unique<ExecuteState>(this, params.task_runner);
   Execute(state.get(), params, ReadyQueue(source_.begin(), source_.end()));
 
   // Move execute state to the execute event callback to ensure that it is kept
@@ -244,7 +247,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     if (has_runner && i < ready_queue.size() - 1) {
       ReadyQueue tail(ready_queue.begin() + i + 1, ready_queue.end());
       ready_queue.erase(ready_queue.begin() + i + 1, ready_queue.end());
-      state->runner([&params, state, tail = std::move(tail)]() mutable {
+      (*state->runner)([&params, state, tail = std::move(tail)]() mutable {
         state->executor->Execute(state, params, std::move(tail));
       });
     }

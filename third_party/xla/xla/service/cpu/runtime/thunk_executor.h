@@ -44,12 +44,6 @@ class ThunkExecutor {
   using ResourceUses = Thunk::ResourceUses;
   using ExecuteEvent = Thunk::ExecuteEvent;
 
-  // It's up to the caller to provide the task runner that will execute tasks
-  // produced by the executor. It can be a simple inline executor that runs
-  // tasks on the same thread, or a runner backed by a thread pool.
-  using Task = absl::AnyInvocable<void()>;
-  using TaskRunner = absl::AnyInvocable<void(Task)>;
-
   // Nodes identified by their index in the captured ThunkSequence.
   using NodeId = int64_t;
 
@@ -73,8 +67,7 @@ class ThunkExecutor {
   //
   // Returned execute event becomes ready when all thunks completed execution.
   // If any of the thunks failed, the event will be in error state.
-  tsl::AsyncValueRef<ExecuteEvent> Execute(const Thunk::ExecuteParams& params,
-                                           TaskRunner runner = nullptr);
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const Thunk::ExecuteParams& params);
 
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
   const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
@@ -104,10 +97,10 @@ class ThunkExecutor {
 
   // A struct to keep the state of a running executor.
   struct ExecuteState {
-    ExecuteState(ThunkExecutor* executor, TaskRunner runner);
+    ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
 
     ThunkExecutor* executor;
-    TaskRunner runner;
+    Thunk::TaskRunner* runner;
 
     // Containers for nodes' pending counters and nodes themselves.
     absl::FixedArray<std::atomic<int64_t>> counters;
