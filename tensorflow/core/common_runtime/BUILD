@@ -2164,6 +2164,22 @@ filegroup(
 )
 
 cc_library(
+    name = "gpu_device_context",
+    hdrs = ["gpu_device_context.h"],
+    visibility = [
+        "//tensorflow:internal",
+        # For xla_launch_util
+        "//tensorflow/compiler/jit:__pkg__",
+        "//tensorflow_models:__subpackages__",
+    ],
+    deps = [
+        ":device",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "cost_measurement",
     hdrs = ["cost_measurement.h"],
     visibility = ["//visibility:public"],
