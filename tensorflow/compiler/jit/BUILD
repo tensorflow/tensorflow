@@ -1697,6 +1697,7 @@ tf_cuda_only_cc_test(
         ":test_util",
         ":xla_gpu_jit",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",  # Needed to register DEVICE_GPU
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -1789,6 +1790,7 @@ tf_cuda_only_cc_test(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:gpu_runtime",  # Needed to register DEVICE_GPU
         "//tensorflow/core:test",
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_googletest//:gtest_main",
