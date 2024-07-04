@@ -104,48 +104,52 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      %[[ARG0:.+]] = load ptr
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
-    CHECK:      %[[ARG1:.+]] = load ptr
+    CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 2, i32 0
-    CHECK:      %[[ARG2:.+]] = load ptr
+    CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
 
     CHECK-NEXT: getelementptr inbounds %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 3, i32 0
-    CHECK:      %[[ARG3:.+]] = load ptr
+    CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !align ![[ALIGNMENT]]
 
     CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
-    CHECK:      load float, ptr %[[PTR0]], align 4, !invariant.load !1,
-    CHECK-SAME:                                     !noalias !2
+    CHECK:      load float, ptr %[[PTR0]], align 4,
+    CHECK-SAME:                            !invariant.load ![[SCOPE0:.+]],
+    CHECK-SAME:                            !noalias ![[SCOPE1:.+]]
 
     CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
-    CHECK:      load float, ptr %[[PTR1]], align 4, !invariant.load !1,
-    CHECK-SAME:                                     !noalias !2
+    CHECK:      load float, ptr %[[PTR1]], align 4,
+    CHECK-SAME:                            !invariant.load ![[SCOPE0]],
+    CHECK-SAME:                            !noalias ![[SCOPE1]]
 
     CHECK-NEXT: %[[PTR2:.+]] = getelementptr inbounds float, ptr %[[ARG2]]
-    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope !6, !noalias !7
+    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope ![[SCOPE2:.+]],
+    CHECK:                                          !noalias ![[SCOPE3:.+]]
 
     CHECK-NEXT: %[[PTR3:.+]] = getelementptr inbounds float, ptr %[[ARG3]]
-    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope !7, !noalias !6
+    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope ![[SCOPE3]],
+    CHECK:                                          !noalias ![[SCOPE2]]
 
     CHECK:      ret ptr null
     CHECK: }
 
-    CHECK-DAG: !0 = !{i64 16}
-    CHECK-DAG: !1 = !{}
-    CHECK-DAG: !2 = !{!3, !5}
-    CHECK-DAG: !3 = !{!"result slice: {{.*}}", !4}
-    CHECK-DAG: !4 = !{!"XLA host kernel test AA domain"}
-    CHECK-DAG: !5 = !{!"result slice: {{.*}}", !4}
-    CHECK-DAG: !6 = !{!{{[35]}}}
-    CHECK-DAG: !7 = !{!{{[35]}}}
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 16}
+    CHECK-DAG: ![[SCOPE0]] = !{}
+    CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}
+    CHECK-DAG: ![[SCOPE2]] = !{![[RES0]]}
+    CHECK-DAG: ![[SCOPE3]] = !{![[RES1]]}
+    CHECK-DAG: ![[RES0]] = !{!"{{.*}}, offset:512, {{.*}}", ![[DOMAIN:.+]]}
+    CHECK-DAG: ![[RES1]] = !{!"{{.*}}, offset:768, {{.*}}", ![[DOMAIN]]}
+    CHECK-DAG: ![[DOMAIN]] = !{!"XLA host kernel test AA domain"}
   )"));
 }
 

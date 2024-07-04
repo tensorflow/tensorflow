@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -612,8 +613,9 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
 
   // Emit alias scopes for all kernel result buffers. We do not emit alias
   // scopes for kernel arguments, because it's usually not profitable, and we
-  // mostly care about avoiding reloading data from read-only buffers.
-  absl::flat_hash_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes;
+  // mostly care about avoiding reloading data from read-only buffers. We use
+  // sorted container to make sure that emitted metadata is deterministic.
+  absl::btree_map<BufferAllocation::Slice, llvm::MDNode*> alias_scopes;
   for (const KernelParameter& result : results) {
     // Skip result buffers that are aliased with entry parameters as we don't
     // know if they can alias with any other buffers.
