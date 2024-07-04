@@ -52,6 +52,7 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine01 BUILD_PRIMITIVE_GPU_ISA_ALL": "#define BUILD_PRIMITIVE_GPU_ISA_ALL 0",
     "#cmakedefine01 BUILD_GEN9": "#define BUILD_GEN9 0",
     "#cmakedefine01 BUILD_GEN11": "#define BUILD_GEN11 0",
+    "#cmakedefine01 BUILD_XE2": "#define BUILD_XE2 0",
     "#cmakedefine01 BUILD_XELP": "#define BUILD_XELP 0",
     "#cmakedefine01 BUILD_XEHPG": "#define BUILD_XEHPG 0",
     "#cmakedefine01 BUILD_XEHPC": "#define BUILD_XEHPC 0",
@@ -94,8 +95,8 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "4",
-        "@DNNL_VERSION_PATCH@": "1",
+        "@DNNL_VERSION_MINOR@": "5",
+        "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
