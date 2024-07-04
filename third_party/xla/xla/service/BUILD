@@ -7669,6 +7669,7 @@ cc_library(
     srcs = ["scatter_simplifier.cc"],
     hdrs = ["scatter_simplifier.h"],
     deps = [
+        ":call_inliner",
         ":gather_scatter_utils",
         ":hlo_creation_utils",
         ":op_expander_pass",
@@ -7678,6 +7679,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
     ],
