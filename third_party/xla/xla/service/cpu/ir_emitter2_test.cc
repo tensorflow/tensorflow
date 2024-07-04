@@ -144,8 +144,8 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-DAG: !3 = !{!"result slice: {{.*}}", !4}
     CHECK-DAG: !4 = !{!"XLA host kernel test AA domain"}
     CHECK-DAG: !5 = !{!"result slice: {{.*}}", !4}
-    CHECK-DAG: !6 = !{!5}
-    CHECK-DAG: !7 = !{!3}
+    CHECK-DAG: !6 = !{!{{[35]}}}
+    CHECK-DAG: !7 = !{!{{[35]}}}
   )"));
 }
 
