@@ -530,6 +530,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
+        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
