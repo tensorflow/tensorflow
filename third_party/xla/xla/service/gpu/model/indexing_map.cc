@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -769,16 +771,6 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
                                          int64_t operand_idx,
                                          mlir::MLIRContext* mlir_context);
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-int64_t CeilDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor +
-         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
 
 std::string Interval::ToString() const {
   std::stringstream ss;

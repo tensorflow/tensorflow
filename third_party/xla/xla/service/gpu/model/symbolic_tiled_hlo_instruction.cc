@@ -20,61 +20,29 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 
 namespace xla {
 namespace gpu {
-namespace {
-
-using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
-using ::mlir::SmallVector;
-
-std::vector<int64_t> EvaluateTileMap(AffineMap affine_map,
-                                     absl::Span<int64_t const> parameters) {
-  CHECK_EQ(affine_map.getNumSymbols(), parameters.size());
-  CHECK_EQ(affine_map.getNumDims(), 0);
-
-  SmallVector<AffineExpr> symbol_replacements = llvm::to_vector(
-      llvm::map_range(parameters, [affine_map](const int64_t v) -> AffineExpr {
-        return mlir::getAffineConstantExpr(v, affine_map.getContext());
-      }));
-
-  AffineMap simplified_affine_map =
-      mlir::simplifyAffineMap(affine_map.replaceDimsAndSymbols(
-          /*dimReplacements=*/{}, symbol_replacements, /*numResultDims=*/0,
-          /*numResultSyms=*/0));
-
-  SmallVector<int64_t> results = llvm::to_vector(llvm::map_range(
-      simplified_affine_map.getResults(), [](AffineExpr result) -> int64_t {
-        return llvm::cast<mlir::AffineConstantExpr>(result).getValue();
-      }));
-
-  return std::vector<int64_t>(results.begin(), results.end());
-}
-
-}  // namespace
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileOffsets(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateTileMap(symbolic_tile_.offset_map(), tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.offset_map(), /*dim_values=*/{},
+                           /*symbol_values=*/tile_parameters);
 }
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileSizes(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateTileMap(symbolic_tile_.size_map(), tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.size_map(), /*dim_values=*/{},
+                           /*symbol_values=*/tile_parameters);
 }
 
 std::vector<int64_t> SymbolicTiledHloInstruction::TileStrides(
     absl::Span<int64_t const> tile_parameters) const {
-  return EvaluateTileMap(symbolic_tile_.stride_map(), tile_parameters);
+  return EvaluateAffineMap(symbolic_tile_.stride_map(), /*dim_values=*/{},
+                           /*symbol_values=*/tile_parameters);
 }
 
 std::string SymbolicTiledHloInstruction::ToString() const {

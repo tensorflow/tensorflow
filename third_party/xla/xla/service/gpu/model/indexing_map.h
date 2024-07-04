@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -472,9 +471,6 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
                            constraint_hashes.end());
   return h;
 }
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor);
-int64_t CeilDiv(int64_t dividend, int64_t divisor);
 
 }  // namespace gpu
 }  // namespace xla

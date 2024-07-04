@@ -78,6 +78,11 @@ class SymbolicTileAnalysis {
     return symbolic_tiled_hlo_instructions_.back().get();
   }
 
+  // Returns the number of tile parameters in this symbolic analysis.
+  int64_t num_tile_parameters() const {
+    return GetRoot()->hlo()->shape().dimensions_size();
+  }
+
   // Returns the symbolic tiled HLO instructions in def-before-use order.
   const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
   GetSymbolicTiledHloComputation() const {

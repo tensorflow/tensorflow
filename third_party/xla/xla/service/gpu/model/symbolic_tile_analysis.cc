@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -48,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -306,11 +305,13 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     return true;
   }
 
-  // Populate parameter map.
-  llvm::SmallVector<AffineExpr> parameters = llvm::to_vector(
-      llvm::map_range(tile_parameters, [this](const int64_t v) -> AffineExpr {
-        return mlir::getAffineConstantExpr(v, context_);
-      }));
+  if (tile_parameters.size() != num_tile_parameters()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Failed to check if tile parameters satisfy constraints. Number of "
+        "provided parameters doesn't match number of expected parameters "
+        "(%d != %d)",
+        tile_parameters.size(), num_tile_parameters()));
+  }
 
   // TODO(bchetioui): replace with convenience methods in
   // `ConstraintExpression`.
@@ -319,18 +320,9 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
        constraints_.DisjointConjointConstraints()) {
     bool conjunction_is_satisfied = true;
     for (const auto& [constrained_expr, interval] : conjunction) {
-      AffineExpr constrained_expr_value =
-          constrained_expr.replaceSymbols(parameters);
-      if (constrained_expr_value.getKind() != mlir::AffineExprKind::Constant) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Failed to reduce ", AffineMapPrinter().ToString(constrained_expr),
-            " to a constant with tile parameters ",
-            absl::StrJoin(tile_parameters, ", ")));
-      }
-
       int64_t constrained_value =
-          llvm::cast<mlir::AffineConstantExpr>(constrained_expr_value)
-              .getValue();
+          EvaluateAffineExpr(constrained_expr, /*dim_values=*/{},
+                             /*symbol_values=*/tile_parameters);
 
       if (constrained_value < interval.lower ||
           constrained_value > interval.upper) {

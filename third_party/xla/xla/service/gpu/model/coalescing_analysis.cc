@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
@@ -319,39 +320,6 @@ std::optional<PartitionedExpr> Partition(AffineExpr expr) {
     }
   }
   return result;
-}
-
-// Given an AffineExpr and the values for its dimensions and symbols, evaluates
-// the result.
-int64_t EvaluateAffineExpr(AffineExpr expr,
-                           const std::vector<int64_t>& dim_values,
-                           const std::vector<int64_t>& symbol_values = {}) {
-  if (auto const_expr = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-    return const_expr.getValue();
-  }
-  if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
-    return dim_values[dim_expr.getPosition()];
-  }
-  if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
-    return symbol_values[symbol_expr.getPosition()];
-  }
-  auto binary_expr = mlir::cast<AffineBinaryOpExpr>(expr);
-  int64_t lhs =
-      EvaluateAffineExpr(binary_expr.getLHS(), dim_values, symbol_values);
-  int64_t rhs =
-      EvaluateAffineExpr(binary_expr.getRHS(), dim_values, symbol_values);
-  switch (binary_expr.getKind()) {
-    case AffineExprKind::Add:
-      return lhs + rhs;
-    case AffineExprKind::Mul:
-      return lhs * rhs;
-    case AffineExprKind::FloorDiv:
-      return FloorDiv(lhs, rhs);
-    case AffineExprKind::Mod:
-      return lhs % rhs;
-    default:
-      LOG(FATAL) << "Unsupported expression";
-  }
 }
 
 // Performs backtracking to find all feasible dimensions, symbols that satisfy
