@@ -36,11 +36,11 @@ cc_binary(
     linkopts = tflite_linkopts(),
     deps = [
         ":stripping_lib",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/tools:command_line_flags",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -52,11 +52,11 @@ cc_binary(
     linkopts = tflite_linkopts(),
     deps = [
         ":stripping_lib",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/tools:command_line_flags",
         "@flatbuffers//:runtime_cc",
     ],
 )

@@ -85,7 +85,7 @@ cc_binary(
     name = "json_to_fb",
     srcs = ["json_to_fb.cc"],
     deps = [
-        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "@flatbuffers",
     ],
 )

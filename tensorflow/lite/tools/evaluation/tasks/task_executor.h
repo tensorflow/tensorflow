@@ -18,7 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/types/optional.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 

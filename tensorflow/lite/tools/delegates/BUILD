@@ -21,7 +21,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common",
     ],
     deps = [
-        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
     ],

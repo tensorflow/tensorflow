@@ -2910,6 +2910,22 @@ xla_test(
 )
 
 xla_test(
+    name = "set_dimension_size_test",
+    srcs = ["set_dimension_size_test.cc"],
+    # TODO(abanas): add test_xla_cpu_thunks tag when 'SliceToDynamic' custom call is supported.
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
     real_hardware_only = True,

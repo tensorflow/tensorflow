@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace {
 

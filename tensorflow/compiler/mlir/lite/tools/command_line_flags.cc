@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 
 #include <algorithm>
 #include <cstring>

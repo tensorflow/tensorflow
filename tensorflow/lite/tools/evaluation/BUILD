@@ -93,8 +93,8 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":utils",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",

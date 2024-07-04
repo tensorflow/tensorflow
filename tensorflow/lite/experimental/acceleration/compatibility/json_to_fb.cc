@@ -27,7 +27,7 @@ limitations under the License.
 #include "flatbuffers/reflection.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "flatbuffers/util.h"  // from @flatbuffers
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 
 int main(int argc, char** argv) {
   std::string json_path, fbs_path, fb_path;

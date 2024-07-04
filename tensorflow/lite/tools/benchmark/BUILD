@@ -70,7 +70,7 @@ cc_binary(
 # As with most target binaries that use flex, this should be built with the
 # `--config=monolithic` build flag, e.g.,
 #    bazel build --config=monolithic --config=android_arm64 \
-#        -c opt --cxxopt='--std=c++17' :benchmark_model_plus_flex
+#        -c opt --cxxopt='--std=c++delegate_provider17' :benchmark_model_plus_flex
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -116,12 +116,12 @@ cc_test(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "@com_google_absl//absl/algorithm",
@@ -218,13 +218,13 @@ cc_library(
         ":benchmark_multirun_stats_recorder",
         ":benchmark_params",
         ":benchmark_utils",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
     ] + select({
@@ -252,13 +252,13 @@ cc_library(
     deps = [
         ":benchmark_params",
         ":benchmark_utils",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:memory_usage_monitor",
         "//tensorflow/lite/profiling:time",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
     ],
 )

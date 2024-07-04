@@ -182,8 +182,8 @@ cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
-        ":command_line_flags",
         ":gen_op_registration",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite:util",
         "@com_google_absl//absl/strings",
     ],
@@ -281,29 +281,6 @@ cc_test(
 )
 
 cc_library(
-    name = "command_line_flags",
-    srcs = ["command_line_flags.cc"],
-    hdrs = ["command_line_flags.h"],
-    copts = tflite_copts(),
-    deps = [
-        ":logging",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "command_line_flags_test",
-    srcs = ["command_line_flags_test.cc"],
-    copts = tflite_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        ":command_line_flags",
-        ":tool_params",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "list_flex_ops",
     srcs = ["list_flex_ops.cc"],
     hdrs = ["list_flex_ops.h"],
@@ -328,8 +305,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -339,8 +316,8 @@ cc_library(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -362,8 +339,8 @@ tf_cc_binary(
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":command_line_flags",
         ":list_flex_ops_no_kernel",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],
 )

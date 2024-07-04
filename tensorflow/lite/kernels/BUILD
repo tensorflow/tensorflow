@@ -263,7 +263,7 @@ cc_library(
     hdrs = ["test_delegate_providers.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
@@ -280,8 +280,8 @@ cc_library(
         ":test_delegate_providers_lib",
         ":test_util",
         ":test_util_delegate_providers",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/testing:util",
-        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],

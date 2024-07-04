@@ -30,6 +30,7 @@ cc_binary(
     }),
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/c:c_api_types",
@@ -39,7 +40,6 @@ cc_binary(
         "//tensorflow/lite/profiling:profile_buffer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/delegates:tflite_execution_providers",

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_split.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 const char kInputModelsFlag[] = "graphs";

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
-#define TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 
 #include <functional>
 #include <string>
@@ -172,4 +172,4 @@ class Flags {
 };
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_COMMAND_LINE_FLAGS_H_

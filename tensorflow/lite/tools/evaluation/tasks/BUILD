@@ -21,7 +21,7 @@ cc_library(
     copts = tflite_copts(),
     linkopts = task_linkopts(),
     deps = [
-        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",

@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/strip_buffers/stripping_lib.h"
 
 #define TFLITE_SCHEMA_VERSION 3

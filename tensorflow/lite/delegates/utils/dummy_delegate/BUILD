@@ -33,9 +33,9 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":dummy_delegate",
+        "//tensorflow/compiler/mlir/lite/tools:command_line_flags",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
-        "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
     ],
 )

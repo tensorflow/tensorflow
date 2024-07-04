@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/tool_params.h"
 

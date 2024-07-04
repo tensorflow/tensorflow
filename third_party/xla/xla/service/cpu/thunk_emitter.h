@@ -83,6 +83,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitGetDimensionSizeThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitSetDimensionSizeThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
       const HloInstruction* instruction);
 

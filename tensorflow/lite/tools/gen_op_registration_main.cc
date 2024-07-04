@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/gen_op_registration.h"
 #include "tensorflow/lite/util.h"
 

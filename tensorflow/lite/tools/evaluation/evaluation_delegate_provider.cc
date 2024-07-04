@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #include "tensorflow/lite/tools/logging.h"

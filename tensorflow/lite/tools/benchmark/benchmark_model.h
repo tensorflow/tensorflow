@@ -25,12 +25,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/memory_usage_monitor.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
 namespace benchmark {
