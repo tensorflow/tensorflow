@@ -331,6 +331,7 @@ class IndexingMap {
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
   void AddConstraint(mlir::AffineExpr expr, Interval range);
+  void ClearConstraints() { constraints_.clear(); }
 
   // Evaluates the constraints at a given point and returns `true` if all
   // constraints are satisfied.

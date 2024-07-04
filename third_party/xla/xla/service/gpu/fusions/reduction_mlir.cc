@@ -185,10 +185,9 @@ struct MlirReductionFusion::EmitterState {
   PerThreadOutputs EmitPerThreadElements(int group_id, const HloValueMap& inits,
                                          const SmallVector<Value>& outputs);
 
-  HloValueMap ReduceSharedMemory(
-      ImplicitLocOpBuilder& b, ValueRange tiles, const HloValueMap& inits,
-      absl::Span<const HloInstruction* const> reductions,
-      mlir::ValueRange symbol_values);
+  mlir::ValueRange ReduceViaSharedMemory(ImplicitLocOpBuilder& b, int group_id,
+                                         const PerThreadOutputs& per_thread,
+                                         const HloValueMap& inits);
 
   mlir::func::FuncOp GetReducer(const HloInstruction* hero) const {
     return call_target(hero->called_computations()[0]->root_instruction());
@@ -511,31 +510,42 @@ HloValueMap MlirReductionFusion::EmitterState::ShuffleReduce(
   return results;
 }
 
-HloValueMap MlirReductionFusion::EmitterState::ReduceSharedMemory(
-    ImplicitLocOpBuilder& b, ValueRange tiles, const HloValueMap& inits,
-    absl::Span<const HloInstruction* const> reductions,
-    mlir::ValueRange symbol_values) {
-  int64_t tile_index = 0;
+mlir::ValueRange MlirReductionFusion::EmitterState::ReduceViaSharedMemory(
+    ImplicitLocOpBuilder& b, int group_id, const PerThreadOutputs& per_thread,
+    const HloValueMap& inits) {
+  const auto& reductions = owner.reduction_heroes_[group_id];
   auto read_indexing = owner.GetSharedMemoryReductionReadMap(b.getContext());
+  auto loop_indexing = read_indexing;
+  // All threads must participate in the shuffle, so we clear the constraints
+  // for the iteration. Otherwise, some threads might not be part of the loop.
+  // The constraints are still checked inside the loop.
+  loop_indexing.ClearConstraints();
 
-  auto thread_id = owner.EmitThreadId(b, 0);
-  auto read_condition = mlir_converter::CheckConstraints(
-      read_indexing, {thread_id}, symbol_values, b);
-  auto indices = mlir_converter::ApplyIndexing(read_indexing, {thread_id},
-                                               symbol_values, b);
+  auto tiles = WriteToSharedMemory(reductions, per_thread.reduction_scalars);
+  return mlir_converter::EmitLoopNest(
+      b, {thread_and_block_ids[0]}, per_thread.outputs, loop_indexing,
+      [&](ValueRange outputs, ValueRange dim_values,
+          ValueRange symbol_values) -> SmallVector<Value> {
+        auto read_condition = mlir_converter::CheckConstraints(
+            read_indexing, dim_values, symbol_values, b);
+        auto indices = mlir_converter::ApplyIndexing(read_indexing, dim_values,
+                                                     symbol_values, b);
 
-  HloValueMap results;
-  HloValueMap reduce_args;
-  for (auto* hero : reductions) {
-    auto& args = reduce_args[hero];
-    for (auto init : inits.at(hero)) {
-      // If a warp didn't write anything, use the init values instead.
-      auto extract = b.create<PredicatedExtractOp>(
-          read_condition, init, tiles[tile_index++], indices);
-      args.push_back(extract.getResult());
-    }
-  }
-  return ShuffleReduce(b, reductions, reduce_args);
+        int64_t tile_index = 0;
+        HloValueMap reduce_args;
+        for (auto* hero : reductions) {
+          auto& args = reduce_args[hero];
+          for (auto init : inits.at(hero)) {
+            // If a warp didn't write anything, use the init values instead.
+            auto extract = b.create<PredicatedExtractOp>(
+                read_condition, init, tiles[tile_index++], indices);
+            args.push_back(extract.getResult());
+          }
+        }
+        auto reduced = ShuffleReduce(b, reductions, reduce_args);
+        return owner.EvaluateEpilogue(b, reduced, outputs, *this, group_id,
+                                      symbol_values);
+      });
 }
 
 std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToInputIndexing(
@@ -593,7 +603,7 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
 SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
     ImplicitLocOpBuilder& b, const HloValueMap& results,
     llvm::SmallVector<Value> outputs, EmitterState& state, int group_id,
-    MLIRContext* ctx, ValueRange symbol_values) const {
+    ValueRange symbol_values) const {
   const auto& epilogue = state.computations.epilogues()[group_id];
   if (epilogue.roots.empty()) return outputs;
 
@@ -604,7 +614,7 @@ SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
                              results, epilogue_input_indices, b);
   int first_root_index = state.OutputIndex(epilogue.roots.front(), 0);
   auto thread_has_output = mlir_converter::CheckConstraints(
-      *ComputeThreadIdToOutputIndexing(first_root_index, ctx),
+      *ComputeThreadIdToOutputIndexing(first_root_index, b.getContext()),
       state.thread_and_block_ids, symbol_values, b);
   for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
     auto output_indices = mlir_converter::ApplyIndexing(
@@ -760,34 +770,28 @@ IndexingMap MlirRowReductionFusion::GetSharedMemoryWriteMap(
 llvm::SmallVector<mlir::Value> MlirRowReductionFusion::EmitReduction(
     int group_id, EmitterState& state) const {
   auto& b = state.builder;
-  auto* ctx = state.entry_function.getContext();
   const auto& reductions = reduction_heroes_[group_id];
 
   HloValueMap inits = GetInits(group_id, state);
   auto per_thread =
       state.EmitPerThreadElements(group_id, inits, state.FusionOutputs());
-  auto reduced =
+  per_thread.reduction_scalars =
       state.ShuffleReduce(b, reductions, per_thread.reduction_scalars);
 
   if (GetWarpsPerRow() == 1) {
     // If only a single warp works on an element, we don't need to go through
     // shared memory.
-    return EvaluateEpilogue(b, reduced, std::move(per_thread.outputs), state,
-                            group_id, ctx, /*symbol_values=*/{});
+    return EvaluateEpilogue(b, per_thread.reduction_scalars,
+                            std::move(per_thread.outputs), state, group_id,
+                            /*symbol_values=*/{});
   }
 
-  SmallVector<Value> shared_tiles =
-      state.WriteToSharedMemory(reductions, reduced);
-  HloValueMap reduced_from_shared_memory = state.ReduceSharedMemory(
-      b, shared_tiles, inits, reductions, /*symbol_values=*/{});
-  return EvaluateEpilogue(b, reduced_from_shared_memory, per_thread.outputs,
-                          state, group_id, ctx, /*symbol_values=*/{});
+  return state.ReduceViaSharedMemory(b, group_id, per_thread, inits);
 }
 
 llvm::SmallVector<mlir::Value> MlirMultiRowReductionFusion::EmitReduction(
     int group_id, EmitterState& state) const {
   auto& b = state.builder;
-  auto* ctx = state.entry_function.getContext();
 
   HloValueMap inits = GetInits(group_id, state);
   const auto& reductions = reduction_heroes_[group_id];
@@ -797,7 +801,7 @@ llvm::SmallVector<mlir::Value> MlirMultiRowReductionFusion::EmitReduction(
       state.ShuffleReduce(b, reductions, per_thread.reduction_scalars,
                           WarpSize() / 2 / GetRowsPerWarp());
   return EvaluateEpilogue(b, reduced, std::move(per_thread.outputs), state,
-                          group_id, ctx, /*symbol_values=*/{});
+                          group_id, /*symbol_values=*/{});
 }
 
 MlirColumnReductionFusion::MlirColumnReductionFusion(
@@ -888,25 +892,10 @@ IndexingMap MlirColumnReductionFusion::GetSharedMemoryWriteMap(
 llvm::SmallVector<mlir::Value> MlirColumnReductionFusion::EmitReduction(
     int group_id, EmitterState& state) const {
   auto& b = state.builder;
-  auto* ctx = state.entry_function.getContext();
-
-  const auto& reductions = reduction_heroes_[group_id];
   HloValueMap inits = GetInits(group_id, state);
   auto per_thread =
       state.EmitPerThreadElements(group_id, inits, state.FusionOutputs());
-  SmallVector<Value> shared_tiles =
-      state.WriteToSharedMemory(reductions, per_thread.reduction_scalars);
-
-  auto read_indexing = GetSharedMemoryReductionReadMap(b.getContext());
-  return mlir_converter::EmitLoopNest(
-      b, {state.thread_and_block_ids[0]}, per_thread.outputs, read_indexing,
-      [&](ValueRange outputs, ValueRange dim_values,
-          ValueRange symbol_values) -> SmallVector<Value> {
-        HloValueMap reduced = state.ReduceSharedMemory(
-            b, shared_tiles, inits, reductions, symbol_values);
-        return EvaluateEpilogue(b, reduced, outputs, state, group_id, ctx,
-                                symbol_values);
-      });
+  return state.ReduceViaSharedMemory(b, group_id, per_thread, inits);
 }
 
 std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(

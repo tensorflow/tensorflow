@@ -722,7 +722,3 @@ cc_library(
     srcs = ["cudnn_frontend_helpers.cc"],
     hdrs = ["cudnn_frontend_helpers.h"],
 )
-
-cc_library(
-    name = "cuda_nvptxcompiler",
-)

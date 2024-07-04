@@ -324,6 +324,20 @@ absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
   return new_shape;
 };
 
+// Compute new shape for the binary operand when dot's outer dims
+// are flattened/unflattened with respect to the binary operand dims.
+// Adjusting the operand shape to the dot's shape enables fusion in oneDNN.
+absl::StatusOr<Shape> AdjustBinaryOperandShape(
+    const HloInstruction* operand_instr, const Shape& dot_shape) {
+  if (ShapeUtil::ElementsIn(operand_instr->shape()) !=
+      ShapeUtil::ElementsIn(dot_shape)) {
+    return absl::CancelledError(
+        "Number of elements in operand and dot instruction do not match.");
+  }
+  Shape new_shape = dot_shape;
+  return new_shape;
+};
+
 inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
   // Check if the operand's shape is compatible with matmul for fusion.
   // An operand is fusable if
@@ -353,11 +367,19 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
   //   1. pattern-root -> bf16/f16-to-fp32 convert -> bitcast
   //   2. pattern-root -> bf16/f16-to-fp32 convert
   //   3. pattern-root -> bitcast
-  //   4. pattern-root
+  //   4. pattern-root -> bitcast -> bf16-to-fp32 convert
+  //   5. pattern-root
   auto common = m::AnyOf<HloInstruction>(
-      pu::SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
-          .WithElementType(PrimitiveType::F32),
-      std::move(pattern).WithOneUser());
+                    pu::SupportedConvert(optional_convert,
+                                         std::move(pattern).WithOneUser())
+                        .WithElementType(PrimitiveType::F32),
+                    std::move(pattern).WithOneUser(),
+                    pu::SupportedConvert(
+                        optional_convert,
+                        BitcastWithReshapeSemantics(
+                            optional_bitcast, std::move(pattern).WithOneUser()))
+                        .WithElementType(PrimitiveType::F32))
+                    .WithOneUser();
   return m::AnyOf<HloInstruction>(
       BitcastWithReshapeSemantics(optional_bitcast, common), common);
 }
@@ -499,19 +521,6 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     if (Match(instr, pattern)) {
       if (!IsSupportedType(dot->shape().element_type()))
         return absl::OkStatus();
-      // TODO(intel-tf): Remove the condition below when the fusion Dot +
-      // Add(bias) + Add(e.g., residual) is enabled.
-      if (!dot->backend_config<BackendConfig>()
-               ->mutable_onednn_matmul_config()
-               ->mutable_fusions()
-               ->ops()
-               .empty() &&
-          dot->backend_config<BackendConfig>()
-                  ->mutable_onednn_matmul_config()
-                  ->mutable_fusions()
-                  ->ops(0) == OneDnnFusionConfig::BIAS) {
-        return absl::OkStatus();
-      }
       std::vector<HloInstruction*> new_operands;
       for (auto operand : dot->operands()) {
         new_operands.push_back(operand);
@@ -548,6 +557,31 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         } else {
           VLOG(2) << new_shape.status();
           return absl::OkStatus();
+        }
+      }
+      // For cases where the dot is followed by a reshape, the binary operands
+      // shape can be adjusted, making sure the number of elements match, to
+      // enable the fusion. For example:
+      //      dot = f32[6304,3072] dot(...)
+      //      reshape = f32[32,197,3072] reshape(dot)
+      //      constant = f32[32,197,3072] constant(..)
+      //      add = f32[32,197,3072] add(reshape, constant)
+      // can become
+      //      dot = f32[6304,3072] dot(...)
+      //      constant = f32[32,197,3072] constant(..)
+      //      reshape1 = f32[6304,3072] reshape(constant)
+      //      add = f32[6304,3072] add(dot, reshape1)
+      // and be replaced with the fusion
+      //      fused = f32[6304,3072] custom-call(..)
+      //      bitcast = f32[32,197,3072] bitcast(fused)
+      // clang-format on
+      auto addend_dims = addend->shape().dimensions();
+      auto dot_dims = dot->shape().dimensions();
+      if (optional_dot_bitcast && addend_dims.size() != dot_dims.size()) {
+        auto new_addend_shape = AdjustBinaryOperandShape(addend, dot->shape());
+        if (new_addend_shape.ok()) {
+          addend = addend->AddInstruction(
+              HloInstruction::CreateBitcast(new_addend_shape.value(), addend));
         }
       }
 
