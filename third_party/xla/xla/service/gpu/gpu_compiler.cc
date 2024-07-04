@@ -1909,7 +1909,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
         }
         llvm_modules.push_back({name, std::move(module)});
       },
-      /*PreserveLocals=*/true);
+      /*PreserveLocals=*/true, /*RoundRobin=*/true);
   VLOG(2) << "Single-function cacheable modules: "
           << single_function_module_count << " / " << llvm_modules.size();
 

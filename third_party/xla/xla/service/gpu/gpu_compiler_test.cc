@@ -642,6 +642,20 @@ TEST_F(KernelCacheTest, CacheGrowsWithNewKernels) {
   EXPECT_EQ(CacheEntryCount(), 2);
 }
 
+TEST_F(KernelCacheTest, AllKernelsAreCachedBecauseSplitModuleUsesRoundRobin) {
+  EXPECT_FALSE(CacheFileExists());
+  EXPECT_TRUE(Run(R"(
+  ENTRY e {
+    p = s8[] parameter(0)
+    n = s8[] negate(p)
+    a = s8[] add(n, n)
+    s = s8[] subtract(p, a)
+    ROOT _ = s8[] multiply(s, p)
+  })",
+                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(CacheEntryCount(), 4);
+}
+
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
