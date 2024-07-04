@@ -81,6 +81,23 @@ TEST_F(ConvolutionTest, Simple3DTestBF16) {
   MatchOptimizedHlo(convolution_module_str, conv_rewrite_str_);
 }
 
+TEST_F(ConvolutionTest, Simple2DTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+
+  const char* convolution_module_str = R"(
+  HloModule convolution.test.f16
+  ENTRY convolution.test.bf16 {
+    p0 = f16[8,4,5,5,1] parameter(0)
+    p1 = f16[3,3,3,1,32] parameter(1)
+    ROOT conv = f16[8,4,5,5,32] convolution(p0, p1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+})";
+
+  EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(convolution_module_str, conv_rewrite_str_);
+}
+
 }  // namespace cpu
 }  // namespace xla
 

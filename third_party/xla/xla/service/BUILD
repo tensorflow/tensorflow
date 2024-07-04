@@ -7745,6 +7745,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         ":hlo_pass",
+        "//xla/service/cpu:onednn_convolution_rewriter",
         "//xla/service/cpu:onednn_matmul_rewriter",
     ],
 )
