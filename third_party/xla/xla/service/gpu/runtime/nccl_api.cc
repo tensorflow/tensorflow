@@ -368,7 +368,7 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
                               absl::Span<const DeviceRank> ranks,
                               const Config& config) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
-          << " devices; hash(id)=" << absl::HashOf(clique_id);
+          << " devices; fingerprint(id)=" << clique_id.fingerprint();
 
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
@@ -376,8 +376,8 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
 #endif
   if (config.max_nchannels > 0) {
     comm_config.maxCTAs = config.max_nchannels;
-    VLOG(1) << "Maximum number of channels for hash(id)="
-            << absl::HashOf(clique_id) << " is set to: " << comm_config.maxCTAs;
+    VLOG(1) << "Maximum number of channels for fingerprint(id)="
+            << clique_id.fingerprint() << " is set to: " << comm_config.maxCTAs;
   }
 
   std::vector<ncclComm_t> comm_handles;
@@ -389,7 +389,8 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < ranks.size(); ++i) {
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << nranks << "; hash(id)=" << absl::HashOf(clique_id);
+            << " of " << nranks
+            << "; fingerprint(id)=" << clique_id.fingerprint();
 
     se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
 
