@@ -705,6 +705,43 @@ ENTRY %reduce {
   }
 }
 
+TEST_F(ShardingPropagationTest, ManualTupleReduceForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%minmax_func {
+  %lhs_value = f32[] parameter(0)
+  %rhs_value = f32[] parameter(2)
+  %compare.2 = pred[] compare(%lhs_value, %rhs_value), direction=GT
+  %select.4 = f32[] select(%compare.2, %lhs_value, %rhs_value)
+  %lhs_index = s32[] parameter(1)
+  %rhs_index = s32[] parameter(3)
+  %select.5 = s32[] select(%compare.2, %lhs_index, %rhs_index)
+  ROOT %tuple.2 = (f32[], s32[]) tuple(%select.4, %select.5)
+}
+ENTRY %reduce {
+  get-tuple-element.416 = f32[2,1,128]{2,1,0} parameter(0), sharding={manual}
+  get-tuple-element.417 = s32[2,1,128]{2,1,0} parameter(1), sharding={manual}
+  constant.3793 = f32[] constant(0)
+  constant.3795 = s32[] constant(0)
+  reduce.418 = (f32[2,1]{1,0}, s32[2,1]{1,0}) reduce(
+    get-tuple-element.416, get-tuple-element.417, constant.3793, constant.3795),
+    dimensions={2}, to_apply=minmax_func
+  ROOT %copy = (f32[2,1]{1,0}, s32[2,1]{1,0}) copy(%reduce.418)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "reduce.418");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{{manual}, {manual}}"));
+}
+
 TEST_P(ParameterizedMetadataTest, ShardedReduceForwardPass) {
   const char* const hlo_string = R"(
 HloModule module

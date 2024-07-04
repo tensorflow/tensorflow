@@ -1313,8 +1313,16 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
   };
   auto* reduce = Cast<HloReduceInstruction>(instruction);
   bool changed = false;
-  for (HloInstruction* operand : reduce->inputs()) {
+  for (int64_t i = 0; i != reduce->inputs().size(); ++i) {
+    HloInstruction* operand = reduce->inputs()[i];
     if (!hlo_sharding_util::IsSpatiallyPartitioned(operand)) {
+      continue;
+    }
+    if (operand->sharding().IsManual()) {
+      changed |= MaybeImproveInstructionSubSharding(
+          operand->sharding(), reduce, {i}, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/
+          ComputeNonRootUsers(instruction) == 1);
       continue;
     }
     if (operand->sharding().IsReplicated() ||
