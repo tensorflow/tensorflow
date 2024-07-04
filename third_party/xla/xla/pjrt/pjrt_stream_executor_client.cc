@@ -2289,7 +2289,7 @@ absl::StatusOr<TupleHandle> MakeTupleHelper(
 
 // Converts a ScopedShapedBuffer returned from an execution into a
 // PjRtBuffer.
-std::unique_ptr<PjRtBuffer> OutputBufferHelper(
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
     ScopedShapedBuffer* result_buffer,
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtClient* client,
     PjRtDevice* device, LocalDeviceState* local_device,
@@ -2297,15 +2297,25 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
   std::shared_ptr<TrackedDeviceBuffer> out_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
                                                   {definition_event});
-  Shape shape = result_buffer->on_device_shape();
+  const Shape& shape = result_buffer->on_device_shape();
   PjRtMemorySpace* memory_space =
       device->default_memory_space().value_or(nullptr);
-  if (shape.has_layout() &&
-      shape.layout().memory_space() == Layout::kHostMemorySpace) {
-    absl::StatusOr<PjRtMemorySpace*> memory_space_or =
-        device->memory_space_by_kind(PinnedHostMemorySpace::kKind);
-    if (memory_space_or.ok()) {
-      memory_space = memory_space_or.value();
+  if (shape.has_layout()) {
+    switch (shape.layout().memory_space()) {
+      case Layout::kDefaultMemorySpace:
+        // Nothing to do, we have already set the default memory space.
+        break;
+      case Layout::kHostMemorySpace: {
+        TF_ASSIGN_OR_RETURN(
+            memory_space,
+            tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                ->memory_space_by_kind_id(PinnedHostMemorySpace::kKindId));
+        break;
+      }
+      default:
+        return absl::InternalError(
+            absl::StrCat("Unsupported memory space in output layout: ",
+                         shape.layout().memory_space()));
     }
   }
   auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
@@ -2935,7 +2945,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   return std::move(result_buffer_or_status).value().ConsumeResult();
 }
 
-std::vector<std::unique_ptr<PjRtBuffer>>
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     int device_ordinal, const ExecuteOptions& options,
     ScopedShapedBuffer result_buffer,
@@ -2953,9 +2963,11 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     // in result_buffer.
     for (int i = 0; i < tuple_count; ++i) {
       ScopedShapedBuffer tuple_buffer = result_buffer.TakeSubTree({i});
-      outputs.push_back(OutputBufferHelper(&tuple_buffer, definition_event,
-                                           client_, device, device_state,
-                                           buffers_to_release));
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtBuffer> buffer,
+          OutputBufferHelper(&tuple_buffer, definition_event, client_, device,
+                             device_state, buffers_to_release));
+      outputs.push_back(std::move(buffer));
     }
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
       // Don't release the root buffer until after execution completes.
@@ -2967,9 +2979,11 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
           });
     }
   } else {
-    outputs.push_back(OutputBufferHelper(&result_buffer, definition_event,
-                                         client_, device, device_state,
-                                         buffers_to_release));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        OutputBufferHelper(&result_buffer, definition_event, client_, device,
+                           device_state, buffers_to_release));
+    outputs.push_back(std::move(buffer));
   }
   return outputs;
 }
@@ -3075,9 +3089,11 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
       std::make_shared<BufferSequencingEvent>(client_->thread_pool());
   definition_event->SetSequencingEvent(std::move(event_or).value(), stream);
   std::vector<std::shared_ptr<TrackedDeviceBuffer>> buffers_to_release;
-  std::vector<std::unique_ptr<PjRtBuffer>> outputs = MakeOutputBuffers(
-      device_ordinal, options, std::move(result_buffer), definition_event,
-      device, compute_callbacks, buffers_to_release);
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<PjRtBuffer>> outputs,
+      MakeOutputBuffers(device_ordinal, options, std::move(result_buffer),
+                        definition_event, device, compute_callbacks,
+                        buffers_to_release));
 
   for (PjRtStreamExecutorBuffer::ScopedHold& b : device_buffers) {
     // prefer_to_retain_reference=false because when using the
