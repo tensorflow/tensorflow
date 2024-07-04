@@ -19,9 +19,9 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <limits>
-#include <random>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -196,24 +196,13 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
-  static constexpr size_t kRandomInputSize = 2048;
-
  public:
   Exhaustive32BitOrLessUnaryTest()
-      : input_lower_bounder_(0),
-        input_upper_bounder_(0),
-        special_input_bounder_(false),
-        eup_version_(xla::exhaustive_op_test::GetEupVersion()) {}
+      : eup_version_(xla::exhaustive_op_test::GetEupVersion()) {}
 
  public:
   // Sets error parameters appropriately for testing tan.
   void SetParamsForTan();
-
-  void SetBounder(const float lower_bounder, const float upper_bounder) {
-    input_lower_bounder_ = lower_bounder;
-    input_upper_bounder_ = upper_bounder;
-    special_input_bounder_ = true;
-  }
 
   bool IsGpu(const std::string& platform) const { return platform == "CUDA"; }
   bool IsCpu(const std::string& platform) const { return platform == "Host"; }
@@ -233,12 +222,7 @@ class Exhaustive32BitOrLessUnaryTest
 
  private:
   int64_t GetInputSize() override {
-    int64_t begin, end;
-    if (special_input_bounder_) {
-      return kRandomInputSize;
-    } else {
-      std::tie(begin, end) = GetParam();
-    }
+    auto [begin, end] = GetParam();
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     return end - begin;
   }
@@ -250,20 +234,10 @@ class Exhaustive32BitOrLessUnaryTest
   // the same bit as the type being tested, if needed, and then bitcasted to the
   // type being tested.
   void FillInput(std::array<Literal, 1>* input_literal) override {
-    int64_t begin, end;
-    if (special_input_bounder_) {
-      begin = input_lower_bounder_;
-      end = input_upper_bounder_;
-      FillRandomInput(input_literal, begin, end);
-    } else {
-      std::tie(begin, end) = GetParam();
-      FillNormalInput(input_literal, begin, end);
-    }
-  }
-  void FillNormalInput(std::array<Literal, 1>* input_literal,
-                       const int64_t begin, const int64_t end) {
     using IntegralT =
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
+
+    auto [begin, end] = GetParam();
     int64_t input_size = (*input_literal)[0].element_count();
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     CHECK_EQ(input_size, end - begin);
@@ -276,24 +250,6 @@ class Exhaustive32BitOrLessUnaryTest
     }
   }
 
-  void FillRandomInput(std::array<Literal, 1>* input_literal,
-                       const int64_t begin, const int64_t end) {
-    absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
-
-    uint32_t size = kRandomInputSize;
-    NativeT inputs[kRandomInputSize];
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dist(static_cast<double>(begin),
-                                          static_cast<double>(end));
-    for (uint32_t i = 0; i < size; ++i) {
-      inputs[i] = NativeT(dist(gen));
-      input_arr[i] = inputs[i];
-    }
-  }
-  float input_lower_bounder_;
-  float input_upper_bounder_;
-  bool special_input_bounder_;
   const int eup_version_;
 };
 
@@ -404,8 +360,12 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Logistic, {
     };
   }
   EvaluateOp fn = +[](float x) { return 1.0f / (1.0f + std::exp(-x)); };
-  auto range_checker =
-      +[](NativeT actual) { return !(actual < -1 || actual > 1); };
+  auto range_checker = +[](NativeInputs in, NativeT out) {
+    if (Eigen::numext::isnan(in[0])) {
+      return Eigen::numext::isnan(out);
+    }
+    return Eigen::numext::abs(out) <= 1.0f;
+  };
   Run(Logistic, fn, error_spec_gen, range_checker);
 })
 
@@ -531,7 +491,8 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cosh, {
       return ErrorSpec{.abs_err = 0, .rel_err = 100 * eps};
     };
   }
-  auto range_checker = +[](NativeT actual) { return !(actual < 1); };
+  auto range_checker =
+      +[](NativeInputs in, NativeT actual) { return !(actual < 1); };
   Run(Cosh, std::cosh, error_spec_gen, range_checker);
 })
 
@@ -555,14 +516,18 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
       return ErrorSpec{.abs_err = 5e-4, .rel_err = 0};
     };
   }
-  auto range_checker =
-      +[](NativeT actual) { return !(actual < -1 || actual > 1); };
-  Run(Tanh, std::tanh, error_spec_gen, range_checker);
+  Run(Tanh, std::tanh, error_spec_gen,
+      [](NativeInputs in, NativeT out) -> bool {
+        if (Eigen::numext::isnan(in[0])) {
+          return Eigen::numext::isnan(out);
+        }
+        return Eigen::numext::abs(out) <= 1.0f;
+      });
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cos, {
   auto range_checker =
-      +[](NativeT actual) { return !(actual < -1 || actual > 1); };
+      +[](NativeInputs in, NativeT out) { return !(out < -1 || out > 1); };
   Run(
       Cos, std::cos,
       +[](NativeT) {
@@ -575,7 +540,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cos, {
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sin, {
   auto range_checker =
-      +[](NativeT actual) { return !(actual < -1 || actual > 1); };
+      +[](NativeInputs in, NativeT out) { return !(out < -1 || out > 1); };
   Run(
       Sin, std::sin,
       +[](NativeT) {

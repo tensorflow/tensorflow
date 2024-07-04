@@ -153,12 +153,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   using InputLiterals = std::array<Literal, N>;
 
+  // N data items representing a single input to an XLA function.
+  using NativeInputs = std::array<NativeT, N>;
+
  private:
   // N spans corresponding to the list of literal data values.
   using NativeInputsList = std::array<absl::Span<const NativeT>, N>;
-
-  // N data items representing a single input to an XLA function.
-  using NativeInputs = std::array<NativeT, N>;
 
   // N data items representing a single input to an interpreter backend
   // function.
@@ -171,7 +171,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   using ErrorSpecGen = typename ErrorSpecGenWrapper<T, N>::type;
   using EvaluateOp = typename EvaluateOpWrapper<NativeRefT, N>::type;
   using EnqueueOp = typename EnqueueOpWrapper<XlaInputs, N>::type;
-  using OutputRangeCheck = std::function<bool(NativeT)>;
+  using OutputRangeCheck = std::function<bool(NativeInputs, NativeT)>;
 
   explicit ExhaustiveOpTestBase()
       : ty_(T), platform_(client_->platform()->Name()) {

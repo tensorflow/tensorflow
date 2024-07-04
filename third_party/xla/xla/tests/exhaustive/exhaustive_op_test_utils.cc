@@ -379,7 +379,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
         static_cast<NativeT>(CallOperation(evaluate_op, inputs_ref_ty));
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
 
-    if (check_valid_range != nullptr && !check_valid_range(actual)) {
+    if (check_valid_range != nullptr && !check_valid_range(inputs, actual)) {
       PrintMismatch(&mismatches, [&] {
         return absl::StrFormat(
             "mismatch on input: %s. output: %s, output is not in valid range",
