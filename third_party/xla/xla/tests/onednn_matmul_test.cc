@@ -1539,6 +1539,36 @@ TEST_F(MatmulTest, ConsecutiveBinaryAdd) {
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
 }
 
+TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.nonscalar.test.1
+  ENTRY matmul.nonscalar.test.f32 {
+    arg.0 = f32[16,400,500] parameter(0)
+    arg.1 = f32[16,500,3] parameter(1)
+    onednn.matmul.0 = f32[16,400,3] dot(arg.0, arg.1), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+    constant.0 = f32[] constant(6)
+    broadcast.0 = f32[16,400,3] broadcast(constant.0), dimensions={}
+    mult.0 = f32[16,400,3] multiply(onednn.matmul.0, broadcast.0)
+    constant.1 = f32[3]{0} constant({0.625, 0.875, 0.375})
+    broadcast.2 = f32[16,400,3] broadcast(constant.1), dimensions={2}
+    ROOT add.0 = f32[16,400,3] add(mult.0, broadcast.2)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["LINEAR"]
+  ; CHECK-DAG:     }
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
 }  // namespace cpu
 }  // namespace xla
 

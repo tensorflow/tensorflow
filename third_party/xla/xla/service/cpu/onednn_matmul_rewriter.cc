@@ -559,20 +559,24 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
 
+      // TODO(intel-tf): Remove this restriction once oneDNN has an optimized
+      // implementation for broadcasted add across all dimensions.
+      OneDnnFusionConfig_FusionKind kind = OneDnnFusionConfig::UNDEFINED;
+      kind = (addend->shape().rank() == 1)
+                 ? (dot->backend_config<BackendConfig>()
+                            ->mutable_onednn_matmul_config()
+                            ->fusions()
+                            .ops()
+                            .empty()
+                        ? OneDnnFusionConfig::BIAS
+                        : OneDnnFusionConfig::UNDEFINED)
+                 : OneDnnFusionConfig::BINARY_ADD;
+      if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
+
       auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
           dot->CloneWithNewOperands(dot->shape(), new_operands)));
 
-      OneDnnFusionConfig_FusionKind kind;
       auto backend_config = matmul_call->backend_config<BackendConfig>();
-      if (backend_config->mutable_onednn_matmul_config()
-              ->fusions()
-              .ops()
-              .empty() &&
-          addend->shape().rank() == 1) {
-        kind = OneDnnFusionConfig::BIAS;
-      } else {
-        kind = OneDnnFusionConfig::BINARY_ADD;
-      }
       backend_config->mutable_onednn_matmul_config()
           ->mutable_fusions()
           ->add_ops(kind);
