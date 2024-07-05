@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -81,9 +82,8 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
       mlir::MLIRContext* mlir_context) const override;
 
   llvm::SmallVector<mlir::Value> EvaluateEpilogue(
-      mlir::ImplicitLocOpBuilder& b, const HloValueMap& results,
-      llvm::SmallVector<mlir::Value> outputs, EmitterState& state, int group_id,
-      mlir::ValueRange symbol_values) const;
+      const HloValueMap& results, llvm::SmallVector<mlir::Value> outputs,
+      EmitterState& state, int group_id, mlir::ValueRange symbol_values) const;
 
   virtual llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const = 0;

@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
@@ -39,12 +41,16 @@ using ::testing::SizeIs;
 template <typename EmitterType>
 class ReductionTest : public MlirEmitterTestBase<EmitterType> {
  protected:
-  void TestBijection(const IndexingMap& map, absl::Span<int64_t const> shape) {
+  absl::Status TestBijection(const IndexingMap& map,
+                             absl::Span<int64_t const> shape) {
     std::vector<Interval> intervals;
     for (int64_t size : shape) {
       intervals.push_back({0, size - 1});
     }
-    TF_EXPECT_OK(VerifyBijection(map, intervals)) << map.ToString();
+    auto status = VerifyBijection(map, intervals);
+    if (status.ok()) return status;
+    return absl::FailedPreconditionError(
+        absl::StrCat(status.message(), " in map ", map.ToString()));
   }
 };
 
@@ -177,10 +183,11 @@ constexpr std::string_view kRowReductionSideOutput = R"(
 
 TEST_F(MlirRowReductionTest, VariadicRowReductionIndexing) {
   auto fusion = GetEmitter(kVariadicRowReduction);
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                {2, 3, 2048});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                {2, 3});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      {2, 3, 2048}));
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_), {2, 3}));
 }
 
 TEST_F(MlirRowReductionTest, VariadicRowReductionCorrectness) {
@@ -294,10 +301,12 @@ TEST_F(MlirRowReductionTest, RowReduceMOFGroups) {
 
 TEST_F(MlirRowReductionTest, F64RowReductionIndexing) {
   auto fusion = GetEmitter(kF64RowReduction);
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                /*shape=*/{100, 128});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                /*shape=*/{100});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      /*shape=*/{100, 128}));
+  TF_EXPECT_OK(
+      TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
+                    /*shape=*/{100}));
 }
 
 TEST_F(MlirRowReductionTest, F64RowReductionIr) {
@@ -314,10 +323,12 @@ TEST_F(MlirRowReductionTest, F64RowReductionCorrectness) {
 TEST_F(MlirRowReductionTest, RowReductionMinorAndMajorIndexing) {
   auto fusion = GetEmitter(kRowReductionMinorAndMajor);
 
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                /*shape=*/{7, 100, 128});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                /*shape=*/{100});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      /*shape=*/{7, 100, 128}));
+  TF_EXPECT_OK(
+      TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
+                    /*shape=*/{100}));
 }
 
 TEST_F(MlirRowReductionTest, RowReductionMinorAndMajorCorrectness) {
@@ -328,10 +339,11 @@ TEST_F(MlirRowReductionTest, RowReductionMinorAndMajorCorrectness) {
 TEST_F(MlirMultiRowReductionTest, MultiRowReductionIndexing) {
   auto fusion = GetEmitter(kMultiRowReductionX8);
 
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                {1024, 4});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                {1024});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      {1024, 4}));
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_), {1024}));
   EXPECT_EQ(Product(GetLoopTripCounts(
                 *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_))),
             1);
@@ -420,12 +432,14 @@ TEST_F(MlirMultiRowReductionTest, NonTrivialEpilogueCorrectness) {
 
 TEST_F(MlirRowReductionTest, SideOutputIndexing) {
   auto fusion = GetEmitter(kRowReductionSideOutput);
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                {8, 2048});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                {8});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context_),
-                {8, 2048});  // Side output.
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      {8, 2048}));
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_), {8}));
+  TF_EXPECT_OK(
+      TestBijection(*fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context_),
+                    {8, 2048}));  // Side output.
 }
 
 TEST_F(MlirRowReductionTest, SideOutputIr) {
@@ -540,10 +554,11 @@ TEST_F(MlirRowReductionTest, OutputLayoutCorrectness) {
     })";
 
   auto fusion = GetEmitter(kHloString);
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                {17, 19, 127});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                {17, 19});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      {17, 19, 127}));
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_), {17, 19}));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -830,10 +845,11 @@ TEST_F(MlirColumnReductionTest, ThreadIndexingColumn_Complex) {
 TEST_F(MlirMultiRowReductionTest, VectorizedX4Indexing) {
   auto fusion = GetEmitter(kMultiRowReductionX2VectorX4);
 
-  TestBijection(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
-                {76800, 16});
-  TestBijection(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_),
-                {76800});
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context_),
+      {76800, 16}));
+  TF_EXPECT_OK(TestBijection(
+      *fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_), {76800}));
   EXPECT_THAT(GetLoopTripCounts(*fusion->ComputeThreadIdToInputIndexing(
                   0, 0, &mlir_context_)),
               ElementsAre(1 /* major reduced */, 4 /* vector size */));
