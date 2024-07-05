@@ -215,6 +215,7 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
 
     constraints = ConstraintExpression::And(std::move(constraints),
                                             symbolic_tile->constraints());
+    constraints.Simplify();
 
     if (!constraints.is_satisfiable()) {
       return FusionDecision{} << "Fusion has unsatisfiable constraints";

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/symbolic_tile.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -25,8 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -38,14 +37,13 @@ namespace gpu {
 namespace {
 
 using ::llvm::SmallVector;
-using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 using ::testing::ElementsAre;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
 using ::testing::Optional;
 using ::testing::SizeIs;
 
+using Constraint = ConstraintExpression::Constraint;
 using ConjointConstraints = ConstraintExpression::ConjointConstraints;
 
 MATCHER_P(MatchSymbolicTileString, symbolic_tile_string, "") {
@@ -764,6 +762,12 @@ class ConstraintExpressionTest : public IndexingTestBase {
  public:
   using ConstraintVector = std::vector<std::pair<std::string, Interval>>;
 
+  ConstraintExpression::Constraint GetConstraint(const std::string& string_expr,
+                                                 int64_t lower, int64_t upper) {
+    return {ParseAffineExpr(string_expr, &mlir_context_),
+            Interval{lower, upper}};
+  }
+
   // Constructs a conjoint constraint from a vector of pairs containing a string
   // representation of an affine expression and an interval.
   ConjointConstraints GetConjointConstraints(
@@ -1133,6 +1137,30 @@ TEST_F(ConstraintExpressionTest, SimplifyKeepsUnsatisfiableUnchanged) {
   constraints.Simplify();
 
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
+}
+
+TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
+  Constraint c0 = GetConstraint("d0", 0, 0);
+  Constraint c1 = GetConstraint("d1", 1, 1);
+
+  ConjointConstraints conjunction_0{c0, c1};
+  ConjointConstraints conjunction_1{c1, c0};
+  ConjointConstraints conjunction_2{c0};
+
+  ConstraintExpression constraints;
+  constraints.Or(conjunction_0);
+  constraints.Or(conjunction_1);
+  constraints.Or(conjunction_2);
+  constraints.Or(conjunction_1);
+  constraints.Or(conjunction_0);
+
+  constraints.Simplify();
+
+  // We could simplify those contraints even further to `d0 in [0, 1)` by
+  // checking that one conjunction is a subset of the other, but we don't do
+  // that yet.
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "d0 in [0, 1) || d0 in [0, 1) && d1 in [1, 2)"));
 }
 
 }  // namespace

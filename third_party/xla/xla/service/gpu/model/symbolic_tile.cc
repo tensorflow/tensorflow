@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_join.h"
@@ -46,6 +47,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::llvm::SmallVector;
 using ::mlir::AffineConstantExpr;
 using ::mlir::AffineDimExpr;
 using ::mlir::AffineExpr;
@@ -927,6 +929,36 @@ SimplifyConjointConstraints(const ConjointConstraints& conjunction) {
   if (result.empty()) {
     return AlwaysSatisfied{};
   }
+
+  // A comparator to canonicalize the order of constraints, so we can easily
+  // check if two ConjointConstraints are equal. The order is arbitrary (doesn't
+  // depend on the structure of the constraints) and can change between runs,
+  // but is stable during a single execution. The printed version of the
+  // constraints relies on sorting strings, so string representation will be
+  // always the same.
+  auto comp = [](const Constraint& a, const Constraint& b) {
+    if (a.expr != b.expr) {
+      // AffineExpr are deduplicated and stored as immutable objects in
+      // MLIRContext. Comparing pointers gives us a fast and easy way to get
+      // stable ordering.
+      CHECK_EQ(a.expr.getContext(), b.expr.getContext())
+          << "AffineExpr should be from the same MLIRContext.";
+      return a.expr.getImpl() < b.expr.getImpl();
+    }
+
+    // Default comparison for intervals will return nullopt if intervals are
+    // overlapping. Here we do strict ordering by comparing lower bounds first
+    // and then upper bounds.
+    if (a.interval.lower != b.interval.lower) {
+      return a.interval.lower < b.interval.lower;
+    }
+
+    return a.interval.upper < b.interval.upper;
+  };
+
+  // Canonicalize constraints order.
+  std::sort(result.begin(), result.end(), comp);
+
   return result;
 }
 
@@ -936,7 +968,8 @@ ConstraintExpression SimplifyConstraintExpression(
       constraint_expression.IsAlwaysSatisfied()) {
     return constraint_expression;
   }
-  auto result = ConstraintExpression::GetUnsatisfiableConstraintExpression();
+
+  SmallVector<ConjointConstraints, 2> simplified_disjoint_conjoint_constraints;
   for (const auto& conjunction :
        constraint_expression.DisjointConjointConstraints()) {
     auto simplified_conjunction = SimplifyConjointConstraints(conjunction);
@@ -946,8 +979,24 @@ ConstraintExpression SimplifyConstraintExpression(
     if (std::holds_alternative<AlwaysSatisfied>(simplified_conjunction)) {
       return ConstraintExpression();
     }
-    result.Or(std::get<ConjointConstraints>(simplified_conjunction));
+    simplified_disjoint_conjoint_constraints.push_back(
+        std::get<ConjointConstraints>(std::move(simplified_conjunction)));
   }
+
+  // Find and remove redundant constraints.
+  absl::flat_hash_set<ConjointConstraints> unique_conjunctions;
+  for (const auto& conjunction : simplified_disjoint_conjoint_constraints) {
+    if (unique_conjunctions.contains(conjunction)) {
+      continue;
+    }
+    unique_conjunctions.insert(std::move(conjunction));
+  }
+
+  auto result = ConstraintExpression::GetUnsatisfiableConstraintExpression();
+  for (auto& conjoint_constraints : unique_conjunctions) {
+    result.Or(std::move(conjoint_constraints));
+  }
+
   return result;
 }
 

@@ -563,6 +563,7 @@ cc_library(
         ":affine_map_printer",
         ":indexing_analysis",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -586,7 +587,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:test",
     ],
 )
