@@ -686,26 +686,22 @@ cc_library(
 
 cc_library(
     name = "gpublas_lt_matmul_thunk",
-    srcs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = if_gpu_is_configured([
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+    srcs = ["gpublas_lt_matmul_thunk.cc"],
+    hdrs = ["gpublas_lt_matmul_thunk.h"],
+    deps = [
+        "//xla:status_macros",
         "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/runtime:thunk",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_blas_lt",
-        "@local_tsl//tsl/platform:logging",
-    ]) + [
-        "//xla:status_macros",
-        "//xla/service/gpu:buffer_allocations",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

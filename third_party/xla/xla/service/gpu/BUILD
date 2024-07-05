@@ -355,6 +355,7 @@ cc_library(
         "//xla/service/gpu/runtime:fft_thunk",
         "//xla/service/gpu/runtime:fused_mha_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
+        "//xla/service/gpu/runtime:gpublas_lt_matmul_thunk",
         "//xla/service/gpu/runtime:infeed_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/gpu/runtime:nccl_all_gather_thunk",
@@ -420,7 +421,6 @@ cc_library(
         "//xla/service/gpu/fusions",
         "//xla/service/gpu/runtime:cholesky_thunk",
         "//xla/service/gpu/runtime:cub_sort_thunk",
-        "//xla/service/gpu/runtime:gpublas_lt_matmul_thunk",
         "//xla/service/gpu/runtime:triangular_solve_thunk",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
