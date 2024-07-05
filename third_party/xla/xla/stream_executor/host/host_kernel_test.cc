@@ -272,9 +272,10 @@ static void BM_HostKernelSyncLaunch(benchmark::State& state) {
   int32_t tdim_x = state.range(0);
 
   HostKernel kernel(/*arity=*/0, NoOp);
+  absl::Span<const SE_HOST_KernelArg> args;
+
   for (auto _ : state) {
-    benchmark::DoNotOptimize(kernel.Launch(
-        ThreadDim(tdim_x), absl::Span<const SE_HOST_KernelArg>()));
+    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(tdim_x), args));
   }
 }
 
@@ -284,13 +285,15 @@ static void BM_HostKernelAsyncLaunch(benchmark::State& state) {
   auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
 
+  auto task_runner = [&thread_pool](HostKernel::Task task) {
+    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+  };
+
   HostKernel kernel(/*arity=*/0, NoOp);
+  absl::Span<const SE_HOST_KernelArg> args;
+
   for (auto _ : state) {
-    auto event =
-        kernel.Launch(ThreadDim(tdim_x), absl::Span<const SE_HOST_KernelArg>(),
-                      [&](auto task) {
-                        thread_pool->Schedule(ToCopyableTask(std::move(task)));
-                      });
+    auto event = kernel.Launch(ThreadDim(tdim_x), args, task_runner);
     tsl::BlockUntilReady(event);
   }
 }

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
 
@@ -63,8 +62,7 @@ static absl::InlinedVector<SE_HOST_KernelArg, 8> ConvertBuffersToKernelArgs(
 namespace {
 // Keep a state of an in-flight asynchronous kernel execution on a heap to keep
 // it alive until the last task is done.
-class HostKernelExecuteState
-    : public tsl::ReferenceCounted<HostKernelExecuteState> {
+class HostKernelExecuteState {
  public:
   HostKernelExecuteState(HostKernel::TaskRunner task_runner,
                          SE_HOST_Kernel* kernel, ThreadDim thread_dims,
@@ -171,13 +169,17 @@ tsl::AsyncValueRef<LaunchEvent> HostKernel::Launch(
                : tsl::MakeErrorAsyncValueRef(std::move(launched));
   }
 
-  // Allocate a control structure that will orchestrate kernel execution.
-  auto state = tsl::MakeRef<HostKernelExecuteState>(std::move(task_runner),
-                                                    kernel_, thread_dims, args);
-
+  // Create host kernel execute state on heap and kick-off execution.
+  auto state = std::make_unique<HostKernelExecuteState>(
+      std::move(task_runner), kernel_, thread_dims, args);
   state->CallAsync(/*start_index=*/0, /*end_index=*/num_tasks);
 
-  return state->event();
+  // Move execute state to the execute event callback to ensure that it is kept
+  // alive while host kernel has pending tasks.
+  auto execute_event = state->event();
+  execute_event.AndThen([state = std::move(state)] {});
+
+  return execute_event;
 }
 
 HostKernelExecuteState::HostKernelExecuteState(
@@ -241,7 +243,7 @@ void HostKernelExecuteState::CallAsync(uint64_t start_index,
   CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
   while (end_index - start_index > 1) {
     uint64_t mid_index = (start_index + end_index) / 2;
-    task_runner_([self = tsl::FormRef(this), mid_index, end_index] {
+    task_runner_([self = this, mid_index, end_index] {
       self->CallAsync(mid_index, end_index);
     });
     end_index = mid_index;
