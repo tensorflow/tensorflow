@@ -21,18 +21,22 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -42,7 +46,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -484,9 +487,9 @@ class VariableHolder {
   void ClearTensorIdToGlobalId() { tensor_id_to_global_id_.clear(); }
 
  private:
-  std::unordered_map<std::pair<std::string, std::string>, uint32_t, PairHash>
+  absl::flat_hash_map<std::pair<std::string, std::string>, uint32_t, PairHash>
       variable_name_to_global_id_;
-  std::unordered_map<int, uint32_t> tensor_id_to_global_id_;
+  absl::flat_hash_map<int, uint32_t> tensor_id_to_global_id_;
   // Variable tensors need to be defined in the same order across all XNNPACK
   // subgraphs, so we want the global ids to be ordered.
   std::map<uint32_t, const TfLiteTensor*> global_id_to_dims_and_type_;
@@ -719,14 +722,14 @@ class Delegate {
   std::vector<char> static_unpacked_data_;
   // Mapping from a tensor index for a quasi-static tensor to the offset to
   // its unpacked data within static_unpacked_data_.
-  std::unordered_map<int, size_t> static_unpacked_data_map_;
+  absl::flat_hash_map<int, size_t> static_unpacked_data_map_;
   // Set of indices of nodes which unpack static data, e.g. Dequantize
   // operators which convert FP16 static weights to FP32. These nodes are simply
   // ignored in the delegate implementation, because their outputs are
   // pre-unpacked in DelegatePrepare.
-  std::unordered_set<int> static_unpack_nodes_;
+  absl::flat_hash_set<int> static_unpack_nodes_;
   // Set of indices of tensors with unpacked static sparse weights.
-  std::unordered_set<int> static_sparse_weights_;
+  absl::flat_hash_set<int> static_sparse_weights_;
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
   // Thread pool with smart-pointer for lifetime management.
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
@@ -739,7 +742,7 @@ class Delegate {
 
   TfLiteXNNPackDelegateOptions options_{};
   VariableHolder variable_holder_;
-  std::mutex workspace_mutex_;
+  absl::Mutex workspace_mutex_;
 
   // If no weight cache is provided and a cache is set in the delegate options,
   // this will be used as a weight cache.
@@ -753,7 +756,7 @@ class Subgraph {
   // id.
   static TfLiteStatus DefineVariableTensors(
       const Delegate& delegate, xnn_subgraph_t subgraph, TfLiteContext* context,
-      std::unordered_map<uint32_t, uint32_t>& global_id_to_xnnpack_id) {
+      absl::flat_hash_map<uint32_t, uint32_t>& global_id_to_xnnpack_id) {
     for (auto const& it : delegate.GetAllVariableTensors()) {
       const xnn_datatype datatype =
           GetXNNPackDatatype(context, *it.second, it.first);
@@ -822,10 +825,10 @@ class Subgraph {
               ->GetTensorBufferIdentifiers());
     }
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
-    const std::unordered_set<int> inputs(
+    const absl::flat_hash_set<int> inputs(
         &params->input_tensors->data[0],
         &params->input_tensors->data[params->input_tensors->size]);
-    std::unordered_set<int> outputs;
+    absl::flat_hash_set<int> outputs;
     for (int o = 0; o < params->output_tensors->size; o++) {
       const int output_tensor_idx = params->output_tensors->data[o];
       // Exclude quasi-static tensors and shared variable tensors which may have
@@ -835,7 +838,7 @@ class Subgraph {
         outputs.insert(output_tensor_idx);
       }
     }
-    std::unordered_set<int> externals(outputs);
+    absl::flat_hash_set<int> externals(outputs);
 
     TfLiteIntArray* execution_plan;
     if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
@@ -962,13 +965,13 @@ class Subgraph {
     // 7. Define persistent tensor for VAR_HANDLE1 (global id 0, xnn id 1)
     // 8. Create runtime 2, tensor for VAR_HANDLE2 comes before VAR_HANDLE1,
     // which is wrong.
-    std::unordered_map<uint32_t, uint32_t> global_id_to_xnnpack_id;
+    absl::flat_hash_map<uint32_t, uint32_t> global_id_to_xnnpack_id;
     if (DefineVariableTensors(delegate, subgraph.get(), context,
                               global_id_to_xnnpack_id) != kTfLiteOk) {
       return nullptr;
     }
 
-    std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack;
+    absl::flat_hash_map<int, uint32_t> tflite_tensor_to_xnnpack;
     std::vector<int> external_inputs;
     std::vector<int> external_outputs;
     for (int t : tensors) {
@@ -1082,7 +1085,7 @@ class Subgraph {
     }
 
     // Create a set of quasi-static tensors for VisitNode function
-    std::unordered_set<int> quasi_static_tensors;
+    absl::flat_hash_set<int> quasi_static_tensors;
     for (const std::pair<const int, size_t>& entry :
          delegate.static_unpacked_data_map_) {
       quasi_static_tensors.insert(entry.first);
@@ -1157,7 +1160,7 @@ class Subgraph {
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    absl::MutexLock mutex_lock(&delegate->workspace_mutex_);
 
     // The weights cache needs to be finalized only once. Prepare will be called
     // for each partition after all the partitions have been created (therefore
@@ -1225,7 +1228,7 @@ class Subgraph {
 
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
                       Delegate* delegate) {
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    absl::MutexLock mutex_lock(&delegate->workspace_mutex_);
     bool any_pointers_changed = false;
     for (std::pair<int, void*> io_info : externals_) {
       const TfLiteTensor& tensor = context->tensors[io_info.first];
@@ -2625,8 +2628,8 @@ class Subgraph {
   static TfLiteStatus VisitNode(
       xnn_subgraph_t subgraph, Delegate& delegate, TfLiteContext* context,
       TfLiteRegistration* registration, TfLiteNode* node, int node_index,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     // TFLite context used for logging purposes. When we create a new node
     // (subgraph is non-null), logging context is the same as context, and
     // error messages are passed to TFLite. When we detect supported
@@ -2990,7 +2993,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_ABS, node_index));
 
@@ -3029,7 +3032,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteAddParams* add_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_ADD, node_index));
 
@@ -3111,7 +3114,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, Delegate& delegate,
       TfLiteContext* logging_context, int node_index, const TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     if (!delegate.support_variable_ops()) {
       return kTfLiteError;
     }
@@ -3138,7 +3141,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLitePoolParams* pool_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node, 1, 1,
                                  BuiltinOperator_AVERAGE_POOL_2D, node_index));
@@ -3211,7 +3214,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteBatchMatMulParams* params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     // Check whether all required options are supported.
     if (params->adj_x) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -3410,7 +3413,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_CEIL, node_index));
 
@@ -3450,7 +3453,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteConcatenationParams* concat_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node, 2, 5, 1,
                                  BuiltinOperator_CONCATENATION, node_index));
@@ -3554,8 +3557,8 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteConvParams* conv_params,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckConvolutionParams(logging_context, conv_params, node_index));
 
@@ -3771,8 +3774,8 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteDepthwiseConvParams* dwconv_params,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 3, 1, BuiltinOperator_DEPTHWISE_CONV_2D,
         node_index));
@@ -3896,7 +3899,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteDepthToSpaceParams* depth_to_space_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node, 1, 1,
                                  BuiltinOperator_DEPTH_TO_SPACE, node_index));
@@ -3948,7 +3951,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_DEQUANTIZE, node_index));
 
@@ -3992,7 +3995,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteDivParams* div_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_DIV, node_index));
 
@@ -4055,7 +4058,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_ELU, node_index));
 
@@ -4096,8 +4099,8 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       TfLiteTensor* tensors, const TfLiteFullyConnectedParams* fc_params,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckFullyConnectedParams(logging_context, fc_params, node_index));
 
@@ -4342,7 +4345,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_FLOOR, node_index));
 
@@ -4381,7 +4384,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_HARD_SWISH, node_index));
 
@@ -4421,7 +4424,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteLeakyReluParams* leaky_relu_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_LEAKY_RELU, node_index));
 
@@ -4495,7 +4498,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_LOGISTIC, node_index));
 
@@ -4536,7 +4539,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLitePoolParams* pool_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_MAX_POOL_2D, node_index));
 
@@ -4608,7 +4611,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteReducerParams* reducer_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_SUM, node_index));
 
@@ -4723,7 +4726,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_MAXIMUM, node_index));
 
@@ -4770,7 +4773,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteReducerParams* reducer_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_MEAN, node_index));
 
@@ -4909,8 +4912,8 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteTransposeConvParams* deconv_params,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 3, 1, BuiltinOperator_CUSTOM, node_index));
 
@@ -5028,7 +5031,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLitePoolParams* pool_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 2, BuiltinOperator_CUSTOM, node_index));
 
@@ -5096,7 +5099,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLitePoolParams* pool_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_CUSTOM, node_index));
 
@@ -5168,7 +5171,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_MINIMUM, node_index));
 
@@ -5215,7 +5218,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteMulParams* mul_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_MUL, node_index));
 
@@ -5287,7 +5290,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_NEG, node_index));
 
@@ -5326,7 +5329,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_PAD, node_index));
 
@@ -5414,8 +5417,8 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_PRELU, node_index));
 
@@ -5473,7 +5476,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_QUANTIZE, node_index));
 
@@ -5559,7 +5562,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, Delegate& delegate,
       TfLiteContext* logging_context, int node_index, const TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     if (!delegate.support_variable_ops()) {
       return kTfLiteError;
     }
@@ -5598,7 +5601,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, float output_min, float output_max,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_RELU, node_index));
 
@@ -5637,7 +5640,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteReshapeParams* reshape_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     switch (node->inputs->size) {
       case 1:
       case 2:
@@ -5757,7 +5760,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteResizeBilinearParams* resize_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node, 2, 1,
                                  BuiltinOperator_RESIZE_BILINEAR, node_index));
@@ -5841,7 +5844,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_ROUND, node_index));
 
@@ -5880,7 +5883,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     const int input_tensor_index = node->inputs->data[0];
     const int begin_tensor_index = node->inputs->data[1];
     const int size_tensor_index = node->inputs->data[2];
@@ -5979,7 +5982,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteSoftmaxParams* params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     if (params->beta != 1.0f) {
       if (logging_context != nullptr) {
         TF_LITE_KERNEL_LOG(logging_context,
@@ -6028,7 +6031,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteSpaceToDepthParams* space_to_depth_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node, 1, 1,
                                  BuiltinOperator_SPACE_TO_DEPTH, node_index));
@@ -6098,7 +6101,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     const int num_outputs = NumOutputs(node);
     TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits, num_outputs);
     TF_LITE_ENSURE_STATUS(CheckNumInputs(logging_context, node, 2,
@@ -6177,7 +6180,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_SQUARE, node_index));
 
@@ -6220,7 +6223,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_TANH, node_index));
 
@@ -6261,7 +6264,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_TRANSPOSE, node_index));
 
@@ -6315,7 +6318,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_SQRT, node_index));
 
@@ -6354,7 +6357,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 1, 1, BuiltinOperator_RSQRT, node_index));
 
@@ -6386,7 +6389,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_SQUARED_DIFFERENCE,
         node_index));
@@ -6443,7 +6446,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteStridedSliceParams* params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     // Only support strided slice with no ellipsis mask, no new axis mask, and
     // no shrink_axis-mask.
     if (params->ellipsis_mask != 0 || params->new_axis_mask != 0 ||
@@ -6629,7 +6632,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const uint8_t* buffer,
       const size_t buffer_size,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     const float* scale_val = nullptr;
     // ensure 28 bytes as we expect
     // TODO(b/339106680): this reading method may not work for every case.
@@ -6653,7 +6656,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const float* scale_param,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     const TfLiteTensor& query_proj = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, query_proj, node->inputs->data[0], node_index));
@@ -7038,7 +7041,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteSubParams* sub_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
         logging_context, node, 2, 1, BuiltinOperator_SUB, node_index));
 
@@ -7114,8 +7117,8 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors,
       const TfLiteTransposeConvParams* deconv_params,
-      const std::unordered_set<int>& quasi_static_tensors,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+      const absl::flat_hash_set<int>& quasi_static_tensors,
+      const absl::flat_hash_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
         CheckNumInputsAndOutputs(logging_context, node,
                                  /*min_num_inputs=*/3, /*max_num_inputs=*/4,
@@ -7424,9 +7427,9 @@ class Subgraph {
 
  private:
   Subgraph(Delegate& delegate, xnn_runtime_t runtime,
-           const std::unordered_set<int>& externals, std::vector<int>& inputs,
+           const absl::flat_hash_set<int>& externals, std::vector<int>& inputs,
            std::vector<int>& outputs,
-           std::unordered_map<int, uint32_t>& tflite_tensor_to_xnnpack)
+           absl::flat_hash_map<int, uint32_t>& tflite_tensor_to_xnnpack)
       : runtime_(runtime, &xnn_delete_runtime) {
     for (int t : externals) {
       externals_[t] = nullptr;
@@ -7445,7 +7448,7 @@ class Subgraph {
       nullptr, &xnn_delete_runtime};
   // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
   // subgraph to their data locations.
-  std::unordered_map<int, void*> externals_;
+  absl::flat_hash_map<int, void*> externals_;
   // The input tensors to the XNNPack partition. Not all node input tensors
   // are consumed by XNNPack.
   std::vector<int> inputs_;
@@ -7454,7 +7457,7 @@ class Subgraph {
   std::vector<int> outputs_;
   // Mapping from TFLite Tensor IDs for tensors in the delegated subgraph to
   // the XNNPACK ID.
-  std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack_;
+  absl::flat_hash_map<int, uint32_t> tflite_tensor_to_xnnpack_;
   // Memory location to use for 0-size external tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
@@ -7483,11 +7486,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
   // Mapping for quasi-static (unpacked from static) tensor index to the node
   // index that produced it.
-  std::unordered_map<int, int> quasi_static_tensors_producers;
+  absl::flat_hash_map<int, int> quasi_static_tensors_producers;
   // Set of all quasi-static tensors in the execution plan.
-  std::unordered_set<int> quasi_static_tensors;
+  absl::flat_hash_set<int> quasi_static_tensors;
   // Set of quasi-static tensors consumed by the delegated nodes.
-  std::unordered_set<int> quasi_static_tensors_to_unpack;
+  absl::flat_hash_set<int> quasi_static_tensors_to_unpack;
   // Record all VarHandle nodes. At the point of visiting it, we don't know if
   // it can be delegated yet, because we don't know the type of the variable -
   // we rely on ReadVariable/AssignVariable to tell us the type. So the first
@@ -7495,7 +7498,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   // the graph is walked once, we check all VarHandle nodes and decide if we
   // can handle them based on checking the global id of the variable tensor.
   // Maps VarHandle node index to local tensor id (i.e. output tensor id).
-  std::unordered_map<int, int> variable_handles;
+  absl::flat_hash_map<int, int> variable_handles;
 
   TfLiteIntArray* nodes_to_delegate =
       TfLiteIntArrayCreate(execution_plan->size);
@@ -7591,7 +7594,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     if (Subgraph::VisitNode(
             /*subgraph=*/nullptr, /*delegate=*/*this, context, registration,
             node, node_index, quasi_static_tensors,
-            std::unordered_map<int, uint32_t>()) != kTfLiteOk) {
+            absl::flat_hash_map<int, uint32_t>()) != kTfLiteOk) {
       // If a non-delegated node consumes output of a node that unpacks static
       // data, that node shouldn't be delegated.
       for (int j = 0; j < node->inputs->size; j++) {
@@ -7602,7 +7605,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         }
       }
 
-      // Non-delegatable node is not an error.
+      // Non-delegable node is not an error.
       continue;
     }
 

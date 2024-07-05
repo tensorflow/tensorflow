@@ -238,14 +238,15 @@ cc_library(
     linkstatic = True,
     deps = [
         ":quantization_util",
-        ":tflite_with_xnnpack_dynamic_fully_connected",
-        ":tflite_with_xnnpack_logging",
-        ":tflite_with_xnnpack_qs8",
-        ":tflite_with_xnnpack_qu8",
-        ":tflite_with_xnnpack_transient_indirection_buffer",
+        ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
+        ":tflite_with_xnnpack_logging",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qs8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qu8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_transient_indirection_buffer",  # buildcleaner: keep
         ":weight_cache",
+        "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
+        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:logger",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:subgraph",
@@ -254,14 +255,16 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
-        "@XNNPACK//:experiments_config",
-        "@XNNPACK//:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@pthreadpool",
     ],
 )
 
@@ -284,6 +287,8 @@ cc_library(
     deps = [
         ":quantization_util",
         ":weight_cache",
+        "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
+        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
@@ -293,14 +298,16 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
-        "@XNNPACK//:experiments_config",
-        "@XNNPACK//:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@pthreadpool",
     ],
 )
 

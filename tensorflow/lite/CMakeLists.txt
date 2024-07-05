@@ -534,6 +534,9 @@ if(TFLITE_ENABLE_XNNPACK)
   )
   target_link_libraries(xnnpack-delegate
     Eigen3::Eigen
+    absl::flat_hash_map
+    absl::flat_hash_set
+    absl::synchronization
     flatbuffers::flatbuffers
     gemmlowp::gemmlowp
     ruy::ruy
