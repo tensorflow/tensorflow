@@ -24,12 +24,12 @@ build_test(
     ],
 )
 
-xla_cc_binary(
-    name = "hlo_runner_main",
+cc_library(
+    name = "hlo_runner_main_lib",
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
+    compatible_with = None,
     tags = [
-        "noasan",  # Exceeds linker limit.
         "nomac",
     ] + tf_gpu_tests_tags(),
     deps = [
@@ -58,47 +58,39 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]) + if_rocm([
+    ] + if_google(
+        [
+            "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+        ],
+    )) + if_rocm([
         "//xla/stream_executor:rocm_platform",
     ]),
+    alwayslink = True,
+)
+
+xla_cc_binary(
+    name = "hlo_runner_main",
+    testonly = True,
+    tags = [
+        "nomac",
+    ] + tf_gpu_tests_tags(),
+    deps = [
+        ":hlo_runner_main_lib",
+    ],
 )
 
 xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
-    srcs = ["hlo_runner_main.cc"],
     tags = [
         "gpu",
         "nomac",
     ] + tf_gpu_tests_tags(),
     deps = [
-        ":create_client",
-        ":functional_hlo_runner",
-        "//xla:debug_options_flags",
-        "//xla:status_macros",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/distributed",
-        "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed:service",
-        "//xla/service:cpu_plugin",
+        ":hlo_runner_main_lib",
         "//xla/service:gpu_plugin",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor:rocm_platform",
-    ]) + if_google([
+    ] + if_google([
         "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
     ]),
 )
