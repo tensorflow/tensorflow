@@ -11,6 +11,10 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-AMPERE
 
 // RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=9.0" \
+// RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
+
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx908:sramecc+:xnack" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX908-MI100
 
@@ -584,6 +588,28 @@ module {
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
 // CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<2x4xbf16>,
+      %i: index, %j: index) -> (tensor<2x4xbf16>) {
+    %c2 = arith.constant 2.0 : bf16
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xbf16> {
+      ^bb0(%current : bf16):
+        %min = arith.addf %current, %c2 : bf16
+        xla_gpu.yield %c2 : bf16
+    }
+    return %ret : tensor<2x4xbf16>
+  }
+}
+// CHECK-LABEL: @direct_atomic_rmw_fadd_bf16
+// CHECK-NOT: llvm.atomicrmw fadd
+
+// CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16
+// CHECK-HOPPER: %[[C2:.*]] = arith.constant 2
+// CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
 
 // -----
 

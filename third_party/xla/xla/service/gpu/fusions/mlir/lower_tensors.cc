@@ -771,11 +771,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     bool is_supported_f16_atomic =
         element_type.isF16() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA);
+    bool is_supported_bf16_atomic =
+        element_type.isBF16() &&
+        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
     bool is_supported_f64_atomic =
         element_type.isF64() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
     if (!element_type.isF32() && !is_supported_f16_atomic &&
-        !is_supported_f64_atomic) {
+        !is_supported_bf16_atomic && !is_supported_f64_atomic) {
       return failure();
     }
     b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
