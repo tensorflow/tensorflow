@@ -1271,7 +1271,15 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
 
-  return RunPreSchedulingPasses(hlo_module, stream_exec);
+  {
+    HloPassPipeline pipeline("collective-schedule-linearizer");
+    pipeline.AddPass<CollectivesScheduleLinearizer>(
+        [this, stream_exec](const HloModule* module) {
+          return RequiresCollectiveScheduleLinearizer(module, stream_exec);
+        });
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+  return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
 
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
@@ -2031,6 +2039,7 @@ GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
     se::StreamExecutor* executor, const CompileOptions& options,
     const se::DeviceDescription& gpu_device_info) {
+  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
       ScheduleGpuModule(module, pointer_size_, gpu_device_info));
@@ -2326,10 +2335,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 absl::Status GpuCompiler::RunPreSchedulingPasses(
     HloModule* module, se::StreamExecutor* stream_exec) {
   HloPassPipeline pipeline("pre-scheduling-passes");
-  pipeline.AddPass<CollectivesScheduleLinearizer>(
-      [this, stream_exec](const HloModule* module) {
-        return RequiresCollectiveScheduleLinearizer(module, stream_exec);
-      });
+  pipeline.AddPass<FusionWrapper>();
   return pipeline.Run(module).status();
 }
 

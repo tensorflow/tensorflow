@@ -62,7 +62,6 @@ namespace m = ::xla::match;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
-using ::tsl::testing::StatusIs;
 
 class GpuCompilerTest : public HloTestBase {
  public:
@@ -205,6 +204,36 @@ ENTRY e {
 })",
                                                        config));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
+TEST_F(GpuCompilerTest, NonFusedInstructionsAreWrapped) {
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p = f32[2,4,4] parameter(0)
+  ROOT _ = f32[2,4,4]{2,1,0} transpose(p), dimensions={0,2,1}
+})",
+                                                       config));
+
+  config.set_debug_options(debug_options);
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+
+  HloModule& compiled_module = executable->module();
+  const HloInstruction* entry_root =
+      compiled_module.entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root, GmockMatch(m::Fusion()));
 }
 
 class PersistedAutotuningTest : public HloTestBase {
