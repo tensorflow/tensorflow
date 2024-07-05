@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
-#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -368,8 +367,7 @@ absl::Status CpuExecutable::ExecuteThunks(
 
   // Use the intra-op thread pool to offload thunk executor tasks.
   Thunk::TaskRunner task_runner = [run_options](Thunk::Task task) {
-    run_options->intra_op_thread_pool()->getPool()->Schedule(
-        ToCopyableTask(std::move(task)));
+    run_options->intra_op_thread_pool()->getPool()->Schedule(std::move(task));
   };
 
   Thunk::ExecuteParams execute_params = {

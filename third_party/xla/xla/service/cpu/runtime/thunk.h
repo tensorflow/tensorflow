@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -100,7 +101,7 @@ class Thunk {
   // pool with the intra-op thread pool used for compute tasks. We deliberately
   // do not prescribe task runner to be Eigen or any other particular thread
   // pool, and let users make the choice.
-  using Task = absl::AnyInvocable<void()>;
+  using Task = std::function<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
   Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}

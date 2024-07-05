@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel.h"
@@ -149,11 +148,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_FALSE(params.intra_op_threadpool && use_task_runner_)) {
-    return kernel->Launch(thread_dim_, kernel_args,
-                          [&params](se::host::HostKernel::Task task) {
-                            params.intra_op_threadpool->getPool()->Schedule(
-                                ToCopyableTask(std::move(task)));
-                          });
+    return kernel->Launch(
+        thread_dim_, kernel_args, [&params](se::host::HostKernel::Task task) {
+          params.intra_op_threadpool->getPool()->Schedule(std::move(task));
+        });
   }
 
   TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));

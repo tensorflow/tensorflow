@@ -185,7 +185,6 @@ cc_library(
         "//xla/service/cpu:cpu_xfeed",
         "//xla/service/cpu:simple_orc_jit",
         "//xla/service/cpu/runtime:buffer_allocations",
-        "//xla/service/cpu/runtime:task",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/cpu/runtime:thunk_executor",
         "//xla/stream_executor",

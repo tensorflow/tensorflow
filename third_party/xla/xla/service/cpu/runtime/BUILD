@@ -62,12 +62,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "task",
-    hdrs = ["task.h"],
-    deps = ["@com_google_absl//absl/functional:any_invocable"],
-)
-
-cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
@@ -153,7 +147,6 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":resource_use",
-        ":task",
         ":thunk",
         ":thunk_executor",
         "//xla/runtime:buffer_use",
@@ -766,7 +759,6 @@ cc_library(
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
     deps = [
-        ":task",
         ":thunk",
         "//xla:util",
         "//xla/runtime:buffer_use",

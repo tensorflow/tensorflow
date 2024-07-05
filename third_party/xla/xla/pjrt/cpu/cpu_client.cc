@@ -84,7 +84,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
-#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/runtime/thunk_executor.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -1595,7 +1594,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       cpu::Thunk::TaskRunner task_runner =
           [&run_options](cpu::Thunk::Task task) {
             run_options.intra_op_thread_pool()->getPool()->Schedule(
-                cpu::ToCopyableTask(std::move(task)));
+                std::move(task));
           };
 
       cpu::Thunk::ExecuteParams execute_params = {
@@ -1731,7 +1730,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             cpu::Thunk::TaskRunner task_runner =
                 [&run_options](cpu::Thunk::Task task) {
                   run_options.intra_op_thread_pool()->getPool()->Schedule(
-                      cpu::ToCopyableTask(std::move(task)));
+                      std::move(task));
                 };
 
             if (collective_params.ok()) {

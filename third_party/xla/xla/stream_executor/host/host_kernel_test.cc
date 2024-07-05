@@ -46,12 +46,6 @@ limitations under the License.
 
 namespace stream_executor::host {
 
-static auto ToCopyableTask(HostKernel::Task task) {
-  return [shared_task = std::make_shared<decltype(task)>(std::move(task))] {
-    (*shared_task)();
-  };
-}
-
 static SE_HOST_KernelError* AddI32(const SE_HOST_KernelCallFrame* call_frame) {
   const SE_HOST_KernelArg& lhs = call_frame->args[0];
   const SE_HOST_KernelArg& rhs = call_frame->args[1];
@@ -213,7 +207,7 @@ TEST(HostKernelTest, LaunchAsync) {
 
   HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
     num_tasks.fetch_add(1, std::memory_order_relaxed);
-    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+    thread_pool->Schedule(std::move(task));
   };
 
   HostKernel host_kernel(/*arity=*/0, no_op);
@@ -243,7 +237,7 @@ TEST(HostKernelTest, LaunchAsyncError) {
 
   HostKernel::TaskRunner runner = [&](HostKernel::Task task) {
     num_tasks.fetch_add(1, std::memory_order_relaxed);
-    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+    thread_pool->Schedule(std::move(task));
   };
 
   HostKernel host_kernel(/*arity=*/0, maybe_error);
@@ -286,7 +280,7 @@ static void BM_HostKernelAsyncLaunch(benchmark::State& state) {
       tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
 
   auto task_runner = [&thread_pool](HostKernel::Task task) {
-    thread_pool->Schedule(ToCopyableTask(std::move(task)));
+    thread_pool->Schedule(std::move(task));
   };
 
   HostKernel kernel(/*arity=*/0, NoOp);

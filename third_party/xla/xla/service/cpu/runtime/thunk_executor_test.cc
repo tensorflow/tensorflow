@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
 #include "xla/service/cpu/runtime/resource_use.h"
-#include "xla/service/cpu/runtime/task.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
@@ -438,7 +437,7 @@ class ThunkExecutorStressTest
       device_.emplace(thread_pool_->AsEigenThreadPool(),
                       thread_pool_->NumThreads());
       task_runner_.emplace([this](Thunk::Task task) {
-        thread_pool_->Schedule(ToCopyableTask(std::move(task)));
+        thread_pool_->Schedule(std::move(task));
       });
     }
   }
@@ -562,7 +561,7 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
   BufferAllocations allocations(g->buffers);
 
   Thunk::TaskRunner task_runner = [&](Thunk::Task task) {
-    thread_pool.Schedule(ToCopyableTask(std::move(task)));
+    thread_pool.Schedule(std::move(task));
   };
 
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, &device,

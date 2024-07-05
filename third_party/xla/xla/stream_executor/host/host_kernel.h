@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -41,7 +42,7 @@ class HostExecutor;
 
 class HostKernel : public Kernel {
  public:
-  using Task = absl::AnyInvocable<void()>;
+  using Task = std::function<void()>;
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
   // A struct to report completion of the kernel execution.

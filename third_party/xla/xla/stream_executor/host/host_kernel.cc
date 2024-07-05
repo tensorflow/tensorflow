@@ -208,8 +208,11 @@ void HostKernelExecuteState::Notify(absl::Status status) {
 
   // In the unlikely event of a kernel error, forward it to the launch event.
   if (ABSL_PREDICT_FALSE(abort_.load(std::memory_order_relaxed))) {
-    absl::MutexLock lock(&abort_mutex_);
-    event_.SetError(std::move(abort_status_));
+    auto take_abort_status = [&] {
+      absl::MutexLock lock(&abort_mutex_);
+      return std::move(abort_status_);
+    };
+    event_.SetError(take_abort_status());
   } else {
     event_.SetStateConcrete();
   }

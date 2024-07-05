@@ -570,7 +570,6 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:xla_debug_info_manager",
         "//xla/service/cpu/runtime:buffer_allocations",
-        "//xla/service/cpu/runtime:task",
         "//xla/service/cpu/runtime:thunk",
         "//xla/service/cpu/runtime:thunk_executor",
         "//xla/stream_executor",
