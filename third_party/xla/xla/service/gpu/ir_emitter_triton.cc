@@ -47,6 +47,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
@@ -2645,6 +2646,18 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   return llvmModule;
 }
 
+absl::Status CreateInternalError(std::string_view message,
+                                 const HloFusionInstruction* fusion,
+                                 mlir::ModuleOp triton_module) {
+  std::string err;
+  llvm::raw_string_ostream os(err);
+  os << message << "\n";
+  os << fusion->fused_instructions_computation()->ToString() << "\n";
+  os << "triton_module: \n";
+  triton_module->print(os);
+  return absl::InternalError(err);
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -2712,7 +2725,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   mlir::PassManager pm(&mlir_context);
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  TF_RET_CHECK(pm.run(triton_module.get()).succeeded());
+  if (mlir::failed(pm.run(triton_module.get()))) {
+    return CreateInternalError(
+        "Failed to create Triton module for fusion:", fusion, *triton_module);
+  }
 
   VLOG(6) << llvm_ir::DumpToString(*triton_module);
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
@@ -2720,7 +2736,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                             llvm_ir::DumpToString(*triton_module));
   }
 
-  TF_RET_CHECK(mlir::succeeded(mlir::verify(*triton_module)));
+  if (mlir::failed(mlir::verify(*triton_module))) {
+    return CreateInternalError(
+        "Failed to verify Triton module for fusion:", fusion, *triton_module);
+  }
   return std::move(triton_module);
 }
 
