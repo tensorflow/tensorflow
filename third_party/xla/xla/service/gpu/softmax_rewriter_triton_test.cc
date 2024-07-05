@@ -2088,9 +2088,12 @@ ENTRY main {
       SoftmaxRewriterTritonMatchAndRewrite(device_info_, module.get()).value());
 }
 
-INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,
-                         SoftmaxRewriterTritonTest,
-                         ::testing::Values(F32, F16, BF16));
+INSTANTIATE_TEST_SUITE_P(
+    SoftmaxRewriterTritonTestSuite, SoftmaxRewriterTritonTest,
+    ::testing::Values(F32, F16, BF16),
+    [](const ::testing::TestParamInfo<PrimitiveType> type) {
+      return primitive_util::LowercasePrimitiveTypeName(type.param);
+    });
 
 }  // anonymous namespace
 }  // namespace gpu
