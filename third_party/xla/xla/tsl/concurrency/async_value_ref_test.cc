@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -774,6 +775,37 @@ TEST(AsyncValueRefTest, Cast) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_typed_indirect));
   EXPECT_TRUE(Cast<C>(c_typed_indirect));
+}
+
+TEST(AsyncValueRefTest, RecursiveOwnership) {
+  // This is a test for recursive ownership of AsyncValue:
+  //   (1) AsyncValueRef owned by a State object
+  //   (2) State object owned by AsyncValue::AndThen callback.
+  //
+  // We check that setting async value state concrete and then running all
+  // AndThen callbacks doesn't cause an asan error.
+  struct State {
+    explicit State(AsyncValueRef<int32_t> value) : value(std::move(value)) {}
+    AsyncValueRef<int32_t> value;
+  };
+
+  AsyncValueRef<int32_t> value = MakeConstructedAsyncValueRef<int32_t>(42);
+  auto state = std::make_unique<State>(std::move(value));
+
+  State* state_ptr = state.get();
+  int64_t counter = 0;
+
+  // Enqueue callbacks.
+  state_ptr->value.AndThen([&, value = 1] { counter += value; });
+  state_ptr->value.AndThen([&, value = 2] { counter += value; });
+  state_ptr->value.AndThen([&, value = 3] { counter += value; });
+
+  // Move state ownership to the callback.
+  state_ptr->value.AndThen([state = std::move(state)] {});
+
+  // Run all callbacks and as a side effect destroy the `state` object.
+  state_ptr->value.SetStateConcrete();
+  EXPECT_EQ(counter, 1 + 2 + 3);
 }
 
 }  // namespace tsl
