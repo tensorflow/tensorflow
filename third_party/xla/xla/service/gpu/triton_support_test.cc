@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -549,6 +550,28 @@ ENTRY triton_computation {
 
 INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
                          AllTestCombinationsForOpcodes({HloOpcode::kReduce}),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
+
+using AllGatherTest = TritonSupportTestWithParam;
+
+TEST_P(AllGatherTest, UnsupportedAllGatherFialsGracefullyWithTriton) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+  ENTRY triton_computation {
+    input = $0[128,32]{0,1} parameter(0)
+    ROOT all-gather = $0[128,128]{0,1} $1(input), replica_groups={}, dimensions={1}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(AllGatherTestSuite, AllGatherTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kAllGather}),
                          TritonSupportTestTypeOpcodeAndDeviceToString);
 
 }  // namespace

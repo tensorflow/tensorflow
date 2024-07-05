@@ -1286,6 +1286,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
