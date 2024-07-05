@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
@@ -362,6 +363,32 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
   return kernels_.emplace_back(
       KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
                  se::ThreadDim()});
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
+    const HloInstruction* instr) {
+  VLOG(2) << "Emit concatenate host kernel: " << instr->name();
+
+  auto fast_impl_reason = CanDoFastConcatenate(instr);
+  if (fast_impl_reason.ok()) {
+    VLOG(1) << "Emitting fast concatenate for " << instr->ToString() << ": "
+            << fast_impl_reason.message();
+    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                        EmitKernelPrototype(instr));
+    llvm::IRBuilder<> ir_builder(module_->getContext());
+    ir_builder.SetInsertPoint(
+        kernel_prototype.function->getEntryBlock().getTerminator());
+
+    llvm_ir::IrArray output_array = kernel_prototype.results[0];
+    TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
+        instr, kernel_prototype.arguments, output_array, module_, ir_builder));
+    return kernels_.emplace_back(
+        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                   se::ThreadDim()});
+  }
+  VLOG(1) << "Could not emit fast concatenate for " << instr->ToString() << ": "
+          << fast_impl_reason.message();
+  return EmitElementalHostKernel(instr);
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
@@ -752,6 +779,27 @@ std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
 
   return config;
 }
+
+absl::Status IrEmitter2::CanDoFastConcatenate(
+    const HloInstruction* concatenate) const {
+  if (!concatenate->parent()
+           ->root_instruction()
+           ->template backend_config<BackendConfig>()
+           ->outer_dimension_partitions()
+           .empty()) {
+    return absl::Status(
+        absl::StatusCode::kFailedPrecondition,
+        "Cannot generate memcpy-based concat for the parallel CPU backend");
+  }
+  const Shape& output_shape = concatenate->shape();
+  for (auto* op : concatenate->operands()) {
+    if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
+      return absl::Status(absl::StatusCode::kFailedPrecondition,
+                          "Operand has mismatching layouts");
+    }
+  }
+  return absl::OkStatus();
+};
 
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
     llvm::IRBuilder<>& b, const KernelPrototype& kernel_prototype,

@@ -202,3 +202,19 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
+
+xla_cc_test(
+    name = "concatenate_benchmark_test",
+    srcs = ["concatenate_benchmark_test.cc"],
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)

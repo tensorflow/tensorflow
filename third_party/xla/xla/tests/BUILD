@@ -3084,6 +3084,28 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "concatenate_test",
+    srcs = ["concatenate_test.cc"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],

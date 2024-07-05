@@ -260,7 +260,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitElementalKernelThunk(instruction);
 
     case HloOpcode::kConcatenate:
-      return EmitConcatenateThunk(instruction);
+      return EmitConcatenateKernelThunk(instruction);
 
     case HloOpcode::kFusion:
       return EmitFusionKernelThunk(instruction);
@@ -481,10 +481,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
                                       std::move(called_sequence));
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateThunk(
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
-  // TODO(ezhulenev): Port optimized concat implementation from IrEmitter.
-  return EmitElementalKernelThunk(instruction);
+  auto* concatenate = Cast<HloConcatenateInstruction>(instruction);
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      ir_emitter_.EmitConcatenateHostKernel(concatenate));
+  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
