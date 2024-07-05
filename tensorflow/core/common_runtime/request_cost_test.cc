@@ -49,6 +49,13 @@ TEST(RequestCostTest, RecordCost) {
                                    Pair("tpu_v2", absl::Milliseconds(22)),
                                    Pair("cpu_v1", absl::Milliseconds(33)),
                                    Pair("cpu_v2", absl::Milliseconds(44))));
+
+  request_cost.ScaleCosts(2);
+  EXPECT_THAT(request_cost.GetCosts(),
+              UnorderedElementsAre(Pair("tpu_v1", absl::Milliseconds(22)),
+                                   Pair("tpu_v2", absl::Milliseconds(44)),
+                                   Pair("cpu_v1", absl::Milliseconds(66)),
+                                   Pair("cpu_v2", absl::Milliseconds(88))));
 }
 
 TEST(RequestCostTest, RecordMetrics) {
@@ -93,6 +100,18 @@ TEST(RequestCostTest, RecordBatchMetrics) {
               4, 2, 1,
               UnorderedElementsAre(Pair("gcu", absl::Milliseconds(40)),
                                    Pair("tpu", absl::Milliseconds(80))))));
+
+  request_cost.ScaleBatchCosts(4);
+  EXPECT_THAT(
+      request_cost.GetBatchMetrics(),
+      ElementsAre(
+          FieldsAre(8, 8, 0,
+                    UnorderedElementsAre(Pair("gcu", absl::Milliseconds(320)),
+                                         Pair("tpu", absl::Milliseconds(640)))),
+          FieldsAre(
+              4, 2, 1,
+              UnorderedElementsAre(Pair("gcu", absl::Milliseconds(160)),
+                                   Pair("tpu", absl::Milliseconds(320))))));
 }
 
 }  // namespace
