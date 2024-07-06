@@ -966,10 +966,6 @@ std::string HloComputation::ToString(
   return std::move(printer).ToString();
 }
 
-absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
-  return ToCord(options, MakeInstructionPostOrder());
-}
-
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {

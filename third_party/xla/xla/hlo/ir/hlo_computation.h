@@ -344,8 +344,6 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
-  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
   absl::Cord ToCord(
