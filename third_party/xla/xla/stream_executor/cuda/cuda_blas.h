@@ -74,9 +74,6 @@ class CUDABlas : public blas::BlasSupport {
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the underlying CUDA stream.
-  cudaStream_t CUDAStream(Stream *stream);
-
   // A helper function that calls the real cuBLAS function together with error
   // handling.
   //
