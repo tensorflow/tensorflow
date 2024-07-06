@@ -127,17 +127,6 @@ struct ShardingStrategy {
         ", memory_resharding_costs=", memory_resharding_cost_str,
         ", input_shardings=", input_sharding_str);
   }
-
-  bool operator==(const ShardingStrategy& other) const {
-    return name == other.name && output_sharding == other.output_sharding &&
-           compute_cost == other.compute_cost &&
-           communication_cost == other.communication_cost &&
-           memory_cost == other.memory_cost &&
-           communication_resharding_costs ==
-               other.communication_resharding_costs &&
-           memory_resharding_costs == other.memory_resharding_costs &&
-           input_shardings == other.input_shardings;
-  }
 };
 
 using NodeIdx = int64_t;          // An index into the solver's node list.

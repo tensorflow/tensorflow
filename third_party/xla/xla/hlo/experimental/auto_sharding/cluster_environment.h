@@ -94,11 +94,6 @@ class ClusterEnvironment {
     return VectorGreaterThanOneElementCount(device_mesh_.dimensions()) == 1;
   }
 
-  bool IsOriginalDeviceMesh2D() const {
-    return VectorGreaterThanOneElementCount(
-               original_device_mesh_.dimensions()) == 2;
-  }
-
   // Get the corresponding mesh dimension for every tensor dimension.
   // -1 means replicated on that dimension
   std::vector<int64_t> GetTensorDimToMeshDimWrapper(
@@ -150,16 +145,6 @@ class ClusterEnvironment {
 
   double ReshardingCost(const Shape& shape, const HloSharding& src_spec,
                         const HloSharding& dst_spec) const;
-
-  // Print the information of this device mesh.
-  std::string ToString() {
-    std::string str;
-    absl::StrAppend(&str, "device_mesh: ", device_mesh_.ToString(), "\n");
-    absl::StrAppend(&str, "mesh_alpha: ", absl::StrJoin(mesh_alpha_, " "),
-                    "\n");
-    absl::StrAppend(&str, "mesh_beta: ", absl::StrJoin(mesh_beta_, " "), "\n");
-    return str;
-  }
 
   // The original, complete device mesh shape that describes the hardware.
   const Array<int64_t> original_device_mesh_;

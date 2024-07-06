@@ -87,14 +87,6 @@ class ProfilingResult {
            penalty_factor;
   }
 
-  std::string ToString() {
-    std::string str;
-    for (const auto& item : all_reduce_cost_dict_) {
-      absl::StrAppend(&str, item.first.first, " ", item.first.second, "\n");
-    }
-    return str;
-  }
-
  private:
   // pair<group, dtype>
   using Key = std::pair<std::string, std::string>;
