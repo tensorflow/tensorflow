@@ -36,10 +36,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-// An empty struct to be used as a handle for all unsupported features in
-// current CUDA/HIP version.
-struct UnsupportedGpuFeature {};
-
 #if TENSORFLOW_USE_ROCM
 
 using GpuStreamHandle = hipStream_t;
