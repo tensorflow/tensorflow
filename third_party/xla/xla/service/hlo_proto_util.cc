@@ -70,19 +70,4 @@ absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
   return parameter_shapes;
 }
 
-absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
-    const HloProto& hlo_proto) {
-  if (!hlo_proto.has_hlo_module()) {
-    return NotFound("HloProto missing HloModuleProto.");
-  }
-  if (!hlo_proto.hlo_module().has_host_program_shape()) {
-    return NotFound("HloProto missing program shape.");
-  }
-  if (!hlo_proto.hlo_module().host_program_shape().has_result()) {
-    return NotFound("HloProto missing result in its program shape");
-  }
-
-  return &hlo_proto.hlo_module().host_program_shape().result();
-}
-
 }  // namespace xla
