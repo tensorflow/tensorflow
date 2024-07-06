@@ -53,40 +53,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-bool IsGpuClient(const PjRtClient& client) {
-  return client.platform_id() == CudaId() || client.platform_id() == RocmId() ||
-         client.platform_id() == SyclId();
-}
 
-bool IsSameTopology(const PjRtTopologyDescription& topology1,
-                    const PjRtTopologyDescription& topology2) {
-  const StreamExecutorGpuTopologyDescription& gpu_topology1 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology1);
-  const StreamExecutorGpuTopologyDescription& gpu_topology2 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology2);
-  return gpu_topology1 == gpu_topology2;
-}
 
-absl::Status IsValidTopologyAndClientForCompile(
-    const PjRtTopologyDescription& topology, PjRtClient* client) {
-  if (client == nullptr) {
-    return absl::UnimplementedError(
-        "SE:GPU compiler requires non-null client.");
-  }
-  if (!IsGpuClient(*client)) {
-    return absl::InvalidArgumentError(
-        "SE:GPU compiler requires a GPU PjRtClient.");
-  }
-  TF_ASSIGN_OR_RETURN(auto client_topology, client->GetTopologyDescription());
-
-  if (!IsSameTopology(topology, *client_topology)) {
-    return absl::UnimplementedError(
-        "SE:GPU compiler requires the topology same as the one in the client.");
-  }
-  return absl::OkStatus();
-}
 
 }  // namespace
 
