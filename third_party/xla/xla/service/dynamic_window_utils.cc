@@ -36,12 +36,6 @@ class HloOp {
  public:
   HloOp() = default;
   explicit HloOp(HloInstruction* inst) : inst_(inst) {}
-  void SetName(const std::string& name) {
-    inst_->SetAndSanitizeName(name);
-    if (inst_->GetModule() != nullptr) {
-      inst_->UniquifyName(&inst_->GetModule()->instruction_name_uniquer());
-    }
-  }
   HloInstruction* get() { return inst_; }
 
  private:
