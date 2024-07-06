@@ -91,10 +91,6 @@ bool HasTf32InputType(PrecisionConfig::Algorithm algorithm) {
          algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3;
 }
 
-bool HasFastAccum(PrecisionConfig::Algorithm algorithm) {
-  return algorithm == PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
-}
-
 // It's clear that those libraries could support more, but we only list the ones
 // which we explicitly test for now.
 bool IsSupportedByCublasOrCublasLt(PrecisionConfig::Algorithm algorithm) {
