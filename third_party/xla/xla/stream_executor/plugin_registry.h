@@ -68,10 +68,6 @@ class PluginRegistry {
   absl::Status RegisterFactory(Platform::Id platform_id,
                                const std::string& name, FactoryT factory);
 
-  // Return true if the factory/kind has been registered for the
-  // specified platform and plugin kind and false otherwise.
-  bool HasFactory(Platform::Id platform_id, PluginKind plugin_kind) const;
-
   // Retrieves the factory registered for the specified kind,
   // or a absl::Status on error.
   template <typename FactoryT>
@@ -92,11 +88,6 @@ class PluginRegistry {
   absl::Status RegisterFactoryInternal(const std::string& plugin_name,
                                        FactoryT factory,
                                        std::optional<FactoryT>* factories);
-
-  // Returns true if the specified plugin has been registered with the specified
-  // platform factories. Unlike the other overload of this method, this does
-  // not implicitly examine the default factory lists.
-  bool HasFactory(const Factories& factories, PluginKind plugin_kind) const;
 
   // The singleton itself.
   static PluginRegistry* instance_;
