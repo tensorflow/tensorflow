@@ -54,7 +54,6 @@ class LocalClientOptions {
 
   // Set the number of replicas to use when compiling replicated
   // programs.
-  LocalClientOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
   // Sets the thread pool size for parallel execution of an individual operator.
@@ -103,11 +102,6 @@ class ClientLibrary {
   //     null then default platform is used.
   static absl::StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
       se::Platform* platform = nullptr);
-
-  // Clears the local instance and compile only instance caches. The client
-  // pointers returned by the previous GetOrCreateLocalClient() or
-  // GetOrCreateCompileOnlyClient() invocations are not valid anymore.
-  static void DestroyLocalInstances();
 
  private:
   // Returns the singleton instance of ClientLibrary.

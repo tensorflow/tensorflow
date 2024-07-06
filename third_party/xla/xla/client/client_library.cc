@@ -44,12 +44,6 @@ LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
 
 se::Platform* LocalClientOptions::platform() const { return platform_; }
 
-LocalClientOptions& LocalClientOptions::set_number_of_replicas(
-    int number_of_replicas) {
-  number_of_replicas_ = number_of_replicas;
-  return *this;
-}
-
 int LocalClientOptions::number_of_replicas() const {
   return number_of_replicas_;
 }
@@ -163,14 +157,6 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   client_library.compile_only_instances_.insert(
       std::make_pair(platform->id(), std::move(instance)));
   return cl;
-}
-
-/* static */ void ClientLibrary::DestroyLocalInstances() {
-  ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
-
-  client_library.local_instances_.clear();
-  client_library.compile_only_instances_.clear();
 }
 
 }  // namespace xla
