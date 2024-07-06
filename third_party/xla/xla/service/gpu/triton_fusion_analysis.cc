@@ -213,41 +213,6 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   return analysis;
 }
 
-absl::Status TritonFusionAnalysis::ExecuteForProducerConsumer(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    int split_k) {
-  // TODO(shyshkov): Use HloFusionAdaptor to avoid the need to materialize the
-  // hlo fusion.
-  std::unique_ptr<HloModule> new_module =
-      ExtractProducerConsumerIntoNewModule(producer, consumer);
-
-  auto* new_producer =
-      new_module->entry_computation()->GetInstructionWithName(producer.name());
-  auto* new_consumer =
-      new_module->entry_computation()->GetInstructionWithName(consumer.name());
-
-  std::unique_ptr<HloInstruction> fusion_instruction_holder;
-  HloInstruction* fusion_instruction;
-  if (new_consumer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction = new_consumer;
-  } else {
-    fusion_instruction_holder = HloInstruction::CreateFusion(
-        new_consumer->shape(), new_producer->fusion_kind(), new_consumer);
-    fusion_instruction = fusion_instruction_holder.get();
-  }
-
-  // Try to merge the producer into candidate fusion.
-  if (new_producer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction->MergeFusionInstruction(new_producer);
-  } else {
-    fusion_instruction->FuseInstruction(new_producer);
-  }
-
-  auto* fused_computation =
-      fusion_instruction->fused_instructions_computation();
-  return Execute(*fused_computation, split_k).status();
-}
-
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
   DotRequirements lhs_requirements(kNoSplitRequirement);
