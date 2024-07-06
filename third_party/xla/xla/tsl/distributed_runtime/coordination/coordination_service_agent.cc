@@ -111,12 +111,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status InsertKeyValue(std::string_view key, std::string_view value,
                               bool allow_overwrite) override;
   absl::Status DeleteKeyValue(std::string_view key) override;
-  absl::Status UpdateKeyValue(std::string_view key,
-                              std::string_view value) override;
 
-  absl::Status StartWatchKey(std::string_view key,
-                             ChangedKeyValuesCallback on_change) override;
-  absl::Status StopWatchKey(std::string_view key) override;
   absl::Status WaitAtBarrier(
       std::string_view barrier_id, absl::Duration timeout,
       const std::vector<CoordinatedTask>& tasks) override;
@@ -131,8 +126,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 
  protected:
   void SetError(const absl::Status& error) override;
-  absl::Status ActivateWatch(
-      std::string_view key, const std::map<std::string, std::string>&) override;
   // Returns an error if agent is not running. If `allow_disconnected` is true,
   // returns OK even if the agent is in DISCONNECTED state.
   absl::Status ValidateRunningAgent(bool allow_disconnected = false);
@@ -753,24 +746,6 @@ absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
   return absl::OkStatus();
 }
 
-absl::Status CoordinationServiceAgentImpl::UpdateKeyValue(
-    std::string_view key, std::string_view value) {
-  return MakeCoordinationError(absl::UnimplementedError(
-      "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
-}
-
-absl::Status CoordinationServiceAgentImpl::StartWatchKey(
-    std::string_view key,
-    CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
-  return MakeCoordinationError(absl::UnimplementedError(
-      "CoordinationServiceAgent::StartWatchKey is not implemented."));
-}
-
-absl::Status CoordinationServiceAgentImpl::StopWatchKey(std::string_view key) {
-  return MakeCoordinationError(absl::UnimplementedError(
-      "CoordinationServiceAgent::StopWatchKey is not implemented."));
-}
-
 void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   assert(!error.ok());
   absl::MutexLock l(&state_mu_);
@@ -780,12 +755,6 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = error;
   error_fn_(error);
-}
-
-absl::Status CoordinationServiceAgentImpl::ActivateWatch(
-    std::string_view key, const std::map<std::string, std::string>& kvs) {
-  return MakeCoordinationError(absl::UnimplementedError(
-      "CoordinationServiceAgent::ActivateWatch is not implemented."));
 }
 
 absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
