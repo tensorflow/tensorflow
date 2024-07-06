@@ -1043,8 +1043,6 @@ class XlaBuilder {
   absl::StatusOr<const HloInstructionProto*> LookUpInstructionByHandle(
       int64_t handle) const;
   absl::StatusOr<HloInstructionProto*> LookUpMutableInstruction(XlaOp op);
-  absl::StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(
-      int64_t handle);
 
   // Internal helper method that does the building for an arbitrary unary op.
   virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
@@ -1983,14 +1981,6 @@ XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> new_sizes);
 
 // Enqueues a Reshape op that uses an explicit target shape.
 XlaOp Reshape(const Shape& shape, XlaOp operand);
-
-// `inferred_dimension` represents the output dimension that's inferred by
-// upper-level framework by dividing the input element count by the known
-// output element count. While an inferred_dimension can be static, if there
-// is a dynamic dimension in the output, it must be the inferred dimension.
-XlaOp ReshapeWithInferredDimension(XlaOp operand,
-                                   absl::Span<const int64_t> new_sizes,
-                                   int64_t inferred_dimension);
 
 // Wrapper for Reshape.
 // Enqueues an operation to collapse the provided dimensions; e.g. an

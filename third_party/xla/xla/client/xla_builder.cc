@@ -4778,11 +4778,6 @@ absl::StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstruction(
   return LookUpInstructionInternal<HloInstructionProto*>(op);
 }
 
-absl::StatusOr<HloInstructionProto*>
-XlaBuilder::LookUpMutableInstructionByHandle(int64_t handle) {
-  return LookUpInstructionByHandleInternal<HloInstructionProto*>(handle);
-}
-
 // Enqueues a "retrieve parameter value" instruction for a parameter that was
 // passed to the computation.
 XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
@@ -4862,12 +4857,6 @@ XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
                      const std::vector<bool>& dims_are_dynamic) {
   return operand.builder()->DynamicReshape(operand, dim_sizes, new_size_bounds,
                                            dims_are_dynamic);
-}
-
-XlaOp ReshapeWithInferredDimension(XlaOp operand,
-                                   absl::Span<const int64_t> new_sizes,
-                                   int64_t inferred_dimension) {
-  return operand.builder()->Reshape(operand, new_sizes, inferred_dimension);
 }
 
 XlaOp Collapse(const XlaOp operand, absl::Span<const int64_t> dimensions) {
