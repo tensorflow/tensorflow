@@ -35,12 +35,6 @@ struct QuantizedRange {
   QuantizedRange() = default;
   QuantizedRange(float min_in, float max_in) : min(min_in), max(max_in) {}
 
-  bool operator==(const QuantizedRange& rhs) const {
-    return this->min == rhs.min && this->max == rhs.max;
-  }
-
-  bool operator!=(const QuantizedRange& rhs) const { return !(*this == rhs); }
-
   tsl::bfloat16 min = tsl::bfloat16(0.0f);
   tsl::bfloat16 max = tsl::bfloat16(0.0f);
 };
