@@ -53,22 +53,10 @@ struct CstrBroadcastableOperand {
     if (kind != rhs.kind) return kind < rhs.kind;
     return value.getArgNumber() < rhs.value.getArgNumber();
   }
-  inline bool operator>(const CstrBroadcastableOperand &rhs) const {
-    return rhs < *this;
-  }
-  inline bool operator<=(const CstrBroadcastableOperand &rhs) const {
-    return !(*this > rhs);
-  }
-  inline bool operator>=(const CstrBroadcastableOperand &rhs) const {
-    return !(*this < rhs);
-  }
 
   // Equality.
   inline bool operator==(const CstrBroadcastableOperand &rhs) const {
     return kind == rhs.kind && value == rhs.value;
-  }
-  inline bool operator!=(const CstrBroadcastableOperand &rhs) const {
-    return !(*this == rhs);
   }
 
   CstrBroadcastableOperandKind kind;
@@ -88,19 +76,6 @@ struct CstrBroadcastableIntent {
   }
   inline bool operator>(const CstrBroadcastableIntent &rhs) const {
     return rhs < *this;
-  }
-  inline bool operator<=(const CstrBroadcastableIntent &rhs) const {
-    return !(*this > rhs);
-  }
-  inline bool operator>=(const CstrBroadcastableIntent &rhs) const {
-    return !(*this < rhs);
-  }
-
-  inline bool operator==(const CstrBroadcastableIntent &rhs) const {
-    return operands == rhs.operands;
-  }
-  inline bool operator!=(const CstrBroadcastableIntent &rhs) const {
-    return !(*this == rhs);
   }
 
   Location loc;
