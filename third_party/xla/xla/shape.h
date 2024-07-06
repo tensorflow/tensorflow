@@ -434,9 +434,6 @@ class ProgramShape {
   const std::vector<std::string>& parameter_names() const {
     return parameter_names_;
   }
-  std::vector<std::string>* mutable_parameter_names() {
-    return &parameter_names_;
-  }
 
   std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
   std::string DebugString() const { return ToProto().DebugString(); }
