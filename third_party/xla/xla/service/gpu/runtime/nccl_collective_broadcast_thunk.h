@@ -36,11 +36,7 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
                                          int64_t replica_count,
                                          int64_t partition_count);
 
-  static CollectiveOpGroupMode GetGroupMode(
-      const HloCollectiveBroadcastInstruction* inst);
-
   const NcclCollectiveConfig& config() const override { return config_; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static const char* GetHloOpName() { return "collective-broadcast-start"; }
 

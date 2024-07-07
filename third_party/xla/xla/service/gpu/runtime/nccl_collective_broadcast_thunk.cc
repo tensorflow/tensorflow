@@ -49,12 +49,6 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
   return absl::OkStatus();
 }
 
-/*static*/ CollectiveOpGroupMode
-NcclCollectiveBroadcastStartThunk::GetGroupMode(
-    const HloCollectiveBroadcastInstruction* inst) {
-  return GetNcclCollectiveConfig(inst, std::nullopt).group_mode;
-}
-
 absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
     NcclCommHandleWrapper comm_wrapper) {
