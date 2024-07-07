@@ -534,7 +534,8 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
     }
     case HloOpcode::kConstant: {
       if (std::optional<double> value = GetConstantValue(hlo)) {
-        return *value >= 0.0;
+        // return false for -0.0, -Inf, NaNs and negative values
+        return !std::signbit(*value) && !std::isnan(*value);
       }
       return false;
     }
