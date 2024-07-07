@@ -46,10 +46,6 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromSource(
       absl::string_view source);
 
-  // Loads mlir from file.
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromFile(
-      absl::string_view file_path);
-
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it
   // directly.

@@ -55,14 +55,6 @@ IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
   return op_ref;
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
-  auto op_ref =
-      mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
-  TF_RET_CHECK(op_ref) << "Failed to parse MLIR file";
-  return op_ref;
-}
-
 absl::StatusOr<tsl::RCReference<Array>>
 IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
