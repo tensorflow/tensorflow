@@ -16,32 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_REDUCE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_REDUCE_H_
 
-#include <cstdint>
 #include <optional>
 
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
-
-LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
-                                          bool is_float, bool is_argmax);
-
-LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
-                                          bool is_argmax);
 
 // Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
 template <typename Reduce, typename ArgReduce, typename BooleanReduce,
@@ -51,77 +36,48 @@ class ConvertReduceOpToArgMinMax : public OpConversionPattern<mhlo::ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    if (reduce_op.getInputs().size() != 2) return failure();
-    if (reduce_op.getDimensions().getNumElements() != 1) return failure();
-
-    // Check that the operand init is the expected value.
-    DenseElementsAttr operand_init;
-    if (!matchPattern(reduce_op.getInitValues().front(),
-                      m_Constant(&operand_init)))
-      return failure();
-    if (!IsValueInitValue(operand_init)) return failure();
-
-    // Check that the iota init is zero.
-    DenseElementsAttr iota_init;
-    if (!matchPattern(reduce_op.getInitValues().back(), m_Constant(&iota_init)))
-      return failure();
-    if (iota_init.getValues<APInt>()[0] != 0) return failure();
-
-    // Verify that the second argument is an Iota op along the same dimension
-    // as the reduction.
-    Value iota = reduce_op.getInputs().back();
-    if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
-
-    // Match the reduction computation.
-    const bool is_float = mlir::isa<FloatType>(operand_init.getElementType());
-    if (failed(MatchReduceToArgMinMaxType1(reduce_op, is_float, is_argmax)) &&
-        failed(MatchReduceToArgMinMaxType2(reduce_op, is_argmax)))
-      return rewriter.notifyMatchFailure(
-          reduce_op, "Unsupported Reduce -> ArgMax/ArgMin pattern");
-
-    Value operand = reduce_op.getInputs().front();
-    int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
-
-    auto dim_type = RankedTensorType::get({1}, rewriter.getI32Type());
-    auto reduction_indices = rewriter.create<arith::ConstantOp>(
-        reduce_op.getLoc(), dim_type,
-        rewriter.getI32TensorAttr({static_cast<int32_t>(axis)}));
-
-    // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
-    // we have separate ops for them. If only one of them is used then the other
-    // one will be garbage collected later.
-    if (!mlir::isa<ShapedType>(operand.getType())) return failure();
-    auto operand_type = mlir::cast<ShapedType>(operand.getType());
-    if (operand_type.getElementType().isInteger(1)) {
-      // TF does not support min or max on boolean (int1) arguments.
-      // Use AnyOp for MaxOp and AllOp for MinOp.
-      auto tf_reduce_op = rewriter.create<BooleanReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-          reduction_indices,
-          /*keep_dim=*/rewriter.getBoolAttr(false));
-      auto tf_argreduce_op = rewriter.create<ArgReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-          reduction_indices);
-
-      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
-    } else {
-      auto tf_reduce_op = rewriter.create<Reduce>(
-          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-          reduction_indices,
-          /*keep_dim=*/rewriter.getBoolAttr(false));
-
-      auto tf_argreduce_op = rewriter.create<ArgReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-          reduction_indices);
-
-      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
-    }
-    return success();
-  }
+      ConversionPatternRewriter& rewriter) const final;
 
   virtual bool IsValueInitValue(const DenseElementsAttr& attr) const = 0;
 };
+
+// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+template <typename Reduce, typename ArgReduce, typename BooleanReduce>
+class ConvertReduceOpToArgMax
+    : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                        true> {
+ public:
+  using ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                   true>::ConvertReduceOpToArgMinMax;
+  bool IsValueInitValue(const DenseElementsAttr& attr) const override;
+};
+
+// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+template <typename Reduce, typename ArgReduce, typename BooleanReduce>
+class ConvertReduceOpToArgMin
+    : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                        false> {
+ public:
+  using ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
+                                   false>::ConvertReduceOpToArgMinMax;
+  bool IsValueInitValue(const DenseElementsAttr& attr) const override;
+};
+
+using ConvertReduceOpToTFLiteArgmax =
+    ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp, TFL::ReduceAnyOp>;
+using ConvertReduceOpToTfArgmax =
+    ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+using ConvertReduceOpToTFLiteArgmin =
+    ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp, TFL::ReduceAllOp>;
+using ConvertReduceOpToTfArgmin =
+    ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
+
+template class ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
+                                       TFL::ReduceAnyOp>;
+template class ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp,
+                                       TFL::ReduceAllOp>;
+template class ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+template class ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
 
 // Returns true if the given reduce op can be legalized to ArgMax/ArgMin ops.
 std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op);

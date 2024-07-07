@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // The kept headers are provided for the included file `passes.h.inc`.
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -44,6 +45,15 @@ namespace mlir {
 namespace odml {
 namespace {
 
+// Returns the shape of the given value in a Constant Op.
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
+  ArrayRef<int64_t> shape = mlir::cast<ShapedType>(value.getType()).getShape();
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(64));
+  auto attr = DenseElementsAttr::get(attr_type, shape);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
@@ -55,53 +65,7 @@ class LegalizeHloToTfLitePass
   void runOnOperation() override;
 };
 
-class ConvertReduceOpToTFLiteArgmax
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
-                                        TFL::ReduceAnyOp, true> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
 
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMinValue()
-                                              : value.isMinSignedValue();
-    }
-  }
-};
-
-class ConvertReduceOpToTFLiteArgmin
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMinOp, TFL::ArgMinOp,
-                                        TFL::ReduceAllOp, false> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return !value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMaxValue()
-                                              : value.isMaxSignedValue();
-    }
-  }
-};
 
 std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
   return !op.getType().getElementType().isF32();
@@ -118,12 +82,18 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
+
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
+
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
+
+  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
+                      mhlo::ReshapeOp, mhlo::DynamicReshapeOp, mhlo::MaxOp,
+                      mhlo::MinOp, mhlo::PowOp, mhlo::Atan2Op, mhlo::DivOp,
+                      mhlo::AddOp, mhlo::MulOp, mhlo::SubtractOp>();
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
