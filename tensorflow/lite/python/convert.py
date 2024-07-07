@@ -14,11 +14,11 @@
 # ==============================================================================
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
-import distutils.spawn
 import enum
 import hashlib
 import os as _os
 import platform as _platform
+import shutil
 import subprocess as _subprocess
 import tempfile as _tempfile
 from typing import Optional
@@ -408,7 +408,7 @@ def _run_deprecated_conversion_binary(
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  if distutils.spawn.find_executable(_deprecated_conversion_binary) is None:
+  if shutil.which(_deprecated_conversion_binary) is None:
     raise ConverterError("""Could not find `toco_from_protos` binary, make sure
 your virtualenv bin directory or pip local bin directory is in your path.
 In particular, if you have installed TensorFlow with --user, make sure you
