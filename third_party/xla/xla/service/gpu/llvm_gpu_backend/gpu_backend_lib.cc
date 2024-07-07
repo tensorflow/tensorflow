@@ -152,13 +152,6 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   return absl::StrCat("sm_", sm_version, extension);
 }
 
-// NOLINTBEGIN: clang-diagnostic-unused-function
-// Convenience function for producing a name of a temporary compilation product
-// from the input filename.
-std::string MakeNameForTempProduct(absl::string_view input_filename,
-                                   absl::string_view extension) {
-  return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
-}
 // NOLINTEND: clang-diagnostic-unused-function
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -1041,17 +1034,6 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
 }  // namespace
 
 namespace amdgpu {
-
-std::string LibDevicePath(std::string gcn_arch_name,
-                          const std::string& rocdl_dir_path) {
-  auto libdevice_dir_paths = GetROCDLPaths(gcn_arch_name, rocdl_dir_path);
-  for (auto libdevice_dir_path : libdevice_dir_paths) {
-    if (libdevice_dir_path.find("ocml.bc")) {
-      return libdevice_dir_path;
-    }
-  }
-  return "";
-}
 
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,

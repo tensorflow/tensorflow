@@ -61,9 +61,6 @@ absl::StatusOr<std::string> CompileToPtx(
 }  // namespace nvptx
 
 namespace amdgpu {
-// Get path to libdevice file.
-std::string LibDevicePath(std::string gcn_arch_name,
-                          const std::string& rocdl_dir_path);
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
