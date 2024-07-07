@@ -25,10 +25,6 @@ limitations under the License.
 
 namespace xla {
 
-// Separator for fingerprint and hlo_name in the cost name of
-// ProfiledInstructionsProto.
-extern const char kCostNameSep[];
-
 // Latency info for a single HLO instruction.
 struct HloLatencyInfo {
   std::vector<double> durations;
