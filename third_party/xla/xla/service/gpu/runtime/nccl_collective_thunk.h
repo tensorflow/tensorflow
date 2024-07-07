@@ -64,47 +64,13 @@ struct NcclCollectiveConfig {
   int64_t op_id;
   CollectiveOpGroupMode group_mode;
 
-  template <typename OpT>
-  void SetCollectiveOpKindAndID(OpT op);
   void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
   void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
-template <typename OpT>
-void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
-  if (op.getChannelId()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
-    mlir::IntegerAttr unique_id =
-        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64_t>(unique_id.getInt());
-  }
-}
-
 NcclCollectiveConfig GetNcclCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids);
-
-template <typename OpT>
-NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
-    OpT op, std::optional<bool> use_global_device_ids) {
-  NcclCollectiveConfig config;
-  config.operand_count = op.getInputs().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.getInputs()[i]);
-    config.operand_element_type.push_back(shape.element_type());
-  }
-  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
-  config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
-                                               use_global_device_ids)
-                          .value();
-  return config;
-}
 
 // This wraps the ncclCommHandle object along with other information
 // that could be useful.
@@ -244,10 +210,6 @@ class NcclCollectiveDoneThunk : public Thunk {
   std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events_;
   AsyncStreamKind async_stream_kind_ = AsyncStreamKind::kCollective;
 };
-
-//===----------------------------------------------------------------------===//
-
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 

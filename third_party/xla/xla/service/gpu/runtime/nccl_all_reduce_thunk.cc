@@ -62,51 +62,6 @@ absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
 
 namespace {
 
-// Generally, the reduction op should be the only operation in the block, except
-// the terminator. However, if the type is bf16, the `FloatNormalization`
-// pass will have converted the op to float32 and added type conversions.
-// TODO(cjfj): Can we prevent the bf16 conversion for this computation?
-absl::StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
-  TF_RET_CHECK(block.getNumArguments() == 2);
-  mlir::Operation* terminator = block.getTerminator();
-  TF_RET_CHECK(terminator);
-  TF_RET_CHECK(terminator->getNumOperands() == 1);
-  mlir::Value result = terminator->getOperand(0);
-  TF_RET_CHECK(block.getArgument(0).getType() == result.getType());
-  TF_RET_CHECK(block.getArgument(1).getType() == result.getType());
-
-  mlir::Operation* result_op = result.getDefiningOp();
-  TF_RET_CHECK(result_op);
-
-  // In the bf16 case, the type conversions and op might be fused.
-  if (mlir::isa<mlir::mhlo::FusionOp>(result_op)) {
-    return FindReductionOp(result_op->getRegion(0).front());
-  }
-
-  // Standard case.
-  if (absl::c_is_permutation(result_op->getOperands(), block.getArguments())) {
-    return result_op;
-  }
-
-  // bf16 case.
-  TF_RET_CHECK(mlir::isa<mlir::mhlo::ConvertOp>(result_op));
-  TF_RET_CHECK(result_op->getNumOperands() == 1);
-  mlir::Operation* reduction_op = result_op->getOperand(0).getDefiningOp();
-  TF_RET_CHECK(reduction_op);
-  TF_RET_CHECK(reduction_op->getNumOperands() == 2);
-  mlir::Value operand0 = reduction_op->getOperand(0);
-  mlir::Value operand1 = reduction_op->getOperand(1);
-  auto operand0_op = operand0.getDefiningOp<mlir::mhlo::ConvertOp>();
-  auto operand1_op = operand1.getDefiningOp<mlir::mhlo::ConvertOp>();
-  TF_RET_CHECK(operand0_op);
-  TF_RET_CHECK(operand1_op);
-  TF_RET_CHECK(operand0_op->getNumOperands() == 1);
-  TF_RET_CHECK(operand1_op->getNumOperands() == 1);
-  std::array<mlir::Value, 2> operands{operand0_op->getOperand(0),
-                                      operand1_op->getOperand(0)};
-  TF_RET_CHECK(absl::c_is_permutation(operands, block.getArguments()));
-  return reduction_op;
-}
 
 }  // namespace
 

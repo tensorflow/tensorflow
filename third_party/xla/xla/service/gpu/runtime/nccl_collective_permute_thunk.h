@@ -98,8 +98,6 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
                                   bool p2p_memcpy_enabled);
   absl::Status Initialize(const InitializeParams& params) override;
 
-  static const char* GetHloOpName() { return "collective-permute-start"; }
-
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,

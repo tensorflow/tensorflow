@@ -54,12 +54,6 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   std::shared_ptr<ExecutionCounters> execution_counters_;
 };
 
-absl::Status RunRecv(NcclApi* nccl_api,
-                     NcclP2PConfig::SourceTargetMapEntry source_target,
-                     DeviceBufferPair& buffer, se::Stream& stream,
-                     NcclApi::NcclCommHandle comm,
-                     absl::string_view device_string, int64_t current_id);
-
 }  // namespace gpu
 }  // namespace xla
 
