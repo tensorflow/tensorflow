@@ -247,11 +247,6 @@ class PresetAssignments {
   }
 
   // Get debugging information.
-  std::string buffer_info_str() const { return buffer_info_str_; }
-  std::string allocation_info_str() const { return allocation_info_str_; }
-  std::string instruction_schedule_str() const {
-    return instruction_schedule_str_;
-  }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
