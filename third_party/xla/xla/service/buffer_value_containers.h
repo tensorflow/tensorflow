@@ -28,27 +28,8 @@ namespace xla {
 
 using BufferValueCompactPointerSet =
     tsl::gtl::CompactPointerSet<const BufferValue*>;
-template <class LogicalBufferContainerT>
-BufferValueCompactPointerSet ToBufferValueCompactPointerSet(
-    const LogicalBufferContainerT& logical_buffer_container) {
-  BufferValueCompactPointerSet output;
-  for (const LogicalBuffer* buffer : logical_buffer_container) {
-    output.insert(buffer);
-  }
-  return output;
-}
 
 using BufferValueFlatSet = absl::flat_hash_set<const BufferValue*>;
-template <class LogicalBufferContainerT>
-BufferValueFlatSet ToBufferValueFlatSet(
-    const LogicalBufferContainerT& logical_buffer_container) {
-  BufferValueFlatSet output;
-  output.reserve(logical_buffer_container.size());
-  for (const LogicalBuffer* buffer : logical_buffer_container) {
-    output.insert(buffer);
-  }
-  return output;
-}
 
 }  // namespace xla
 

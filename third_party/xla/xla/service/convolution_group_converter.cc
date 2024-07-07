@@ -59,9 +59,6 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
                   std::function<bool(HloInstruction*)> is_cost_viable,
                   bool convert_batch_groups_only, bool filter_expansion);
 
-  // Returns whether any convolution ops were rewritten.
-  const bool changed() const { return changed_; }
-
   ~ConvolutionVisitor() override = default;
 
  private:
