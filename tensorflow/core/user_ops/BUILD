@@ -24,6 +24,9 @@ cc_library(
     copts = tf_copts(),
     linkstatic = 1,
     visibility = ["//tensorflow/core:__pkg__"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+    ],
     alwayslink = 1,
 )
