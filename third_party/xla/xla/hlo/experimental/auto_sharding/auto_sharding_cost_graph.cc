@@ -323,23 +323,5 @@ NodeStrategyIdx CostGraph::RemapIndex(const NodeIdx node_id,
   return reindexing_vector_.at(node_id)[value];
 }
 
-std::string CostGraph::ToString() const {
-  std::string str;
-  absl::StrAppend(&str, "Cost Graph:\n");
-
-  for (NodeIdx i = 0; i < node_lens_.size(); ++i) {
-    absl::StrAppend(&str, "Node", i, ": ", node_lens_[i], "\n");
-  }
-  absl::StrAppend(&str, "\n");
-
-  for (const auto& iter : edge_costs_) {
-    absl::StrAppend(&str, "Edge (", iter.first.first, ", ", iter.first.second,
-                    "):\n");
-    absl::StrAppend(&str, iter.second.ToString(), "\n");
-  }
-
-  return str;
-}
-
 }  // namespace spmd
 }  // namespace xla

@@ -94,19 +94,6 @@ class Matrix {
     return ret;
   }
 
-  std::string ToString() const {
-    std::string str;
-
-    for (size_t i = 0; i < n_; ++i) {
-      for (size_t j = 0; j < m_; ++j) {
-        absl::StrAppend(&str, operator()(i, j).ToString(), " ");
-      }
-      absl::StrAppend(&str, "\n");
-    }
-
-    return str;
-  }
-
   size_t n_;
   size_t m_;
   bool transpose_;
