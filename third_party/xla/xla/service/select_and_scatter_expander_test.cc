@@ -47,12 +47,6 @@ constexpr absl::string_view kModuleStr =
 
 class SelectAndScatterExpanderTest : public HloTestBase {
  protected:
-  // The HLO parser changes all no layout shapes from the input to have a
-  // default layout. Clear the layout of the scatter operand for testing.
-  void ClearInstructionLayout(HloModule* module, absl::string_view inst_name) {
-    HloInstruction* inst = FindInstruction(module, inst_name);
-    inst->mutable_shape()->clear_layout();
-  }
 };
 
 // Test for the expected primary composite ops after this transformation and

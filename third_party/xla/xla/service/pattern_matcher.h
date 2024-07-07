@@ -491,8 +491,6 @@ class LayoutPatternBaseImpl {
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "a layout";
   }
-
-  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // A LayoutPattern implementation that matches only if the layout equals a
@@ -747,8 +745,6 @@ class ShapePatternBaseImpl {
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "a shape";
   }
-
-  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // A ShapePattern implementation that matches only if the shape equals a Shape
@@ -894,10 +890,6 @@ class ShapePatternIsDenseArrayImpl {
       return false;
     }
     return true;
-  }
-
-  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "that represents a dense array";
   }
 };
 
@@ -1259,8 +1251,6 @@ class HloInstructionPatternBaseImpl {
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "an HloInstruction";
   }
-
-  static constexpr bool kIsTrivialMatcher = true;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -1961,10 +1951,6 @@ class HloInstructionPatternConvDnumsImpl {
   explicit HloInstructionPatternConvDnumsImpl(ConvolutionDimensionNumbers dnums)
       : dnums_(std::move(dnums)) {}
 
-  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return MatchImpl(inst, option);
-  }
-
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
   }
@@ -2143,10 +2129,6 @@ class HloInstructionShardingImpl {
   explicit HloInstructionShardingImpl(
       const std::optional<HloSharding>& sharding)
       : sharding_(sharding) {}
-
-  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
-    return MatchImpl(inst, option);
-  }
 
   bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
@@ -2669,48 +2651,32 @@ XLA_NULLOP_PATTERN(ReplicaId)
         .WithOperand(0, std::forward<Arg>(arg));                     \
   }
 XLA_UNOP_PATTERN(Abs)
-XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(BitcastConvert)
 XLA_UNOP_PATTERN(Broadcast)
-XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
-XLA_UNOP_PATTERN(Cos)
-XLA_UNOP_PATTERN(AllReduceStart)
-XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(AllToAll)
 XLA_UNOP_PATTERN(AsyncDone)
-XLA_UNOP_PATTERN(CollectiveBroadcast)
 XLA_UNOP_PATTERN(CollectivePermute)
-XLA_UNOP_PATTERN(CollectivePermuteStart)
-XLA_UNOP_PATTERN(CollectivePermuteDone)
-XLA_UNOP_PATTERN(Domain)
 XLA_UNOP_PATTERN(Exp)
-XLA_UNOP_PATTERN(Expm1)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
 XLA_UNOP_PATTERN(GetTupleElement)
 XLA_UNOP_PATTERN(Imag)
-XLA_UNOP_PATTERN(Infeed)
 XLA_UNOP_PATTERN(IsFinite)
 XLA_UNOP_PATTERN(Log)
 XLA_UNOP_PATTERN(Not)
 XLA_UNOP_PATTERN(Negate)
 XLA_UNOP_PATTERN(OptimizationBarrier)
 XLA_UNOP_PATTERN(Real)
-XLA_UNOP_PATTERN(Recv)
 XLA_UNOP_PATTERN(RecvDone)
-XLA_UNOP_PATTERN(ReducePrecision)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
 XLA_UNOP_PATTERN(Rsqrt)
-XLA_UNOP_PATTERN(SendDone)
-XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
 XLA_UNOP_PATTERN(Sqrt)
-XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 XLA_UNOP_PATTERN(While)
@@ -2753,7 +2719,6 @@ XLA_UNOP_PATTERN(While)
         nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));          \
   }
 XLA_COMMUTATIVE_BINOP_PATTERN(Add)
-XLA_BINOP_PATTERN(Atan2)
 XLA_BINOP_PATTERN(Divide)
 XLA_BINOP_PATTERN(Complex)
 XLA_BINOP_PATTERN(Compare)
@@ -2763,7 +2728,6 @@ XLA_BINOP_PATTERN(Gather)
 XLA_COMMUTATIVE_BINOP_PATTERN(Maximum)
 XLA_COMMUTATIVE_BINOP_PATTERN(Minimum)
 XLA_COMMUTATIVE_BINOP_PATTERN(Multiply)
-XLA_BINOP_PATTERN(Outfeed)
 XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
 XLA_BINOP_PATTERN(Remainder)

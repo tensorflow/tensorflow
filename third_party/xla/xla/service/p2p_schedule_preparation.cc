@@ -339,8 +339,6 @@ struct P2PGroup {
   HloComputation* ChildComputation() const { return GetChild().computation; }
 
   int64_t GetChannel() const { return nodes[kUnpipelinedNodeIdx].GetChannel(); }
-  P2PGroupNode& GetChild() { return nodes[kPipelinedChildNodeIdx]; }
-  P2PGroupNode& GetParent() { return nodes[kPipelinedParentNodeIdx]; }
   const P2PGroupNode& GetChild() const { return nodes[kPipelinedChildNodeIdx]; }
   const P2PGroupNode& GetParent() const {
     return nodes[kPipelinedParentNodeIdx];
@@ -382,10 +380,6 @@ struct P2PGroup {
   }
 
   bool InCycle() const { return complement_group_channel.has_value(); }
-  P2PGroup* GetComplementGroup(P2PGroupMap& p2p_group_map) const {
-    CHECK(InCycle());
-    return &p2p_group_map.at(*complement_group_channel);
-  }
   const P2PGroup* GetComplementGroup(const P2PGroupMap& p2p_group_map) const {
     CHECK(InCycle());
     return &p2p_group_map.at(*complement_group_channel);
