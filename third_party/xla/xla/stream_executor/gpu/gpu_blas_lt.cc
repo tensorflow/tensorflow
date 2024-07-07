@@ -75,37 +75,6 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
-  switch (dtype) {
-    case DataType::kF8E5M2:
-      return PrimitiveType::F8E5M2;
-    case DataType::kF8E4M3FN:
-      return PrimitiveType::F8E4M3FN;
-    case DataType::kF8E5M2FNUZ:
-      return PrimitiveType::F8E5M2FNUZ;
-    case DataType::kF8E4M3FNUZ:
-      return PrimitiveType::F8E4M3FNUZ;
-    case DataType::kInt8:
-      return PrimitiveType::S8;
-    case DataType::kHalf:
-      return PrimitiveType::F16;
-    case DataType::kBF16:
-      return PrimitiveType::BF16;
-    case DataType::kFloat:
-      return PrimitiveType::F32;
-    case DataType::kInt32:
-      return PrimitiveType::S32;
-    case DataType::kDouble:
-      return PrimitiveType::F64;
-    case DataType::kComplexFloat:
-      return PrimitiveType::C64;
-    case DataType::kComplexDouble:
-      return PrimitiveType::C128;
-    default:
-      return xla::Internal("AsXlaPrimitiveType: unsupported dtype");
-  }
-}
-
 MatrixLayout::MatrixLayout(xla::PrimitiveType dtype_, int64_t num_rows_,
                            int64_t num_cols_, MatrixLayout::Order order_,
                            int64_t batch_size_,

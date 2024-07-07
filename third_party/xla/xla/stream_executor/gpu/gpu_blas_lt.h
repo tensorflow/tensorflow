@@ -36,8 +36,6 @@ namespace stream_executor::gpu {
 
 absl::StatusOr<blas::DataType> AsBlasDataType(xla::PrimitiveType dtype);
 
-absl::StatusOr<xla::PrimitiveType> AsXlaPrimitiveType(blas::DataType dtype);
-
 absl::StatusOr<blas::ComputationType> GetBlasComputationType(
     xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
     xla::PrimitiveType output_dtype, int64_t compute_precision);
