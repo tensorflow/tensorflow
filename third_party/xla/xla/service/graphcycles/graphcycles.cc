@@ -434,11 +434,6 @@ std::vector<int32_t> GraphCycles::SuccessorsCopy(int32_t node) const {
   return std::vector<int32_t>(successors.begin(), successors.end());
 }
 
-std::vector<int32_t> GraphCycles::PredecessorsCopy(int32_t node) const {
-  absl::Span<const int32_t> predecessors = Predecessors(node);
-  return std::vector<int32_t>(predecessors.begin(), predecessors.end());
-}
-
 namespace {
 void SortInPostOrder(absl::Span<const Node> nodes,
                      std::vector<int32_t>* to_sort) {
