@@ -39,8 +39,6 @@ class AsyncExecution {
   AsyncExecution(Backend* backend, std::vector<StreamPool::Ptr> streams,
                  const ExecutionProfile& profile, GlobalDataHandle result);
 
-  absl::Status BlockUntilDone() const;
-
   const GlobalDataHandle& result() const { return result_; }
 
   const ExecutionProfile& profile() const { return profile_; }
@@ -64,21 +62,6 @@ class AsyncExecution {
 class ExecutionTracker {
  public:
   ExecutionTracker();
-
-  // Registers an execution with its backend, streams, and data handle to the
-  // execution result. Returns a handle for the registered execution.
-  ExecutionHandle Register(Backend* backend,
-                           std::vector<StreamPool::Ptr> stream,
-                           const ExecutionProfile& profile,
-                           GlobalDataHandle data);
-
-  // Unregisters the execution for the given handle.
-  absl::Status Unregister(const ExecutionHandle& handle);
-
-  // Resolves the given ExecutionHandle to an AsyncExecution. Returns an
-  // error status if the given handle is not found, which means that the
-  // execution is not yet registered or already unregistered.
-  absl::StatusOr<const AsyncExecution*> Resolve(const ExecutionHandle& handle);
 
  private:
   // The next handle to assign to an execution.
