@@ -76,17 +76,6 @@ bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
           (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
-bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
-  for (const auto& entry : index_usage_count_) {
-    if (entry.second > kAllowedCodeDuplication ||
-        (ElementalIrEmitter::OpInvalidatesCache(entry.first) &&
-         (entry.second > 1 || UserCount(entry.first) > 1))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 int64_t FusionNodeIndexingEvaluation::EvaluateEmittedInstructions(
     const HloInstruction* producer) const {
   int64_t total = 0;
