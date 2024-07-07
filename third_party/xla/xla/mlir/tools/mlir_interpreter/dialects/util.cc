@@ -65,14 +65,6 @@ SmallVector<int64_t> ReplaceDynamicVals(ArrayRef<int64_t> static_vals,
 }
 
 OffsetsSizesStrides ExtractOffsetsSizesStrides(
-    ArrayRef<InterpreterValue> args, OffsetSizeAndStrideOpInterface op) {
-  auto offsets = ReplaceDynamicVals(op.getStaticOffsets(), args);
-  auto sizes = ReplaceDynamicVals(op.getStaticSizes(), args);
-  auto strides = ReplaceDynamicVals(op.getStaticStrides(), args);
-  return {offsets, sizes, strides};
-}
-
-OffsetsSizesStrides ExtractOffsetsSizesStrides(
     ArrayRef<int64_t> dynamic_offsets, ArrayRef<int64_t> dynamic_sizes,
     ArrayRef<int64_t> dynamic_strides, OffsetSizeAndStrideOpInterface op) {
   auto offsets = ReplaceDynamicVals(op.getStaticOffsets(), dynamic_offsets);
@@ -90,11 +82,6 @@ InterpreterValue ReshapeTensor(const InterpreterValue& in,
     out.InsertElement(out_index, in.ExtractElement(in_index));
   }
   return out;
-}
-
-InterpreterValue GetInitOperand(mlir::Operation* op, int64_t index,
-                                MutableArrayRef<InterpreterValue> args) {
-  return GetInitOperand(op->getOperands(), index, args);
 }
 
 InterpreterValue GetInitOperand(mlir::ValueRange values, int64_t index,
