@@ -64,32 +64,6 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   return config;
 }
 
-/* static */ std::string ToString(const WindowDimension& dim) {
-  using absl::StrAppend;
-  using absl::StrCat;
-  std::string str = StrCat("(size=", dim.size());
-  if (dim.stride() != 1) {
-    StrAppend(&str, ",stride=", dim.stride());
-  }
-  if (dim.padding_low() != 0) {
-    StrAppend(&str, ",padding_low=", dim.padding_low());
-  }
-  if (dim.padding_high() != 0) {
-    StrAppend(&str, ",padding_high=", dim.padding_high());
-  }
-  if (dim.base_dilation() != 1) {
-    StrAppend(&str, ",base_dilation=", dim.base_dilation());
-  }
-  if (dim.window_dilation() != 1) {
-    StrAppend(&str, ",window_dilation=", dim.window_dilation());
-  }
-  if (dim.window_reversal()) {
-    StrAppend(&str, ",window_reversal");
-  }
-  StrAppend(&str, ")");
-  return str;
-}
-
 std::string ToString(const Window& window) {
   using absl::StrAppend;
   using absl::StrCat;

@@ -37,7 +37,6 @@ Window MakeWindow(absl::Span<const int64_t> sizes,
 // side of dimension 1, and two pixels of padding symmetrically on dimension 2.
 PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes);
 
-std::string ToString(const WindowDimension& dim);
 std::string ToString(const Window& window);
 
 // The below functions return true if the given field is set to have a
