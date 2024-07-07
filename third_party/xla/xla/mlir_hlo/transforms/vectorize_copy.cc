@@ -223,8 +223,4 @@ struct VectorizeCopyPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
-  return std::make_unique<VectorizeCopyPass>();
-}
-
 }  // namespace mlir
