@@ -59,10 +59,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
     xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder);
 
-absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
-absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
-    TriangularSolveOptions_Transpose transpose);
-
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
 
