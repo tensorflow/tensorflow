@@ -349,12 +349,6 @@ void IotaTileAssignment::Print(Printer* printer) const {
   }
 }
 
-std::string IotaTileAssignment::ToString() const {
-  StringPrinter printer;
-  Print(&printer);
-  return std::move(printer).ToString();
-}
-
 int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
   DCHECK_EQ(index.size(), ndims_);
   int64_t linear_index = index[0];
@@ -412,13 +406,6 @@ void TileAssignment::Each(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
   MaybeMaterializeFullArray();
   array_->Each(f);
-}
-
-absl::Status TileAssignment::EachStatus(
-    absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
-    const {
-  MaybeMaterializeFullArray();
-  return array_->EachStatus(f);
 }
 
 [[nodiscard]] TileAssignment TileAssignment::Reshape(
