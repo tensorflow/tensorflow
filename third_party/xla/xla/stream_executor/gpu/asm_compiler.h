@@ -29,11 +29,6 @@ struct HsacoImage {
   std::vector<uint8_t> bytes;
 };
 
-// Bundles the GPU machine code (HSA Code Object) and returns the resulting
-// binary (i.e. a fatbin) as a byte array.
-absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
-    std::vector<HsacoImage> images, const std::string rocm_root_dir);
-
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_

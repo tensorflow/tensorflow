@@ -31,7 +31,7 @@ cc_library(
     compatible_with = None,
     tags = [
         "nomac",
-    ] + tf_gpu_tests_tags(),
+    ],
     deps = [
         ":create_client",
         ":functional_hlo_runner",
@@ -73,7 +73,7 @@ xla_cc_binary(
     testonly = True,
     tags = [
         "nomac",
-    ] + tf_gpu_tests_tags(),
+    ],
     deps = [
         ":hlo_runner_main_lib",
     ],
