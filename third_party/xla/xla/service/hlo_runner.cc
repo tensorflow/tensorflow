@@ -285,15 +285,6 @@ static void ExecutionInputsFromMovedScopedShapedBuffers(
 }
 
 absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
-    std::unique_ptr<HloModule> module,
-    absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      CreateExecutable(std::move(module), run_hlo_passes));
-  return ExecuteWithDeviceBuffers(executable.get(), arguments, profile);
-}
-
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
     ExecutionProfile* profile) {
   std::vector<ExecutionInput> execution_arguments =
@@ -303,15 +294,6 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
           GetAllocator());
   return ExecuteWithExecutionInputs(executable, std::move(execution_arguments),
                                     profile);
-}
-
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
-    std::unique_ptr<HloModule> module,
-    std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
-  return ExecuteWithMovedDeviceBuffersAndBufferAssignment(
-      std::move(module), /*buffer_assignment_proto=*/nullptr,
-      std::move(arguments), run_hlo_passes, profile);
 }
 
 absl::StatusOr<ExecutionOutput>
