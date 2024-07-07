@@ -76,7 +76,6 @@ class MaybeOwningCpuMemory {
 
   void* data() const { return buf_; }
   size_t size() const { return size_; }
-  bool owns_data() const { return data_ != nullptr; }
 
  private:
   void* buf_ = nullptr;                  // Non-owning data pointer.
