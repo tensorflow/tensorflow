@@ -72,18 +72,6 @@ void PythonRefManager::AddGarbage(absl::Span<nb::object> garbage) {
   }
 }
 
-void PythonRefManager::AddGarbage(
-    absl::Span<std::pair<PyCodeObject*, int> const> garbage) {
-  absl::MutexLock lock(&mu_);
-  // We don't care about collecting stack frame objects often. We grab a lot of
-  // tracebacks and the code objects are most likely live for the entire
-  // process.
-  garbage_count_.fetch_add(1, std::memory_order_relaxed);
-  for (const auto& o : garbage) {
-    python_garbage_.push_back(nb::steal(reinterpret_cast<PyObject*>(o.first)));
-  }
-}
-
 void PythonRefManager::CollectGarbage() {
   // TODO(phawkins): we should CHECK(PyGILState_Check());
   std::deque<nanobind::object> garbage;
