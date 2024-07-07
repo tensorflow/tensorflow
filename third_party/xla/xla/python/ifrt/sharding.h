@@ -66,7 +66,6 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
 
   // Returns if this sharding is equal to `other`.
   bool operator==(const Sharding& other) const;
-  bool operator!=(const Sharding& other) const { return !(*this == other); }
 
   // Returns a shard shape if the sharding always has the equal shape for all
   // shards. Returns an error if the sharding may not have a single shard

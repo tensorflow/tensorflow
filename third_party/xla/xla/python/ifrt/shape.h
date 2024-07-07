@@ -99,10 +99,6 @@ class BoundedDynamicShapeTag {
     return dynamic_dims_ == other.dynamic_dims_;
   }
 
-  bool operator!=(const BoundedDynamicShapeTag& other) const {
-    return !(*this == other);
-  }
-
   // Constructs `BoundedDynamicShapeTag` from `BoundedDynamicShapeTagProto`.
   static absl::StatusOr<BoundedDynamicShapeTag> FromProto(
       const BoundedDynamicShapeTagProto& proto);
@@ -135,8 +131,6 @@ class DynamicShape {
   DynamicShape(DynamicShape&&) = default;
   DynamicShape& operator=(const DynamicShape&) = default;
   DynamicShape& operator=(DynamicShape&&) = default;
-
-  const DynamicShapeTag& GetTag() const { return tag_; }
 
   bool operator==(const DynamicShape& other) const {
     return tag_ == other.tag_ && shape_ == other.shape_;

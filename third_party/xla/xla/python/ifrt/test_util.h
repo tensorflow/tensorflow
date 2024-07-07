@@ -41,9 +41,6 @@ namespace test_util {
 void RegisterClientFactory(
     std::function<absl::StatusOr<std::shared_ptr<Client>>()> factory);
 
-// Returns true iff an IFRT client factory function has been registered.
-bool IsClientFactoryRegistered();
-
 // Gets a new IFRT client using the registered client factory.
 absl::StatusOr<std::shared_ptr<Client>> GetClient();
 

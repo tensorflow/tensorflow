@@ -51,9 +51,6 @@ class IndexDomain {
   bool operator==(const IndexDomain& other) const {
     return origin_ == other.origin_ && shape_ == other.shape_;
   }
-  bool operator!=(const IndexDomain& other) const {
-    return origin_ != other.origin_ || shape_ != other.shape_;
-  }
   IndexDomain operator+(const Index& offset) const {
     return IndexDomain(origin_ + offset, shape_);
   }
