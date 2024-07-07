@@ -71,7 +71,7 @@ static auto BindFunction(T* fn) {
 
 // Custom calls registration library that exports function pointers to XLA FFI
 // handlers to the python users.
-NB_MODULE(custom_calls_testlib, m) {
+{
   m.def("registrations", []() {
     nb::dict dict;
     dict["always_fail"] = BindFunction(kAlwaysFail);
