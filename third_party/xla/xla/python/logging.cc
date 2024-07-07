@@ -19,9 +19,5 @@ limitations under the License.
 
 namespace xla {
 
-// TODO(phawkins): We can't import absl logging in the same file as TSL logging
-// because of conflicting definitions. We should fix this by using ABSL logging
-// everywhere.
-void InitializeAbslLogging() { absl::InitializeLog(); }
 
 }  // namespace xla

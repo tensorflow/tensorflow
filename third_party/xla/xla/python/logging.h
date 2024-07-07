@@ -18,7 +18,6 @@ limitations under the License.
 
 namespace xla {
 
-void InitializeAbslLogging();
 
 }  // namespace xla
 
