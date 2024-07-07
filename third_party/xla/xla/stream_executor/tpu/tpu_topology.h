@@ -38,11 +38,8 @@ class TpuCoreLocationExternal {
   explicit TpuCoreLocationExternal(SE_TpuTopology_Core* core_location)
       : core_location_(core_location) {}
   TpuDimensionsExternal chip_coordinates() const;
-  TpuDimensionsExternal host_coordinates() const;
   int32_t index() const;
   int32_t Id() const;
-
-  SE_TpuTopology_Core* impl() const { return core_location_; }
 
  private:
   SE_TpuTopology_Core* core_location_;
@@ -53,7 +50,6 @@ class TpuHostLocationExternal {
   explicit TpuHostLocationExternal(SE_TpuTopology_Host* host_location)
       : host_location_(host_location) {}
   int32_t Id() const;
-  std::vector<TpuCoreLocationExternal> Cores(TpuCoreTypeEnum core_type) const;
 
   SE_TpuTopology_Host* impl() const { return host_location_; }
 
@@ -81,14 +77,10 @@ class TpuTopologyExternal {
   TpuCoreLocationExternal Core(TpuCoreTypeEnum core_type, int x, int y, int z,
                                int index) const;
   std::vector<TpuCoreLocationExternal> cores(TpuCoreTypeEnum core_type) const;
-  int IdForHost(TpuDimensionsExternal host) const;
-  TpuVersionEnum version() const;
 
  private:
   SE_TpuTopology* topology_;
 };
-
-std::string TpuVersionEnumToString(TpuVersionEnum version);
 
 }  // namespace tpu
 }  // namespace tensorflow

@@ -106,25 +106,6 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
   return out;
 }
 
-absl::StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
-  std::optional<mlir::mhlo::FftType> type =
-      mlir::mhlo::symbolizeEnum<mlir::mhlo::FftType>(type_string);
-  if (!type) return InvalidArgument("Unknown FFT type %s", type_string.str());
-
-  switch (*type) {
-    case mlir::mhlo::FftType::FFT:
-      return xla::FftType::FFT;
-    case mlir::mhlo::FftType::IFFT:
-      return xla::FftType::IFFT;
-    case mlir::mhlo::FftType::RFFT:
-      return xla::FftType::RFFT;
-    case mlir::mhlo::FftType::IRFFT:
-      return xla::FftType::IRFFT;
-    default:
-      return InvalidArgument("Unknown FFT type enum #%d", *type);
-  }
-}
-
 absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
   std::optional<mlir::mhlo::Transpose> transpose =
@@ -204,64 +185,4 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   return std::nullopt;
 }
 
-DotDimensionNumbers ConvertDotDimensionNumbers(
-    mlir::mhlo::DotDimensionNumbersAttr input) {
-  DotDimensionNumbers output;
-
-  for (auto v : input.getLhsBatchingDimensions()) {
-    output.add_lhs_batch_dimensions(v);
-  }
-
-  for (auto v : input.getRhsBatchingDimensions()) {
-    output.add_rhs_batch_dimensions(v);
-  }
-
-  for (auto v : input.getLhsContractingDimensions()) {
-    output.add_lhs_contracting_dimensions(v);
-  }
-
-  for (auto v : input.getRhsContractingDimensions()) {
-    output.add_rhs_contracting_dimensions(v);
-  }
-
-  return output;
-}
-
-DotDimensionNumbers ConvertDotDimensionNumbers(
-    absl::Span<const int64_t> lhs_batch, absl::Span<const int64_t> lhs_contract,
-    absl::Span<const int64_t> rhs_batch,
-    absl::Span<const int64_t> rhs_contract) {
-  DotDimensionNumbers output;
-  for (auto v : lhs_batch) {
-    output.add_lhs_batch_dimensions(v);
-  }
-
-  for (auto v : rhs_batch) {
-    output.add_rhs_batch_dimensions(v);
-  }
-
-  for (auto v : lhs_contract) {
-    output.add_lhs_contracting_dimensions(v);
-  }
-
-  for (auto v : rhs_contract) {
-    output.add_rhs_contracting_dimensions(v);
-  }
-
-  return output;
-}
-
-absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
-    const mlir::ArrayAttr& array) {
-  int rank = array.size();
-  std::vector<int64_t> converted_array(rank);
-  for (int i = 0; i < rank; i++) {
-    mlir::IntegerAttr attr = mlir::dyn_cast<mlir::IntegerAttr>(array[i]);
-    if (!attr) {
-      return Internal("Type Error: Expected layout integer attribute");
-    }
-    converted_array[i] = attr.getInt();
-  }
-  return converted_array;
-}
 }  // namespace xla
