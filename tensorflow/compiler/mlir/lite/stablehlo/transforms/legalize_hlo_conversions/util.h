@@ -41,9 +41,9 @@ struct PermutationAndShape {
   ShapedType shape;
 };
 
-// Check that `arr` is an R1 iota with integer element type starting from `0`
-// with `size` number of values.
-bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size);
+// Check that `arr` is an R1 iota with integer element type starting from
+// `start` with `size` number of values.
+bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size, int64_t start = 0);
 
 // Returns a DenseIntElementsAttr for a permutation and the shape after
 // applying the permutation to a given shape through a transpose.
