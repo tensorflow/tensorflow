@@ -19,26 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_join.h"
-#include "tensorflow/cc/tools/freeze_saved_model.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/clusters/single_machine.h"
-#include "tensorflow/core/grappler/clusters/utils.h"
-#include "tensorflow/core/grappler/devices.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/grappler_item_builder.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/public/session.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
