@@ -46,8 +46,8 @@ limitations under the License.
 #include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "stablehlo/experimental/transforms/Passes.h"  // from @stablehlo
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 

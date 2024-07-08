@@ -1019,6 +1019,7 @@ cc_binary(
     deps = [
         ":all_passes",
         ":hlo_dialect_registration",
+        ":stablehlo_extension_passes",
         ":transforms_gpu_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllExtensions",
@@ -1067,4 +1068,91 @@ cc_binary(
     linkshared = True,
     linkstatic = False,
     deps = ["@llvm-project//mlir:mlir_c_runner_utils"],
+)
+
+# StableHLO Extension
+
+cc_library(
+    name = "stablehlo_extension_base",
+    srcs = [
+        "stablehlo_ext/IR/base.cpp",
+    ],
+    hdrs = [
+        "stablehlo_ext/IR/base.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    strip_include_prefix = ".",
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_extension_ops",
+    srcs = [
+        "stablehlo_ext/IR/stablehlo_ops.cpp",
+    ],
+    hdrs = [
+        "stablehlo_ext/IR/stablehlo_ops.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    strip_include_prefix = ".",
+    deps = [
+        ":stablehlo_extension_base",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+gentbl_cc_library(
+    name = "stablehlo_extension_pass_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "stablehlo_ext/transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo_ext/transforms/passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "stablehlo_extension_passes",
+    srcs = [
+        "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
+        "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
+        "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
+    ],
+    hdrs = [
+        "stablehlo_ext/transforms/passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    strip_include_prefix = ".",
+    deps = [
+        ":stablehlo_extension_ops",
+        ":stablehlo_extension_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_type_inference",
+    ],
 )

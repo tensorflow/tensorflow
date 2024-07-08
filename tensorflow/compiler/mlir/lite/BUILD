@@ -1375,7 +1375,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@stablehlo//stablehlo/experimental:experimental_stablehlo_passes",
+        "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )
 

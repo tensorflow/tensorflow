@@ -969,6 +969,7 @@ cc_library(
     hdrs = ["refine_polymorphic_shapes.h"],
     deps = [
         "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -985,7 +986,6 @@ cc_library(
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
-        "@stablehlo//stablehlo/experimental:experimental_stablehlo_passes",
     ],
 )
 
