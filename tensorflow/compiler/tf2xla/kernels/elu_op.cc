@@ -17,12 +17,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/elu_op.h"
 
-#include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/literal.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
-#include "tensorflow/core/framework/types.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace xla {
 XlaOp Elu(XlaOp x) {

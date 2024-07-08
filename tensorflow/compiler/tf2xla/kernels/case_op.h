@@ -21,8 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

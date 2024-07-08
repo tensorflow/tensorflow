@@ -15,13 +15,15 @@ limitations under the License.
 
 #include <optional>
 
-#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/lib/math.h"
 #include "xla/client/lib/matrix.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
