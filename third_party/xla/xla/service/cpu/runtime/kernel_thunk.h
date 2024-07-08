@@ -64,6 +64,8 @@ class KernelThunk final : public Thunk {
   absl::Status CheckBufferAlignment(
       absl::Span<const SE_HOST_KernelArg> kernel_args);
 
+  void VlogKernelArgs(absl::Span<const SE_HOST_KernelArg> kernel_args);
+
   std::vector<BufferAllocation::Slice> arguments_buffers_;
   std::vector<BufferAllocation::Slice> results_buffers_;
 

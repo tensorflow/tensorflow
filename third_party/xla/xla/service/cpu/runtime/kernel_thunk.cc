@@ -90,43 +90,36 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
       thread_dim_.ToString());
 
-  const BufferAllocations* allocations = params.buffer_allocations;
-
   // We use `llvm::SmallVector` instead of `absl::InlinedVector` because
   // it allows to resize a vector without zero-initializing storage.
   llvm::SmallVector<SE_HOST_KernelArg, 8> kernel_args;
   kernel_args.resize_for_overwrite(num_kernel_args_);
 
-  int64_t kernel_arg_idx = 0;
+  SE_HOST_KernelArg* kernel_args_ptr = kernel_args.data();
+  const BufferAllocations* allocations = params.buffer_allocations;
 
   for (BufferAllocation::Slice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
-      kernel_args[kernel_arg_idx] = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
-      kernel_args[kernel_arg_idx] = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
     }
-
-    VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", kernel_arg_idx,
-                                  buffer.ToString(),
-                                  kernel_args[kernel_arg_idx].data);
-    ++kernel_arg_idx;
   }
 
   for (BufferAllocation::Slice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
       TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
-      kernel_args[kernel_arg_idx] = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
-      kernel_args[kernel_arg_idx] = SE_HOST_KernelArg{mem.opaque(), mem.size()};
+      *kernel_args_ptr++ = SE_HOST_KernelArg{mem.opaque(), mem.size()};
     }
+  }
 
-    VLOG(3) << absl::StreamFormat(
-        "  res #%d: %s (%p)", kernel_arg_idx - arguments_buffers_.size(),
-        buffer.ToString(), kernel_args[kernel_arg_idx].data);
-    ++kernel_arg_idx;
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VlogKernelArgs(kernel_args);
   }
 
   // Сheck that all resolved buffers are properly aligned.
@@ -177,6 +170,20 @@ absl::Status KernelThunk::CheckBufferAlignment(
     }
   }
   return absl::OkStatus();
+}
+
+void KernelThunk::VlogKernelArgs(
+    absl::Span<const SE_HOST_KernelArg> kernel_args) {
+  for (int64_t i = 0; i < arguments_buffers_.size(); ++i) {
+    VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", i,
+                                  arguments_buffers_[i].ToString(),
+                                  kernel_args[i].data);
+  }
+  for (int64_t i = 0; i < results_buffers_.size(); ++i) {
+    VLOG(3) << absl::StreamFormat(
+        "  res #%d: %s (%p)", i, results_buffers_[i].ToString(),
+        kernel_args[arguments_buffers_.size() + i].data);
+  }
 }
 
 KernelThunk::BufferUses KernelThunk::buffer_uses() const {

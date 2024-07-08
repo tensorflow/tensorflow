@@ -285,6 +285,7 @@ BENCHMARK(BM_ChainOfAddF32)
     ->Arg(64)
     ->Arg(128)
     ->Arg(256)
-    ->Arg(512);
+    ->Arg(512)
+    ->Arg(1024);
 
 }  // namespace xla::cpu
