@@ -33,6 +33,7 @@ limitations under the License.
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 class Env;
