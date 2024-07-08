@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -823,8 +824,8 @@ struct SqueezeReshapesAroundBroadcastOp
         GetI32ElementsAttr(new_reshape_shape_i32, &rewriter));
 
     auto new_inner_reshape_op = rewriter.create<TFL::ReshapeOp>(
-        inner_reshape_op->getLoc(),
-        inner_reshape_input, new_reshape_shape_value);
+        inner_reshape_op->getLoc(), inner_reshape_input,
+        new_reshape_shape_value);
 
     // Create a new reshape_op to replace the old inner reshape_op.
     rewriter.replaceOp(inner_reshape_op, new_inner_reshape_op.getResult());
@@ -2514,6 +2515,74 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
   }
 };
 
+struct FuseBroadcastIntoFollowingBinary : public RewritePattern {
+  explicit FuseBroadcastIntoFollowingBinary(MLIRContext *context)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/2, context) {}
+
+  LogicalResult matchAndRewrite(mlir::Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (!op->hasTrait<OpTrait::ResultsBroadcastableShape>()) {
+      return failure();
+    }
+
+    if (op->getNumOperands() != 2 || op->getResultTypes().size() != 1) {
+      return failure();
+    }
+
+    auto result_type =
+        mlir::dyn_cast_or_null<RankedTensorType>(op->getResult(0).getType());
+    if (!result_type) {
+      return failure();
+    }
+
+    bool changed = false;
+    for (int i = 0; i < 2; ++i) {
+      // Check that the i'th operand is a broadcast.
+      auto broadcast = llvm::dyn_cast_or_null<TFL::BroadcastToOp>(
+          op->getOpOperand(i).get().getDefiningOp());
+      if (!broadcast) {
+        continue;
+      }
+
+      // Check that the operand of the broadcast has fully defined shape.
+      auto broadcast_arg_type = llvm::dyn_cast_or_null<RankedTensorType>(
+          broadcast.getInput().getType());
+      if (!broadcast_arg_type) {
+        continue;
+      }
+
+      // Check that the other argument has fully defined shape.
+      auto arg_type =
+          llvm::dyn_cast_or_null<RankedTensorType>(op->getOperand(0).getType());
+      if (!arg_type) {
+        continue;
+      }
+
+      // Check that the input of the broadcast and the other operand is
+      // broadcast compatible.
+      llvm::SmallVector<int64_t, 4> broadcasted_shape;
+      if (!OpTrait::util::getBroadcastedShape(arg_type.getShape(),
+                                              broadcast_arg_type.getShape(),
+                                              broadcasted_shape)) {
+        continue;
+      }
+
+      // Check that an implicit broadcast between the operand of the broadcast
+      // and the other argument would result in the same type as the result
+      // type.
+      if (broadcasted_shape != result_type.getShape()) {
+        continue;
+      }
+
+      // Update the operand of the op to be the operand of the broadcast.
+      rewriter.modifyOpInPlace(
+          op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
+      changed = true;
+    }
+    return success(changed);
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2530,8 +2599,9 @@ void OptimizePass::runOnOperation() {
   // binary ops.
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
-      .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
-           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp>(ctx);
+      .add<FuseBroadcastIntoFollowingBinary, SqueezeReshapesAroundBroadcastOp,
+           RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
+           ConvertTFLBroadcastToMulOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
