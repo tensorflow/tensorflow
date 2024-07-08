@@ -628,7 +628,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched,
 }
 
 // Returns the generic op name for an _Mkl activation op
-std::string GetActivationName(std::string s) {
+std::string GetActivationName(const std::string& s) {
   if (s == kMklFusedMish) {
     return "Mish";
   } else {
