@@ -554,7 +554,7 @@ INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
 
 using AllGatherTest = TritonSupportTestWithParam;
 
-TEST_P(AllGatherTest, UnsupportedAllGatherFialsGracefullyWithTriton) {
+TEST_P(AllGatherTest, UnsupportedAllGatherFailsGracefullyWithTriton) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
   ENTRY triton_computation {
