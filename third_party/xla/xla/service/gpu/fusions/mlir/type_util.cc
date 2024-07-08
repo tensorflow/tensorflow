@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
