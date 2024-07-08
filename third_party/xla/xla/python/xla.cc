@@ -387,7 +387,33 @@ NB_MODULE(xla_extension, m_nb) {
           }
           std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
               GetCApiClient(platform_name, options, kv_store));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(c_api_client));
+          ifrt::PjRtClient::CreateOptions ifrt_options;
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(c_api_client));
+          // TODO(b/353788247): Integrate with other platforms.
+          if (distributed_client != nullptr && platform_name == "tpu") {
+            // Retrieve process index and num processes from options.
+            auto process_id_it = options.find("process_index");
+            if (process_id_it == options.end()) {
+              throw nb::value_error(
+                  "Process index must be specified in options if using PjRT "
+                  "IFRT.");
+            }
+            auto num_processes_it = options.find("num_processes");
+            if (num_processes_it == options.end()) {
+              throw nb::value_error(
+                  "Number of processes must be specified in options if using "
+                  "PjRT IFRT.");
+            }
+            auto process_index = std::get<int64_t>(process_id_it->second);
+            auto num_processes = std::get<int64_t>(num_processes_it->second);
+            // Specify IFRT options.
+            ifrt_options.kv_store = kv_store;
+            ifrt_options.process_id = process_index;
+            ifrt_options.num_processes = num_processes;
+          }
+          ifrt_client = xla::ValueOrThrow(
+              ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },

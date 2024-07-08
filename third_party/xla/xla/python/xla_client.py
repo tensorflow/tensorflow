@@ -123,13 +123,15 @@ def make_gpu_client(
   )
 
 
-def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
+def make_tfrt_tpu_c_api_client(
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient = None):
   assert pjrt_plugin_loaded('tpu')
   if not pjrt_plugin_initialized('tpu'):
     initialize_pjrt_plugin('tpu')
   if options is None:
     options = {}
-  return _xla.get_c_api_client('tpu', options)
+  return _xla.get_c_api_client('tpu', options, distributed_client)
 
 
 DeviceTopology = _xla.DeviceTopology
@@ -201,13 +203,14 @@ def make_c_api_client(
 
 
 def make_tpu_client(
-    library_path: str | None = None, options: _NameValueMapping | None = None
+    library_path: str | None = None, options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
 ):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
     profiler.register_plugin_profiler(c_api)
-  return make_tfrt_tpu_c_api_client(options)
+  return make_tfrt_tpu_c_api_client(options, distributed_client)
 
 
 def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
