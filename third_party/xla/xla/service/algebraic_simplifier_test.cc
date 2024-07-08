@@ -85,7 +85,8 @@ const char* non_neg_ops[] = {"abs(p0)",
                              "select(pred0, a0, a1)",
                              "select(pred0, a1, a0)"};
 
-const char* arb_sing_ops[] = {"constant(-0.1)",
+const char* arb_sign_ops[] = {"constant(-0.0)",
+                              "constant(-0.1)",
                               "constant(-inf)",
                               "constant(nan)",
                               "cosine(p0)",
@@ -126,7 +127,7 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op) {
 
 // Test that the result of particular oprations might be negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Op_NegativeTestCase) {
-  for (const auto op : arb_sing_ops) {
+  for (const auto op : arb_sign_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
       HloModule m
       test {
@@ -171,7 +172,7 @@ TEST_F(AlgebraicSimplifierTest, IsNonNegative_Broadcast) {
 // Test that the result of Broadcast might be negative if its oprand is
 // not non-negative
 TEST_F(AlgebraicSimplifierTest, IsNonNegative_Broadcast_NegativeTestCase) {
-  for (const auto op : arb_sing_ops) {
+  for (const auto op : arb_sign_ops) {
     const auto kModuleStr = absl::StrFormat(R"(
       HloModule m
       test {
