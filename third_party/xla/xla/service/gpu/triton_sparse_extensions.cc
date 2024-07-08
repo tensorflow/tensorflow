@@ -332,24 +332,22 @@ class SparseBlockedToMMAPass
 };
 
 namespace SharedToSparseDotOperand {
-namespace {
-constexpr int kThreadsPerWarp = 32;
-
-// Each 16x16 original sparse matrix tile requires 16 metadata values of 16-bit
-// size, where the first thread (T0) in each 4-thread group holds two such
-// values in a register (32-bit).
-// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
-constexpr int kTileSize = 16;
-constexpr int kThreadsInGroup = 4;
-constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
-constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
-}  // namespace
 
 Value convertLayout(ConversionPatternRewriter &rewriter, Location loc,
                     Value tensor,
                     triton::gpu::SparseDotMetaEncodingAttr sparseEncoding,
                     const SharedMemoryObject &smemObj,
                     const LLVMTypeConverter *typeConverter, Value thread) {
+  constexpr int kThreadsPerWarp = 32;
+  // Each 16x16 original sparse matrix tile requires 16 metadata values of
+  // 16-bit size, where the first thread (T0) in each 4-thread group holds two
+  // such values in a register (32-bit).
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#sparse-matrix-storage
+  constexpr int kTileSize = 16;
+  constexpr int kThreadsInGroup = 4;
+  constexpr int kMetadataElementsPerPackedValue = 8;  // 8 x 2-bit = 16-bit
+  constexpr int kMetadataLineOffset = kThreadsPerWarp / kThreadsInGroup;
+
   // Calculate tile size as number of mask elements (4xi4).
   NvidiaMmaEncodingAttr mmaLayout =
       cast<NvidiaMmaEncodingAttr>(sparseEncoding.getParent());
