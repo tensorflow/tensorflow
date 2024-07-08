@@ -207,6 +207,14 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 
+// Checks if the multi-dimensional indices supplied by a constant tensor
+// are unique. This is a useful check for legalizations to tosa.scatter
+// which requires indices are unique, while in TF/TFLite they may be
+// non-unique.
+bool checkUniqueConstantScatterIndices(ShapedType indices_type,
+                                       ShapedType result_type,
+                                       ElementsAttr const_data);
+
 // Applies a set of patterns greedily to the specified function, then applies
 // a cleanup to guarantee the function contract and constants are valid. This
 // means patterns can performed shape inference while not altering immutable
