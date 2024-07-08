@@ -19,6 +19,7 @@ limitations under the License.
 #include "mhlo/transforms/passes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project

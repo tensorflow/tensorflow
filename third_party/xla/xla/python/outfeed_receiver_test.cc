@@ -19,16 +19,25 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/literal.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/service/platform_util.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/service/computation_placer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
