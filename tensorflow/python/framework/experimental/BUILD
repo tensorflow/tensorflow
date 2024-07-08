@@ -22,11 +22,13 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:status",
         "@pybind11",
     ],
 )
@@ -36,12 +38,10 @@ tf_python_pybind_extension(
     srcs = ["tape.cc"],
     features = ["-layering_check"],
     deps = [
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -54,14 +54,7 @@ tf_python_pybind_extension(
         "_math_ops.pyi",
     ],
     deps = [
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -74,14 +67,7 @@ tf_python_pybind_extension(
         "_nn_ops.pyi",
     ],
     deps = [
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
