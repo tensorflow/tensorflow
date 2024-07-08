@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/reduction_utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"

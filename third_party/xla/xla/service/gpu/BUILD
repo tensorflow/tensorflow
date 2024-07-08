@@ -2578,6 +2578,7 @@ xla_cc_test(
         ":gpu_fusible",
         ":multi_output_fusion",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:pattern_matcher",
@@ -2585,6 +2586,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3905,7 +3907,12 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ]),
+    ]) + [
+        "//xla:xla_data_proto_cc",
+        "//xla/service:algebraic_simplifier",
+        "//xla/service/gpu/runtime:thunk",
+        "//xla/stream_executor/gpu:redzone_allocator",
+    ],
 )
 
 xla_test(
@@ -5322,6 +5329,7 @@ xla_cc_test(
         ":reduction_splitter",
         "//xla:shape_util",
         "//xla:test",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "//xla/service:pattern_matcher",
@@ -6278,6 +6286,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
