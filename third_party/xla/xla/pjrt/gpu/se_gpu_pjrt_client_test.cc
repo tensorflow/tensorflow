@@ -507,6 +507,78 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* pinned_memory_space,
+      client->addressable_devices()[0]->memory_space_by_kind(
+          PinnedHostMemorySpace::kKind));
+
+  std::vector<Literal> src_literals;
+  std::vector<Shape> src_shapes;
+  for (int i = 0; i < 4; ++i) {
+    std::vector<float> data(i + 1);
+    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
+    src_shapes.push_back(src_literals.back().shape());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              src_shapes, pinned_memory_space));
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  for (int i = 0; i < src_shapes.size(); ++i) {
+    buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
+  }
+
+  for (int i = 0; i < src_shapes.size(); ++i) {
+    TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+        i,
+        absl::string_view(static_cast<char*>(src_literals[i].untyped_data()),
+                          src_literals[i].size_bytes()),
+        [&]() {}));
+  }
+
+  absl::Mutex mu;
+  std::vector<std::shared_ptr<Literal>> literals;
+  int got_literal_count = 0;
+  int got_callback_count = 0;
+
+  for (auto& buffer : buffers) {
+    literals.push_back(std::make_shared<Literal>(
+        ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
+    buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
+      absl::MutexLock l(&mu);
+      TF_ASSERT_OK(s);
+      ++got_literal_count;
+    });
+    buffer->GetReadyFuture().OnReady([&](absl::Status s) {
+      absl::MutexLock l(&mu);
+      TF_ASSERT_OK(s);
+      ++got_callback_count;
+    });
+    buffer.reset();
+  }
+
+  {
+    auto done = [&]() {
+      return got_literal_count == src_literals.size() &&
+             got_callback_count == src_literals.size();
+    };
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&done));
+  }
+
+  for (int i = 0; i < src_literals.size(); ++i) {
+    ASSERT_TRUE(
+        ShapeUtil::Compatible(src_literals[i].shape(), literals[i]->shape()));
+    ASSERT_EQ(
+        src_literals[i].data<float>(),
+        literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));

@@ -123,7 +123,7 @@ class AsyncHostToDeviceTransferManager
  public:
   static absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   Create(absl::Span<const Shape> shapes, PjRtStreamExecutorDevice* device,
-         PjRtStreamExecutorClient* client) {
+         PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space) {
     absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
     absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs;
     absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
@@ -151,7 +151,7 @@ class AsyncHostToDeviceTransferManager
                           AllocateDestinationBuffer(
                               compact_shape, device, local_device, h2d_stream,
                               /*is_uninitialized_create=*/true, client,
-                              definition_events.back()));
+                              definition_events.back(), memory_space));
       // Get a temporary hold just so we can fish out a shared_ptr to the
       // TrackedDeviceBuffer. It's ok to drop the hold before return the
       // buffers, because the invariants of this class ensure that the buffer
@@ -548,14 +548,18 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
   return xla::AsyncHostToDeviceTransferManager::Create(
-      shapes, stream_executor_device, this);
+      shapes, stream_executor_device, this, /*memory_space=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
-  return CreateBuffersForAsyncHostToDevice(shapes, memory_space->devices()[0]);
+  PjRtDevice* device = memory_space->devices()[0];
+  auto* stream_executor_device =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
+  return xla::AsyncHostToDeviceTransferManager::Create(
+      shapes, stream_executor_device, this, memory_space);
 }
 
 absl::StatusOr<xla::DeviceAssignment>
