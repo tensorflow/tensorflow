@@ -19,13 +19,16 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "third_party/GL/gl/include/GLES3/gl31.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 #include "tensorflow/lite/delegates/gpu/gl/converters/util.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
-#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
