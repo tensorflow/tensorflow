@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <sys/stat.h>
 #include <unistd.h>
+
 #include <iostream>
 #include <string>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 int myargc;
 char** myargv;

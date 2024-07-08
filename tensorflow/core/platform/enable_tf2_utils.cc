@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
