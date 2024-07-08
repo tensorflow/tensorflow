@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -31,11 +32,9 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

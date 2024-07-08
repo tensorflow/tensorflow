@@ -22,10 +22,18 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace mlir {
 namespace {
