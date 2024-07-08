@@ -132,18 +132,13 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_map_proto_cc",
-        ":conv_autotune_maps",
-        ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )
 
