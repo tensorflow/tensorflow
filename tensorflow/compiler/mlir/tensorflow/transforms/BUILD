@@ -53,15 +53,15 @@ cc_library(
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
+        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms/toposort:Pass",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -179,8 +179,8 @@ cc_library(
     deps = [
         ":tf_data_optimization_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -196,10 +196,9 @@ cc_library(
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:inlined_vector",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineAnalysis",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -269,13 +268,17 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:resource_value_typed_analyzer",
         "//tensorflow/compiler/mlir/tensorflow:session_utils",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/core/framework:resource_handle",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -594,6 +597,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:stablehlo_custom_call_utils",
         "//tensorflow/compiler/mlir/tensorflow:string_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
@@ -636,6 +640,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
@@ -969,6 +974,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
