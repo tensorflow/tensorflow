@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/internal/signature_def.h"
 
 namespace tflite {
 namespace impl {
