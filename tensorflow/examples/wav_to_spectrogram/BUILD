@@ -14,12 +14,15 @@ cc_library(
     hdrs = ["wav_to_spectrogram.h"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -30,6 +33,7 @@ tf_cc_binary(
         ":wav_to_spectrogram_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
     ],
 )
 
