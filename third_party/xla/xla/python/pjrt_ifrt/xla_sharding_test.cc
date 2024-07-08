@@ -117,6 +117,16 @@ TEST_P(HloShardingTest, HasSamePartitioning) {
         HloSharding::Create(device_list1, MemoryKind(), xla_hlo_sharding1);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
+
+  // Replicated sharding with different numbers of devices.
+  {
+    auto device_list1 = GetDevices({0, 1, 2});
+    std::shared_ptr<const HloSharding> hlo_sharding0 = HloSharding::Create(
+        device_list0, MemoryKind(), xla::HloSharding::Replicate());
+    std::shared_ptr<const HloSharding> hlo_sharding1 = HloSharding::Create(
+        device_list1, MemoryKind(), xla::HloSharding::Replicate());
+    EXPECT_FALSE(hlo_sharding0->HasSamePartitioning(*hlo_sharding1));
+  }
 }
 
 TEST_P(HloShardingTest, WithDeviceAssignment) {
