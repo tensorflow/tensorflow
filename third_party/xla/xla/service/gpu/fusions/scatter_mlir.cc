@@ -115,11 +115,10 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
   // Compute thread id mapping based on the first update operand.
   Shape scatter_update_shape = scatter->scatter_updates().front()->shape();
 
-  // Do not unroll if the indices are not unique, otherwise we would create a
-  // loop that performs atomic_rmw on every iteration.
-  int64_t unroll_factor = scatter->unique_indices() ? config_.unroll_factor : 1;
+  // TODO(jreiffers): There are scatters where vectorization makes sense, but we
+  // cannot currently detect them. Add a heuristic.
   IndexingMap scatter_update_map = GetDefaultThreadIdIndexingMap(
-      launch_dimensions(), unroll_factor, scatter_update_shape, ctx);
+      launch_dimensions(), /*unroll_factor=*/1, scatter_update_shape, ctx);
 
   // For scatter indices we project indexing for scatter updates and take the
   // first result of the affine map only, because they coincide.

@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,14 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/interpreter/platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include <cstdint>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/cuda/nvjitlink.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
-namespace interpreter {
 
-PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId);
+absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
+  return absl::UnimplementedError("libnvjitlink is not supported");
+}
 
-}  // namespace interpreter
+absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
+    int cc_major, int cc_minor, absl::Span<const NvJitLinkInput> inputs,
+    GpuAsmOpts options, bool cancel_if_reg_spill) {
+  return absl::UnimplementedError("libnvjitlink is not supported");
+}
+
 }  // namespace stream_executor

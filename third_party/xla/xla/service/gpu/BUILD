@@ -317,6 +317,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter_context",
+        ":ir_emitter_triton",
         ":kernel_arguments",
         ":kernel_reuse_cache",
         ":launch_dimensions",
@@ -340,6 +341,7 @@ cc_library(
         "//xla/service:custom_call_target_registry",
         "//xla/service:global_device_id",
         "//xla/service:name_uniquer",
+        "//xla/service/gpu/fusions",
         "//xla/service/gpu/fusions:fusion_emitter",
         "//xla/service/gpu/fusions:thunk_util",
         "//xla/service/gpu/kernels:custom_kernel",
@@ -417,8 +419,6 @@ cc_library(
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@triton//:TritonDialects",
     ] + if_gpu_is_configured([
-        ":ir_emitter_triton",
-        "//xla/service/gpu/fusions",
         "//xla/service/gpu/runtime:cholesky_thunk",
         "//xla/service/gpu/runtime:cub_sort_thunk",
         "//xla/service/gpu/runtime:triangular_solve_thunk",
@@ -483,14 +483,15 @@ cc_library(
 
 cc_library(
     name = "ir_emitter_triton",
-    srcs = if_gpu_is_configured([
-        "ir_emitter_triton.cc",
-    ]) + if_cuda_is_configured([
+    srcs = if_gpu_is_configured(
+        ["ir_emitter_triton.cc"],
+        ["ir_emitter_triton_stub.cc"],
+    ) + if_cuda_is_configured([
         "ir_emitter_triton_cuda.cc",
     ]) + if_rocm_is_configured([
         "ir_emitter_triton_rocm.cc",
     ]),
-    hdrs = if_gpu_is_configured(["ir_emitter_triton.h"]),
+    hdrs = ["ir_emitter_triton.h"],
     deps = [
         ":backend_configs_cc",
         ":hlo_traversal",
@@ -612,6 +613,7 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
+        "@triton//:TritonToTritonGPU",
         "@triton//third_party/nvidia:NVGPUDialect",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
     ],
