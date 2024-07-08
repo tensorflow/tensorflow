@@ -25,6 +25,10 @@ limitations under the License.
 // (non-virtual) accessor methods and API functions to be declared.
 // The code here uses those methods, so we need to make sure that we get
 // the mutable variant of this header.
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "third_party/py/numpy/core/include/numpy/arrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarraytypes.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
@@ -55,11 +59,13 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/shared_library.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
