@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/composite_device.h"
 
-#include "absl/strings/str_join.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {

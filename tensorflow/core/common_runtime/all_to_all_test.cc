@@ -12,17 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/all_to_all.h"
 
 #include "tensorflow/core/common_runtime/collective_test_util.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

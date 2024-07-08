@@ -28,10 +28,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
