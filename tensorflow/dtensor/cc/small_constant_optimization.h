@@ -19,6 +19,8 @@ limitations under the License.
 #include <optional>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
