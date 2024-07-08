@@ -37,6 +37,7 @@ visibility = [
     "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
     "//third_party/py/scenic:__subpackages__",
+    "//smartass/brain/ops:__subpackages__",
 ]
 
 package(
@@ -139,6 +140,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/mlir/tfr/examples/customization:__pkg__",
         "//tensorflow/compiler/mlir/tfr/examples/pad:__pkg__",
@@ -530,6 +532,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
+        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
