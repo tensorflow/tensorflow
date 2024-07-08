@@ -237,7 +237,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(b/319271534): Re-enable once we use libnvjitlink.
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
 
-  opts.set_xla_gpu_enable_libnvptxcompiler(false);
+  opts.set_xla_gpu_enable_libnvptxcompiler(
+      stream_executor::IsLibNvPtxCompilerSupported());
 
   opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
