@@ -16,6 +16,11 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+
 namespace tflite {
 
 int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(
