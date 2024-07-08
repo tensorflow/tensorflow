@@ -69,6 +69,8 @@ class IndexDomain {
     return *this;
   }
   std::string DebugString() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const IndexDomain& m);
 
  private:
   Index origin_;
@@ -76,6 +78,11 @@ class IndexDomain {
 };
 
 std::ostream& operator<<(std::ostream& os, const IndexDomain& index_domain);
+
+template <typename H>
+H AbslHashValue(H h, const IndexDomain& m) {
+  return H::combine(std::move(h), m.origin_.elements(), m.shape_.dims());
+}
 
 }  // namespace ifrt
 }  // namespace xla

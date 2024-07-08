@@ -329,6 +329,7 @@ _TENSORFLOW_CPU_BUILD = Build(
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
         "-//tensorflow/python/compiler/tensorrt/...",
@@ -352,6 +353,7 @@ _TENSORFLOW_GPU_BUILD = Build(
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
+        "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
         "-//tensorflow/python/compiler/tensorrt/...",
