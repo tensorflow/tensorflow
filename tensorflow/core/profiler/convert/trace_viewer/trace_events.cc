@@ -44,7 +44,6 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
