@@ -6,6 +6,8 @@
 // CHECK: sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 sdy.mesh @mesh = <"a"=2, "b"=2, "c"=2>
 
+add a problem to make the test fail.
+
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>})
   %arg0: tensor<8x16xf32>           {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}
