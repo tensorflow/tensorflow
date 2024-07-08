@@ -1767,15 +1767,26 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               ShapeUtil::GetLeafCount(instruction.shape().tuple_shapes(i));
         }
       }
+      auto base_instruction_sharding = [&](const HloSharding& user_sharding) {
+        if (instruction.has_sharding()) {
+          return instruction.sharding();
+        } else {
+          std::vector<HloSharding> shardings;
+          ShapeUtil::ForEachSubshape(
+              instruction.shape(),
+              [&](const Shape& sub_shape, const ShapeIndex& index) {
+                if (ShapeUtil::IsLeafIndex(instruction.shape(), index)) {
+                  shardings.push_back(hlo_sharding_util::ReplicateAllDataDims(
+                      user_sharding, sub_shape.dimensions_size()));
+                }
+              });
+          return HloSharding::Tuple(instruction.shape(), shardings);
+        }
+      };
       if (user.shape().IsArray()) {
         // Use ReplicateAllDataDims instead of HloSharding::Replicate() to
         // preserve manual subgroups.
-        HloSharding new_sharding =
-            instruction.has_sharding()
-                ? instruction.sharding()
-                : HloSharding::SingleTuple(
-                      instruction.shape(),
-                      hlo_sharding_util::ReplicateAllDataDims(user.sharding()));
+        HloSharding new_sharding = base_instruction_sharding(user.sharding());
         new_sharding.tuple_elements()[sharding_index] = user.sharding();
         return new_sharding;
       } else {
@@ -1783,12 +1794,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           return std::nullopt;
         }
         HloSharding new_sharding =
-            instruction.has_sharding()
-                ? instruction.sharding()
-                : HloSharding::SingleTuple(
-                      instruction.shape(),
-                      hlo_sharding_util::ReplicateAllDataDims(
-                          user.sharding().tuple_elements()[0]));
+            base_instruction_sharding(user.sharding().tuple_elements()[0]);
         for (int64_t i = 0; i < user.sharding().tuple_elements().size(); ++i) {
           new_sharding.tuple_elements()[sharding_index + i] =
               user.sharding().tuple_elements()[i];

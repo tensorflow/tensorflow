@@ -10821,6 +10821,48 @@ ENTRY entry {
   EXPECT_EQ(fp->sharding(), false_param->sharding());
 }
 
+TEST_F(ShardingPropagationTest, WhileDSManual) {
+  const char* const hlo_string = R"(
+HloModule module
+
+while.condition {
+  arg_tuple = (s32[], pred[2,8,4]) parameter(0)
+  tripcount = s32[] get-tuple-element(arg_tuple), index=0
+  triplimit = s32[] constant(2)
+  ROOT compare.0 = pred[] compare(tripcount, triplimit), direction=LT
+}
+
+while.body {
+  arg_tuple = (s32[], pred[2,8,4]) parameter(0)
+  tripcount = s32[] get-tuple-element(arg_tuple), index=0
+  one = s32[] constant(0)
+  tripcount_next = s32[] add(tripcount, one)
+  preds.1 = pred[2,8,4] get-tuple-element(arg_tuple), index=1
+  zero.1 = s32[] constant(0)
+  dynamic-slice.1 = pred[1,8,4] dynamic-slice(preds.1, tripcount, zero.1, zero.1), dynamic_slice_sizes={1,8,4}, sharding={devices=[1,1,1,2,4]<=[8] last_tile_dims={manual, replicated}}
+  ROOT result = (s32[], pred[2,8,4]) tuple(tripcount_next, preds.1)
+}
+
+ENTRY entry {
+  preds = pred[2,8,4] parameter(0), sharding={devices=[1,1,1,2,4]<=[8] last_tile_dims={manual, replicated}}
+  zero = s32[] constant(0)
+  tuple.13 = (s32[], pred[2,8,4]) tuple(zero, preds)
+  ROOT result = while(tuple.13), condition=while.condition, body=while.body
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* zero = FindInstruction(module.get(), "zero");
+  EXPECT_THAT(
+      zero,
+      op::Sharding("{devices=[2,4]<=[8] last_tile_dims={manual, replicated}}"));
+}
+
 TEST_F(ShardingPropagationTest, PropagateToOutput) {
   const char* const hlo_string = R"(
 HloModule module
