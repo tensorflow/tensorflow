@@ -477,6 +477,7 @@ cc_library(
     deps = [
         ":uniform_quantized_stablehlo_to_tfl_pass",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/lite:macros",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
