@@ -77,7 +77,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const HloInstruction* producer,
       absl::Span<const HloInstruction* const> fused_consumers = {});
 
-  EstimateRunTimeData EstimateRunTimeForTiledHloComputation(
+  absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
       const TiledHloComputation& tiled_hlo_computation,
       const LaunchDimensions& launch_dimensions);

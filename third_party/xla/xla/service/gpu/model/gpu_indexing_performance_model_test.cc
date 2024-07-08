@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,6 +45,8 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::status::StatusIs;
 
 class GpuIndexingPerformanceModelTest : public HloTestBase {
   GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
@@ -375,6 +378,39 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 183, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 39, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 185, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ConcatenateIsNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+concatenate_fusion {
+  param_0 = f32[32, 128] parameter(0)
+  param_1 = f32[64, 128] parameter(1)
+  ROOT concatenate = f32[96, 128] concatenate(param_0, param_1), dimensions={0}
+}
+
+ENTRY main {
+  param_0 = f32[32, 128] parameter(0)
+  param_1 = f32[64, 128] parameter(1)
+  ROOT fusion = f32[96, 128] fusion(param_0, param_1), kind=kCustom, calls=concatenate_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{96, 128};
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 128});
+
+  // Currently SymbolicTileAnalysis fails for concatenate. Once the analysis
+  // gets support of concatenate, this test should fail with an error from
+  // `EstimateRunTimeForTiledHloComputation` that propagation of the number of
+  // blocks is not supported (b/351342921).
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               HasSubstr("SymbolicTileAnalysis failed")));
 }
 
 }  // namespace

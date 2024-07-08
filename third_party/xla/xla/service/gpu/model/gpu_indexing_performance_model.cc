@@ -252,7 +252,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimes(
   return {time_unfused, time_fused};
 }
 
-EstimateRunTimeData
+absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputation& tiled_hlo_computation,
@@ -261,18 +261,21 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
 
   int64_t flops = 0;
   int64_t bytes_read = 0;
+  int64_t num_blocks = launch_dimensions.num_blocks();
 
   for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
-    // Number of blocks that read or compute this tile.
-    int64_t num_blocks = tiled_hlo->block_id_to_tile_offsets_indexing()
-                             .GetDimensionBound(0)
-                             .GetLoopTripCount();
-
     // Total number of elements that are read from memory or computed for this
     // tile across all blocks.
     int64_t num_elements = num_blocks * Product(tiled_hlo->tile_sizes());
 
     const HloInstruction* hlo = tiled_hlo->hlo();
+
+    if (hlo->opcode() == HloOpcode::kConcatenate) {
+      // TODO(b/351342921): Add propagation of the number of blocks that read or
+      // compute a tile. Concatenate is the only operation that may change that.
+      return absl::FailedPreconditionError(
+          "Concatenate is not supported by the indexing cost model.");
+    }
 
     if (fusion_adaptor.ContainsInstruction(hlo)) {
       // Tiles inside the computation contribute to the total FLOPs count.
@@ -289,7 +292,6 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     }
   }
 
-  int64_t num_blocks = launch_dimensions.num_blocks();
   absl::Duration read_time = absl::ZeroDuration();
   for (const auto& [hlo, n_bytes_total] : n_bytes_total_map) {
     int64_t operand_size = shape_size_(hlo->shape());
@@ -378,10 +380,7 @@ int64_t GetNumWarps(int64_t tile_size) {
 LaunchDimensions GetLaunchDimensionsForTiledFusion(
     const TiledHloComputation& tiled_hlo_computation) {
   const auto* tiled_root = tiled_hlo_computation.GetRoot();
-  int64_t num_blocks = tiled_root->block_id_to_tile_offsets_indexing()
-                           .GetDimensionBound(0)
-                           .GetLoopTripCount();
-
+  int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
   int64_t num_warps = GetNumWarps(Product(tiled_root->tile_sizes()));
 
   return {static_cast<uint64_t>(num_blocks),
@@ -413,9 +412,10 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
     LaunchDimensions launch_dimensions =
         GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
 
-    EstimateRunTimeData estimate_run_time_data =
+    TF_ASSIGN_OR_RETURN(
+        EstimateRunTimeData estimate_run_time_data,
         EstimateRunTimeForTiledHloComputation(
-            fusion_adaptor, tiled_hlo_computation, launch_dimensions);
+            fusion_adaptor, tiled_hlo_computation, launch_dimensions));
 
     if (!best_tiled_run_time_data.has_value() ||
         estimate_run_time_data.exec_time <
