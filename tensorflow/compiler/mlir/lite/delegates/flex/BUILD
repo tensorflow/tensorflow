@@ -6,10 +6,8 @@ load(
     "tf_features_nolayering_check_if_ios",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/compiler/mlir/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
-
-# TODO(b/321735756) Copy tflite_flex_cc_library under mlir/ to remove compiler dep with lite/
-load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
 
 default_visibility = [
     "//tensorflow/compiler/mlir/lite:__subpackages__",

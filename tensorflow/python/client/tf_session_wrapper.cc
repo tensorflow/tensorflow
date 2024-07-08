@@ -18,9 +18,13 @@ limitations under the License.
 #include <stdexcept>
 #include <string>
 
-#include "Python.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/ConfigureVectorization.h"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/chrono.h"  // from @pybind11
@@ -40,17 +44,26 @@ limitations under the License.
 #include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "xla/tsl/python/lib/core/numpy.h"
-#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace pybind11 {
 namespace detail {

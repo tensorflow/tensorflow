@@ -16,13 +16,12 @@ limitations under the License.
 #include <string>
 
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/python/lib/core/pybind11_proto.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace py = ::pybind11;

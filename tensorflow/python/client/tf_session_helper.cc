@@ -20,8 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/py/numpy/core/include/numpy/arrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarraytypes.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/safe_ptr.h"

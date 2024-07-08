@@ -15,15 +15,29 @@ limitations under the License.
 #include "tensorflow/python/client/session_ref.h"
 
 #include <stdlib.h>
+
 #include <memory>
 #include <utility>
 
-#include "tensorflow/core/lib/io/path.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/record_writer.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/named_tensor.pb.h"
 #include "tensorflow/core/protobuf/replay_log.pb.h"
+#include "tensorflow/core/public/session.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
