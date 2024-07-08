@@ -59,7 +59,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla/stream_executor/cuda:all_runtime"),
     Label("//xla/stream_executor/cuda:cuda_stream"),
     Label("//xla/stream_executor/cuda:stream_executor_cuda"),
-    Label("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
 ]) + if_rocm_is_configured([
     Label("//xla/stream_executor/gpu:gpu_stream"),
     Label("//xla/stream_executor/rocm:all_runtime"),
