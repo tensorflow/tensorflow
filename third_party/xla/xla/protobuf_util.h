@@ -67,11 +67,6 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& file_name,
                                   std::string* full_path = nullptr);
 
-// Registers a function that may either expand a dirpath or forward the original
-// dirpath along as-is.
-void RegisterDirectoryExpander(
-    const std::function<std::string(std::string)>& expander);
-
 }  // namespace protobuf_util
 }  // namespace xla
 
