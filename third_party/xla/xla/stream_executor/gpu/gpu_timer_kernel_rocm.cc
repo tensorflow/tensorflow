@@ -21,6 +21,10 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+absl::StatusOr<bool> DelayKernelIsSupported(GpuStream*) { return false; }
 
+absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
+  return absl::UnimplementedError("Not implemented");
+}
 
 }  // namespace stream_executor::gpu
