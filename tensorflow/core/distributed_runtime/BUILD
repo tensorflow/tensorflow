@@ -354,6 +354,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -877,7 +879,9 @@ cc_library(
         ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -893,6 +897,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
