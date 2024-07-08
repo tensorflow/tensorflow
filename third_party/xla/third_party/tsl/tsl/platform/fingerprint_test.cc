@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

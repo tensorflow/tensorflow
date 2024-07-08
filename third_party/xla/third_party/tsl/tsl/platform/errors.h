@@ -27,11 +27,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/source_location.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 namespace error {

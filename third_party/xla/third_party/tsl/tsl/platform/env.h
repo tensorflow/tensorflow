@@ -25,8 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_statistics.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"

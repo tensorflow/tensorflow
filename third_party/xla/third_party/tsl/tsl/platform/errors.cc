@@ -18,8 +18,10 @@ limitations under the License.
 #include <errno.h>
 #include <string.h>
 
+#include "absl/status/status.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace errors {

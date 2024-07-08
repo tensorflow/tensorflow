@@ -21,13 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/env_time.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_statistics.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/types.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
