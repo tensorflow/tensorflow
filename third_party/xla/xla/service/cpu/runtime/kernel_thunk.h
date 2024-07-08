@@ -75,10 +75,10 @@ class KernelThunk final : public Thunk {
   se::ThreadDim thread_dim_;
   std::optional<uint64_t> min_alignment_;
 
-  // If `true`, pass a HostKernel::TaskRunner to the kernel launch. If kernel
-  // has a single thread, we skip constructing HostKernel::TaskRunner and
-  // launch the kernel directly in the caller thread.
-  bool use_task_runner_;
+  // If `true`, host kernel will be called just once for a logical thread dim
+  // (1,1,1). This is a fast path for small host kernels that have just one
+  // logical thread dim.
+  bool call_once_;
 
   // Lazily loaded host kernel corresponding to `kernel_name_`.
   absl::Mutex mutex_;

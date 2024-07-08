@@ -77,7 +77,7 @@ KernelThunk::KernelThunk(
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
       min_alignment_(min_alignment),
-      use_task_runner_(thread_dim != se::ThreadDim()),
+      call_once_(thread_dim_ == se::ThreadDim()),
       kernel_ptr_(nullptr) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
@@ -142,10 +142,16 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> KernelThunk::Execute(
     kernel_ptr_.store(kernel = &kernel_.value());
   }
 
+  // Use a fast path if kernel called just once.
+  if (ABSL_PREDICT_TRUE(call_once_)) {
+    TF_RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
+    return OkExecuteEvent();
+  }
+
   // If intra-op thread pool is not nullptr, we launch HostKernel in async mode
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
-  if (ABSL_PREDICT_FALSE(params.intra_op_threadpool && use_task_runner_)) {
+  if (ABSL_PREDICT_TRUE(params.intra_op_threadpool)) {
     return kernel->Launch(
         thread_dim_, kernel_args, [&params](se::host::HostKernel::Task task) {
           params.intra_op_threadpool->getPool()->Schedule(std::move(task));
