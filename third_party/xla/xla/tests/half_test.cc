@@ -16,14 +16,15 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/client/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/error_spec.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "xla/types.h"
 
 // Tests the handling of the basic mathematics operations with F16 operands.
 

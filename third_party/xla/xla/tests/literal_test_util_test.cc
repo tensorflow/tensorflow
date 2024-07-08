@@ -21,11 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "xla/error_spec.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/test_helpers.h"
+#include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

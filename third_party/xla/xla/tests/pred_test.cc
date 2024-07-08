@@ -16,12 +16,10 @@ limitations under the License.
 // Miscellaneous tests with the PRED type that don't fit anywhere else.
 #include <memory>
 
-#include "xla/array2d.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
-#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

@@ -15,12 +15,11 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/literal.h"
-#include "xla/shape_util.h"
+#include "xla/error_spec.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {

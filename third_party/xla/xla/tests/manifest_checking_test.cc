@@ -19,10 +19,12 @@ limitations under the License.
 #include <iterator>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/regexp.h"

@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "xla/tests/literal_test_util.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/error_spec.h"
+#include "xla/literal.h"
 #include "xla/literal_comparison.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

@@ -20,11 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/error_spec.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace {

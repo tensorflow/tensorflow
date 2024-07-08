@@ -12,9 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/executable_run_options.h"
+#include "xla/service/platform_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/statusor.h"
 #define EIGEN_USE_THREADS
-
-#include "xla/tests/local_client_test_base.h"
 
 #include <memory>
 #include <vector>
@@ -24,13 +37,11 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
-#include "xla/map_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/test_helpers.h"
+#include "xla/tests/local_client_test_base.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

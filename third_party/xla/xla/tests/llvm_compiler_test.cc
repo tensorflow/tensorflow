@@ -26,14 +26,11 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/literal_util.h"
 #include "xla/service/backend.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {

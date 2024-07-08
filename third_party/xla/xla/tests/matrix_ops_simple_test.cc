@@ -19,8 +19,16 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/error_spec.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/types.h"
+#include "tsl/platform/statusor.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
@@ -30,13 +38,10 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/reference_util.h"
 #include "xla/shape_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 

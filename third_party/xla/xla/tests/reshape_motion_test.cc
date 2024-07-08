@@ -18,22 +18,9 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/array2d.h"
-#include "xla/array4d.h"
-#include "xla/client/global_data.h"
-#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/reference_util.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

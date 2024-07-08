@@ -23,19 +23,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/SpecialFunctions"  // from @eigen_archive
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/service.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/util.h"
+#include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
