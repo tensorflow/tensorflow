@@ -13,19 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/op_kernel.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 
 #include <array>
-
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/cast_op.h"
-#include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/conv_3d.h"
-#include "tensorflow/core/kernels/conv_ops_gpu.h"
-#include "tensorflow/core/kernels/numeric_options_utils.h"
 
 typedef Eigen::GpuDevice GPUDevice;
 
