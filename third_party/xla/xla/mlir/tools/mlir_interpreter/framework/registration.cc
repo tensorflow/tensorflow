@@ -98,17 +98,6 @@ void RegisterInterpreterOp(
       });
 }
 
-void RegisterInterpreterOp(llvm::StringRef name,
-                           void (*fn)(MutableArrayRef<InterpreterValue>)) {
-  RegisterInterpreterOp(
-      name,
-      [fn](MutableArrayRef<InterpreterValue> operands, mlir::Operation*,
-           InterpreterState&) -> SmallVector<InterpreterValue> {
-        fn(operands);
-        return {};
-      });
-}
-
 void RegisterInterpreterOp(
     llvm::StringRef name,
     std::function<llvm::SmallVector<InterpreterValue>(

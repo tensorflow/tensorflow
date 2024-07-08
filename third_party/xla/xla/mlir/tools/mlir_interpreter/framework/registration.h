@@ -209,10 +209,6 @@ void RegisterInterpreterOp(
     llvm::StringRef name,
     InterpreterValue (*fn)(MutableArrayRef<InterpreterValue>));
 
-// Simple variadic ops(no output).
-void RegisterInterpreterOp(llvm::StringRef name,
-                           void (*fn)(MutableArrayRef<InterpreterValue>));
-
 // Generic ops.
 void RegisterInterpreterOp(
     llvm::StringRef name,
