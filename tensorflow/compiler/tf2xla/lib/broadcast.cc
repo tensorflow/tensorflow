@@ -17,15 +17,18 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/client/lib/broadcast.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/util.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
