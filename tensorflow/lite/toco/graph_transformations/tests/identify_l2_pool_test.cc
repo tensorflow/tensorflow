@@ -16,10 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
