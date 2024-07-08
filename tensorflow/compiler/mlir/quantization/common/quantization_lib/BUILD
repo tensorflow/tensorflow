@@ -42,6 +42,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BuiltinLocationAttributesIncGen",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
@@ -79,6 +81,7 @@ cc_library(
         "quantization_config.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/container:flat_hash_set",
