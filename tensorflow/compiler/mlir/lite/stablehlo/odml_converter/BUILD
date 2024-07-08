@@ -25,7 +25,6 @@ tf_cc_binary(
         "//third_party/odml/infra:__subpackages__",
     ],  # Prototype phase.
     deps = [
-        ":outline_composites",
         ":shlo_simplify",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
@@ -39,28 +38,6 @@ tf_cc_binary(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
-)
-
-cc_library(
-    name = "outline_composites",
-    srcs = [
-        "transforms/outline_composites.cc",
-    ],
-    hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":passes_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BufferizationInterfaces",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:chlo_ops",
-        "@stablehlo//:stablehlo_ops",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(

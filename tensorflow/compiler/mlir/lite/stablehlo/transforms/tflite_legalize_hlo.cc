@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
@@ -55,53 +56,7 @@ class LegalizeHloToTfLitePass
   void runOnOperation() override;
 };
 
-class ConvertReduceOpToTFLiteArgmax
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
-                                        TFL::ReduceAnyOp, true> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
 
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMinValue()
-                                              : value.isMinSignedValue();
-    }
-  }
-};
-
-class ConvertReduceOpToTFLiteArgmin
-    : public ConvertReduceOpToArgMinMax<TFL::ReduceMinOp, TFL::ArgMinOp,
-                                        TFL::ReduceAllOp, false> {
- public:
-  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
-
-  bool IsValueInitValue(const DenseElementsAttr& attr) const override {
-    auto element_type = attr.getType().getElementType();
-    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
-      return false;
-    if (mlir::isa<FloatType>(element_type)) {
-      auto value = *attr.value_begin<APFloat>();
-      return !value.isNegative() && value.isInfinity();
-    } else if (element_type.isInteger(1)) {
-      auto value = *attr.value_begin<APInt>();
-      return value.isZero();
-    } else {
-      auto value = *attr.value_begin<APInt>();
-      return element_type.isUnsignedInteger() ? value.isMaxValue()
-                                              : value.isMaxSignedValue();
-    }
-  }
-};
 
 std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
   return !op.getType().getElementType().isF32();
@@ -113,8 +68,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   RewritePatternSet patterns(context);
   patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp,
-               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax>(
-      context);
+               ConvertReduceOpToTFLiteArgmin, ConvertReduceOpToTFLiteArgmax,
+               LegalizeConv>(context);
   populateWithGenerated(patterns);
 
   ConversionTarget target(*context);
@@ -122,6 +77,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
+  target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp>();
 
