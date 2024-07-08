@@ -13,14 +13,16 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/rng_alg.h"
 
 namespace mlir {
 namespace mhlo {

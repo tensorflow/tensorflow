@@ -120,3 +120,20 @@ def TransposeCommuteOpsPass : Pass<"transpose-commute-ops", "ModuleOp"> {
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
   let constructor = "mlir::odml::CreateTransposeCommuteOpsPass()";
 }
+
+def LegalizeChloToTflPass
+    : Pass<"tfl-legalize-chlo", "mlir::func::FuncOp"> {
+  let summary = "Lower chlo directly to tfl.";
+  let constructor = "mlir::odml::CreateLegalizeChloToTflPass()";
+  let description = [{
+    Decompose chlo ops directly to tflite. Additionally, apply any chlo/shlo->tflite
+    patterns that must be applied before chlo->shlo decomposition.
+  }];
+  let dependentDialects = [
+    "stablehlo::StablehloDialect",
+    "mlir::TFL::TensorFlowLiteDialect",
+    "chlo::ChloDialect",
+    "func::FuncDialect"
+  ];
+}
+
