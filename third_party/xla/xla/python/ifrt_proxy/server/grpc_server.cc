@@ -32,6 +32,7 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/ifrt_backend.h"
