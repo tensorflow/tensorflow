@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
