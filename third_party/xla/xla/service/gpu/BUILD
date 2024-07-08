@@ -497,6 +497,7 @@ cc_library(
         ":ir_emission_utils",
         ":launch_dimensions",
         ":matmul_utils",
+        ":prevent_mmav3_loop_unrolling",
         ":target_util",
         ":triton_fusion_analysis",
         ":triton_sparse_extensions",
@@ -613,6 +614,20 @@ cc_library(
         "@triton//:TritonGPUTransforms",
         "@triton//third_party/nvidia:NVGPUDialect",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+    ],
+)
+
+cc_library(
+    name = "prevent_mmav3_loop_unrolling",
+    srcs = ["prevent_mmav3_loop_unrolling.cc"],
+    hdrs = ["prevent_mmav3_loop_unrolling.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@triton//:TritonDialects",
     ],
 )
 

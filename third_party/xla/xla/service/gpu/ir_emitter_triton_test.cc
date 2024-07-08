@@ -5604,6 +5604,43 @@ CHECK:          }
 )"));
 }
 
+// Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
+// See b/344841434.
+TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "There are no wgmma instructions pre-Hopper";
+  }
+  const std::string hlo_text = R"(
+gemm_fusion_dot {
+  %p0 = f16[64,1024]{1,0} parameter(0)
+  %p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  %bitcast.74246 = f16[1024,1024]{0,1} bitcast(f16[1024,32,32]{2,1,0} %p1)
+  ROOT %dot.1302 = f16[64,1024]{1,0} dot(f16[64,1024]{1,0} %p0, f16[1024,1024]{0,1} %bitcast.74246), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}
+}
+
+ENTRY e {
+  p0 = f16[64,1024]{1,0} parameter(0)
+  p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=gemm_fusion_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+        {"block_m":64,"block_n":32,"block_k":32,
+         "split_k":1,"num_stages":1,"num_warps":4,
+         "num_ctas":1}}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                R"(
+CHECK: $L__BB0_1:
+CHECK-NEXT: // begin inline asm
+CHECK-NEXT: .pragma "nounroll";
+CHECK: wgmma
+)");
+}
+
 TEST_F(TritonTest, TestGenericEmitterWithSoftMaxSingleParameter) {
   const std::string kHloText = R"(
 HloModule t

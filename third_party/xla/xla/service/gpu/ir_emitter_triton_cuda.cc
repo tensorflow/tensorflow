@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/prevent_mmav3_loop_unrolling.h"
 #include "xla/service/gpu/triton_sparse_extensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
@@ -105,6 +106,10 @@ absl::Status CreateTritonPipeline(
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::NVIDIA::createDecomposeUnsupportedConversionsPass());
+  // This pass reduces Hopper compile time extensively: b/344841434.
+  if (ccCuda.IsAtLeastHopper()) {
+    pm.addPass(CreatePreventMmaV3LoopUnrollingPass());
+  }
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
