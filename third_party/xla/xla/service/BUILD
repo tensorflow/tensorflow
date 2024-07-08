@@ -4852,8 +4852,7 @@ xla_cc_test(
     name = "tuple_points_to_analysis_test",
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
-        ":hlo_creation_utils",
-        ":instruction_fusion",
+        ":logical_buffer",
         ":tuple_points_to_analysis",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -4861,10 +4860,12 @@ xla_cc_test(
         "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
 )
