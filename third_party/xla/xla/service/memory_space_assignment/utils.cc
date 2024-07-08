@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/utils.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace memory_space_assignment {

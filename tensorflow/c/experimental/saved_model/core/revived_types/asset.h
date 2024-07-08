@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
