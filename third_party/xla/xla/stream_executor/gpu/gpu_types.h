@@ -78,12 +78,7 @@ using GpuDoubleComplexType = cuDoubleComplex;
 using GpuGraphHandle = CUgraph;
 using GpuGraphExecHandle = CUgraphExec;
 using GpuGraphNodeHandle = CUgraphNode;
-
-#if CUDA_VERSION >= 12030
 using GpuGraphConditionalHandle = CUgraphConditionalHandle;
-#else
-using GpuGraphConditionalHandle = UnsupportedGpuFeature;
-#endif  // #if CUDA_VERSION >= 12030
 
 #endif
 

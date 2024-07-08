@@ -76,11 +76,6 @@ inline void LogIfError(const absl::Status &status) {
   LOG(ERROR) << status.message();
 }
 
-// CUPTI_ERROR_INSUFFICIENT_PRIVILEGES is introduced at CUDA 10.1.
-#if CUDA_VERSION <= 10000
-#define CUPTI_ERROR_INSUFFICIENT_PRIVILEGES 35
-#endif
-
 #define RETURN_IF_CUPTI_ERROR(expr)                                         \
   do {                                                                      \
     CUptiResult status = expr;                                              \
@@ -673,9 +668,7 @@ static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
                                         uint64_t start_tsc, uint64_t end_tsc) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
-#if CUDA_VERSION >= 11080  // CUDA 11.8
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
-#endif  // CUDA_VERSION >= 11080
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
       SetKernelEventUponApiExit(event, device_id, cbdata, start_tsc, end_tsc);

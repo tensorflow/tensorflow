@@ -207,25 +207,16 @@ bool CUDABlas::Init() {
     return false;
   }
 
-#if CUDA_VERSION >= 11000
   if (!blas_lt_.Init().ok()) {
     LOG(ERROR) << kCublasNotInitializedExplanation;
     return false;
   }
-#endif  // CUDA_VERSION >= 11000
 
   return true;
 }
 
 CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
-      blas_(nullptr)
-#if CUDA_VERSION >= 11000
-      ,
-      blas_lt_(parent)
-#endif
-{
-}
+    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr), blas_lt_(parent) {}
 
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
@@ -306,12 +297,10 @@ struct CUDADataType<Eigen::half> {
   static constexpr cudaDataType_t type = CUDA_R_16F;  // NOLINT
 };
 
-#if CUDA_VERSION >= 11000
 template <>
 struct CUDADataType<Eigen::bfloat16> {
   static constexpr cudaDataType_t type = CUDA_R_16BF;  // NOLINT
 };
-#endif  // CUDA_VERSION >= 11000
 
 template <>
 struct CUDADataType<std::complex<Eigen::half>> {
@@ -551,18 +540,12 @@ absl::Status CUDABlas::DoBlasGemm(
     const NumericOptions &numeric_options, blas::CallContext context) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 
-#if CUDA_VERSION < 11000
-  if (dtype == blas::DataType::kHalf) {
-    math_type = CUBLAS_TENSOR_OP_MATH;
-  }
-#else
   if (dtype == blas::DataType::kFloat) {
     math_type = CUBLAS_TF32_TENSOR_OP_MATH;
     if (!numeric_options.allow_tf32) {
       math_type = CUBLAS_DEFAULT_MATH;
     }
   }
-#endif
 
   // TODO(cheshire): Return an error instead.
   // TODO(cheshire): Why are these checked only for `half` and `float`?
@@ -607,7 +590,6 @@ absl::Status CUDABlas::DoBlasGemm(
           b.opaque(), CUDA_R_16F, ldb, static_cast<const float *>(beta),
           c->opaque(), CUDA_R_16F, ldc);
     }
-#if CUDA_VERSION > 11000
     case blas::DataType::kBF16: {
       return DoBlasInternalImpl(
           cublasSgemmEx, stream, true /* = pointer_mode_host */, math_type,
@@ -616,7 +598,6 @@ absl::Status CUDABlas::DoBlasGemm(
           b.opaque(), CUDA_R_16BF, ldb, static_cast<const float *>(beta),
           c->opaque(), CUDA_R_16BF, ldc);
     }
-#endif
     case dnn::kFloat:
       return DoBlasInternalImpl(
           cublasSgemm, stream, true /* = pointer_mode_host */, math_type,
@@ -693,11 +674,6 @@ static absl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
           " uses tensor ops, but tensor ops are not available in sm", cc.major,
           "X devices."));
     } else if (type_a == blas::DataType::kFloat) {
-#if CUDA_VERSION < 11000
-      return absl::InternalError(
-          "Algorithm ", algorithm,
-          " uses tensor ops, but tensor ops are not available for fp32");
-#else
       if (cc.major < 8) {
         return absl::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
@@ -705,11 +681,8 @@ static absl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
             cc.major, "X devices for float input types."));
       }
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-#endif
     } else if (type_a == blas::DataType::kHalf) {
-#if CUDA_VERSION < 11000
-      math_type = CUBLAS_TENSOR_OP_MATH;
-#endif
+      math_type = CUBLAS_DEFAULT_MATH;
     } else {
       return absl::InternalError(
           absl::StrCat("Algorithm ", algorithm,
@@ -791,7 +764,6 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
           output_profile_result != nullptr));
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
-#if CUDA_VERSION >= 11000
   // Workaround CUDA bug where batched GEMM is erroneously marked as
   // unsupported by manually unbatching it on Pascal.
   if (cuda_in_type == CUDA_R_16BF &&
@@ -833,7 +805,6 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
         PopulateProfileFromTimer(timer, algorithm, output_profile_result));
     return absl::OkStatus();
   }
-#endif
 
   TF_RETURN_IF_ERROR(DoBlasInternalImpl(
       AS_LAMBDA(cublasGemmStridedBatchedEx), stream, /*pointer_mode_host=*/true,
@@ -982,18 +953,10 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
 
-#if CUDA_VERSION >= 11000
     bool is_16bit = data_type == CUDA_R_16F || data_type == CUDA_R_16BF;
-#else
-    bool is_16bit = data_type == CUDA_R_16F;
-#endif  // CUDA_VERSION >= 11000
 
     if (is_16bit) {
-#if CUDA_VERSION < 11000
-      math_type = CUBLAS_TENSOR_OP_MATH;
-#else
       math_type = CUBLAS_DEFAULT_MATH;
-#endif
       algo = CUBLAS_GEMM_DFALT_TENSOR_OP;
 #if CUBLAS_VER_MAJOR >= 11
     } else if (data_type == CUDA_R_32F) {
@@ -1171,18 +1134,11 @@ absl::Status CUDABlas::DoBlasGemmStridedBatched(
     DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
     const NumericOptions &numeric_options, blas::CallContext context) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
-#if CUDA_VERSION < 11000
-  if (dtype == dnn::kHalf) {
-    math_type = CUBLAS_TENSOR_OP_MATH;
-  }
-#else
   if (dtype == dnn::kFloat && numeric_options.allow_tf32) {
     math_type = CUBLAS_TF32_TENSOR_OP_MATH;
   }
-#endif
 
   switch (dtype) {
-#if CUDA_VERSION >= 11000
     case dnn::kBF16: {
       CudaComputeCapability cc = stream->GetCudaComputeCapability();
       if (cc.IsAtLeast(7)) {
@@ -1217,7 +1173,6 @@ absl::Status CUDABlas::DoBlasGemmStridedBatched(
       }
       return absl::OkStatus();
     }
-#endif
     case dnn::kHalf: {
       CudaComputeCapability cc = stream->GetCudaComputeCapability();
       if (cc.major >= 5) {

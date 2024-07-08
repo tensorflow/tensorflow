@@ -100,10 +100,7 @@ static bool IsAtLeastCuda12300() {
 #if defined(TENSORFLOW_USE_ROCM)
   return false;
 #endif
-#if CUDA_VERSION >= 12030
   return true;
-#endif
-  return false;
 }
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
@@ -162,9 +159,6 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
 #if defined(TENSORFLOW_USE_ROCM)
   GTEST_SKIP() << "Not supported on ROCM";
-#endif
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "Command buffer tracing is not supported";
 #endif
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

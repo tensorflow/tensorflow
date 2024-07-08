@@ -533,7 +533,6 @@ static std::string_view StreamCaptureModeToString(
       break;
   }
 
-#if CUDA_VERSION >= 12030
   VLOG(2) << "Beginning stream " << stream << " capture in "
           << StreamCaptureModeToString(mode) << " mode to graph " << graph;
   RETURN_IF_CUDA_RES_ERROR(
@@ -543,10 +542,6 @@ static std::string_view StreamCaptureModeToString(
                                   /*numDependencies=*/0, cu_mode),
       "Failed to begin stream capture to graph");
   return absl::OkStatus();
-#else
-  return absl::UnimplementedError(
-      "StreamBeginCaptureToGraph is not implemented");
-#endif  // CUDA_VERSION >= 12030
 }
 
 /* static */ absl::Status GpuDriver::StreamEndCapture(CUstream stream,
@@ -567,7 +562,6 @@ static std::string_view StreamCaptureModeToString(
           << "use_node_priority=" << flags.use_node_prirotiy << ", "
           << "upload=" << flags.upload << ")";
 
-#if CUDA_VERSION >= 12000
   uint64_t cu_flags = 0;
   if (flags.auto_free_on_launch)
     cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH;
@@ -579,10 +573,6 @@ static std::string_view StreamCaptureModeToString(
 
   RETURN_IF_CUDA_RES_ERROR(cuGraphInstantiate(exec, graph, cu_flags),
                            "Failed to instantiate CUDA graph");
-#else
-  RETURN_IF_CUDA_RES_ERROR(cuGraphInstantiate(exec, graph, nullptr, nullptr, 0),
-                           "Failed to instantiate CUDA graph");
-#endif  // CUDA_VERSION >= 12000
 
   return absl::OkStatus();
 }
@@ -612,7 +602,6 @@ static std::string_view StreamCaptureModeToString(
     CUgraphExec exec, CUgraph graph, GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;
 
-#if CUDA_VERSION >= 12000
   CUgraphExecUpdateResultInfo cu_result;
   memset(&cu_result, 0, sizeof(cu_result));
   CUresult err_code = cuGraphExecUpdate(exec, graph, &cu_result);
@@ -623,11 +612,6 @@ static std::string_view StreamCaptureModeToString(
   if (cu_result.errorNode) {
     result->error_node = cu_result.errorNode;
   }
-#else
-  CUgraphExecUpdateResult cu_result;
-  CUresult err_code = cuGraphExecUpdate(exec, graph, nullptr, &cu_result);
-  auto cu_result_enum = cu_result;
-#endif  // CUDA_VERSION >= 12000
 
   switch (cu_result_enum) {
     case CU_GRAPH_EXEC_UPDATE_SUCCESS:
@@ -651,14 +635,12 @@ static std::string_view StreamCaptureModeToString(
     case CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED:
       result->result = GraphExecUpdateResult::kNotSupported;
       break;
-#if CUDA_VERSION >= 12000
     case CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE:
       result->result = GraphExecUpdateResult::kUnsupportedFunctionChange;
       break;
     case CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED:
       result->result = GraphExecUpdateResult::kAttributesChanged;
       break;
-#endif  // CUDA_VERSION >= 12000
     default:
       return absl::InternalError("Unknown graph update result");
   }
@@ -687,7 +669,6 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       return GraphNodeType::kGraph;
     case CU_GRAPH_NODE_TYPE_EMPTY:
       return GraphNodeType::kEmpty;
-#if CUDA_VERSION >= 12000
     case CU_GRAPH_NODE_TYPE_WAIT_EVENT:
       return GraphNodeType::kWaitEvent;
     case CU_GRAPH_NODE_TYPE_EVENT_RECORD:
@@ -702,7 +683,6 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       return GraphNodeType::kMemFree;
     case CU_GRAPH_NODE_TYPE_BATCH_MEM_OP:
       return GraphNodeType::kBatchMemOp;
-#endif  // CUDA_VERSION >= 12000
     default:
       return absl::InternalError("Unknown graph node type");
   }
@@ -738,7 +718,6 @@ GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
 
 /* static */ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
     CUgraph graph, const char* path, bool return_printed_graph) {
-#if CUDA_VERSION >= 12000
   VLOG(2) << "Print CUDA graph " << graph << " debug dot file to " << path;
 
   int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
@@ -753,7 +732,6 @@ GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
       LOG(WARNING) << "failed to read gpu graph debug file " << path;
     }
   }
-#endif  // CUDA_VERSION >= 12000
 
   return std::string(path);
 }
@@ -784,15 +762,10 @@ GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
           << "; default_launch_value: " << default_launch_value
           << "; flags: " << flags;
 
-#if CUDA_VERSION >= 12030
   RETURN_IF_CUDA_RES_ERROR(
       cuGraphConditionalHandleCreate(handle, graph, context->context(),
                                      default_launch_value, flags),
       "Failed to create conditional handle for a CUDA graph");
-#else
-  return absl::UnimplementedError(
-      "CUDA graph conditional nodes are not implemented");
-#endif  // CUDA_VERSION >= 12030
   return absl::OkStatus();
 }
 
@@ -810,7 +783,6 @@ static std::string ConditionalTypeToString(
 GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
                         absl::Span<const CUgraphNode> deps,
                         const GpuGraphNodeParams& params) {
-#if CUDA_VERSION >= 12030
   // Add conditional node to a graph.
   if (auto* conditional = std::get_if<GpuGraphConditionalNodeParams>(&params)) {
     VLOG(2) << "Add conditional node to a graph " << graph
@@ -844,7 +816,6 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
     VLOG(2) << "Created conditional CUDA graph " << result.graph;
     return result;
   }
-#endif  // CUDA_VERSION >= 12030
 
   return absl::UnimplementedError("unsupported node type");
 }
@@ -967,19 +938,12 @@ static CUmemLocationType ToCudaLocationType(
       return CU_MEM_LOCATION_TYPE_INVALID;
     case GpuDriver::MemLocationType::kDevice:
       return CU_MEM_LOCATION_TYPE_DEVICE;
-#if CUDA_VERSION >= 12030
     case GpuDriver::MemLocationType::kHost:
       return CU_MEM_LOCATION_TYPE_HOST;
     case GpuDriver::MemLocationType::kHostNuma:
       return CU_MEM_LOCATION_TYPE_HOST_NUMA;
     case GpuDriver::MemLocationType::kHostNumaCurrent:
       return CU_MEM_LOCATION_TYPE_HOST_NUMA_CURRENT;
-#else
-    case GpuDriver::MemLocationType::kHost:
-    case GpuDriver::MemLocationType::kHostNuma:
-    case GpuDriver::MemLocationType::kHostNumaCurrent:
-      return CU_MEM_LOCATION_TYPE_INVALID;
-#endif  // CUDA_VERSION >= 12030
   }
 }
 
@@ -1014,9 +978,7 @@ static CUmemAllocationType ToCudaAllocationType(
   mem_pool_props.allocType = ToCudaAllocationType(allocation_type);
   mem_pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
   mem_pool_props.location = mem_location;
-#if CUDA_VERSION >= 12030
   mem_pool_props.maxSize = max_pool_size;
-#endif  // CUDA_VERSION >= 12030
   // cuda graph requires reserved space initialized to 0
   memset(mem_pool_props.reserved, 0, sizeof(mem_pool_props.reserved));
 

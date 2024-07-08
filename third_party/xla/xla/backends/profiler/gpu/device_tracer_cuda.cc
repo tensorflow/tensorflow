@@ -81,52 +81,50 @@ absl::Status GpuTracer::DoStart() {
   }
 
   options_.cbids_selected = {
-    // KERNEL
-    CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-#if CUDA_VERSION >= 11080  // CUDA 11.8
-    CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
-#endif  // CUDA_VERSION >= 11080
-    // MEMCPY
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
-    // MemAlloc
-    CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
-    // MemFree
-    CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
-    // Memset
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
-    // GENERIC
-    CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
+      // KERNEL
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
+      // MEMCPY
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      // MemAlloc
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
+      // MemFree
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
+      // Memset
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
+      // GENERIC
+      CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
 
   bool trace_concurrent_kernels = false;
@@ -141,10 +139,7 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
-// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
-#if CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
-#endif
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
