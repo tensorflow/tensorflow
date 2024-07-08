@@ -18,14 +18,16 @@ limitations under the License.
 #include <atomic>
 #include <optional>
 
+#include "absl/log/log.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/optional.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace thread {

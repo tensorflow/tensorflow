@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
