@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -23,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,29 +33,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-size_t TiledHloInstruction::PtrHash::operator()(
-    const TiledHloInstruction* tiled_hlo) const {
-  return absl::HashOf(*tiled_hlo);
-}
-
-bool TiledHloInstruction::PtrEqual::operator()(
-    const TiledHloInstruction* lhs, const TiledHloInstruction* rhs) const {
-  return *lhs == *rhs;
-}
-
-bool operator==(const TiledHloInstruction& lhs,
-                const TiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.tile_sizes() == rhs.tile_sizes() &&
-         lhs.tile_strides() == rhs.tile_strides() &&
-         lhs.block_id_to_tile_offsets_indexing() ==
-             rhs.block_id_to_tile_offsets_indexing();
-}
-
-bool operator!=(const TiledHloInstruction& lhs,
-                const TiledHloInstruction& rhs) {
-  return !(lhs == rhs);
-}
 
 /*static*/
 absl::StatusOr<std::unique_ptr<TiledHloInstruction>>

@@ -127,6 +127,8 @@ ENTRY main {
       TiledHloComputation tiled_hlo_computation,
       analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
+  LOG(ERROR) << tiled_hlo_computation.ToString();
+
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(

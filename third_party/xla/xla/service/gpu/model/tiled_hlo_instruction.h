@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_TILED_HLO_INSTRUCTION_H_
 #define XLA_SERVICE_GPU_MODEL_TILED_HLO_INSTRUCTION_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -38,18 +37,6 @@ namespace gpu {
 // `(block_id) -> (tile_offset0, tile_offset1, ...)`.
 class TiledHloInstruction {
  public:
-  // PtrHash and PtrEqual are helper classes to use in hash maps and sets that
-  // compare values behind the pointers. For example,
-  // absl::flat_hash_set<TiledHloInstruction*, PtrHash, PtrEqual> hlo_set;
-  struct PtrHash {
-    size_t operator()(const TiledHloInstruction* tiled_hlo) const;
-  };
-
-  struct PtrEqual {
-    bool operator()(const TiledHloInstruction* lhs,
-                    const TiledHloInstruction* rhs) const;
-  };
-
   // Creates an instance of TiledHloInstruction. Returns an error if any of the
   // following preconditions is not met:
   // * Number of tile sizes, strides should match HLO shape rank.
@@ -125,8 +112,18 @@ class TiledHloInstruction {
   std::vector<TiledHloInstruction*> operands_;
 };
 
-bool operator==(const TiledHloInstruction& lhs, const TiledHloInstruction& rhs);
-bool operator!=(const TiledHloInstruction& lhs, const TiledHloInstruction& rhs);
+inline bool operator==(const TiledHloInstruction& lhs,
+                       const TiledHloInstruction& rhs) {
+  return lhs.hlo() == rhs.hlo() && lhs.tile_sizes() == rhs.tile_sizes() &&
+         lhs.tile_strides() == rhs.tile_strides() &&
+         lhs.block_id_to_tile_offsets_indexing() ==
+             rhs.block_id_to_tile_offsets_indexing();
+}
+
+inline bool operator!=(const TiledHloInstruction& lhs,
+                       const TiledHloInstruction& rhs) {
+  return !(lhs == rhs);
+}
 
 template <typename H>
 H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
