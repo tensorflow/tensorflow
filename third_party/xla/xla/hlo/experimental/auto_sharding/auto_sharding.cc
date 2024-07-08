@@ -304,8 +304,7 @@ GenerateReshardingCostsAndShardingsForAllOperands(
 // operand to the function).
 void FollowArrayOrTokenStrategyGroup(
     const StrategyGroup& src_strategy_group, const Shape& shape,
-    const size_t instruction_id, const bool have_memory_cost,
-    const ClusterEnvironment& cluster_env,
+    const size_t instruction_id, const ClusterEnvironment& cluster_env,
     const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     StrategyGroup& strategy_group) {
@@ -339,8 +338,7 @@ void FollowArrayOrTokenStrategyGroup(
     }
     const std::string name = ToStringSimple(*output_spec);
     double compute_cost = 0, communication_cost = 0;
-    double memory_cost =
-        have_memory_cost ? ByteSizeOfShapeWithSharding(shape, *output_spec) : 0;
+    double memory_cost = ByteSizeOfShapeWithSharding(shape, *output_spec);
     size_t num_in_nodes = strategy_group.in_nodes.size();
     std::vector<std::optional<HloSharding>> input_shardings(num_in_nodes,
                                                             *output_spec);
@@ -427,8 +425,8 @@ std::unique_ptr<StrategyGroup> HandlePartialReduce(
 
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
-    const size_t instruction_id, const bool have_memory_cost,
-    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    const size_t instruction_id, StrategyGroups& strategy_groups,
+    const ClusterEnvironment& cluster_env,
     const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
   std::unique_ptr<StrategyGroup> strategy_group;
@@ -440,7 +438,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
       auto child_strategies = MaybeFollowInsStrategyGroup(
           src_strategy_group->childs[i].get(), shape.tuple_shapes(i),
-          instruction_id, have_memory_cost, strategy_groups, cluster_env,
+          instruction_id, strategy_groups, cluster_env,
           pretrimmed_strategy_map);
       child_strategies->tuple_element_idx = i;
       strategy_group->childs.push_back(std::move(child_strategies));
@@ -450,8 +448,8 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
         CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
     strategy_group->in_nodes.push_back(src_strategy_group);
     FollowArrayOrTokenStrategyGroup(*src_strategy_group, shape, instruction_id,
-                                    have_memory_cost, cluster_env,
-                                    pretrimmed_strategy_map, *strategy_group);
+                                    cluster_env, pretrimmed_strategy_map,
+                                    *strategy_group);
   }
   return strategy_group;
 }
@@ -1793,8 +1791,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     CHECK(!src_strategy_group->is_tuple);
 
     FollowArrayOrTokenStrategyGroup(*src_strategy_group, ins->shape(),
-                                    instruction_id,
-                                    /* have_memory_cost */ true, cluster_env,
+                                    instruction_id, cluster_env,
                                     pretrimmed_strategy_map, *strategy_group);
   }
 

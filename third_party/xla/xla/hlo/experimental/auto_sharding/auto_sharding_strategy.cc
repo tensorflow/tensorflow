@@ -216,8 +216,7 @@ BuildStrategyAndCost(
                 MaybeFollowInsStrategyGroup(
                     while_input_tuple_strategy_group->childs[i].get(),
                     ins->shape().tuple_shapes().at(i), instruction_id,
-                    /* have_memory_cost= */ true, strategy_groups, cluster_env,
-                    pretrimmed_strategy_map);
+                    strategy_groups, cluster_env, pretrimmed_strategy_map);
             child_strategies->tuple_element_idx = i;
             strategy_group->childs.push_back(std::move(child_strategies));
           }
@@ -616,9 +615,8 @@ BuildStrategyAndCost(
       case HloOpcode::kOptimizationBarrier: {
         auto operand_strategies = strategy_map.at(ins->operand(0)).get();
         strategy_group = MaybeFollowInsStrategyGroup(
-            operand_strategies, ins->shape(), instruction_id,
-            /* have_memory_cost */ true, strategy_groups, cluster_env,
-            pretrimmed_strategy_map);
+            operand_strategies, ins->shape(), instruction_id, strategy_groups,
+            cluster_env, pretrimmed_strategy_map);
         break;
       }
       case HloOpcode::kBitcast: {
@@ -763,8 +761,7 @@ BuildStrategyAndCost(
               strategy_map.at(operand).get();
           auto child_strategies = MaybeFollowInsStrategyGroup(
               src_strategy_group, operand->shape(), instruction_id,
-              /* have_memory_cost= */ true, strategy_groups, cluster_env,
-              pretrimmed_strategy_map);
+              strategy_groups, cluster_env, pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
         }
@@ -787,8 +784,7 @@ BuildStrategyAndCost(
         CHECK(src_strategy_group->is_tuple);
         strategy_group = MaybeFollowInsStrategyGroup(
             src_strategy_group->childs[ins->tuple_index()].get(), ins->shape(),
-            instruction_id,
-            /* have_memory_cost= */ true, strategy_groups, cluster_env,
+            instruction_id, strategy_groups, cluster_env,
             pretrimmed_strategy_map);
         break;
       }
@@ -838,9 +834,8 @@ BuildStrategyAndCost(
               strategy_map.at(operand).get();
           CHECK(src_strategy_group->is_tuple);
           strategy_group = MaybeFollowInsStrategyGroup(
-              src_strategy_group, ins->shape(), instruction_id,
-              /* have_memory_cost= */ true, strategy_groups, cluster_env,
-              pretrimmed_strategy_map);
+              src_strategy_group, ins->shape(), instruction_id, strategy_groups,
+              cluster_env, pretrimmed_strategy_map);
         } else if (IsSPMDFullToShardShapeCustomCall(ins)) {
           return absl::InternalError(
               "An SPMDFullToShardShape call found outside a manually "
@@ -869,8 +864,7 @@ BuildStrategyAndCost(
                 strategy_map.at(operand).get();
             strategy_group = MaybeFollowInsStrategyGroup(
                 src_strategy_group, ins->shape(), instruction_id,
-                /* have_memory_cost= */ true, strategy_groups, cluster_env,
-                pretrimmed_strategy_map);
+                strategy_groups, cluster_env, pretrimmed_strategy_map);
           }
         } else if (ins->has_sharding()) {
           generate_non_following_strategies(false);
@@ -889,8 +883,7 @@ BuildStrategyAndCost(
           auto child_strategies = MaybeFollowInsStrategyGroup(
               src_strategy_group->childs[i].get(),
               ins->shape().tuple_shapes().at(i), instruction_id,
-              /* have_memory_cost= */ true, strategy_groups, cluster_env,
-              pretrimmed_strategy_map);
+              strategy_groups, cluster_env, pretrimmed_strategy_map);
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
         }

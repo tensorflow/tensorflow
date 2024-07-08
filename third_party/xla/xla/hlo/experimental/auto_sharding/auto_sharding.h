@@ -360,8 +360,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
 
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
-    size_t instruction_id, bool have_memory_cost,
-    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    size_t instruction_id, StrategyGroups& strategy_groups,
+    const ClusterEnvironment& cluster_env,
     const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
