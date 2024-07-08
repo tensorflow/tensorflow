@@ -1793,6 +1793,20 @@ return %0 : tensor<1x3x4x3x!quant.uniform<i16:f32, 9.9311851954553276E-5>>
 
 // -----
 
+// CHECK-LABEL: test_batch_matmul_with_input_broadcast_1
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x256x256x32xf32>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<1x32x4xf32>
+// CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape  {value = dense<[1, 1, 32, 4]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<1x256x32x4xf32>}> : () -> tensor<1x256x32x4xf32>
+// CHECK-DAG: %[[VAR5:.*]] = tosa.reshape %[[ARG1]], %[[VAR0]] : (tensor<1x32x4xf32>, !tosa.shape<4>) -> tensor<1x1x32x4xf32>
+// CHECK-DAG: %[[VAR6:.*]] = tosa.add %[[VAR5]], %[[VAR1]] : (tensor<1x1x32x4xf32>, tensor<1x256x32x4xf32>) -> tensor<1x256x32x4xf32>
+func.func @test_batch_matmul_with_input_broadcast_1(%arg0: tensor<1x256x256x32xf32>, %arg1: tensor<1x32x4xf32>) -> (tensor<1x256x256x4xf32>) {
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x256x256x32xf32>, tensor<1x32x4xf32>) -> tensor<1x256x256x4xf32>
+  func.return %0 : tensor<1x256x256x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_batch_matmul_with_input_broadcast_qi8
 // CHECK-SAME: %[[ARG0:.*]]: tensor<25x12x14x14x64x!quant.uniform<i8:f32, 0.061956532299518585:4>>
 // CHECK-SAME: %[[ARG1:.*]]: tensor<14x64x14x!quant.uniform<i8:f32, 3.9322837255895138E-4:1>>

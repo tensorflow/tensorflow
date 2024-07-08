@@ -1265,10 +1265,19 @@ LogicalResult broadcastLowRankTensor(PatternRewriter& rewriter, Operation* op,
     low_rank = input1_rank;
   }
 
-  int64_t broadcast_rank = high_rank - low_rank;
-  SmallVector<int64_t> broadcast_shape(high_rank, 1);
   ArrayRef<int64_t> high_rank_shape =
       llvm::cast<RankedTensorType>(high_rank_tensor.getType()).getShape();
+  ArrayRef<int64_t> low_rank_shape =
+      llvm::cast<RankedTensorType>(low_rank_tensor.getType()).getShape();
+
+  // broadcasting if the first dimension of the low-rank tensor is '1'
+  // example hight_rank: [1,a,b,c]; low_rank: [1,d,e]; low_rank should broadcast
+  // to [1, a, d, e]
+  if (low_rank_shape[0] == 1) {
+    low_rank -= 1;
+  }
+  int64_t broadcast_rank = high_rank - low_rank;
+  SmallVector<int64_t> broadcast_shape(high_rank, 1);
 
   for (int i = 0; i < broadcast_rank; i++) {
     broadcast_shape[i] = high_rank_shape[i];
