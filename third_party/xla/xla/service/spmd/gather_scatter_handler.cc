@@ -851,35 +851,6 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
 
 namespace {
 
-template <typename T, typename F>
-int64_t ShapeSizeInBytesSum(absl::Span<const T> operands, F&& get_shape) {
-  return absl::c_accumulate(operands, int64_t{0},
-                            [&](int64_t sum, const T& operand) {
-                              return sum + ShapeSizeInBytes(get_shape(operand));
-                            });
-}
-
-int64_t BaseShapeSizeSum(absl::Span<const PartitionedHlo> phlos) {
-  return ShapeSizeInBytesSum(
-      phlos, [](const PartitionedHlo& phlo) { return phlo.base_shape(); });
-}
-
-int64_t BaseShapeSizeSum(absl::Span<const PartitionedHlo> phlos,
-                         const HloSharding& sharding) {
-  return ShapeSizeInBytesSum(phlos, [&sharding](const PartitionedHlo& phlo) {
-    return MakePartitionedShape(phlo.base_shape(), sharding);
-  });
-}
-
-int64_t ShapeSizeSum(absl::Span<const PartitionedHlo> phlos) {
-  return ShapeSizeInBytesSum(
-      phlos, [](const PartitionedHlo& phlo) { return phlo.hlo()->shape(); });
-}
-
-int64_t ShapeSizeSum(absl::Span<const Shape> shapes) {
-  return ShapeSizeInBytesSum(shapes, [](const Shape& shape) { return shape; });
-}
-
 Shape MaybeMakeTupleShape(absl::Span<const HloInstruction* const> hlos) {
   if (hlos.size() == 1) {
     return hlos[0]->shape();
