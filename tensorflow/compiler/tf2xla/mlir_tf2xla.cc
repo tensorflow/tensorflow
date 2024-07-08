@@ -21,24 +21,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/client/xla_computation.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
