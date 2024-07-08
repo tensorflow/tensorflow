@@ -23,8 +23,10 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
+#include "flatbuffers/base.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/minireflect.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/reflection/schema_generated.h"
 #if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
