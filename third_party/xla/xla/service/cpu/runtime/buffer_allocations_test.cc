@@ -49,5 +49,25 @@ TEST(BufferAllocationsTest, GetDeviceAddress) {
   EXPECT_EQ(slice_mem.opaque(), &data[2]);
 }
 
+TEST(BufferAllocationsTest, GetDeviceAddressUnchecked) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0};
+
+  size_t size_in_bytes = data.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation alloc(0, size_in_bytes, 0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/2 * sizeof(float),
+                                /*size=*/sizeof(float));
+
+  se::DeviceMemoryBase alloc_mem = allocations.GetDeviceAddressUnchecked(0);
+  EXPECT_EQ(alloc_mem.opaque(), &data[0]);
+
+  se::DeviceMemoryBase slice_mem = allocations.GetDeviceAddressUnchecked(slice);
+  EXPECT_EQ(slice_mem.opaque(), &data[2]);
+}
+
 }  // namespace
 }  // namespace xla::cpu

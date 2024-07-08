@@ -25,12 +25,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/host/host_kernel.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -55,6 +57,12 @@ class KernelThunk final : public Thunk {
               absl::Span<const BufferAllocation::Slice> results_buffers,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
+
+  // Checks that all buffers are aligned to the minimum alignment. We codegen
+  // with the assumption that all buffers are aligned, and if they are not, we
+  // will crash with a segmentation fault, or worse, produce incorrect results.
+  absl::Status CheckBufferAlignment(
+      absl::Span<const SE_HOST_KernelArg> kernel_args);
 
   std::vector<BufferAllocation::Slice> arguments_buffers_;
   std::vector<BufferAllocation::Slice> results_buffers_;

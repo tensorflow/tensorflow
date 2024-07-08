@@ -225,6 +225,18 @@ class Thunk {
   // Encodes thunk info into the TraceMe compatible format.
   std::string TraceMeEncode() const;
 
+  // Returns `true` if thunk should check buffer slices bounds, alignment, etc.
+  // In optimized builds, we skip buffer slices checks, and assume that all
+  // buffer slices are valid, as overhead of buffer slices checks adds up and
+  // become measurable on a hot path of executing tiny thunks.
+  static constexpr bool ShouldCheckBufferSlices() {
+#ifdef NDEBUG
+    return false;
+#else
+    return true;
+#endif  // NDEBUG
+  }
+
  private:
   Kind kind_;
   Info info_;

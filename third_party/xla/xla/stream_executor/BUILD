@@ -171,7 +171,10 @@ cc_library(
 cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
-    deps = ["@local_tsl//tsl/platform:logging"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/platform:logging",
+    ],
 )
 
 cc_library(

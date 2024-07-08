@@ -759,6 +759,7 @@ cc_library(
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
     deps = [
+        ":buffer_allocations",
         ":thunk",
         "//xla:util",
         "//xla/runtime:buffer_use",
