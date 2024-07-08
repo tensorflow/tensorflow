@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <cstdio>
 
-#include "tensorflow/lite/delegates/hexagon/hexagon_nn_interface.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {

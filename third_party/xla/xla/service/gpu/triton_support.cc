@@ -396,10 +396,6 @@ CodegenDecision IsTritonSupportedInstruction(
       }
       return CanTritonHandleGEMM(*dot, gpu_version);
     }
-    case HloOpcode::kReduce: {
-      return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
-                                   gpu_version);
-    }
     case HloOpcode::kTuple: {
       if (instr.IsRoot()) {
         return CodegenDecision{};
@@ -607,6 +603,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
   switch (instr.opcode()) {
     case HloOpcode::kReduce: {
+      // TODO(bchetioui): upgrade `CanTritonHandleReduce` to correspond to
+      // the new implementation.
       return legacy_triton::CanTritonHandleReduce(
           *Cast<HloReduceInstruction>(&instr), gpu_version);
     }
