@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -81,6 +82,15 @@ class HostKernelExecuteState {
   tsl::AsyncValueRef<LaunchEvent> event() const { return event_; }
 
  private:
+  // Align all atomic counters to a cache line boundary to avoid false
+  // sharing between multiple worker threads.
+  static constexpr size_t kAtomicAlignment =
+#if defined(__cpp_lib_hardware_interference_size)
+      std::hardware_destructive_interference_size;
+#else
+      64;
+#endif
+
   // Converts linear task index in [0, num_tasks) to (x, y, z) coordinate. We
   // assume that `x` is the fastest iterating dimension.
   SE_HOST_KernelThread Delinearize(uint64_t task_index);
@@ -92,11 +102,12 @@ class HostKernelExecuteState {
   SE_HOST_KernelThreadDim thread_dims_;
   absl::InlinedVector<SE_HOST_KernelArg, 8> args_;
 
-  std::atomic<bool> abort_;
+  alignas(kAtomicAlignment) std::atomic<int64_t> counter_;
+
+  alignas(kAtomicAlignment) std::atomic<bool> abort_;
   absl::Mutex abort_mutex_;
   absl::Status abort_status_ ABSL_GUARDED_BY(abort_mutex_);
 
-  std::atomic<int64_t> counter_;
   tsl::AsyncValueRef<LaunchEvent> event_;
 };
 }  // namespace
@@ -190,8 +201,8 @@ HostKernelExecuteState::HostKernelExecuteState(
       kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(args.begin(), args.end()),
-      abort_(false),
       counter_(num_tasks_),
+      abort_(false),
       event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
 
 void HostKernelExecuteState::Notify(absl::Status status) {

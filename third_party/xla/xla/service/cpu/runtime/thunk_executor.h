@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_EXECUTOR_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -97,24 +99,38 @@ class ThunkExecutor {
 
   // A struct to keep the state of a running executor.
   struct ExecuteState {
+    // Align all atomic counters to a cache line boundary to avoid false
+    // sharing between multiple worker threads.
+    static constexpr size_t kAtomicAlignment =
+#if defined(__cpp_lib_hardware_interference_size)
+        std::hardware_destructive_interference_size;
+#else
+        64;
+#endif
+
+    struct Counter {
+      alignas(kAtomicAlignment) std::atomic<int64_t> value;
+    };
+
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
 
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
     // Containers for nodes' pending counters and nodes themselves.
-    absl::FixedArray<std::atomic<int64_t>> counters;
+    absl::FixedArray<Counter> counters;
     absl::InlinedVector<Node, 32> nodes;
-
-    // We store the first error from failed thunks in `abort_status` and at the
-    // end of execution the executor forwards it via the `execute_event`.
-    std::atomic<bool> abort;
-    absl::Mutex abort_mutex;
-    absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
 
     // Once the number of pending sink nodes drops to zero, the execution is
     // completed and we set `execute_event` as concrete or error.
-    std::atomic<int64_t> pending_sink_nodes;
+    alignas(kAtomicAlignment) std::atomic<int64_t> pending_sink_nodes;
+
+    // We store the first error from failed thunks in `abort_status` and at the
+    // end of execution the executor forwards it via the `execute_event`.
+    alignas(kAtomicAlignment) std::atomic<bool> abort;
+    absl::Mutex abort_mutex;
+    absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
+
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
   };
 

@@ -114,16 +114,17 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
       runner(runner),
       counters(executor->nodes_defs().size()),
       nodes(executor->nodes_defs().size()),
-      abort(false),
       pending_sink_nodes(executor->sink().size()),
+      abort(false),
       execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()) {
   DCHECK(runner == nullptr || static_cast<bool>(*runner))
       << "`runner` must be nullptr or a valid TaskRunner";
 
   for (NodeId id = 0; id < nodes.size(); ++id) {
     const NodeDef& node_def = executor->node_def(id);
-    counters[id].store(node_def.in_edges.size(), std::memory_order_release);
-    nodes[id] = Node{id, &counters[id], &node_def.out_edges};
+    counters[id].value.store(node_def.in_edges.size(),
+                             std::memory_order_release);
+    nodes[id] = Node{id, &counters[id].value, &node_def.out_edges};
   }
 }
 
