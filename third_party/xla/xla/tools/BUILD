@@ -56,7 +56,6 @@ xla_cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
-        "//xla:types",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -127,13 +126,12 @@ xla_cc_binary(
     name = "convert_computation",
     srcs = ["convert_computation.cc"],
     deps = [
-        "//xla:types",
         "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -193,19 +191,24 @@ xla_cc_binary(
     name = "dumped_computation_to_text",
     srcs = ["dumped_computation_to_text.cc"],
     deps = [
-        "//xla:types",
-        "//xla/client",
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
         "//xla/client:client_library",
+        "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/client:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/service",
         "//xla/service:hlo_proto_cc",
         "//xla/service:interpreter_plugin",
+        "//xla/service:local_service",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -220,15 +223,16 @@ xla_cc_binary(
     name = "dumped_computation_to_operation_list",
     srcs = ["dumped_computation_to_operation_list.cc"],
     deps = [
-        "//xla:types",
-        "//xla/client",
+        "//xla:shape_util",
         "//xla/client:client_library",
+        "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/service",
         "//xla/service:hlo_proto_cc",
         "//xla/service:interpreter_plugin",
+        "//xla/service:local_service",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -237,6 +241,7 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -717,8 +722,14 @@ xla_cc_binary(
     srcs = ["compute_cost.cc"],
     deps = [
         ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:shape_util",
         "//xla/service:hlo_cost_analysis",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
