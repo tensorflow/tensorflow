@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

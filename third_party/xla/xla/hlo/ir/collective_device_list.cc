@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

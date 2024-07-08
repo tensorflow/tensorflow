@@ -18,8 +18,11 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_instruction_utils {

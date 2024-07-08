@@ -68,6 +68,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:printer",
         "//xla:protobuf_util",
+        "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -77,6 +78,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/service:compilation_environments",
+        "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_lexer",
         "//xla/service:hlo_module_config",
@@ -90,6 +92,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -98,13 +101,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
         "@local_tsl//tsl/lib/gtl:map_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
@@ -148,9 +151,13 @@ cc_library(
     hdrs = ["hlo_module_group.h"],
     deps = [
         ":hlo",
+        "//xla:status_macros",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -160,7 +167,9 @@ cc_library(
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -173,6 +182,9 @@ cc_library(
         "//xla:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -221,7 +233,9 @@ cc_library(
         "//xla:util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -23,6 +23,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
