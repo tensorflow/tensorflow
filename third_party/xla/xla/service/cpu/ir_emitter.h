@@ -222,6 +222,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* rng) override;
+  absl::Status HandleRngBitGenerator(HloInstruction* rng) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   absl::Status FinishVisit(HloInstruction* root) override;
 

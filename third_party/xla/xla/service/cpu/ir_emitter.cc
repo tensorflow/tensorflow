@@ -3663,6 +3663,10 @@ absl::Status IrEmitter::HandleRng(HloInstruction* rng) {
   return Unimplemented("Rng should be expanded for CPU.");
 }
 
+absl::Status IrEmitter::HandleRngBitGenerator(HloInstruction* rng) {
+  return Unimplemented("RngBitGenerator should be expanded for CPU.");
+}
+
 absl::Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
   VLOG(2) << "RngGetAndUpdateState: " << rng_state->ToString();
   llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(

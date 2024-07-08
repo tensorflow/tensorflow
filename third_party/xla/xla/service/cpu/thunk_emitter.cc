@@ -272,6 +272,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kRng:
       return EmitRngThunk(instruction);
 
+    case HloOpcode::kRngBitGenerator:
+      return EmitRngBitGeneratorThunk(instruction);
+
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateStateThunk(instruction);
 
@@ -591,6 +594,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
     const HloInstruction* instruction) {
   return Unimplemented("Rng should be expanded for CPU.");
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngBitGeneratorThunk(
+    const HloInstruction* instruction) {
+  return Unimplemented("RngBitGenerator should be expanded for CPU.");
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
