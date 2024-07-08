@@ -66,11 +66,6 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
-    allow_bitcast_to_have_different_size = allow;
-    return std::move(*this);
-  }
-
   HloVerifierOpts&& WithInstructionCanChangeLayout(
       const HloPredicate& instruction_can_change_layout_p) {
     instruction_can_change_layout = instruction_can_change_layout_p;
@@ -97,12 +92,6 @@ struct HloVerifierOpts {
   }
 
   bool IsLayoutSensitive() const { return layout_sensitive; }
-
-  bool AllowMixedPrecision() const { return allow_mixed_precision; }
-
-  const HloPredicate& InstructionCanChangeLayout() const {
-    return instruction_can_change_layout;
-  }
 
   bool InstructionCanChangeLayout(const HloInstruction* instruction) const {
     return !instruction_can_change_layout ||

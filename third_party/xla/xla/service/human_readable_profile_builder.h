@@ -40,8 +40,6 @@ class HumanReadableProfileBuilder {
     CHECK_GE(clock_rate_ghz, 1e-9);
   }
 
-  int64_t total_cycles() const { return total_cycles_; }
-
   // Adds an operation to the profile.  If you don't know the number of
   // floating-point ops or bytes touched by the op, or if you don't know how
   // fast it would run optimally, pass -1 for that param.

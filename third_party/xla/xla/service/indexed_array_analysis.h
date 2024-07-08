@@ -348,11 +348,6 @@ class IndexedArrayAnalysis {
     }
   }
 
-  Literal* TakeOwnership(Literal literal) {
-    owned_literals_.push_back(std::move(literal));
-    return &owned_literals_.back();
-  }
-
   absl::StatusOr<Literal*> TakeOwnership(
       absl::StatusOr<Literal> literal_or_error) {
     TF_ASSIGN_OR_RETURN(Literal literal, std::move(literal_or_error));

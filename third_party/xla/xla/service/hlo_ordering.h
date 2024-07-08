@@ -135,10 +135,6 @@ class PredecessorHloOrdering : public HloOrdering {
   HloReachabilityMap& reachability_map(const HloComputation* computation) {
     return *predecessors_.at(computation);
   }
-  const HloReachabilityMap& reachability_map(
-      const HloComputation* computation) const {
-    return *predecessors_.at(computation);
-  }
 
  protected:
   explicit PredecessorHloOrdering(const HloModule* module);

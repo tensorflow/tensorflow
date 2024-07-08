@@ -263,7 +263,6 @@ class InstructionList {
   Item* next(Item* item) const { return item->next; }
   const Item* next(const Item* item) const { return item->next; }
   Item* prev(Item* item) const { return item->prev; }
-  const Item* prev(const Item* item) const { return item->prev; }
 
   Item* first_skip_node() const { return first_skip_node_; }
   Item* next_skip_node(Item* item) const { return item->next_skip_node; }
