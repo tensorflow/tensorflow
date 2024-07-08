@@ -415,11 +415,8 @@ message DebugOptions {
   bool xla_gpu_enable_all_gather_combine_by_dim = 254;
   bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
-  // Was xla_gpu_all_reduce_contiguous
-  reserved 158;
-
-  // Split AR across all partitions into logical RS followed by AR.
-  bool xla_gpu_enable_all_reduce_splitter = 299;
+  // Was xla_gpu_all_reduce_contiguous, xla_gpu_enable_all_reduce_splitter
+  reserved 158, 299;
 
   // Enable allreduce reassociation on allreduces that are converted to a wider
   // type. The resulting allreduce will be promoted to a wider-typed allreduce.

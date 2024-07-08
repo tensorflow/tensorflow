@@ -133,7 +133,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
-  opts.set_xla_gpu_enable_all_reduce_splitter(true);
   opts.set_xla_gpu_enable_approx_costly_collectives(false);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
@@ -1128,12 +1127,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_reduce_scatter_combine_by_dim(),
       "Combine reduce-scatter ops with the same dimension or irrespective of "
       "their dimension."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_all_reduce_splitter",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_all_reduce_splitter),
-      debug_options->xla_gpu_enable_all_reduce_splitter(),
-      "Splits cross-device all reduce into logical reduce scatter followed by "
-      "dynamic slice and all reduce."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_approx_costly_collectives",
       bool_setter_for(

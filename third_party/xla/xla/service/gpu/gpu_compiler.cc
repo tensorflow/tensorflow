@@ -883,9 +883,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
-  if (debug_options.xla_gpu_enable_all_reduce_splitter()) {
-    collectives_pipeline.AddPass<AllReduceSplitter>();
-  }
+  collectives_pipeline.AddPass<AllReduceSplitter>();
   collectives_pipeline.AddPass<ReduceScatterCreator>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
