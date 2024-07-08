@@ -43,9 +43,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size) {
+bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size, int64_t start) {
   if (arr.size() != size) return false;
-  int64_t iota = 0;
+  int64_t iota = start;
   for (auto s : arr) {
     if (s != iota) return false;
     ++iota;

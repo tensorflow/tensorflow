@@ -730,6 +730,59 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
                                      results[3]));
 }
 
+// TODO: b/351064128 - add more complex test cases for circular pipelining
+XLA_TEST_F(CollectiveOpsTest,
+           CollectivePermute_CircularPipelinePreOptimization) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  while_cond {
+    param = (u32[], f32[]) parameter(0)
+    iter = u32[] get-tuple-element(param), index=0
+    max_iter = u32[] constant(4)
+    ROOT cmp = pred[] compare(iter, max_iter), direction=LT
+  }
+
+  while_body {
+    param = (u32[], f32[]) parameter(0)
+    iter = u32[] get-tuple-element(param), index=0
+    data = f32[] get-tuple-element(param), index=1
+    ten = f32[] constant(10)
+    sum = f32[] add(data, ten)
+    cp = f32[] collective-permute(sum), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    iter_increment = u32[] constant(1)
+    next_iter = u32[] add(iter, iter_increment)
+    ROOT result = (u32[], f32[]) tuple(next_iter, cp)
+  }
+
+  ENTRY test_computation {
+    iter = u32[] constant(0)
+    data = f32[] parameter(0)
+    input = (u32[], f32[]) tuple(iter, data)
+    while_res = (u32[], f32[]) while(input), condition=while_cond, body=while_body
+    ROOT data_out = f32[] get-tuple-element(while_res), index=1
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  float start_val = 0;
+  auto init_val_literal = LiteralUtil::CreateR0<float>(start_val);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&init_val_literal}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  LiteralTestUtil::ExpectR0Equal<float>(40, results[0]);
+  LiteralTestUtil::ExpectR0Equal<float>(40, results[1]);
+  LiteralTestUtil::ExpectR0Equal<float>(40, results[2]);
+  LiteralTestUtil::ExpectR0Equal<float>(40, results[3]);
+}
+
 XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
   const char* const kModuleStr = R"(
   HloModule test

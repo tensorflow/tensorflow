@@ -101,3 +101,32 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
     ],
 )
+
+cc_library(
+    name = "conv",
+    srcs = ["conv.cc"],
+    hdrs = ["conv.h"],
+    deps = [
+        ":conv_util",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "conv_util",
+    srcs = ["conv_util.cc"],
+    hdrs = ["conv_util.h"],
+    deps = [
+        ":util",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
