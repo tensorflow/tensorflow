@@ -20,11 +20,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 // Basic string utility routines
 namespace tsl {
@@ -32,7 +42,9 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-std::string CEscape(StringPiece src);
+ABSL_DEPRECATE_AND_INLINE() inline std::string CEscape(absl::string_view src) {
+  return absl::CEscape(src);
+}
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -41,10 +53,17 @@ std::string CEscape(StringPiece src);
 // 'error'. To disable error reporting, set 'error' to NULL.
 //
 // NOTE: Does not support \u or \U!
-bool CUnescape(StringPiece source, std::string* dest, std::string* error);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool CUnescape(absl::string_view source, std::string* dest,
+                      std::string* error) {
+  return absl::CUnescape(source, dest, error);
+}
 
 // Removes any trailing whitespace from "*s".
-void StripTrailingWhitespace(std::string* s);
+ABSL_DEPRECATE_AND_INLINE()
+inline void StripTrailingWhitespace(std::string* s) {
+  absl::StripTrailingAsciiWhitespace(s);
+}
 
 // Removes leading ascii_isspace() characters.
 // Returns number of characters removed.
@@ -71,27 +90,45 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
-bool ConsumePrefix(StringPiece* s, StringPiece expected);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool ConsumePrefix(absl::string_view* s, absl::string_view expected) {
+  return absl::ConsumePrefix(s, expected);
+}
 
 // If "*s" ends with "expected", remove it and return true.
 // Otherwise, return false.
-bool ConsumeSuffix(StringPiece* s, StringPiece expected);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool ConsumeSuffix(absl::string_view* s, absl::string_view expected) {
+  return absl::ConsumeSuffix(s, expected);
+}
 
 // If "s" starts with "expected", return a view into "s" after "expected" but
 // keep "s" unchanged.
 // Otherwise, return the original "s".
-TF_MUST_USE_RESULT StringPiece StripPrefix(StringPiece s, StringPiece expected);
+ABSL_DEPRECATE_AND_INLINE()
+TF_MUST_USE_RESULT inline absl::string_view StripPrefix(
+    absl::string_view s, absl::string_view expected) {
+  return absl::StripPrefix(s, expected);
+}
 
 // If "s" ends with "expected", return a view into "s" until "expected" but
 // keep "s" unchanged.
 // Otherwise, return the original "s".
-TF_MUST_USE_RESULT StringPiece StripSuffix(StringPiece s, StringPiece expected);
+ABSL_DEPRECATE_AND_INLINE()
+TF_MUST_USE_RESULT inline absl::string_view StripSuffix(
+    absl::string_view s, absl::string_view expected) {
+  return absl::StripSuffix(s, expected);
+}
 
 // Return lower-cased version of s.
-std::string Lowercase(StringPiece s);
+ABSL_DEPRECATE_AND_INLINE() inline std::string Lowercase(absl::string_view s) {
+  return absl::AsciiStrToLower(s);
+}
 
 // Return upper-cased version of s.
-std::string Uppercase(StringPiece s);
+ABSL_DEPRECATE_AND_INLINE() inline std::string Uppercase(absl::string_view s) {
+  return absl::AsciiStrToUpper(s);
+}
 
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
@@ -104,6 +141,7 @@ std::string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
 
 // Join functionality
 template <typename T>
+ABSL_DEPRECATE_AND_INLINE()
 std::string Join(const T& s, const char* sep) {
   return absl::StrJoin(s, sep);
 }
@@ -112,6 +150,7 @@ std::string Join(const T& s, const char* sep) {
 // is invoked (f is often constructed with a lambda of the form:
 //   [](string* result, ElemType elem)
 template <typename T, typename Formatter>
+ABSL_DEPRECATE_AND_INLINE()
 std::string Join(const T& s, const char* sep, Formatter f) {
   return absl::StrJoin(s, sep, f);
 }
@@ -153,17 +192,26 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p) {
 // StartsWith()
 //
 // Returns whether a given string `text` begins with `prefix`.
-bool StartsWith(StringPiece text, StringPiece prefix);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool StartsWith(absl::string_view text, absl::string_view prefix) {
+  return absl::StartsWith(text, prefix);
+}
 
 // EndsWith()
 //
 // Returns whether a given string `text` ends with `suffix`.
-bool EndsWith(StringPiece text, StringPiece suffix);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool EndsWith(absl::string_view text, absl::string_view suffix) {
+  return absl::EndsWith(text, suffix);
+}
 
 // StrContains()
 //
 // Returns whether a given string `haystack` contains the substring `needle`.
-bool StrContains(StringPiece haystack, StringPiece needle);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool StrContains(absl::string_view haystack, absl::string_view needle) {
+  return absl::StrContains(haystack, needle);
+}
 
 // Returns the length of the given null-terminated byte string 'str'.
 // Returns 'string_max_len' if the null character was not found in the first
