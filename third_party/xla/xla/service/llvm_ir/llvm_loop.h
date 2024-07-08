@@ -122,7 +122,6 @@ class ForLoop {
   //
   // Return pointers to various blocks in the loop.
   llvm::BasicBlock* GetPreheaderBasicBlock() const { return preheader_bb_; }
-  llvm::BasicBlock* GetHeaderBasicBlock() const { return header_bb_; }
   llvm::BasicBlock* GetBodyBasicBlock() const { return body_bb_; }
   llvm::BasicBlock* GetExitBasicBlock() const { return exit_bb_; }
 
@@ -255,9 +254,6 @@ class ForLoopNest {
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been
   // added yet.
-  llvm::BasicBlock* GetOuterLoopPreheaderBasicBlock() {
-    return outer_loop_preheader_bb_;
-  }
   llvm::BasicBlock* GetOuterLoopExitBasicBlock() { return outer_loop_exit_bb_; }
   llvm::BasicBlock* GetInnerLoopBodyBasicBlock() { return inner_loop_body_bb_; }
 
