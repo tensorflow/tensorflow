@@ -997,9 +997,14 @@ TEST_F(IndexingMapTest, RescaleSymbolsKeepsHashmapConsistent) {
 }
 
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
-  RangeEvaluator range_evaluator(
-      {Interval{0, 9}, Interval{-10, -1}, Interval{-1, 2}, Interval{0, 0}}, {},
-      &mlir_context_);
+  auto serialized_map = "(d0, d1, d2, d3)[] -> (0)";
+  IndexingMap indexing_map(ParseAffineMap(serialized_map, &mlir_context_),
+                           {{Interval{0, 9}},
+                            {Interval{-10, -1}},
+                            {Interval{-1, 2}},
+                            {Interval{0, 0}}},
+                           {}, {});
+  RangeEvaluator range_evaluator(indexing_map, &mlir_context_);
   mlir::AffineExpr d0, d1, d2, d3;
   bindDims(&mlir_context_, d0, d1, d2, d3);
 
