@@ -103,11 +103,6 @@ class Tiling {
     return *ShapeUtil::ByteStrides(ShapeUtil::MakeShape(U8, num_threads_));
   }
 
-  // Returns the strides of the block index dimensions wrt. the linear block id.
-  absl::InlinedVector<int64_t, 4> GetBlockStrides() const {
-    return *ShapeUtil::ByteStrides(ShapeUtil::MakeShape(U8, num_blocks_));
-  }
-
   int64_t GetNumThreadsPerBlock() const { return Product(num_threads_); }
 
   int64_t GetNumBlocks() const { return Product(num_blocks_); }
