@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinLocationAttributes.h.inc"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
