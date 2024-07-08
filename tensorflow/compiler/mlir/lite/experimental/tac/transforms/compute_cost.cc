@@ -16,25 +16,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/cost.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/subgraph.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
-#include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/cost_model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
 namespace TFL {
