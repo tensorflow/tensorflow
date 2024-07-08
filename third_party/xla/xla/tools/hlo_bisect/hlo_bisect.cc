@@ -19,6 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/tools/hlo_bisect/hlo_bisect_state.h"
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
