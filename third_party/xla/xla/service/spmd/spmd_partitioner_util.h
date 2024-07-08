@@ -856,12 +856,6 @@ absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
   return arg;
 }
 
-template <typename Arg, IsNotSpmdPartitioningVisitorPointer<Arg> = 0>
-absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
-    Arg&& arg) {
-  return absl::InvalidArgumentError("No SpmdPartitioningVisitor found.");
-}
-
 template <typename Arg, typename... Args,
           IsSpmdPartitioningVisitorPointer<Arg> = 0>
 absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
