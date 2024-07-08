@@ -17,16 +17,28 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
