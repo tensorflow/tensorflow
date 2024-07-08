@@ -159,8 +159,8 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
 // * Values are stored in the order of insertion. This is useful when we have
 //   information about the order in which we process elements. For example,
 //   during the construction of TiledHloComputation from
-//   SymblicTiledHloInstructions, we know that instruction are already sorted in
-//   def-before-use order.
+//   SymbolicTiledHloInstructions, we know that instruction are already sorted
+//   in def-before-use order.
 template <typename T>
 class OrderedUniquePtrValueHashSet {
  public:
@@ -197,7 +197,7 @@ class OrderedUniquePtrValueHashSet {
 };
 
 // Sets a SymbolicTile for each tiled hlo instruction and computes their
-// combined constraints. Returns a FusionDecision if a SymblicTile cannot be
+// combined constraints. Returns a FusionDecision if a SymbolicTile cannot be
 // computed for some instruction or if the constraints are unsatisfiable.
 // Returns the combined constraints otherwise.
 std::variant<ConstraintExpression, FusionDecision>
