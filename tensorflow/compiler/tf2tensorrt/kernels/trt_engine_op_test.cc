@@ -18,38 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/container/inlined_vector.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/function_ops.h"
-#include "tensorflow/cc/ops/math_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "xla/tsl/framework/fixedpoint/FixedPoint.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/public/version.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
