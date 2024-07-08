@@ -371,9 +371,9 @@ HloModule t
 
 ENTRY e {
   p0 = s8[7,8192] parameter(0)
-  p0c = bf16[7,8192] convert(p0)
-  p1 = bf16[8192,18] parameter(1)
-  ROOT dot.0 = bf16[7,18] dot(p0c, p1),
+  p0c = f16[7,8192] convert(p0)
+  p1 = f16[8192,18] parameter(1)
+  ROOT dot.0 = f16[7,18] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
@@ -386,7 +386,7 @@ ENTRY e {
 ; CHECK-NEXT: kLoop
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/4, /*arel=*/1e-1}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1, /*arel=*/0.5}));
 }
 
 TEST_F(GemmFusionAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
@@ -396,9 +396,9 @@ HloModule t
 
 ENTRY e {
   p0 = s8[7,8192] parameter(0)
-  p0c = bf16[7,8192] convert(p0)
-  p1 = bf16[8192,18] parameter(1)
-  ROOT dot.0 = bf16[7,18] dot(p0c, p1),
+  p0c = f16[7,8192] convert(p0)
+  p1 = f16[8192,18] parameter(1)
+  ROOT dot.0 = f16[7,18] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
@@ -411,7 +411,7 @@ ENTRY e {
 ; CHECK-NEXT: kLoop
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
 }
 
 TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {

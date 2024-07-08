@@ -95,7 +95,6 @@ cc_test(
         ":utils",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest_main",
     ],
 )

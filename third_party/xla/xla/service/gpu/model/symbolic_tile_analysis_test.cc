@@ -60,22 +60,21 @@ using ::tsl::testing::StatusIs;
 using TilingVector = std::vector<SymbolicTileAnalysis::Tiling>;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
-           block_id_to_tile_offsets_indexing, "") {
+           tile_offsets_indexing, "") {
   return ExplainMatchResult(ElementsAreArray(tile_sizes), arg.tile_sizes(),
                             result_listener) &&
          ExplainMatchResult(ElementsAreArray(tile_strides), arg.tile_strides(),
                             result_listener) &&
-         ExplainMatchResult(MatchIndexingMap(block_id_to_tile_offsets_indexing),
-                            arg.block_id_to_tile_offsets_indexing(),
-                            result_listener);
+         ExplainMatchResult(MatchIndexingMap(tile_offsets_indexing),
+                            arg.tile_offsets_indexing(), result_listener);
 }
 
 Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
     absl::Span<const int64_t> tile_sizes,
     absl::Span<const int64_t> tile_strides,
-    absl::string_view block_id_to_tile_offsets_indexing) {
+    absl::string_view tile_offsets_indexing) {
   return MatchTiledHloInstructionImpl(tile_sizes, tile_strides,
-                                      block_id_to_tile_offsets_indexing);
+                                      tile_offsets_indexing);
 }
 
 class SymbolicTileAnalysisTest : public HloTestBase {
@@ -127,14 +126,13 @@ ENTRY main {
       TiledHloComputation tiled_hlo_computation,
       analysis->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
-  LOG(ERROR) << tiled_hlo_computation.ToString();
-
   const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
-  EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
-    (d0) -> (d0 floordiv 10, (d0 mod 10) * 10)
+  EXPECT_THAT(root->tile_offsets_indexing(), MatchIndexingMap(R"(
+    (d0, d1) -> (d0, d1 * 10)
     domain:
-    d0 in [0, 20)
+    d0 in [0, 2)
+    d1 in [0, 10)
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -143,19 +141,21 @@ ENTRY main {
   EXPECT_THAT(*p0_from_subtract0, MatchTiledHloInstruction(
                                       /*tile_sizes=*/{1, 10},
                                       /*tile_strides=*/{1, 1},
-                                      /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> (d0 floordiv 10, (d0 mod 10) * 10)
+                                      /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0, d1 * 10)
     domain:
-    d0 in [0, 20)
+    d0 in [0, 2)
+    d1 in [0, 10)
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
                                       /*tile_sizes=*/{1, 97},
                                       /*tile_strides=*/{1, 1},
-                                      /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> (d0 floordiv 10, 0)
+                                      /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0, 0)
     domain:
-    d0 in [0, 20)
+    d0 in [0, 2)
+    d1 in [0, 10)
   )"));
 }
 
@@ -243,9 +243,11 @@ ENTRY main {
   EXPECT_THAT(*p0_from_producer,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
-                  /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> (d0, 0)
-    domain: d0 in [0, 2)
+                  /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0, 0)
+    domain:
+    d0 in [0, 2)
+    d1 in [0, 1)
   )"));
 }
 
@@ -272,19 +274,23 @@ ENTRY main {
 
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 4, 2}, /*tile_strides=*/{1, 1, 1},
-                         /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> ((d0 floordiv 16) * 2, ((d0 floordiv 8) mod 2) * 4, (d0 mod 8) * 2)
+                         /*tile_offsets_indexing=*/R"(
+    (d0, d1, d2) -> (d0 * 2, d1 * 4, d2 * 2)
     domain:
-    d0 in [0, 32)
+    d0 in [0, 2)
+    d1 in [0, 2)
+    d2 in [0, 8)
   )"));
 
   EXPECT_THAT(*root->operand(0),
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{4, 2, 2}, /*tile_strides=*/{1, 1, 1},
-                  /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> (((d0 floordiv 8) mod 2) * 4, (d0 mod 8) * 2, (d0 floordiv 16) * 2)
+                  /*tile_offsets_indexing=*/R"(
+    (d0, d1, d2) -> (d1 * 4, d2 * 2, d0 * 2)
     domain:
-    d0 in [0, 32)
+    d0 in [0, 2)
+    d1 in [0, 2)
+    d2 in [0, 8)
   )"));
 }
 
@@ -315,28 +321,31 @@ ENTRY main {
 
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
-                         /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> ((d0 floordiv 4) * 2, (d0 mod 4) * 2)
+                         /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0 * 2, d1 * 2)
     domain:
-    d0 in [0, 8)
+    d0 in [0, 2)
+    d1 in [0, 4)
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
-                  /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> ((d0 floordiv 4) * 2, (d0 mod 4) * 2 + 2)
+                  /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0 * 2, d1 * 2 + 2)
     domain:
-    d0 in [0, 8)
+    d0 in [0, 2)
+    d1 in [0, 4)
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
-                  /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> ((d0 floordiv 4) * 2 + 3, (d0 mod 4) * 2 + 4)
+                  /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0 * 2 + 3, d1 * 2 + 4)
     domain:
-    d0 in [0, 8)
+    d0 in [0, 2)
+    d1 in [0, 4)
   )"));
 }
 
@@ -778,10 +787,11 @@ ENTRY main {
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{1, 1},
                   /*tile_strides=*/{1, 1},
-                  /*block_id_to_tile_offsets_indexing=*/R"(
-    (d0) -> (d0 floordiv 32768, d0 mod 32768)
+                  /*tile_offsets_indexing=*/R"(
+    (d0, d1) -> (d0, d1)
     domain:
-    d0 in [0, 2147549184)
+    d0 in [0, 65538)
+    d1 in [0, 32768)
   )"));
 }
 

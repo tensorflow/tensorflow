@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_configuration_utils.h"
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
 namespace tpu {
