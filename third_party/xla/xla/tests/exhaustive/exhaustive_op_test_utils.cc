@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/meta/type_traits.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/literal.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace exhaustive_op_test {

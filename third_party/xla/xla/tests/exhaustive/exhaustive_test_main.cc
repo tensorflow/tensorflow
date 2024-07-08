@@ -18,6 +18,7 @@ limitations under the License.
 // the --benchmark_filter flag which specifies which benchmarks to run,
 // we will either run benchmarks or run the gtest tests in the program.
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla {

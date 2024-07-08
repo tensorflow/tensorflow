@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 #ifdef __FAST_MATH__
