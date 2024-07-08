@@ -29,16 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/tpu/libtftpu.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "xla/stream_executor/tpu/tpu_initialize_util.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)

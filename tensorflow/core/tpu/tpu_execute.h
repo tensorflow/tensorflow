@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 
 namespace tensorflow {
