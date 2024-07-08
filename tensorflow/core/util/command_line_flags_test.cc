@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/command_line_flags.h"
+
 #include <ctype.h>
+
 #include <vector>
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
