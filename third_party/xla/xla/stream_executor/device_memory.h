@@ -152,9 +152,6 @@ class DeviceMemory final : public DeviceMemoryBase {
 
   // Returns pointer to the allocated data
   ElemT *base() { return reinterpret_cast<ElemT *>(opaque()); }
-  const ElemT *base() const {
-    return reinterpret_cast<const ElemT *>(opaque());
-  }
 
   // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
