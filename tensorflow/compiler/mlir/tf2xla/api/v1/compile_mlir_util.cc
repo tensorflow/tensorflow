@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -38,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
@@ -85,6 +89,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -368,6 +373,89 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   }
 }
 
+// Builds a pipeline that runs only those passes required to lower TF to HLO.
+void CreateMlirLoweringPassesPipeline(mlir::PassManager& pm) {
+  applyTensorflowAndCLOptions(pm);
+
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::stablehlo::CreateConvertTFQuantTypesPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
+  mlir::quant::stablehlo::AddQuantizationLoweringPasses(pm);
+  // Legalize to HLO but force MLIR native only.
+  pm.addPass(mlir::mhlo::createLegalizeTFPass(
+      /*legalize_chlo=*/true,
+      /*tf2xla_fallback_device_type=*/std::nullopt, /*prefer_tf2xla=*/false));
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+
+  auto pass_instrumentors = mlir::GetPassInstrumentors();
+  for (const auto& creator : pass_instrumentors) {
+    pm.addInstrumentation(creator());
+  }
+}
+
+// If the module should be dumped then dumps the file and turns on the before
+// and after IR printing for the passes.
+void MaybeDumpMlirModuleAndPasses(mlir::PassManager& pm,
+                                  mlir::ModuleOp module_op,
+                                  std::string module_name, std::string tag) {
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name, kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile(
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name, kDebugGroupMain, tag),
+        module_op, /*dirname=*/"", &pm);
+  }
+
+  if (VLOG_IS_ON(2) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name, kDebugGroupBridgePhase2)) {
+    // Print the whole module after each pass which requires disabling
+    // multi-threading as well.
+    module_op.getContext()->disableMultithreading();
+    pm.enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+        [module_name](const std::string& pass_tag_name, mlir::Operation* op) {
+          return DEBUG_DATA_DUMPER()->GetDumpFilename(
+              module_name, kDebugGroupBridgePhase2, pass_tag_name);
+        },
+        /*pass_prefix=*/"",
+        /*print_module_scope=*/true));
+  }
+}
+
+// Runs the MLIR pipeline and if successful dumps the results if enabled.
+absl::Status RunMlirPipelineAndMaybeDumpResults(mlir::PassManager& pm,
+                                                mlir::ModuleOp module_op,
+                                                std::string module_name = "") {
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system. Report a generic error if pass manager failed
+  // without emitting a diagnostic.
+  mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+
+  if (failed(pm.run(module_op))) {
+    auto status = absl::InvalidArgumentError("TF to XLA legalization failed: ");
+    tensorflow::OkOrSetErrorCounterPayload(
+        tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+        status);
+    return error_handler.Combine(status);
+  }
+
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name, kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile(
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name, kDebugGroupMain,
+                                             "legalize_hlo_after"),
+        module_op, /*dirname=*/"", &pm);
+  }
+
+  Status status = error_handler.ConsumeStatus();
+  tensorflow::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+      status);
+  return status;
+}
 }  //  namespace
 
 // Creates the MLIR Pipeline.
@@ -382,7 +470,7 @@ void CreateConvertMlirToXlaHloPipeline(
   bool legalize_chlo = true;
 
   pm.addNestedPass<mlir::func::FuncOp>(
-      tensorflow::tf2xla::internal::CreateInputLoweringMetricsPass());
+      tf2xla::internal::CreateInputLoweringMetricsPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass(device_type));
@@ -560,56 +648,11 @@ Status CreateAndRunMlirBridge(mlir::ModuleOp module_op,
   for (const auto& creator : pass_instrumentors) {
     tf2xla.addInstrumentation(creator());
   }
-  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
-      VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "legalize_hlo_before"),
-        module_op, "", &tf2xla);
-  }
+  MaybeDumpMlirModuleAndPasses(tf2xla, module_op, module_name.str(),
+                               /*tag=*/"legalize_hlo_before");
 
-  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
-                           module_name.str(), kDebugGroupBridgePhase2)) {
-    // Print the whole module after each pass which requires disabling
-    // multi-threading as well.
-    module_op.getContext()->disableMultithreading();
-    tf2xla.enableIRPrinting(
-        std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-            [module_name](const std::string& pass_tag_name,
-                          mlir::Operation* op) {
-              return DEBUG_DATA_DUMPER()->GetDumpFilename(
-                  module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
-            },
-            "",
-            /*print_module_scope=*/true));
-  }
-
-  // Make sure we catch any error reported by MLIR and forward it to the TF
-  // error reporting system. Report a generic error if pass manager failed
-  // without emitting a diagnostic.
-  mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
-
-  if (failed(tf2xla.run(module_op))) {
-    Status status = errors::InvalidArgument("TF to XLA legalization failed: ");
-    tensorflow::OkOrSetErrorCounterPayload(
-        tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
-        status);
-    return error_handler.Combine(status);
-  }
-
-  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
-      VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "legalize_hlo_after"),
-        module_op, "", &tf2xla);
-  }
-
-  Status status = error_handler.ConsumeStatus();
-  tensorflow::OkOrSetErrorCounterPayload(
-      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
-      status);
-  return status;
+  return RunMlirPipelineAndMaybeDumpResults(tf2xla, module_op,
+                                            module_name.str());
 }
 
 Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -839,10 +882,10 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
       lower_to_xla_hlo);
 }
 
-// Rewrites the given module with specified args. For each of the constant args,
-// it gets inlined in the "main' function and the corresponding argument is
-// removed from the signature. For resource args, their subtypes are populated.
-// Returns the original indices for the other arguments on success.
+// Rewrites the given module with specified args. Each of the constant args gets
+// inlined in the "main' function and the corresponding argument is removed from
+// the signature. For resource args, their subtypes are populated. Returns the
+// original indices for the other arguments on success.
 static absl::StatusOr<std::vector<int>> RewriteWithArgs(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args) {
   mlir::func::FuncOp main_fn =
@@ -954,18 +997,33 @@ Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                           llvm::ArrayRef<xla::XlaOp> xla_params,
                           std::vector<xla::XlaOp>& returns,
                           llvm::ArrayRef<XlaArgument> args,
-                          llvm::StringRef device_type,
-                          llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                              custom_legalization_passes) {
+                          llvm::StringRef device_type) {
   std::vector<int> remaining_params;
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
   TF_RETURN_IF_ERROR(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
-  // Passing down only remaining (non-constant) xla_params.
   llvm::SmallVector<xla::XlaOp, 2> remaining_xla_params;
   for (auto i : remaining_params) remaining_xla_params.push_back(xla_params[i]);
-  return BuildHloFromTf(module_op, builder, remaining_xla_params, returns,
-                        arg_shapes, device_type, custom_legalization_passes);
+  TF_RETURN_IF_ERROR(CompileMlirSetup(module_op, arg_shapes));
+
+  mlir::PassManager tf2xla(module_op.getContext());
+  CreateMlirLoweringPassesPipeline(tf2xla);
+
+  MaybeDumpMlirModuleAndPasses(tf2xla, module_op, /*module_name=*/"",
+                               /*tag=*/"legalize_hlo_before");
+
+  TF_RETURN_IF_ERROR(RunMlirPipelineAndMaybeDumpResults(tf2xla, module_op));
+
+  mlir::Block& block =
+      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
+  TF_RETURN_IF_ERROR(
+      mlir::BuildHloFromMlirHlo(block, builder, remaining_xla_params, returns));
+
+  if (VLOG_IS_ON(2)) {
+    tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);
+  }
+
+  return absl::OkStatus();
 }
 
 Status CompileGraphToXlaHlo(
@@ -1021,15 +1079,13 @@ Status BuildHloFromGraph(
     std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
     llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
     llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes) {
+    const GraphDebugInfo& debug_info) {
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(unconditionally_use_output_shapes, graph, control_rets,
                     flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
-                            device_type, custom_legalization_passes);
+                            device_type);
 }
 
 void RegisterConvertMlirToXlaHloPipelineWithDefaults() {

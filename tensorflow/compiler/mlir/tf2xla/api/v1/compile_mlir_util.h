@@ -202,9 +202,7 @@ Status BuildHloFromGraph(
     std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
     llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
     llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info,
-    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
+    const GraphDebugInfo& debug_info);
 
 static inline Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");
