@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"

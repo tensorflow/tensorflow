@@ -30,6 +30,7 @@ cc_library(
     srcs = ["ifrt_serving_core_selector.cc"],
     hdrs = ["ifrt_serving_core_selector.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -284,6 +285,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:fixed_array",
@@ -427,6 +429,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

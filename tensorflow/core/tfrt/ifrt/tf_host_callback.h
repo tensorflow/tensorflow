@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {

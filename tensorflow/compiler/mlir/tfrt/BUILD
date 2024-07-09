@@ -435,11 +435,13 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_cost_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -452,6 +454,7 @@ cc_library(
     srcs = ["analysis/test_cost_analysis_pass.cc"],
     deps = [
         ":cost_analysis",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
@@ -464,6 +467,7 @@ cc_library(
     hdrs = ["analysis/tensor_array_side_effect_analysis.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
@@ -475,8 +479,11 @@ cc_library(
     srcs = ["analysis/test_tensor_array_side_effect_analysis.cc"],
     deps = [
         ":tensor_array_side_effect_analysis",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )

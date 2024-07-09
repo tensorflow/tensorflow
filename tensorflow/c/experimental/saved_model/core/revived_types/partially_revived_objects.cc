@@ -37,12 +37,13 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/core/tensor_spec.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
