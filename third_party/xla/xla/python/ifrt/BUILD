@@ -133,8 +133,8 @@ xla_cc_test(
     deps = [
         ":ifrt",
         ":mock",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -290,8 +290,11 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -323,6 +326,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
     alwayslink = True,
@@ -695,6 +699,7 @@ xla_cc_test(
         ":ifrt",
         ":program_serdes",
         ":serdes",
+        ":serdes_proto_cc",
         ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
