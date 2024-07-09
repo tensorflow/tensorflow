@@ -15,12 +15,18 @@ limitations under the License.
 
 #include <string>
 
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
