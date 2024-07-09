@@ -65,6 +65,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
 // Creates a pass that lowers stablehlo composite ops to tflite ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateCompositeLoweringPass();
 
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeChloToTflPass();
+
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
