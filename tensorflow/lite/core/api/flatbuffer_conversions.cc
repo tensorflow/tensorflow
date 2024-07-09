@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"       // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -925,6 +925,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseStablehloComposite(op, error_reporter, allocator,
                                      builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_SORT: {
+      return ParseStablehloSort(op, error_reporter, allocator, builtin_data);
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -960,7 +963,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_COMPARE:
     case BuiltinOperator_STABLEHLO_CONVERT:
     case BuiltinOperator_STABLEHLO_DOT_GENERAL:
-    case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
     case BuiltinOperator_STABLEHLO_TRANSPOSE:
 
@@ -2409,7 +2411,28 @@ TfLiteStatus ParseStablehloComposite(const Operator* op,
       "Could not get 'stablehlo.composite' operation parameters.");
   return kTfLiteError;
 }
+TfLiteStatus ParseStablehloSort(const Operator* op,
+                                ErrorReporter* error_reporter,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
 
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloSortParams>();
+  const StablehloSortOptions* schema_params =
+      op->builtin_options_2_as_StablehloSortOptions();
+  if (schema_params) {
+    params->is_stable = schema_params->is_stable();
+    params->dimension = schema_params->dimension();
+    params->comparator_subgraph_index =
+        schema_params->comparator_subgraph_index();
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Could not get 'stablehlo.sort' operation parameters.");
+  return kTfLiteError;
+}
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.

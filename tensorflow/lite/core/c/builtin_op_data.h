@@ -654,6 +654,14 @@ typedef struct {
   size_t attributes_size;
 } TfLiteStablehloCompositeParams;
 
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#sort
+  long dimension;
+  bool is_stable;
+  int comparator_subgraph_index;
+} TfLiteStablehloSortParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

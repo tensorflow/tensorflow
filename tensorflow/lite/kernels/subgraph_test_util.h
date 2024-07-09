@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace tflite {
 namespace subgraph_test_util {
-
+enum class ComparisonDirection { kGT, kLT, kGE, kLE, kEQ, kNQ, kOther};
 class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
@@ -183,7 +183,9 @@ class SubgraphBuilder {
   //   The 2nd input is ignored in this subgraph.
   // 1 output with `kTfLiteBool` type.
   //   Equivalent to (input < rhs).
-  void BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs);
+  void BuildLessEqualCondSubgraph(Subgraph* subgraph,int rhs);
+
+  void BuildComparatorSubgraph(Subgraph* subgraph,ComparisonDirection comparison_direction,int num_inputs, int lhs, int rhs);
 
   // Build an if subgraph which does not consume an output of ifs body
   // subgraph.
