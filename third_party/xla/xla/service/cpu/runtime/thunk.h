@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace Eigen {
@@ -195,6 +197,52 @@ class Thunk {
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
+  // ExecuteSession controls the number of task runner threads that can
+  // execute thunks concurrently (all thunks in a sequence, including thunks in
+  // nested computations). We limit the number of worker threads that process
+  // ready thunks concurrently to avoid overheads of launching too many tasks.
+  // Once the size of a ready queue exceeds the split threshold, we try to
+  // offload processing of the tail of the ready queue to the task runner.
+  //
+  // We use best-effort strategy to limit the number of worker threads (we rely
+  // on non-atomic pair of compare and add operations for efficiency), and don't
+  // guarantee that the number of concurrent workers is always below the limit,
+  // in some cases it can temporarily go above the limit.
+  class ExecuteSession {
+   public:
+    // TODO(ezhulenev): Number of workers and split threshold should be
+    // configurable with XLA_FLAGS. Also, we should find representative
+    // benchmarks to determine the optimal default values.
+    static constexpr int64_t kMaxWorkers = 4;
+    static constexpr int64_t kSplitThreshold = 8;
+
+    // We use std::shared_ptr as a "lock" where grabbing a copy of the shared
+    // pointer means joining the session executing a thunk sequence. We rely on
+    // shared pointer to keep track of the number of workers executing a thunk
+    // sequence because it is automatically manages atomic counter for us.
+    using Lock = std::shared_ptr<std::nullopt_t>;
+
+    ExecuteSession(int64_t max_workers, int64_t split_threshold);
+
+    // Joins the execute session and increments the number of session workers.
+    Lock Join() const { return lock_; }
+
+    // Tries to join the execute session. Returns empty lock if the session
+    // has reached the maximum number of workers.
+    Lock TryJoin() const {
+      return num_workers() >= max_workers_ ? nullptr : lock_;
+    }
+
+    int64_t num_workers() const { return lock_.use_count() - 1; }
+    int64_t max_workers() const { return max_workers_; }
+    int64_t split_threshold() const { return split_threshold_; }
+
+   private:
+    Lock lock_;
+    int64_t max_workers_;
+    int64_t split_threshold_;
+  };
+
   // Parameters passed to Execute. Execute is responsible for launching "work"
   // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
@@ -205,6 +253,8 @@ class Thunk {
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
+    ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
+                                            ExecuteSession::kSplitThreshold);
   };
 
   // An execute event that becomes ready when all tasks are completed.

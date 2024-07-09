@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -157,6 +158,12 @@ void Thunk::ExecuteState::Notify() {
     event.SetStateConcrete();
   }
 }
+
+Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
+                                      int64_t split_threshold)
+    : lock_(std::make_shared<std::nullopt_t>(std::nullopt)),
+      max_workers_(max_workers),
+      split_threshold_(split_threshold) {}
 
 // Encodes thunk info into the TraceMe compatible format.
 std::string Thunk::TraceMeEncode() const {

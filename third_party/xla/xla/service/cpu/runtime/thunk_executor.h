@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -85,7 +84,7 @@ class ThunkExecutor {
   bool is_sequential() const { return is_sequential_; }
 
  private:
-  using ReadyQueue = absl::InlinedVector<NodeId, 8>;
+  using ReadyQueue = std::vector<NodeId>;
 
   ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs);
 
@@ -145,7 +144,12 @@ class ThunkExecutor {
 
   // Executes nodes in the ready queue with given thunk parameters.
   void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
-               ReadyQueue ready_queue);
+               ReadyQueue ready_queue, Thunk::ExecuteSession::Lock lock);
+
+  // Splits ready queue starting from `start_index` into ThunkExecutor tasks and
+  // offloads them to the task runner.
+  void SplitReadyQueue(ExecuteState* state, const Thunk::ExecuteParams& params,
+                       int64_t start_index, ReadyQueue& ready_queue);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
   // nodes that are ready to execute. If `event` is in error state, aborts the

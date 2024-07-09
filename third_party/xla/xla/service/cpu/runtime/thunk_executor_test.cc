@@ -319,6 +319,8 @@ TEST(ThunkExecutorTest, Execute) {
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   params.task_runner = &task_runner;
+  params.session =
+      Thunk::ExecuteSession(/*max_workers=*/8, /*split_threshold=*/1);
 
   auto execute_event = executor.Execute(params);
 
