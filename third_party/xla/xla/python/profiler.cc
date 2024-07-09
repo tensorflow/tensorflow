@@ -29,10 +29,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/backends/profiler/plugin/plugin_tracer.h"
-#include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
@@ -40,10 +37,11 @@ limitations under the License.
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/profiler/lib/profiler_factory.h"
-#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/rpc/client/capture_profile.h"
 #include "tsl/profiler/rpc/profiler_server.h"
 

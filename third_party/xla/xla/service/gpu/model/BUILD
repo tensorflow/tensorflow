@@ -632,11 +632,11 @@ cc_library(
         ":indexing_analysis",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -650,7 +650,6 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
@@ -662,6 +661,7 @@ cc_library(
     srcs = ["tiled_hlo_computation.cc"],
     hdrs = ["tiled_hlo_computation.h"],
     deps = [
+        ":indexing_analysis",
         ":tiled_hlo_instruction",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -670,6 +670,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/lib/gtl:iterator_range",
     ],
 )

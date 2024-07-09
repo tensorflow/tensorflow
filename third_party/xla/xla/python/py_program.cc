@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/plugin_program.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"

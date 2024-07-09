@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -58,6 +59,7 @@ limitations under the License.
 namespace xla::gpu::ir_emitter_triton_internal {
 namespace {
 
+using ::llvm::SmallVector;
 using ::mlir::ImplicitLocOpBuilder;
 using ::mlir::MLIRContext;
 using ::mlir::OpBuilder;
@@ -167,11 +169,14 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
 
   ImplicitLocOpBuilder b(loc, builder);
   auto fn = CreateTritonFunction(b, shape_sizes);
-  Value pid = b.create<mlir::arith::IndexCastUIOp>(
-      b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
-  return std::make_pair(std::move(triton_module),
-                        ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-                            b, pid, *tiled_hlo, fn.getArgument(0)));
+
+  SmallVector<Value, 3> tile_multi_index =
+      ComputeDelinearizedTileIndex(b, tiled_hlo_computation);
+
+  return std::make_pair(
+      std::move(triton_module),
+      ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+          b, tile_multi_index, *tiled_hlo, fn.getArgument(0)));
 }
 
 std::vector<int> ConstOpValuesToInt(const mlir::ValueRange values) {

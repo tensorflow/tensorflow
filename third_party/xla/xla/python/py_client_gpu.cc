@@ -17,10 +17,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/service/custom_call_status.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
