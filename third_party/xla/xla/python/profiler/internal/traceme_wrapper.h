@@ -58,8 +58,6 @@ class TraceMeWrapper {
 
   void Stop() { traceme_.Stop(); }
 
-  static bool IsEnabled() { return tsl::profiler::TraceMe::Active(); }
-
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe
   // metadata.
