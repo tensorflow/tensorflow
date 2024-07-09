@@ -70,7 +70,6 @@ std::vector<T> RandomVecNegative(int num_elements) {
 }
 
 PrimitiveType Get(float) { return PrimitiveType::F32; }
-PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 
 se::StreamExecutor* GetGpuExecutor() {
   auto* platform =
