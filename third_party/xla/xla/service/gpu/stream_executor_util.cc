@@ -621,7 +621,12 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
-  static bool require_cudnn_determinism = [] {
+  return config.debug_options().xla_gpu_deterministic_ops() ||
+         config.debug_options().xla_gpu_exclude_nondeterministic_ops();
+}
+
+bool RequireCuDnnDeterminism(const HloModuleConfig& config) {
+  static bool cudnn_deterministic_env_var = [] {
     // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
@@ -629,8 +634,10 @@ bool RequireDeterminism(const HloModuleConfig& config) {
                                         &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return require_cudnn_determinism ||
-         config.debug_options().xla_gpu_deterministic_ops();
+  bool require_determinism =
+      cudnn_deterministic_env_var || RequireDeterminism(config);
+  VLOG(5) << "RequireCuDnnDeterminism: " << require_determinism;
+  return require_determinism;
 }
 
 namespace {
