@@ -68,6 +68,7 @@ class HostKernelExecuteState {
   HostKernelExecuteState(HostKernel::TaskRunner task_runner,
                          SE_HOST_Kernel* kernel, ThreadDim thread_dims,
                          absl::Span<const SE_HOST_KernelArg> args);
+  ~HostKernelExecuteState();
 
   // Notify of a completion of a host kernel task.
   void Notify(absl::Status status);
@@ -205,6 +206,12 @@ HostKernelExecuteState::HostKernelExecuteState(
       abort_(false),
       event_(tsl::MakeConstructedAsyncValueRef<LaunchEvent>()) {}
 
+HostKernelExecuteState::~HostKernelExecuteState() {
+  auto cnt = counter_.load(std::memory_order_acquire);
+  DCHECK_EQ(cnt, 0) << "Host kernel execute state is destroyed before all "
+                       "tasks are completed";
+}
+
 void HostKernelExecuteState::Notify(absl::Status status) {
   if (ABSL_PREDICT_FALSE(!status.ok())) {
     absl::MutexLock lock(&abort_mutex_);
@@ -213,8 +220,7 @@ void HostKernelExecuteState::Notify(absl::Status status) {
   }
 
   // Check if it was the last notification and kernel launch is done.
-  bool is_done = counter_.load(std::memory_order_relaxed) == 1 ||
-                 counter_.fetch_sub(1, std::memory_order_relaxed) == 1;
+  bool is_done = counter_.fetch_sub(1, std::memory_order_acq_rel) == 1;
   if (ABSL_PREDICT_TRUE(!is_done)) return;
 
   // In the unlikely event of a kernel error, forward it to the launch event.
