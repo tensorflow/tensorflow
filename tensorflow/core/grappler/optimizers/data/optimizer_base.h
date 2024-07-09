@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_OPTIMIZER_BASE_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_OPTIMIZER_BASE_H_
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace grappler {
