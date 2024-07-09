@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/service/cpu/parallel_task_assignment.h"
 
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

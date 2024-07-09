@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "xla/service/cpu/buffer_info_util.h"
 
+#include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace cpu {

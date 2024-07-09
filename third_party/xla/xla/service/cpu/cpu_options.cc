@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_options.h"
 
+#include "absl/log/check.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace {
 

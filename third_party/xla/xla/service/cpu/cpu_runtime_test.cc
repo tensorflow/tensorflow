@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "xla/executable_run_options.h"
+#include "xla/service/custom_call_status.h"
+#include "tsl/platform/threadpool.h"
 #define EIGEN_USE_THREADS
-#include "xla/service/cpu/cpu_runtime.h"
 
 #include <memory>
 #include <string>
@@ -22,13 +24,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/array2d.h"
-#include "xla/client/local_client.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_matmul.h"
-#include "xla/service/cpu/runtime_matmul_acl.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
-#include "xla/service/custom_call_status_internal.h"
-#include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"

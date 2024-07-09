@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/service/llvm_compiler.h"
 

@@ -17,8 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_CPU_CPU_INSTRUCTION_FUSION_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
+#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {

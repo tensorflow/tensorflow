@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/service/llvm_ir/math_ops.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

@@ -17,11 +17,34 @@ limitations under the License.
 
 #include <iterator>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
 #include "xla/service/cpu/cpu_runtime.h"
+#include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/shape_partition.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
