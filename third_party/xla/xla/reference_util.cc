@@ -178,62 +178,6 @@ ReferenceUtil::ReduceWindow1DGeneric(
   return result;
 }
 
-/* static  */ std::unique_ptr<std::vector<float>>
-ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
-                                 absl::Span<const int64_t> window,
-                                 absl::Span<const int64_t> stride,
-                                 Padding padding) {
-  const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
-  std::vector<int64_t> dim_lengths{static_cast<int64_t>(operand.size())};
-  return ReduceWindow1DGeneric(
-      operand, init, add_reduce, window, stride,
-      xla::MakePadding(dim_lengths, window, stride, padding));
-}
-
-/* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
-    const Array3D<float>& operand, float init, absl::Span<const int64_t> window,
-    absl::Span<const int64_t> stride, Padding padding) {
-  std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
-  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
-
-  std::vector<int64_t> window_counts(window.size(), 0);
-  std::vector<int64_t> pad_low(window.size(), 0);
-  for (int64_t i = 0; i < window.size(); ++i) {
-    window_counts[i] =
-        WindowCount(dim_lengths[i], window[i], stride[i], padding);
-    pad_low[i] = padding_both[i].first;
-  }
-  auto result = std::make_unique<Array3D<float>>(
-      window_counts[0], window_counts[1], window_counts[2]);
-
-  for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64_t i1 = 0; i1 < window_counts[1]; ++i1) {
-      for (int64_t i2 = 0; i2 < window_counts[2]; ++i2) {
-        int64_t i0_base = i0 * stride[0] - pad_low[0];
-        int64_t i1_base = i1 * stride[1] - pad_low[1];
-        int64_t i2_base = i2 * stride[2] - pad_low[2];
-
-        float val = init;
-        for (int64_t i0_win = 0; i0_win < window[0]; ++i0_win) {
-          for (int64_t i1_win = 0; i1_win < window[1]; ++i1_win) {
-            for (int64_t i2_win = 0; i2_win < window[2]; ++i2_win) {
-              if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
-                  i2_base + i2_win >= 0 && i0_base + i0_win < operand.n1() &&
-                  i1_base + i1_win < operand.n2() &&
-                  i2_base + i2_win < operand.n3()) {
-                val += operand(i0_base + i0_win, i1_base + i1_win,
-                               i2_base + i2_win);
-              }
-            }
-          }
-        }
-        (*result)(i0, i1, i2) = val;
-      }
-    }
-  }
-  return result;
-}
-
 /* static */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,

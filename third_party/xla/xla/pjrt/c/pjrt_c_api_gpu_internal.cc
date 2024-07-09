@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/stream_pool.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace pjrt {
