@@ -245,6 +245,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 }
 
 TEST(CommandBufferCmdTest, BarrierCmd) {
+  // This test covers both CUDA version < 12040 (use empty kernel node as
+  // barrier node) and >=12040 (use cuda graph empty node as barrier node).
   se::StreamExecutor* executor = GpuExecutor();
 
   auto stream = executor->CreateStream().value();

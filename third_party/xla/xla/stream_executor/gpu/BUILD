@@ -168,6 +168,7 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_conditional_kernels",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:hip_conditional_kernels",
