@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TFRT_FALLBACK_REGISTRATION_H_
 
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace tfd {

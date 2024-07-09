@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
@@ -45,8 +46,10 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

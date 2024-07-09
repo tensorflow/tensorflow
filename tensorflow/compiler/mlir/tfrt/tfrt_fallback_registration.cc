@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/tfrt_fallback_registration.h"
 
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
