@@ -17,27 +17,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/status/statusor.h"
-#include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
-#include "xla/reference_util.h"
-#include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
+#include "xla/error_spec.h"
+#include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
-#include "xla/util.h"
-#include "tsl/platform/test.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace {

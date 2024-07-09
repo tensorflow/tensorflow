@@ -17,15 +17,12 @@ limitations under the License.
 
 #include <optional>
 
-#include "xla/client/xla_computation.h"
-#include "xla/execution_options_util.h"
-#include "xla/service/despecializer.h"
-#include "xla/service/float_normalization.h"
-#include "xla/status_macros.h"
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/test.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 std::string GetFloatDataType(bool use_bfloat16) {
