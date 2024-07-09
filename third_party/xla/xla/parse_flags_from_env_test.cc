@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/macros.h"
 #include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 

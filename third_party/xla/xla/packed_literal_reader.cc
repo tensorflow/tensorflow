@@ -21,15 +21,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
