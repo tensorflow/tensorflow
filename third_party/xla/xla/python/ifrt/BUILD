@@ -117,6 +117,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/lib/gtl:int_type",
@@ -245,7 +246,11 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":ifrt",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -346,6 +351,7 @@ cc_library(
         ":ifrt",
         ":test_util",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -372,6 +378,7 @@ cc_library(
         ":attribute_map",
         ":ifrt",
         "//xla:test",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
@@ -435,8 +442,6 @@ cc_library(
     deps = [
         ":ifrt",
         ":serdes",
-        "//xla:util",
-        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -551,6 +556,7 @@ xla_cc_test(
     srcs = ["remap_plan_test.cc"],
     deps = [
         ":ifrt",
+        ":remap_plan_proto_cc",
         ":sharding_serdes",
         ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",

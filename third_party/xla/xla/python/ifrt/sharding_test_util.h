@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

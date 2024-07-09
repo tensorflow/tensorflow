@@ -41,7 +41,6 @@ absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr);
 
-absl::StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
 
@@ -60,15 +59,5 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
 
-DotDimensionNumbers ConvertDotDimensionNumbers(
-    mlir::mhlo::DotDimensionNumbersAttr input);
-
-DotDimensionNumbers ConvertDotDimensionNumbers(
-    absl::Span<const int64_t> lhs_batch, absl::Span<const int64_t> lhs_contract,
-    absl::Span<const int64_t> rhs_batch,
-    absl::Span<const int64_t> rhs_contract);
-
-absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
-    const mlir::ArrayAttr& array);
 }  // namespace xla
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
