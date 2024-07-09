@@ -1568,13 +1568,19 @@ xla_cc_test(
     name = "parallel_task_assignment_test",
     srcs = ["parallel_task_assignment_test.cc"],
     deps = [
+        ":backend_config_proto_cc",
         ":cpu_executable",
         ":parallel_task_assignment",
         ":target_machine_features_fake",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/cpu:target_machine_features",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
