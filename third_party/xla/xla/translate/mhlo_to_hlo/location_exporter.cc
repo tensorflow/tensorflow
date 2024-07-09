@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace mhlo {

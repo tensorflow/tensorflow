@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

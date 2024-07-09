@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/hlo.pb.h"
 
 namespace mlir {
