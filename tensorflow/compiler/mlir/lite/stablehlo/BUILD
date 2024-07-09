@@ -666,7 +666,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@llvm-project//mlir:BufferizationInterfaces",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:gelu",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

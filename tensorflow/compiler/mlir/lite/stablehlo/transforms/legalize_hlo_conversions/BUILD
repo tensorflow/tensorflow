@@ -103,3 +103,18 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
     ],
 )
+
+cc_library(
+    name = "gelu",
+    srcs = ["gelu.cc"],
+    hdrs = ["gelu.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
