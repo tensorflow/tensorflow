@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -414,9 +416,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         "operand/result");
   }
 
-  bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops() ||
-      ir_emitter_context.debug_options().xla_gpu_exclude_nondeterministic_ops();
+  const bool deterministic_ops =
+      RequireDeterminism(fusion.GetModule()->config());
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,

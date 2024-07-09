@@ -146,6 +146,7 @@ absl::StatusOr<AutotuneResult> PickBestResult(
 
 // Returns whether determinism is required.
 bool RequireDeterminism(const HloModuleConfig& config);
+bool RequireCuDnnDeterminism(const HloModuleConfig&);
 
 }  // namespace gpu
 }  // namespace xla
