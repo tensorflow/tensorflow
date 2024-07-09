@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
