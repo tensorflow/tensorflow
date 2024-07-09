@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/executable_run_options.h"
-#include "tsl/platform/dynamic_annotations.h"
-#include "tsl/platform/types.h"
 #ifdef XLA_CPU_USE_ACL
 #include "absl/base/call_once.h"
 #include "xla/service/cpu/runtime_conv2d.h"

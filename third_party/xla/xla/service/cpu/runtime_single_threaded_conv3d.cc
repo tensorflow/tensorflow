@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_single_threaded_conv3d.h"
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/base/attributes.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h"  // from @eigen_archive
 #include "xla/service/cpu/runtime/conv_impl.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void

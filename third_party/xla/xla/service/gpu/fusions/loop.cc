@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
 

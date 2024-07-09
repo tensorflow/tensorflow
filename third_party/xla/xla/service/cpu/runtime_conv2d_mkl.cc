@@ -16,8 +16,7 @@ limitations under the License.
 
 #include <iostream>
 
-#include "absl/base/dynamic_annotations.h"
-#include "xla/executable_run_options.h"
+#include "absl/base/attributes.h"
 
 #ifdef ENABLE_MKL
 #include <omp.h>

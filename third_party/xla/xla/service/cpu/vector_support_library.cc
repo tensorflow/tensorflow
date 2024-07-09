@@ -16,9 +16,25 @@ limitations under the License.
 #include "xla/service/cpu/vector_support_library.h"
 
 #include "absl/algorithm/container.h"
-#include "llvm/Support/raw_ostream.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/Support/Casting.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

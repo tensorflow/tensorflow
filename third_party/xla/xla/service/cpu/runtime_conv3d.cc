@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_conv3d.h"
 
+#include "absl/base/attributes.h"
+#include "Eigen/Core"  // from @eigen_archive
+
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime/conv_impl.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"

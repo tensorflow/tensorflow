@@ -21,17 +21,27 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/ExecutionEngine/RuntimeDyld.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/cpu/compiler_functor.h"
+#include "xla/service/llvm_compiler.h"
 #include "xla/types.h"
 
 namespace xla {

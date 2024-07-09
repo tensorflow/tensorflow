@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
