@@ -21,7 +21,9 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/status/status.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"

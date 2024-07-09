@@ -127,6 +127,7 @@ cc_library(
     srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:byte_order",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
@@ -153,6 +154,7 @@ cc_library(
         ":env_var",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -200,6 +202,8 @@ cc_library(
     srcs = ["env_var.cc"],
     hdrs = ["env_var.h"],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",
@@ -220,12 +224,14 @@ cc_library(
         "@local_tsl//tsl:__subpackages__",
     ]),
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/protobuf:test_log_proto_cc",
     ],
@@ -261,9 +267,15 @@ cc_library(
     srcs = ["device_name_utils.cc"],
     hdrs = ["device_name_utils.h"],
     deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -273,12 +285,17 @@ tsl_cc_test(
     srcs = ["device_name_utils_test.cc"],
     deps = [
         ":device_name_utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -289,7 +306,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
         "@local_tsl//tsl/platform:types",

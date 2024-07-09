@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

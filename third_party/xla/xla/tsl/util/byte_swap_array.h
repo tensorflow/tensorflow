@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_UTIL_BYTE_SWAP_ARRAY_H_
 #define XLA_TSL_UTIL_BYTE_SWAP_ARRAY_H_
 
+#include "absl/status/status.h"
 #include "tsl/platform/byte_order.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"

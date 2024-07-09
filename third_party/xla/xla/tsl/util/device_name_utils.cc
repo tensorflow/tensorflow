@@ -17,7 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/strip.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

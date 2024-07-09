@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/tsl/util/reporter.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
+#include "tsl/protobuf/test_log.pb.h"
 
 namespace tsl {
 
