@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"

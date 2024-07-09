@@ -16,7 +16,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -48,26 +47,6 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
-
-// Keep track of pending tasks and an event that signals completion of the
-// operation to the caller.
-// TODO(abanas): This is a copy-paste from dot_thunk.cc (just changed variable
-// names). Refactor.
-struct ExecuteState {
-  explicit ExecuteState(int64_t parallel_tasks)
-      : pending_tasks(parallel_tasks),
-        event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
-
-  void Notify() {
-    if (pending_tasks.load(std::memory_order_relaxed) == 1 ||
-        pending_tasks.fetch_sub(1, std::memory_order_relaxed) == 1) {
-      event.SetStateConcrete();
-    }
-  }
-
-  std::atomic<int64_t> pending_tasks;
-  tsl::AsyncValueRef<Thunk::ExecuteEvent> event;
-};
 
 auto GetConvolutionRank(const Shape& input_shape) {
   // Convolution rank is the number of spatial dimensions. Besides spatial

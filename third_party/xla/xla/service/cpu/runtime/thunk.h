@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -222,6 +223,19 @@ class Thunk {
       const ExecuteParams& params) = 0;
 
  protected:
+  // Helper struct to keep track of pending tasks and an event that signals
+  // completion of the operation to the caller. Useful for thunks that launch
+  // multiple tasks and need to signal completion when all tasks are done (see
+  // ConvolutionThunk and DotThunk for examples).
+  struct ExecuteState {
+    explicit ExecuteState(int64_t parallel_tasks);
+
+    void Notify();
+
+    std::atomic<int64_t> pending_tasks;
+    tsl::AsyncValueRef<Thunk::ExecuteEvent> event;
+  };
+
   // Encodes thunk info into the TraceMe compatible format.
   std::string TraceMeEncode() const;
 
