@@ -18,10 +18,16 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 class ScopedAllocatorMgr;

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
 // TODO(vrv, mrry): Remove this library: its interface circumvents the

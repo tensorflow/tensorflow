@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 

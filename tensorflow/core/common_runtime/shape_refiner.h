@@ -22,11 +22,18 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {

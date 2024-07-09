@@ -21,15 +21,25 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/framework/log_memory.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

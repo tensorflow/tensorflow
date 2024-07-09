@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/ring_alg.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class Device;

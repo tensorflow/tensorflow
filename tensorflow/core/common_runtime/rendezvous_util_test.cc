@@ -14,9 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

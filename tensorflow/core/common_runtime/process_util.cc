@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_util.h"
 
+#include "absl/functional/any_invocable.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/public/session_options.h"
+
 #if defined(ENABLE_MKL) && defined(ENABLE_ONEDNN_OPENMP)
 #ifdef _OPENMP
 #include <omp.h>
@@ -23,11 +28,9 @@ limitations under the License.
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/util.h"
 #include "tsl/platform/tracing.h"
 
 namespace tensorflow {
