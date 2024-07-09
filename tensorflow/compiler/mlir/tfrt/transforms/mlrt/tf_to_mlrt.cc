@@ -22,9 +22,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "google/protobuf/text_format.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -36,13 +41,17 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
@@ -53,12 +62,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
-#include "tsl/platform/status.h"
+#include "tfrt/host_context/location.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace mlrt_compiler {

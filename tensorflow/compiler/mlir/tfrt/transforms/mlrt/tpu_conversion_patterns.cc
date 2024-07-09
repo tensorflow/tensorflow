@@ -14,11 +14,26 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 
+#include "absl/log/check.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_tpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {
