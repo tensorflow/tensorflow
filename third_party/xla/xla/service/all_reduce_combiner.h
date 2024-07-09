@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_COMBINER_H_
 #define XLA_SERVICE_ALL_REDUCE_COMBINER_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"

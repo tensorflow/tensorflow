@@ -70,6 +70,13 @@ using mlir_converter::ProvideParameter;
 
 }  // namespace
 
+MlirScatterFusion::MlirScatterFusion(const HloFusionAnalysis& analysis)
+    : analysis_(analysis) {
+  const auto& scatter = analysis_.fusion_hero(0).instruction();
+  auto& scatter_update_shape = scatter.operands().back()->shape();
+  config_ = ComputeLoopFusionConfig(analysis, scatter_update_shape);
+}
+
 bool MlirScatterFusion::IsSupported(const HloFusionAnalysis& analysis) {
   const auto* scatter =
       Cast<HloScatterInstruction>(&analysis.fusion_hero(0).instruction());
@@ -138,8 +145,9 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
 LaunchDimensions MlirScatterFusion::launch_dimensions() const {
   const auto& scatter = analysis_.fusion_hero(0).instruction();
   // Compute thread id mapping based on the shape of update operand.
-  auto& shape = scatter.operands().back()->shape();
-  return CalculateLaunchDimensions(shape, analysis_.device_info());
+  auto& scatter_update_shape = scatter.operands().back()->shape();
+  return CalculateLaunchDimensions(scatter_update_shape,
+                                   analysis_.device_info());
 }
 
 std::vector<mlir_converter::EpilogueSpecification>

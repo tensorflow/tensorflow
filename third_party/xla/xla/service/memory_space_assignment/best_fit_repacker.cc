@@ -130,12 +130,10 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 

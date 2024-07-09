@@ -188,13 +188,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/2, output_dims, ctx),
       dim_vars, range_vars, /*rt_vars=*/{});
-  // Remove the unroll_elem_id symbol if unrolling divides num_elements.
-  if (num_elements % unroll_factor == 0) {
-    indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Interval{0, num_elements - unroll_factor});
-  } else {
-    indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
-  }
+  indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   return indexing_map;
 }
