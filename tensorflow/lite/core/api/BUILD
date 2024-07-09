@@ -11,12 +11,12 @@ package(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
-        ":error_reporter.cc",
-        ":error_reporter.h",
         ":op_resolver.cc",
         ":op_resolver.h",
         ":op_resolver_internal.h",
         ":verifier.h",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter.cc",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter.h",
     ],
     visibility = [
         "//tensorflow/lite:__pkg__",
@@ -48,6 +48,7 @@ cc_library(
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
     ],
 )
 
@@ -77,14 +78,15 @@ cc_library(
 
 cc_library(
     name = "error_reporter",
-    srcs = ["error_reporter.cc"],
     hdrs = ["error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//visibility:public",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+    ],
 )
 
 cc_library(

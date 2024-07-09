@@ -676,6 +676,8 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
