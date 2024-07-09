@@ -13,6 +13,7 @@ load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
+load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
 
@@ -23,6 +24,7 @@ def _initialize_third_party():
     mpitrampoline()
     nanobind()
     robin_map()
+    shardy()
     stablehlo()
     triton()
 
