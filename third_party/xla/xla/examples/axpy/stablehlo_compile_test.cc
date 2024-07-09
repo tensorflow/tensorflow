@@ -22,15 +22,24 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/stream_pool.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
