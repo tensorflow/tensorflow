@@ -22,15 +22,16 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
+#include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
-#include "stablehlo_ext/transforms/passes.h"
+#include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 #define GEN_PASS_DEF_STABLEHLOCANONICALIZEDYNAMISMPASS
 #include "stablehlo_ext/transforms/passes.h.inc"
@@ -38,9 +39,9 @@ namespace experimental {
 namespace {
 
 struct CanonicalizeDynamicReduceWindowOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicReduceWindowOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -62,7 +63,7 @@ struct CanonicalizeDynamicReduceWindowOpPattern
                                          "expected static window_dilations");
     if (failed(hlo::matchInts(op.getPadding(), padding)))
       return rewriter.notifyMatchFailure(op, "expected static padding");
-    auto newOp = rewriter.create<ReduceWindowOp>(
+    auto newOp = rewriter.create<stablehlo::ReduceWindowOp>(
         op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
         rewriter.getDenseI64ArrayAttr(windowDimensions),
         rewriter.getDenseI64ArrayAttr(windowStrides),
@@ -86,9 +87,9 @@ struct CanonicalizeDynamicReduceWindowOpPattern
 };
 
 struct CanonicalizeDynamicRngBitGeneratorOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicRngBitGeneratorOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -100,16 +101,16 @@ struct CanonicalizeDynamicRngBitGeneratorOpPattern
       return rewriter.notifyMatchFailure(op, "expected static output_shape");
     if (!cast<ShapedType>(op.getOutput().getType()).hasStaticShape())
       return rewriter.notifyMatchFailure(op, "expected static output type");
-    rewriter.replaceOpWithNewOp<RngBitGeneratorOp>(
+    rewriter.replaceOpWithNewOp<stablehlo::RngBitGeneratorOp>(
         op, op->getResultTypes(), op.getRngAlgorithm(), op.getInitialState());
     return success();
   }
 };
 
 struct CanonicalizeDynamicTopKOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicTopKOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -122,23 +123,22 @@ struct CanonicalizeDynamicTopKOpPattern
     // We rely on many of the properties checked by verification.
     auto valuesType = cast<ShapedType>(op.getValues().getType());
     auto valuesLastDimSize = valuesType.getShape()[valuesType.getRank() - 1];
-    if (hlo::isDynamicDimSize(valuesLastDimSize) ||
-        valuesLastDimSize != k[0])
+    if (hlo::isDynamicDimSize(valuesLastDimSize) || valuesLastDimSize != k[0])
       return rewriter.notifyMatchFailure(
           op,
           "expected value of k to match the values last dimension size of "
           "static values type (result #0)");
 
-    rewriter.replaceOpWithNewOp<chlo::TopKOp>(
-        op, op->getResultTypes(), op.getOperand(), k[0]);
+    rewriter.replaceOpWithNewOp<chlo::TopKOp>(op, op->getResultTypes(),
+                                              op.getOperand(), k[0]);
     return success();
   }
 };
 
 struct CanonicalizeApproxDynamicTopKOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicApproxTopKOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -168,7 +168,7 @@ struct CanonicalizeApproxDynamicTopKOpPattern
     backend_config_attrs.push_back(
         rewriter.getNamedAttr("top_k", rewriter.getI64IntegerAttr(k[0])));
 
-    auto newOp = rewriter.replaceOpWithNewOp<CustomCallOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
         op, op->getResultTypes(), newOperands, op->getAttrs());
     newOp.setCallTargetName("ApproxTopK");
     newOp->setAttr(stablehloBackendConfig,
@@ -192,7 +192,8 @@ struct StablehloCanonicalizeDynamismPass
     config.strictMode = GreedyRewriteStrictness::AnyOp;
 
     RewritePatternSet patterns(&getContext());
-    populateStablehloCanonicalizeDynamismPatterns(&patterns, &getContext());
+    stablehlo::populateStablehloCanonicalizeDynamismPatterns(&patterns,
+                                                             &getContext());
     patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
     patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
     patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
@@ -209,6 +210,5 @@ struct StablehloCanonicalizeDynamismPass
 };
 
 }  // namespace
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir

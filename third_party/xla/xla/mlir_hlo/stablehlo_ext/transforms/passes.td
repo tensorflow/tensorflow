@@ -15,22 +15,22 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def StablehloCanonicalizeDynamismPass : Pass<"experimental-stablehlo-canonicalize-dynamism", "func::FuncOp"> {
-  let summary = "(Experimental) Canonicalizes dynamic StableHLO ops into static ops.";
+def StablehloCanonicalizeDynamismPass : Pass<"stablehlo-ext-canonicalize-dynamism", "func::FuncOp"> {
+  let summary = "Canonicalizes dynamic StableHLO ops into static ops, with some XLA specialization.";
   let description = [{
     Experimental version of the --stablehlo-canonicalize-dynamism pass.
   }];
   let dependentDialects = ["mlir::chlo::ChloDialect"];
 }
 
-def StablehloRefineShapesPass : Pass<"experimental-stablehlo-refine-shapes", "ModuleOp"> {
-  let summary = "(Experimental) Refines shapes across a StableHLO program.";
+def StablehloRefineShapesPass : Pass<"stablehlo-ext-refine-shapes", "ModuleOp"> {
+  let summary = "Refines shapes across a StableHLO program, with some XLA specialization.";
   let description = [{
     Experimental version of the --stablehlo-refine-shapes pass.
   }];
 }
 
-def ChloRecomposeOpsPass : Pass<"experimental-chlo-recompose-ops", "ModuleOp"> {
+def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "ModuleOp"> {
   let summary = "(Experimental) Recompose CHLO ops serialized as custom calls.";
   let description = [{
     Experimental version of CHLO serialization support.

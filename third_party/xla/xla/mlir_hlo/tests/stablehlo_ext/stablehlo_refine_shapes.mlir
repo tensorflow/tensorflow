@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --stablehlo-ext-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @main
 func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {

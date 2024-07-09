@@ -26,10 +26,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 LogicalResult DynamicReduceWindowOpAdaptor::verify() {
   // Before checking the constraints inherited from ReduceWindowOp,
@@ -87,9 +89,9 @@ LogicalResult DynamicReduceWindowOpAdaptor::verify() {
     initValueTypes.push_back(initValueType);
     if (!initValueType || !initValueType.hasRank() ||
         initValueType.getRank() != 0)
-      return op_.emitError() << "expects init_values (e.g. operand #"
-                             << numInputs + index << ") "
-                             << "to be 0-dimensional tensors";
+      return op_.emitError()
+             << "expects init_values (e.g. operand #" << numInputs + index
+             << ") " << "to be 0-dimensional tensors";
   }
 
   // reduce_window_i3...reduce_window_i7
@@ -271,7 +273,7 @@ ValueRange DynamicReduceWindowOpAdaptor::getResults() {
 }
 
 std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
-    CustomCallOp op) {
+    stablehlo::CustomCallOp op) {
   if (op.getCallTargetName() != "stablehlo.dynamic_reduce_window") return {};
   return DynamicReduceWindowOpAdaptor(op);
 }
@@ -310,7 +312,7 @@ LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
   auto output = op_.getResults()[1];
 
   // dynamic_rng_bit_generator_i1
-  if (!isa<RngAlgorithmAttr>(rngAlgorithmAttr))
+  if (!isa<stablehlo::RngAlgorithmAttr>(rngAlgorithmAttr))
     return op_.emitError()
            << "expects a #stablehlo<rng_algorithm ...> rng_algorithm";
 
@@ -363,8 +365,9 @@ LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
   return success();
 }
 
-RngAlgorithm DynamicRngBitGeneratorOpAdaptor::getRngAlgorithm() {
-  return cast<RngAlgorithmAttr>(op_->getDiscardableAttr("rng_algorithm"))
+stablehlo::RngAlgorithm DynamicRngBitGeneratorOpAdaptor::getRngAlgorithm() {
+  return cast<stablehlo::RngAlgorithmAttr>(
+             op_->getDiscardableAttr("rng_algorithm"))
       .getValue();
 }
 
@@ -385,7 +388,7 @@ TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getOutput() {
 }
 
 std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
-    CustomCallOp op) {
+    stablehlo::CustomCallOp op) {
   if (op.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
     return {};
   return DynamicRngBitGeneratorOpAdaptor(op);
@@ -496,7 +499,8 @@ TypedValue<ShapedType> DynamicTopKOpAdaptor::getIndices() {
   return cast<TypedValue<ShapedType>>(op_.getResults()[1]);
 }
 
-std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op) {
+std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
+    stablehlo::CustomCallOp op) {
   if (op.getCallTargetName() != "stablehlo.dynamic_top_k") return {};
   return DynamicTopKOpAdaptor(op);
 }
@@ -581,8 +585,8 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
     // C8
     if (getOutput(i).getType().getElementType() !=
         getInput(i).getType().getElementType())
-      return op_.emitError() << "output " << i
-                             << " element type does not match input type";
+      return op_.emitError()
+             << "output " << i << " element type does not match input type";
   }
 
   // C9
@@ -623,11 +627,10 @@ TypedValue<ShapedType> DynamicApproxTopKOpAdaptor::getOutput(size_t idx) {
 }
 
 std::optional<DynamicApproxTopKOpAdaptor> getDynamicApproxTopKOp(
-    CustomCallOp op) {
+    stablehlo::CustomCallOp op) {
   if (op.getCallTargetName() != "stablehlo.dynamic_approx_top_k") return {};
   return DynamicApproxTopKOpAdaptor(op);
 }
 
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir

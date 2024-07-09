@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --experimental-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --stablehlo-ext-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // -----
 

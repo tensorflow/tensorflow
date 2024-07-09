@@ -27,19 +27,17 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
-#include "stablehlo_ext/IR/stablehlo_ops.h"
-#include "stablehlo_ext/transforms/passes.h"
+#include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 #define GEN_PASS_DEF_CHLORECOMPOSEOPSPASS
 #include "stablehlo_ext/transforms/passes.h.inc"
 
 namespace {
 
-FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
+FailureOr<DictionaryAttr> getCustomCallOpAttributes(stablehlo::CustomCallOp op,
                                                     PatternRewriter& rewriter) {
   auto attrs = llvm::dyn_cast_or_null<DictionaryAttr>(
       op->getDiscardableAttr("mhlo.attributes"));
@@ -50,8 +48,8 @@ FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
 }
 
 LogicalResult verifyCustomCallOpAttributes(
-    CustomCallOp op, PatternRewriter& rewriter,
-    std::function<LogicalResult(NamedAttribute)> verifyFn) {
+    stablehlo::CustomCallOp op, PatternRewriter& rewriter,
+    std::function<LogicalResult(NamedAttribute)> const& verifyFn) {
   auto attrs = getCustomCallOpAttributes(op, rewriter);
   if (failed(attrs)) return failure();
 
@@ -61,8 +59,8 @@ LogicalResult verifyCustomCallOpAttributes(
   return success();
 }
 
-// Experimental and public ops in MHLO that do not exist yet in StableHLO
-// can be encoded as a StableHLO CustomCallOp to allow round-tripping
+// Experimental, extension, and public ops in MHLO that do not exist yet in
+// StableHLO can be encoded as a StableHLO CustomCallOp to allow round-tripping
 // between dialects. Some of these ops are CHLO ops that are accelerated by XLA.
 // For these ops we can recompose to CHLO.
 //
@@ -97,9 +95,10 @@ LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
   return success();
 }
 
-struct TopKOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
+struct TopKOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (op.getCallTargetName() != "mhlo.topk") return failure();
     auto res = verifyCustomCallOpAttributes(
@@ -115,18 +114,20 @@ struct TopKOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
   }
 };
 
-struct TanOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
+struct TanOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (op.getCallTargetName() != "mhlo.tan") return failure();
     return recomposeChloOpFromCustomCall<chlo::TanOp>(op, rewriter);
   }
 };
 
-struct ErfOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
+struct ErfOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (op.getCallTargetName() != "mhlo.erf") return failure();
     return recomposeChloOpFromCustomCall<chlo::ErfOp>(op, rewriter);
@@ -156,7 +157,8 @@ struct ChloRecomposeOpsPass
     // Only apply to CustomCallOps
     auto moduleOp = getOperation();
     llvm::SmallVector<Operation*> candidateOps;
-    moduleOp.walk([&](CustomCallOp op) { candidateOps.push_back(op); });
+    moduleOp.walk(
+        [&](stablehlo::CustomCallOp op) { candidateOps.push_back(op); });
 
     if (failed(applyOpPatternsAndFold(candidateOps, std::move(patterns),
                                       config))) {
@@ -168,13 +170,12 @@ struct ChloRecomposeOpsPass
 };
 
 void createChloLegalizeToStablehloPipeline(OpPassManager& pm) {
-  pm.addPass(mlir::stablehlo::experimental::createChloRecomposeOpsPass());
+  pm.addPass(mlir::stablehlo_ext::createChloRecomposeOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
 }
 
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir

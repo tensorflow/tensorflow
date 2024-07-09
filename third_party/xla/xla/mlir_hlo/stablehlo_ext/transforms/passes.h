@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
@@ -31,8 +30,7 @@ namespace experimental {
 
 void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
 
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir
 
 #endif  // STABLEHLO_EXT_TRANSFORMS_PASSES_H

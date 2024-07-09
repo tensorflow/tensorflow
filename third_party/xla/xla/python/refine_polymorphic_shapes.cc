@@ -268,10 +268,10 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
   // TODO(necula): we should not need the inliner.
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::stablehlo::experimental::createChloRecomposeOpsPass());
-  pm.addPass(mlir::stablehlo::experimental::createStablehloRefineShapesPass());
+  pm.addPass(mlir::stablehlo_ext::createChloRecomposeOpsPass());
+  pm.addPass(mlir::stablehlo_ext::createStablehloRefineShapesPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::experimental::createStablehloCanonicalizeDynamismPass());
+      mlir::stablehlo_ext::createStablehloCanonicalizeDynamismPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       std::make_unique<CheckShapeAssertionsPass>(enable_shape_assertions));
   if (!mlir::succeeded(pm.run(module))) {

@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --experimental-stablehlo-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
+// RUN: mlir-hlo-opt --stablehlo-ext-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
 func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {

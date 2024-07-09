@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
   hlo::registerLMHLOTransformsPasses();
   mhlo::registerAllMhloPasses();
   registerLMHLOGPUTransformsPasses();
-  stablehlo::experimental::registerPasses();
+  stablehlo_ext::registerPasses();
 
   DialectRegistry registry;
   registerAllDialects(registry);

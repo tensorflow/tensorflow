@@ -25,12 +25,12 @@ limitations under the License.
 #include "stablehlo/dialect/TypeInference.h"
 #include "stablehlo/transforms/Passes.h"
 #include "stablehlo/transforms/StablehloRefineShapes.h"
+#include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
-#include "stablehlo_ext/transforms/passes.h"
+#include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 #define GEN_PASS_DEF_STABLEHLOREFINESHAPESPASS
 #include "stablehlo_ext/transforms/passes.h.inc"
@@ -38,9 +38,9 @@ namespace experimental {
 namespace {
 
 struct RefineDynamicReduceWindowOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicReduceWindowOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -80,14 +80,14 @@ struct RefineDynamicReduceWindowOpPattern
             hlo::getPaddingAttr(&rewriter, padding), op.getBody(),
             inferredReturnTypes)))
       return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
-    return refineReturnTypes(rewriter, op, inferredReturnTypes);
+    return stablehlo::refineReturnTypes(rewriter, op, inferredReturnTypes);
   }
 };
 
 struct RefineDynamicRngBitGeneratorOpPattern
-    : public OpRewritePattern<CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicRngBitGeneratorOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -104,13 +104,15 @@ struct RefineDynamicRngBitGeneratorOpPattern
     // We only need to refine the shape of `output` (the second result).
     // The shape of `output_state` (the first result) is determined by the shape
     // of `initial_state`, so we ignore it and provide an empty refinement.
-    return refineReturnTypes(rewriter, op, {{initialStateType}, {outputShape}});
+    return stablehlo::refineReturnTypes(rewriter, op,
+                                        {{initialStateType}, {outputShape}});
   }
 };
 
-struct RefineDynamicTopKOpPattern : public OpRewritePattern<CustomCallOp> {
+struct RefineDynamicTopKOpPattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(CustomCallOp impl,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp impl,
                                 PatternRewriter& rewriter) const override {
     auto maybeOp = getDynamicTopKOp(impl);
     if (!maybeOp || failed(maybeOp->verify())) return failure();
@@ -123,7 +125,8 @@ struct RefineDynamicTopKOpPattern : public OpRewritePattern<CustomCallOp> {
       return rewriter.notifyMatchFailure(op, "expected constant k");
 
     outputShape[operandType.getRank() - 1] = k[0];
-    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
+    return stablehlo::refineReturnTypes(rewriter, op,
+                                        {{outputShape}, {outputShape}});
   }
 };
 
@@ -132,7 +135,7 @@ struct StablehloRefineShapesPass
   using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
 
   void runOnOperation() override {
-    auto func = getStablehloRefineShapesTarget(getOperation());
+    auto func = stablehlo::getStablehloRefineShapesTarget(getOperation());
     if (!func) return signalPassFailure();
 
     // The algorithm behind this pass consists of a single traversal of the
@@ -149,8 +152,8 @@ struct StablehloRefineShapesPass
     config.strictMode = GreedyRewriteStrictness::AnyOp;
 
     RewritePatternSet patterns(&getContext());
-    populateStablehloRefineShapesPatterns(&patterns, &getContext());
-    populateStablehloShapeFolderPatterns(&patterns, &getContext());
+    stablehlo::populateStablehloRefineShapesPatterns(&patterns, &getContext());
+    stablehlo::populateStablehloShapeFolderPatterns(&patterns, &getContext());
     patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
     patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
     patterns.add<RefineDynamicTopKOpPattern>(&getContext());
@@ -165,6 +168,5 @@ struct StablehloRefineShapesPass
 };
 
 }  // namespace
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir

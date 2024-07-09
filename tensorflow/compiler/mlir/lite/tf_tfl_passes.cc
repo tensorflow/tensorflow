@@ -155,8 +155,7 @@ void AddPreQuantizationStableHloToTfPasses(
       mlir::odml::CreateLegalizeChloToTflPass());
   // TODO(b/331843141): There are some CHLO's like TopK which we could instead
   // lower to TFL ops.
-  mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
-      pass_manager);
+  mlir::stablehlo_ext::createChloLegalizeToStablehloPipeline(pass_manager);
 
   pass_manager.addPass(mlir::odml::CreateTransposeCommuteOpsPass());
   // The following two passes find specific uniform quantization patterns in

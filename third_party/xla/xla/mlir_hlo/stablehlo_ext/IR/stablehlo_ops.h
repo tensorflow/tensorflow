@@ -16,14 +16,9 @@ limitations under the License.
 #ifndef STABLEHLO_EXT_DIALECT_STABLEHLO_OPS_H
 #define STABLEHLO_EXT_DIALECT_STABLEHLO_OPS_H
 
-// This file supports XLA-specific experiments with the StableHLO opset.
-// These experiments are not yet ready to be upstreamed to openxla/stablehlo
-// and are incubating towards the respective StableHLO RFCs.
-//
-// Custom calls (which are the implementation vehicle of these experiments)
-// don't have compatibility guarantees within the StableHLO process, but
-// the StableHLO team at Google provides out-of-band guarantees for these
-// custom calls, with the same compatibility window as StableHLO upstream.
+// This file supports XLA-specific extensions with the StableHLO opset.
+// These are currently implemented as custom-call pseudo-ops, but it is likely
+// that they will be upstreamed to StableHLO or CHLO in the future.
 
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
@@ -31,11 +26,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "stablehlo_ext/IR/base.h"
 
 namespace mlir {
-namespace stablehlo {
-namespace experimental {
+namespace stablehlo_ext {
 
 // The DynamicReduceWindowOp experiment provides a dynamic version of
 // ReduceWindowOp. Once the dynamism RFC is figured out, we expect to have an
@@ -66,7 +59,7 @@ namespace experimental {
 //      to hold dynamically, and if they don't hold, the behavior is undefined.
 class DynamicReduceWindowOpAdaptor {
  public:
-  DynamicReduceWindowOpAdaptor(CustomCallOp op) : op_(op) {}
+  DynamicReduceWindowOpAdaptor(stablehlo::CustomCallOp op) : op_(op) {}
   operator Operation*() { return op_; }
   Operation* operator->() { return op_; }
 
@@ -89,14 +82,14 @@ class DynamicReduceWindowOpAdaptor {
   LogicalResult verify();
 
  private:
-  CustomCallOp op_;
+  stablehlo::CustomCallOp op_;
 };
 
 // Wraps a custom call in a DynamicReduceWindowOpAdaptor.
 // Fails if the call_target_name of the custom call doesn't match
 // "stablehlo.dynamic_reduce_window".
 std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
-    CustomCallOp op);
+    stablehlo::CustomCallOp op);
 
 // The DynamicRngBitGeneratorOp experiment provides a dynamic version of
 // RngBitGeneratorOp. Once the dynamism RFC is figured out, we expect to have an
@@ -138,7 +131,7 @@ std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
 // * (C3) `shape(output) = output_shape`.
 class DynamicRngBitGeneratorOpAdaptor {
  public:
-  DynamicRngBitGeneratorOpAdaptor(CustomCallOp op) : op_(op) {}
+  DynamicRngBitGeneratorOpAdaptor(stablehlo::CustomCallOp op) : op_(op) {}
   operator Operation*() { return op_; }
   Operation* operator->() { return op_; }
 
@@ -146,7 +139,7 @@ class DynamicRngBitGeneratorOpAdaptor {
   // additional `output_shape` operand.
   // These accessors assume that the operation is well-formed (i.e. that it
   // can pass verification).
-  RngAlgorithm getRngAlgorithm();
+  stablehlo::RngAlgorithm getRngAlgorithm();
   TypedValue<ShapedType> getInitialState();
   TypedValue<ShapedType> getOutputShape();
   TypedValue<ShapedType> getOutputState();
@@ -157,14 +150,14 @@ class DynamicRngBitGeneratorOpAdaptor {
   LogicalResult verify();
 
  private:
-  CustomCallOp op_;
+  stablehlo::CustomCallOp op_;
 };
 
 // Wraps a custom call in a DynamicRngBitGeneratorOpAdaptor.
 // Fails if the call_target_name of the custom call doesn't match
 // "stablehlo.dynamic_rng_bit_generator".
 std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
-    CustomCallOp op);
+    stablehlo::CustomCallOp op);
 
 // The DynamicTopKOp experiment provides a dynamic version of
 // TopKOp. Once the dynamism RFC is figured out, we expect to have an
@@ -199,7 +192,7 @@ std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
 // * (C4) `shape(indices) = shape(values)`
 class DynamicTopKOpAdaptor {
  public:
-  DynamicTopKOpAdaptor(CustomCallOp op) : op_(op) {}
+  DynamicTopKOpAdaptor(stablehlo::CustomCallOp op) : op_(op) {}
   operator Operation*() { return op_; }
   Operation* operator->() { return op_; }
 
@@ -215,13 +208,14 @@ class DynamicTopKOpAdaptor {
   LogicalResult verify();
 
  private:
-  CustomCallOp op_;
+  stablehlo::CustomCallOp op_;
 };
 
 // Wraps a custom call in a DynamicTopKOpAdaptor.
 // Fails if the call_target_name of the custom call doesn't match
 // "stablehlo.dynamic_top_k".
-std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
+std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
+    stablehlo::CustomCallOp op);
 
 // The DynamicApproxTopKOp experiment provides a dynamic version of
 // ApproxTopKOp.
@@ -267,11 +261,12 @@ std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
 // * (C7) outputs have same shape
 // * (C8) outputs have the same element type as the corresponding input
 // * (C9) 0 <= reduction_dim < rank(inputs[0])
-// * (C10) shape(inputs[0])[i] == shape(outputs[0])[i] except for i == reduction_dim
+// * (C10) shape(inputs[0])[i] == shape(outputs[0])[i] except for i ==
+// reduction_dim
 
 class DynamicApproxTopKOpAdaptor {
  public:
-  DynamicApproxTopKOpAdaptor(CustomCallOp op) : op_(op) {}
+  DynamicApproxTopKOpAdaptor(stablehlo::CustomCallOp op) : op_(op) {}
   operator Operation*() { return op_; }
   Operation* operator->() { return op_; }
 
@@ -289,17 +284,16 @@ class DynamicApproxTopKOpAdaptor {
   LogicalResult verify();
 
  private:
-  CustomCallOp op_;
+  stablehlo::CustomCallOp op_;
 };
 
 // Wraps a custom call in a DynamicApproxTopKOpAdaptor.
 // Fails if the call_target_name of the custom call doesn't match
 // "stablehlo.dynamic_approx_top_k".
 std::optional<DynamicApproxTopKOpAdaptor> getDynamicApproxTopKOp(
-    CustomCallOp op);
+    stablehlo::CustomCallOp op);
 
-}  // namespace experimental
-}  // namespace stablehlo
+}  // namespace stablehlo_ext
 }  // namespace mlir
 
 #endif  // STABLEHLO_EXT_DIALECT_STABLEHLO_OPS_H

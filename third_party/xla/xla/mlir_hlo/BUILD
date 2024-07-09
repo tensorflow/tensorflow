@@ -1099,11 +1099,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     deps = [
-        ":stablehlo_extension_base",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -1138,6 +1138,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     deps = [
+        ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
         ":stablehlo_extension_pass_inc_gen",
         "@llvm-project//llvm:Support",
