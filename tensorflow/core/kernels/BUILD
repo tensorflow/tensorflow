@@ -8162,6 +8162,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/numeric:bits",
         "@eigen_archive//:eigen3",
         "@sobol_data",
     ],
