@@ -384,22 +384,6 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   return absl::OkStatus();
 }
 
-bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
-                          const DeviceMemory<float> &x, int incx,
-                          DeviceMemory<float> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_saxpy, stream,
-                        /* pointer_mode_host = */ true, elem_count, &alpha,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<float> &x, int incx,
-                          DeviceMemory<float> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_scopy, stream,
-                        /* pointer_mode_host = */ true, elem_count,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
 #define Impl_DoBlasScal(Fun, T, Ta)                                         \
   bool ROCMBlas::DoBlasScal(Stream *stream, uint64_t elem_count, Ta alpha,  \
                             DeviceMemory<T> *x, int incx) {                 \
@@ -408,14 +392,14 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
                           incx);                                            \
   }
 
-Impl_DoBlasScal(wrap::rocblas_sscal, float,
-                float) Impl_DoBlasScal(wrap::rocblas_dscal, double, double)
-    Impl_DoBlasScal(wrap::rocblas_csscal, std::complex<float>, float)
-        Impl_DoBlasScal(wrap::rocblas_zdscal, std::complex<double>, double)
-            Impl_DoBlasScal(wrap::rocblas_cscal, std::complex<float>,
-                            std::complex<float>)
-                Impl_DoBlasScal(wrap::rocblas_zscal, std::complex<double>,
-                                std::complex<double>)
+Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
+    Impl_DoBlasScal(wrap::rocblas_dscal, double, double)
+        Impl_DoBlasScal(wrap::rocblas_csscal, std::complex<float>, float)
+            Impl_DoBlasScal(wrap::rocblas_zdscal, std::complex<double>, double)
+                Impl_DoBlasScal(wrap::rocblas_cscal, std::complex<float>,
+                                std::complex<float>)
+                    Impl_DoBlasScal(wrap::rocblas_zscal, std::complex<double>,
+                                    std::complex<double>)
 #define Impl_DoBlasGemv(fun, T)                                                \
   bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, \
                             uint64_t n, T alpha, const DeviceMemory<T> &a,     \
@@ -427,40 +411,28 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float,
                           complex_cast(beta), complex_cast(y), incy);          \
   }
 
-                    Impl_DoBlasGemv(wrap::rocblas_sgemv, float)
-                        Impl_DoBlasGemv(wrap::rocblas_dgemv, double)
-                            Impl_DoBlasGemv(wrap::rocblas_cgemv,
-                                            std::complex<float>)
-                                Impl_DoBlasGemv(wrap::rocblas_zgemv,
-                                                std::complex<double>)
+                        Impl_DoBlasGemv(wrap::rocblas_sgemv, float)
+                            Impl_DoBlasGemv(wrap::rocblas_dgemv, double)
+                                Impl_DoBlasGemv(wrap::rocblas_cgemv,
+                                                std::complex<float>)
+                                    Impl_DoBlasGemv(wrap::rocblas_zgemv,
+                                                    std::complex<double>)
 
-                                    bool ROCMBlas::DoBlasSbmv(
-                                        Stream *stream, blas::UpperLower uplo,
-                                        uint64_t n, uint64_t k, float alpha,
-                                        const DeviceMemory<float> &a, int lda,
-                                        const DeviceMemory<float> &x, int incx,
-                                        float beta, DeviceMemory<float> *y,
-                                        int incy) {
-  return DoBlasInternal(
-      wrap::rocblas_ssbmv, stream, /* pointer_mode_host = */ true,
-      ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
-      incx, &beta, GpuMemoryMutable(y), incy);
-}
-
-/**
- *
- *  ALPHA/BETA TYPES
- *
- * For half and bf16, alpha and beta point to floats.
- * For all other types, alpha and beta point to values of the same type as
- *a/b/c.
- *
- * On the rocblas side, non-ex functions expect the same type as a/b/c
- *    (this seems to be a deviation from the blas standard);
- *    and ex functions expect the same type as the compute type (i.e. floats.)
- *
- **/
-using GemmCallTrace = StreamExecutor::GemmCallTrace;
+    /**
+     *
+     *  ALPHA/BETA TYPES
+     *
+     * For half and bf16, alpha and beta point to floats.
+     * For all other types, alpha and beta point to values of the same type as
+     *a/b/c.
+     *
+     * On the rocblas side, non-ex functions expect the same type as a/b/c
+     *    (this seems to be a deviation from the blas standard);
+     *    and ex functions expect the same type as the compute type (i.e.
+     *floats.)
+     *
+     **/
+    using GemmCallTrace = StreamExecutor::GemmCallTrace;
 
 // Log the GEMM operation if the logging mode is enabled.
 void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,

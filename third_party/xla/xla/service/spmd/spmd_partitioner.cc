@@ -378,7 +378,8 @@ HloInstruction* SpmdBuilder::AddInstruction(
 }
 
 PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
-                                       std::optional<Literal> pad_value) const {
+                                       std::optional<Literal> pad_value,
+                                       bool allow_full_replication) const {
   if (sharding() == target) {
     return *this;
   }
@@ -406,7 +407,8 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
     }
   }
 
-  auto resharded = ReshardNoCache(target, std::move(pad_value));
+  auto resharded =
+      ReshardNoCache(target, std::move(pad_value), allow_full_replication);
   // Update cache for resharded hlo.
   {
     auto& cache =
@@ -419,6 +421,17 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
     auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
     auto [it, _] = cache.insert_or_assign(target, std::move(resharded));
     return it->second;
+  }
+  return resharded;
+}
+
+std::optional<PartitionedHlo> PartitionedHlo::ReshardNoFullReplication(
+    const HloSharding& target, std::optional<Literal> pad_value) const {
+  HloSharding old_sharding = sharding();
+  PartitionedHlo resharded =
+      Reshard(target, std::move(pad_value), /*allow_full_replication=*/false);
+  if (resharded.sharding() == old_sharding) {
+    return std::nullopt;
   }
   return resharded;
 }
@@ -2977,11 +2990,16 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     std::optional<HloSharding> desired_operand_sharding =
         hlo_sharding_util::ReshapeSharding(
             hlo->shape(), hlo->operand(0)->shape(), output_sharding);
+
     if (desired_operand_sharding.has_value() &&
         output_sharding.NumTiles() == desired_operand_sharding->NumTiles()) {
-      return b_.AddInstruction(hlo->CloneWithNewOperands(
-          MakePartitionedShape(hlo->shape(), output_sharding),
-          {operand.Reshard(*desired_operand_sharding).hlo()}));
+      auto resharded_operand =
+          operand.ReshardNoFullReplication(*desired_operand_sharding);
+      if (resharded_operand) {
+        return b_.AddInstruction(hlo->CloneWithNewOperands(
+            MakePartitionedShape(hlo->shape(), output_sharding),
+            {resharded_operand->hlo()}));
+      }
     }
     return std::nullopt;
   };

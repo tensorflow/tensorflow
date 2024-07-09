@@ -438,7 +438,14 @@ class PartitionedHlo {
   // specified pad value used during resharding. Could only modify the reshard
   // cache.
   PartitionedHlo Reshard(const HloSharding& target,
-                         std::optional<Literal> pad_value = std::nullopt) const;
+                         std::optional<Literal> pad_value = std::nullopt,
+                         bool allow_full_replication = true) const;
+
+  // Same as above, but returns nullopt if the resharding requires full
+  // replication.
+  std::optional<PartitionedHlo> ReshardNoFullReplication(
+      const HloSharding& target,
+      std::optional<Literal> pad_value = std::nullopt) const;
 
   // Pads the garbage area of the output with the provided value. Normally,
   // unevenly partitioned dimensions are padded on the right, but this function

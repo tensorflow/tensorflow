@@ -35,6 +35,7 @@ limitations under the License.
 
 namespace mlir {
 namespace odml {
+
 // Pattern matches the following reduction function for ArgMax/ArgMin coming
 // from PyTorch
 // %0 = compare{GT}(%lhs_value, %rhs_value)
@@ -314,6 +315,24 @@ std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op) {
 
   return true;
 }
+
+template class ConvertReduceOpToArgMinMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
+                                          TFL::ReduceAnyOp, true>;
+template class ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
+                                       TFL::ReduceAnyOp>;
+
+template class ConvertReduceOpToArgMinMax<TFL::ReduceMinOp, TFL::ArgMinOp,
+                                          TFL::ReduceAllOp, false>;
+template class ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp,
+                                       TFL::ReduceAllOp>;
+
+template class ConvertReduceOpToArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp,
+                                          true>;
+template class ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+
+template class ConvertReduceOpToArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp,
+                                          false>;
+template class ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
 
 }  // namespace odml
 }  // namespace mlir

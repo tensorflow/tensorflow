@@ -3723,10 +3723,10 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto param0 =
-      AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
-                                      op::Constant(), op::Constant())),
-            op::Shape("f32[19,38,324]"));
+  auto param0 = AllOf(
+      op::Copy(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                         op::Constant(), op::Constant()))),
+      op::Shape("f32[19,38,324]"));
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
@@ -3790,8 +3790,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto local_reshape =
-      AllOf(op::Reshape(op::Parameter(0)), op::Shape("f32[19,38,2,162]"));
+  auto local_reshape = AllOf(op::Reshape(op::Copy(op::Parameter(0))),
+                             op::Shape("f32[19,38,2,162]"));
   EXPECT_THAT(root, AllOf(op::Shape("f32[38,38,2,81]"),
                           op::Reshape(op::Transpose(
                               op::AllToAll(op::Reshape(local_reshape))))));
@@ -3836,6 +3836,26 @@ ENTRY %reshape {
                     op::Shape("bf16[40,16,8]")));
 }
 
+TEST_P(SpmdPartitioningTest, ReshapeWithReshard5) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[128,512,2304,768] parameter(0), sharding={devices=[16,16,1,1]<=[256]}
+  ROOT reshape = bf16[65536,2304,768] reshape(p0), sharding={devices=[256,1,1]<=[256]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/256));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto reshape = AllOf(op::Reshape(op::AllReduce(op::DynamicUpdateSlice(
+                           _, op::Parameter(0), _, _, _, _))),
+                       op::Shape("bf16[4096,2304,768]"));
+  EXPECT_THAT(root, AllOf(op::DynamicSlice(reshape, _, _, _),
+                          op::Shape("bf16[256,2304,768]")));
+}
+
 TEST_P(SpmdPartitioningTest, PartialReplicateShardableReshape) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -3853,10 +3873,10 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto param0 =
-      AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
-                                      op::Constant(), op::Constant())),
-            op::Shape("f32[19,38,324]"));
+  auto param0 = AllOf(
+      op::Copy(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                         op::Constant(), op::Constant()))),
+      op::Shape("f32[19,38,324]"));
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
@@ -10299,7 +10319,8 @@ ENTRY entry {
   auto copy_add1 = op::Copy(
       op::CollectivePermute(op::Add(op::Broadcast(_), op::Broadcast(_))));
   // Reshard on copy_reshape only happens on broadcast dims, can be skipped.
-  auto copy_reshape = op::Copy(op::Copy(op::Reshape(op::Broadcast(_))));
+  auto copy_reshape =
+      op::Copy(op::Copy(op::Reshape(op::Copy(op::Broadcast(_)))));
   // Reshard on copy_transpose only happens on broadcast dims, can be skipped.
   auto copy_transpose = op::Copy(op::Copy(op::Transpose(op::Broadcast(_))));
   EXPECT_THAT(root,
@@ -12420,9 +12441,9 @@ ENTRY %module {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   auto param0 = AllOf(op::Shape("bf16[1,8,6,6]"), op::Parameter());
   auto param1 = AllOf(op::Shape("s32[1,4]"), op::Parameter());
-  auto reshape = AllOf(
-      op::Shape("bf16[1,2,6]"),
-      op::Reshape(op::DynamicSlice(op::Gather(param0, param1), _, _, _, _, _)));
+  auto reshape = AllOf(op::Shape("bf16[1,2,6]"),
+                       op::Reshape(op::Copy(op::DynamicSlice(
+                           op::Gather(param0, param1), _, _, _, _, _))));
   EXPECT_THAT(root, reshape);
 }
 

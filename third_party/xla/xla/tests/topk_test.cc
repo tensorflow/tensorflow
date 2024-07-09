@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string_view>
+
+#include <gtest/gtest.h>
+#include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
@@ -23,27 +26,27 @@ namespace {
 class TopkTest : public HloTestBase {};
 
 XLA_TEST_F(TopkTest, LargestTopK) {
-  absl::string_view hlo = R"(
-HloModule topk
+  std::string_view hlo_text_module = R"(
+    HloModule topk
 
-ENTRY TopK {
-  x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=true
-}
-)";
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+    ENTRY TopK {
+      x = bf16[10,10] parameter(0)
+      ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=true
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
 XLA_TEST_F(TopkTest, SmallestTopK) {
-  absl::string_view hlo = R"(
-HloModule topk
+  std::string_view hlo_text_module = R"(
+    HloModule topk
 
-ENTRY TopK {
-  x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=false
-}
-)";
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+    ENTRY TopK {
+      x = bf16[10,10] parameter(0)
+      ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=false
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

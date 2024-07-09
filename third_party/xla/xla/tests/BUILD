@@ -1780,8 +1780,26 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
-        ":test_utils",
         ":xla_internal_test_main",
+        "//xla:error_spec",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "runtime_topk_test",
+    srcs = ["runtime_topk_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

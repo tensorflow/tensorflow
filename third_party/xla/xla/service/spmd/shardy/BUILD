@@ -12,8 +12,6 @@ cc_binary(
     name = "xla_sdy_opt",
     srcs = ["sdy_opt_main.cc"],
     deps = [
-        "//third_party/openxla/shardy/src/shardy/dialect/sdy/ir:dialect",
-        "//third_party/openxla/shardy/src/shardy/dialect/sdy/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -21,6 +19,8 @@ cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms:passes",
         "@stablehlo//:stablehlo_ops",
     ],
 )
