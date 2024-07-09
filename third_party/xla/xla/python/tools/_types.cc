@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
@@ -26,7 +27,6 @@ limitations under the License.
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "xla/literal.h"
 #include "xla/pjrt/status_casters.h"
-#include "xla/python/logging.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
