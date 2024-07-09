@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
+#include "xla/xla_data.pb.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/python/gpu_support.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -97,7 +98,6 @@ limitations under the License.
 #include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pmap_lib.h"
 #include "xla/python/pprof_profile_builder.h"

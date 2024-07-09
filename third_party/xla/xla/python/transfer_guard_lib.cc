@@ -21,7 +21,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
