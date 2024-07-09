@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/model.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -27,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -37,9 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
-#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 
