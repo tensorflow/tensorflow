@@ -163,8 +163,6 @@ xla_cc_test(
     deps = [
         ":ef57",
         ":test",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:log_streamer",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:test_main",
