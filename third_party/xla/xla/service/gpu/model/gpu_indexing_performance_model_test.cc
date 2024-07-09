@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -46,7 +47,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::testing::status::StatusIs;
+using ::tsl::testing::StatusIs;
 
 class GpuIndexingPerformanceModelTest : public HloTestBase {
   GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
