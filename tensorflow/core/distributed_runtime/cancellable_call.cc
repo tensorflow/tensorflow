@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+
 namespace tensorflow {
 
 void CancellableCall::Start(const StatusCallback& done) {
