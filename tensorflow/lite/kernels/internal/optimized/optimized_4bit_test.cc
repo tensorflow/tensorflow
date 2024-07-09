@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/optimized/4bit/sse_fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/fully_connected_4bit.h"
 
 namespace tflite {

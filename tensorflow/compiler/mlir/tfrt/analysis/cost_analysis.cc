@@ -19,8 +19,17 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime

@@ -23,7 +23,8 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "ruy/ruy.h"  // from @ruy
+#include "fixedpoint/fixedpoint.h"
+#include "third_party/neon2sse/arm_neon_sse.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"

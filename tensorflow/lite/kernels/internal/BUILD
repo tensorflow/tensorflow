@@ -533,7 +533,6 @@ cc_test(
     name = "optimized_4bit_test",
     srcs = ["optimized/optimized_4bit_test.cc"],
     deps = [
-        ":common",
         ":optimized_4bit",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1000,7 +999,8 @@ cc_library(
         ":portable_tensor_utils",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
-        "@ruy//ruy",
+        "//third_party/gemmlowp:fixedpoint_gce",
+        "@arm_neon_2_x86_sse",
     ],
 )
 
@@ -1504,7 +1504,6 @@ cc_test(
     name = "reduce_utils_test",
     srcs = ["optimized/reduce_utils_test.cc"],
     deps = [
-        ":common",
         ":reduce_utils",
         "@com_google_googletest//:gtest_main",
     ],

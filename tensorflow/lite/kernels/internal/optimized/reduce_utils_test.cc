@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 namespace tflite {
 namespace reduce_utils {
