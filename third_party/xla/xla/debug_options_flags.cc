@@ -210,7 +210,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
   opts.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
 
-  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
