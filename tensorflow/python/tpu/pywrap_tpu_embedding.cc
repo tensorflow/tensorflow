@@ -19,7 +19,6 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
 
 PYBIND11_MODULE(_pywrap_tpu_embedding, m) {
   m.def("stack_tables",

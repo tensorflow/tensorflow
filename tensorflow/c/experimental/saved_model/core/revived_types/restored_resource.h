@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
