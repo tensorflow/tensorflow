@@ -452,7 +452,7 @@ gpu_only_cc_library(
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ]),
+    ]) + ["//tensorflow/compiler/mlir/tools/kernel_gen/transforms:__pkg__"],
     deps = [
         ":gpu_asm_opts",
         ":gpu_driver_header",
