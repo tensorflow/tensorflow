@@ -33,7 +33,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-namespace xla::cpu {
+namespace xla {
 namespace {
 
 using ConcatenateTest = HloTestBase;
@@ -166,4 +166,4 @@ TEST_F(ConcatenateTest, TwoR3Axis1Parallel) {
 }
 
 }  // namespace
-}  // namespace xla::cpu
+}  // namespace xla
