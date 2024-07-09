@@ -11,7 +11,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {

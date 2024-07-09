@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_RANDOM_ACCESS_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_RANDOM_ACCESS_OPS_H_
 
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
