@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/util.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
