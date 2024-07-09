@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -31,8 +32,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
+#include "Eigen/Core"  // from @eigen_archive
+#include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -2740,6 +2742,21 @@ class Subgraph {
       case kTfLiteBuiltinFloor:
         return VisitFloorNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
+      case kTfLiteBuiltinGelu: {
+        const TfLiteGeluParams* gelu_params =
+            static_cast<const TfLiteGeluParams*>(node->builtin_data);
+        // Sorry, we don't do approximates here, only the real thing to full
+        // accuracy.
+        // TODO(b/338031720) - Add support for the tanh-based GELU
+        // approximation.
+        if (gelu_params->approximate) {
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "Unsupported approximate Gelu.");
+          return kTfLiteError;
+        }
+        return VisitGeluNode(subgraph, delegate, logging_context, node_index,
+                             node, context->tensors, input_output_tensors);
+      }
       case kTfLiteBuiltinHardSwish:
         return VisitHardSwishNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
@@ -4369,6 +4386,39 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            EnumNameBuiltinOperator(BuiltinOperator_FLOOR),
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitGeluNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 1, BuiltinOperator_GELU, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_gelu(
+          subgraph,
+          /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+          /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_GELU),
                            node_index);
         return kTfLiteError;
       }
@@ -7602,7 +7652,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         }
       }
 
-      // Non-delegatable node is not an error.
+      // Non-delegable node is not an error.
       continue;
     }
 
