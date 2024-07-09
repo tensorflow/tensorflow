@@ -109,7 +109,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
           d3 floordiv 2,
-          (d3 * 32 + s0 * 4) mod 64 + d0 floordiv 32,
+          (d3 mod 2) * 32 + s0 * 4 + d0 floordiv 32,
           d0 mod 32
         )
         domain:
@@ -317,11 +317,12 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose210) {
     //
     // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
     // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C5:.*]] = arith.constant 5 : index
     // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
 
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x1x33xf32>
     // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
+    // CHECK-SAME:     %[[C0]] to %[[C5]] step %[[C1]]
     // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
     // CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fused_computation_exp
     // CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]

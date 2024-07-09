@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,14 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/interpreter/platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/cuda/nvjitlink_support.h"
 
 namespace stream_executor {
-namespace interpreter {
-
-PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId);
-
-}  // namespace interpreter
+bool IsLibNvJitLinkSupported() { return LIBNVJITLINK_SUPPORT; }
 }  // namespace stream_executor

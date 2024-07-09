@@ -20,6 +20,9 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
@@ -27,6 +30,8 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 namespace xla {
 namespace interpreter {

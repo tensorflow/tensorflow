@@ -831,6 +831,64 @@ class FusedMHACmd : public TracedCommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
+// FusedMHABackwardCmd
+//===----------------------------------------------------------------------===//
+
+class FusedMHABackwardCmd : public TracedCommandBufferCmd {
+ public:
+  FusedMHABackwardCmd(
+      ExecutionStreamId execution_stream_id, GpufMHABackwardConfig config,
+      BufferAllocation::Slice bmm1_grad_gemm1_rhs,
+      BufferAllocation::Slice bmm1_grad_gemm2_rhs,
+      BufferAllocation::Slice bmm2_grad_gemm1_lhs,
+      BufferAllocation::Slice bmm2_grad_gemm2_rhs,
+      BufferAllocation::Slice d_output, BufferAllocation::Slice scratch,
+      BufferAllocation::Slice d_bmm1_lhs, BufferAllocation::Slice d_bmm1_rhs,
+      BufferAllocation::Slice d_bmm2_rhs, BufferAllocation::Slice d_s,
+      BufferAllocation::Slice d_bias, BufferAllocation::Slice fwd_output,
+      BufferAllocation::Slice bias, BufferAllocation::Slice seqlen_q,
+      BufferAllocation::Slice seqlen_k);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  FusedMultiHeadedAttentionBackwardRunner& GetOrCreateRunner(
+      const stream_executor::Stream* stream);
+
+  const GpufMHABackwardConfig config_;
+  BufferAllocation::Slice bmm1_grad_gemm1_rhs_buffer_;
+  BufferAllocation::Slice bmm1_grad_gemm2_rhs_buffer_;
+  BufferAllocation::Slice bmm2_grad_gemm1_lhs_buffer_;
+  BufferAllocation::Slice bmm2_grad_gemm2_rhs_buffer_;
+  BufferAllocation::Slice d_output_buffer_;
+  BufferAllocation::Slice scratch_buffer_;
+  BufferAllocation::Slice d_bmm1_lhs_buffer_;
+  BufferAllocation::Slice d_bmm1_rhs_buffer_;
+  BufferAllocation::Slice d_bmm2_rhs_buffer_;
+  BufferAllocation::Slice d_s_buffer_;
+  BufferAllocation::Slice d_bias_buffer_;
+  BufferAllocation::Slice fwd_output_buffer_;
+  BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
+
+  // FusedMHA config
+  absl::Mutex mutex_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<FusedMultiHeadedAttentionBackwardRunner>>
+      runner_cache_ ABSL_GUARDED_BY(mutex_);
+};
+
+//===----------------------------------------------------------------------===//
 // CublasLtCmd
 //===----------------------------------------------------------------------===//
 

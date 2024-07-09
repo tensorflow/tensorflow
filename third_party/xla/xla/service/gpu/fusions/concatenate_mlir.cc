@@ -114,6 +114,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     auto thread_id_to_output_map = ComposeIndexingMaps(
         ComposeIndexingMaps(thread_id_to_input_map, input_to_output_map),
         epilogue_indexing);
+    thread_id_to_output_map.Simplify();
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](

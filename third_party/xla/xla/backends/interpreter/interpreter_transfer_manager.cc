@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/backends/interpreter/platform_id.h"
+#include "xla/service/generic_transfer_manager.h"
 #include "xla/service/transfer_manager.h"
 
 namespace xla {

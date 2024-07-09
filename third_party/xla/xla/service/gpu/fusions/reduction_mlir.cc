@@ -564,10 +564,13 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToInputIndexing(
              .indexing_maps[hero_operand_index]
              .begin());
   }
-  auto map = ComputeReductionInputIndexing(ctx);
-  AddGroupIdConstraint(map, root_index, groups_);
-  return map * GetBitcastMap(input_shape_,
-                             hero.operand(hero_operand_index)->shape(), ctx);
+  auto projected_map = ComputeReductionInputIndexing(ctx);
+  AddGroupIdConstraint(projected_map, root_index, groups_);
+  auto map = projected_map *
+             GetBitcastMap(input_shape_,
+                           hero.operand(hero_operand_index)->shape(), ctx);
+  map.Simplify();
+  return map;
 }
 
 std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
@@ -578,6 +581,7 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
         GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
                       ctx));
     AddGroupIdConstraint(map, root_index, groups_);
+    map.Simplify();
     return map;
   }
 
@@ -594,10 +598,12 @@ std::optional<IndexingMap> MlirReductionFusion::ComputeThreadIdToOutputIndexing(
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  return projected_indexing *
-         GetBitcastMap(ShapeUtil::MakeShapeWithDescendingLayout(
-                           PrimitiveType::U8, output_shape),
-                       physical_shape, ctx);
+  auto map = projected_indexing *
+             GetBitcastMap(ShapeUtil::MakeShapeWithDescendingLayout(
+                               PrimitiveType::U8, output_shape),
+                           physical_shape, ctx);
+  map.Simplify();
+  return map;
 }
 
 SmallVector<Value> MlirReductionFusion::EvaluateEpilogue(
