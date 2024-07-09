@@ -13,9 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
-
 #include "absl/strings/str_cat.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/Tensor.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorContractionMapper.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorImagePatch.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMap.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorTraits.h"  // from @eigen_archive
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/fixedpoint_types.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 

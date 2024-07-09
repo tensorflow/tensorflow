@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
