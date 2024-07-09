@@ -175,6 +175,12 @@ Window MakeWindow(int convolution_rank) {
 template <typename ElementType>
 class ConvolutionThunkBuilder {
  public:
+  // Set convolution options. If not called before Build(), default options are
+  // used.
+  void SetOptions(ConvolutionThunk::Options options) {
+    options_ = std::move(options);
+  }
+
   // Constructor that lets the user specify the convolution dimensions.
   auto Build(ConvolutionDimensions dims = ConvolutionDimensions()) {
     // Data dimensions.
@@ -232,13 +238,12 @@ class ConvolutionThunkBuilder {
     Shape output_shape = ShapeUtil::MakeShape(primitive_type, output_dims);
 
     // Convolution parameters.
-    auto options = MakeConvolutionOptions();
     auto dnums = MakeConvolutionDimensionNumbers(convolution_rank);
     auto window = MakeWindow(convolution_rank);
 
     // Create thunk.
     return ConvolutionThunk::Create(
-        {"convolution"}, options, std::move(input_slice), input_shape,
+        {"convolution"}, options_, std::move(input_slice), input_shape,
         std::move(kernel_slice), kernel_shape, std::move(output_slice),
         output_shape, dnums, window,
         /*feature_group_count=*/1);
@@ -254,6 +259,7 @@ class ConvolutionThunkBuilder {
   std::vector<ElementType> kernel_;
   std::vector<ElementType> output_;
   std::vector<MaybeOwningDeviceMemory> buffers_;
+  ConvolutionThunk::Options options_ = MakeConvolutionOptions();
 
   // Unique pointers, because they are created only when needed.
   std::unique_ptr<BufferAllocations> allocations_;
@@ -400,6 +406,31 @@ TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
       status_or_thunk.status().message(),
       ::testing::HasSubstr("Output channels mismatch. Kernel filters count (3) "
                            "should be the same as output channels count (4)"));
+}
+
+TEST(ConvolutionThunkTest,
+     ExecutionErrorOnMissingThreadPoolInMultiThreadedMode) {
+  ConvolutionThunkBuilder<float> builder;
+  auto options = MakeConvolutionOptions();
+  options.multi_threaded = true;
+  builder.SetOptions(options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build(ConvolutionDimensions()));
+
+  // Execute thunk and wait for completion.
+  Thunk::ExecuteParams params = builder.GetExecutionParams();
+  params.intra_op_threadpool = nullptr;
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+
+  // Verify that the execution was not successful.
+  ASSERT_TRUE(execute_event.IsError());
+  auto status = execute_event.GetError();
+  EXPECT_EQ(absl::StatusCode::kInternal, status.code());
+  EXPECT_EQ(
+      "Intra-op threadpool must be provided for ConvolutionThunk in "
+      "multi-threaded mode.",
+      status.message());
 }
 
 }  // namespace

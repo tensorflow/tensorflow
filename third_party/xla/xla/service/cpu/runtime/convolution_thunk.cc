@@ -16,8 +16,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
@@ -45,6 +48,26 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
+
+// Keep track of pending tasks and an event that signals completion of the
+// operation to the caller.
+// TODO(abanas): This is a copy-paste from dot_thunk.cc (just changed variable
+// names). Refactor.
+struct ExecuteState {
+  explicit ExecuteState(int64_t parallel_tasks)
+      : pending_tasks(parallel_tasks),
+        event(tsl::MakeConstructedAsyncValueRef<Thunk::ExecuteEvent>()) {}
+
+  void Notify() {
+    if (pending_tasks.load(std::memory_order_relaxed) == 1 ||
+        pending_tasks.fetch_sub(1, std::memory_order_relaxed) == 1) {
+      event.SetStateConcrete();
+    }
+  }
+
+  std::atomic<int64_t> pending_tasks;
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> event;
+};
 
 auto GetConvolutionRank(const Shape& input_shape) {
   // Convolution rank is the number of spatial dimensions. Besides spatial
@@ -277,6 +300,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
       "  output: %s in slice %s (%p)", output_shape_.ToString(true),
       output_buffer_.ToString(), output_data.opaque());
 
+  if (options_.multi_threaded && params.intra_op_threadpool == nullptr) {
+    return Internal(
+        "Intra-op threadpool must be provided for ConvolutionThunk in "
+        "multi-threaded mode.");
+  }
+
   if (options_.use_acl) {
     HandleACLConvolution(params, input_data, kernel_data, output_data);
     return OkExecuteEvent();
@@ -284,14 +313,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
 
   // Eigen convolution
   if (convolution_rank_ == 2) {
-    HandleEigen2DConvolution(params, input_data, kernel_data, output_data);
+    return HandleEigen2DConvolution(params, input_data, kernel_data,
+                                    output_data);
   } else {
-    HandleEigen3DConvolution(params, input_data, kernel_data, output_data);
+    return HandleEigen3DConvolution(params, input_data, kernel_data,
+                                    output_data);
   }
-
-  // TODO(abanas): Execute asynchronously in multi-thread mode using
-  // Eigen::ThreadPoolDevice.
-  return OkExecuteEvent();
 }
 
 void ConvolutionThunk::HandleACLConvolution(const ExecuteParams& params,
@@ -313,13 +340,16 @@ void ConvolutionThunk::HandleACLConvolution(const ExecuteParams& params,
       feature_group_count_);
 }
 
-void ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
-                                                se::DeviceMemoryBase input,
-                                                se::DeviceMemoryBase kernel,
-                                                se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent>
+ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
+                                           se::DeviceMemoryBase input,
+                                           se::DeviceMemoryBase kernel,
+                                           se::DeviceMemoryBase output) {
+  auto dispatch = [&](auto type_tag, const auto& eigen_device,
+                      std::optional<std::function<void()>> done_callback =
+                          std::nullopt) {
     using scalar_type = decltype(type_tag);
-    tensorflow::xla::EigenConv2DImpl(
+    ::tensorflow::xla::EigenConv2DImpl(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,
@@ -327,31 +357,39 @@ void ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
         kernel_channels_, kernel_filters_, output_dims_.x, output_dims_.y,
         strides_.x, strides_.y, padding_before_.x, padding_after_.x,
         padding_before_.y, padding_after_.y, base_dilation_.x, base_dilation_.y,
-        window_dilation_.x, window_dilation_.y, feature_group_count_);
+        window_dilation_.x, window_dilation_.y, feature_group_count_,
+        std::move(done_callback));
   };
 
-  if (input_shape_.element_type() == PrimitiveType::F16) {
-    if (options_.multi_threaded) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool);
+  if (options_.multi_threaded) {
+    auto state = std::make_shared<ExecuteState>(feature_group_count_);
+    auto done_callback = [state] { state->Notify(); };
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
+    return state->event;
   } else {
-    if (options_.multi_threaded) {
-      dispatch(float(), *params.intra_op_threadpool);
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), Eigen::DefaultDevice());
     } else {
       dispatch(float(), Eigen::DefaultDevice());
     }
+    return OkExecuteEvent();
   }
 }
 
-void ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
-                                                se::DeviceMemoryBase input,
-                                                se::DeviceMemoryBase kernel,
-                                                se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device) {
+tsl::AsyncValueRef<Thunk::ExecuteEvent>
+ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
+                                           se::DeviceMemoryBase input,
+                                           se::DeviceMemoryBase kernel,
+                                           se::DeviceMemoryBase output) {
+  auto dispatch = [&](auto type_tag, const auto& eigen_device,
+                      std::optional<std::function<void()>> done_callback =
+                          std::nullopt) {
     using scalar_type = decltype(type_tag);
-    tensorflow::xla::EigenConv3DImpl(
+    ::tensorflow::xla::EigenConv3DImpl(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
         static_cast<scalar_type*>(input.opaque()),
         static_cast<scalar_type*>(kernel.opaque()), input_batch_, input_dims_.x,
@@ -361,21 +399,26 @@ void ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
         strides_.z, padding_before_.x, padding_after_.x, padding_before_.y,
         padding_after_.y, padding_before_.z, padding_after_.z, base_dilation_.x,
         base_dilation_.y, base_dilation_.z, window_dilation_.x,
-        window_dilation_.y, window_dilation_.z, feature_group_count_);
+        window_dilation_.y, window_dilation_.z, feature_group_count_,
+        std::move(done_callback));
   };
 
-  if (input_shape_.element_type() == PrimitiveType::F16) {
-    if (options_.multi_threaded) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool);
+  if (options_.multi_threaded) {
+    auto state = std::make_shared<ExecuteState>(feature_group_count_);
+    auto done_callback = [state] { state->Notify(); };
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
+    return state->event;
   } else {
-    if (options_.multi_threaded) {
-      dispatch(float(), *params.intra_op_threadpool);
+    if (input_shape_.element_type() == PrimitiveType::F16) {
+      dispatch(Eigen::half(), Eigen::DefaultDevice());
     } else {
       dispatch(float(), Eigen::DefaultDevice());
     }
+    return OkExecuteEvent();
   }
 }
 

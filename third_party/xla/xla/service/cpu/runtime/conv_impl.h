@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CONV_IMPL_H_
 #define XLA_SERVICE_CPU_RUNTIME_CONV_IMPL_H_
 
+#include <functional>
+#include <optional>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
@@ -37,7 +40,8 @@ void EigenConv2DImpl(
     Eigen::Index padding_x_after, Eigen::Index padding_y_before,
     Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
-    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
+    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
+    std::optional<std::function<void()>> done_callback = std::nullopt) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -89,7 +93,7 @@ void EigenConv2DImpl(
 
   for (Eigen::Index i = 0; i < feature_group_count; ++i) {
     // The row and column dimensions must be flipped when passed to Eigen.
-    output.reshape(output_reshaped_dims).chip(i, 3).device(device) =
+    auto convolved =
         input.reshape(input_reshaped_dims)
             .chip(i, 3)
             .extract_image_patches(
@@ -100,6 +104,12 @@ void EigenConv2DImpl(
             .reshape(pre_contract_dims)
             .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
             .reshape(post_contract_dims);
+    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 3);
+    if (done_callback.has_value()) {
+      output_reshaped.device(device, done_callback.value()) = convolved;
+    } else {
+      output_reshaped.device(device) = convolved;
+    }
   }
 }
 
@@ -118,7 +128,8 @@ void EigenConv3DImpl(
     Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
     Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
-    Eigen::Index feature_group_count) {
+    Eigen::Index feature_group_count,
+    std::optional<std::function<void()>> done_callback = std::nullopt) {
   using ConstTType =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
                        Eigen::Aligned>;
@@ -184,17 +195,21 @@ void EigenConv3DImpl(
             padding_z_after, padding_y_before, padding_y_after,
             padding_x_before, padding_x_after, static_cast<ScalarType>(0.0f));
 
-    output.reshape(output_reshaped_dims).chip(i, 4).device(device) =
+    auto convolved =
         patches.reshape(pre_contract_dims)
             .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
             .reshape(post_contract_dims);
+
+    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 4);
+    if (done_callback.has_value()) {
+      output_reshaped.device(device, done_callback.value()) = convolved;
+    } else {
+      output_reshaped.device(device) = convolved;
+    }
   }
 }
 
 // Extern Conv2D template for all supported devices and data types.
-// TODO(abanas): These templates are instantiated in convolution_thunk.cc. Move
-// the definitions from this file to convolution thunk, and make all runtime
-// conv targets depend on it.
 #define CONV2D_EXTERN_TEMPLATE(EigenDevice, ScalarType)                    \
   extern template void EigenConv2DImpl<EigenDevice, ScalarType>(           \
       const EigenDevice& device, ScalarType* out, ScalarType* lhs,         \
@@ -207,7 +222,8 @@ void EigenConv3DImpl(
       Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
-      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count)
+      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
+      std::optional<std::function<void()>> done_callback = std::nullopt)
 
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
@@ -232,7 +248,8 @@ CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
       Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
       Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count)
+      Eigen::Index feature_group_count,                                        \
+      std::optional<std::function<void()>> done_callback = std::nullopt)
 
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);

@@ -31,7 +31,8 @@ namespace tensorflow::xla {
       Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
-      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count)
+      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
+      std::optional<std::function<void()>> done_callback)
 
 CONV2D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV2D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, float);
@@ -56,7 +57,8 @@ CONV2D_INSTANTIATE_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
       Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
       Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count)
+      Eigen::Index feature_group_count,                                        \
+      std::optional<std::function<void()>> done_callback)
 
 CONV3D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV3D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, float);
