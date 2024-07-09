@@ -20,7 +20,9 @@ cc_library(
     srcs = ["converter.cc"],
     hdrs = ["converter.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu:spi",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -29,6 +31,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
+        "//third_party/GL:GLES3_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -44,7 +47,10 @@ cc_test(
     deps = [
         ":converter",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/common:convert",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
@@ -62,10 +68,13 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/lite/delegates/gpu/gl:object",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -80,7 +89,10 @@ cc_test(
     deps = [
         ":add",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 
@@ -90,11 +102,12 @@ cc_library(
     hdrs = ["concat.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "//tensorflow/lite/delegates/gpu/gl:variable",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -108,7 +121,10 @@ cc_test(
     deps = [
         ":concat",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 
@@ -124,9 +140,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:ideal_workgroup_picker",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -141,7 +157,10 @@ cc_test(
     deps = [
         ":conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 
@@ -167,9 +186,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:ideal_workgroup_picker",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -183,7 +202,10 @@ cc_test(
     deps = [
         ":depthwise_conv",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 
@@ -232,9 +254,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -248,7 +271,10 @@ cc_test(
     deps = [
         ":fully_connected",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 
