@@ -678,9 +678,12 @@ cc_library(
 cc_library(
     name = "tpu_passes",
     hdrs = ["transforms/tpu_passes.h"],
-    visibility = [":friends"] + if_google([
+    visibility = [
+        ":friends",
+    ] + if_google([
         "//learning/brain/tfrt/ifrt/pjrt/__subpackages__",
         "//learning/serving/servables/tfrt:__subpackages__",
+        "//smartass/brain/util:__pkg__",
     ]),
     deps = [
         ":fallback_converter",

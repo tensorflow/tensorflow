@@ -713,6 +713,10 @@ message ConfigProto {
     // If true, use Pathways with TFRT API for multi host support.
     bool enable_multi_host = 27;
 
+    // If true, use ifrt as the backend for TFRT. This is only used when
+    // `use_tfrt` is true.
+    bool tfrt_use_ifrt = 32;
+
     // Port for the Pathways server. Ignored if enable_multi_host=false.
     int32 backend_server_port = 28;
 
@@ -767,7 +771,7 @@ message ConfigProto {
 
     reserved 25;
 
-    // Next: 32
+    // Next: 33
   }
 
   Experimental experimental = 16;
