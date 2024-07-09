@@ -26,6 +26,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_LIB_IO_ITERATOR_H_
 #define TENSORFLOW_TSL_LIB_IO_ITERATOR_H_
 
+#include "absl/status/status.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 

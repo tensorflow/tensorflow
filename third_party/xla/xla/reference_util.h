@@ -188,14 +188,6 @@ class ReferenceUtil {
                              int64_t stride, Padding padding);
 
   // Windowed reductions with Add as the function to apply.
-  static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
-      absl::Span<const float> operand, float init,
-      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
-      Padding padding);
-  static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
-      const Array3D<float>& operand, float init,
-      absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
-      Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
@@ -543,64 +535,6 @@ class ReferenceUtil {
         o1 += interior_padding1 + 1;
       }
       o0 += interior_padding0 + 1;
-    }
-    return result;
-  }
-
-  // Returns the result of a 3D pad on an input matrix.
-  template <typename NativeT>
-  static Array3D<NativeT> PadArray3D(const Array3D<NativeT>& operand,
-                                     const PaddingConfig& padding,
-                                     const NativeT pad) {
-    CHECK_EQ(padding.dimensions_size(), 3);
-
-    const int64_t input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
-    int64_t pad_low[3];
-    int64_t pad_high[3];
-    int64_t pad_interior[3];
-    int64_t output_bounds[3];
-    for (int64_t i = 0; i < 3; ++i) {
-      pad_low[i] = padding.dimensions(i).edge_padding_low();
-      pad_high[i] = padding.dimensions(i).edge_padding_high();
-      CHECK_LE(0, pad_low[i]);
-      CHECK_LE(0, pad_high[i]);
-      CHECK_LE(0, padding.dimensions(i).interior_padding())
-          << "not implemented";
-      pad_interior[i] = padding.dimensions(i).interior_padding();
-
-      output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
-                         (input_bounds[i] - 1) * pad_interior[i];
-    }
-
-    Array3D<NativeT> result(output_bounds[0], output_bounds[1],
-                            output_bounds[2]);
-    int indices[] = {0, 0, 0};
-    for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
-      for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
-        for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
-          NativeT* value = &result(indices[0], indices[1], indices[2]);
-          bool value_padded = false;
-          for (int i = 0; i < 3; ++i) {
-            bool in_low_padding = indices[i] < pad_low[i];
-            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
-            if (in_low_padding || in_high_padding) {
-              *value = pad;
-              value_padded = true;
-            }
-            if (pad_interior[i] &&
-                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
-              *value = pad;
-              value_padded = true;
-            }
-          }
-          if (value_padded) {
-            continue;
-          }
-          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
-                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
-                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1));
-        }
-      }
     }
     return result;
   }

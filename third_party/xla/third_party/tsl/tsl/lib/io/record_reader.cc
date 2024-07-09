@@ -17,13 +17,20 @@ limitations under the License.
 
 #include <limits.h>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tsl/lib/hash/crc32c.h"
 #include "tsl/lib/io/buffered_inputstream.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/lib/io/random_inputstream.h"
-#include "tsl/platform/env.h"
+#include "tsl/lib/io/snappy/snappy_inputstream.h"
+#include "tsl/lib/io/zlib_compression_options.h"
+#include "tsl/lib/io/zlib_inputstream.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/raw_coding.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

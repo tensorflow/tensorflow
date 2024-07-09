@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tsl/lib/io/record_writer.h"
 
-#include "tsl/lib/hash/crc32c.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "tsl/lib/io/compression.h"
-#include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
+#include "tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "tsl/lib/io/zlib_compression_options.h"
+#include "tsl/lib/io/zlib_outputbuffer.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

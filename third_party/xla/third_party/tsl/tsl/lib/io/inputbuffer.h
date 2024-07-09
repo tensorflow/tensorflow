@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"

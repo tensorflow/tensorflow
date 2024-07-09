@@ -20,8 +20,10 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "absl/base/attributes.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/raw_coding.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 

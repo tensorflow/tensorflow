@@ -20,10 +20,13 @@ limitations under the License.
 #include <algorithm>
 
 #include "tsl/lib/io/format.h"
+#include "tsl/lib/io/iterator.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/raw_coding.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

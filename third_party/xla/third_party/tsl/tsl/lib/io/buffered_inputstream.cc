@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tsl/lib/io/buffered_inputstream.h"
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "tsl/lib/io/inputstream_interface.h"
 #include "tsl/lib/io/random_inputstream.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {

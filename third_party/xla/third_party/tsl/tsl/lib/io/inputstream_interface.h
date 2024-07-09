@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {

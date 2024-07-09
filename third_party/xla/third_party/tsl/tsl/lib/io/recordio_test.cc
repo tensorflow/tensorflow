@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/match.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/hash/crc32c.h"
 #include "tsl/lib/io/record_reader.h"
 #include "tsl/lib/io/record_writer.h"
+#include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/simple_philox.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

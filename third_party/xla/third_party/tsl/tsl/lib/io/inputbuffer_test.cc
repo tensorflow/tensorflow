@@ -17,15 +17,17 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

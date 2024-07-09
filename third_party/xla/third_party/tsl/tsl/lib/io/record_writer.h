@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_LIB_IO_RECORD_WRITER_H_
 #define TENSORFLOW_TSL_LIB_IO_RECORD_WRITER_H_
 
+#include "absl/status/status.h"
 #include "tsl/lib/hash/crc32c.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/status.h"

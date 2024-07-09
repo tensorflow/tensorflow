@@ -20,9 +20,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tsl/lib/io/table_builder.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 class RandomAccessFile;
