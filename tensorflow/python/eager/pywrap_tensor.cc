@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
@@ -25,9 +31,7 @@ limitations under the License.
 
 #include <cmath>  // NOLINT
 
-#include "structmember.h"  // NOLINT // For PyMemberDef
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -38,11 +42,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
