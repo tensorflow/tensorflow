@@ -298,11 +298,11 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
 };
 
 #if GOOGLE_CUDA
-#if (CUDNN_VERSION < 8900)
-#define MAYBE_SKIP_TEST(CAUSE)                               \
-  do {                                                       \
-    if (absl::string_view(CAUSE) == "F8")                    \
-      GTEST_SKIP() << "FP8 convolutions require cuDNN 8.9."; \
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+#define MAYBE_SKIP_TEST(CAUSE)                                           \
+  do {                                                                   \
+    if (absl::string_view(CAUSE) == "F8")                                \
+      GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9."; \
   } while (0)
 #else
 #define MAYBE_SKIP_TEST(CAUSE)

@@ -97,7 +97,10 @@ static bool IsAtLeastCuda12300() {
 #if defined(TENSORFLOW_USE_ROCM)
   return false;
 #endif
+#if CUDA_VERSION >= 12030
   return true;
+#endif
+  return false;
 }
 
 // Give a short aliases to execution threads.

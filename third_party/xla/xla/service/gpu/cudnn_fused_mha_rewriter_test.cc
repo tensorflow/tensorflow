@@ -86,7 +86,12 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
   CudnnFusedMhaRewriterTestHloTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/false,
-                    /*instruction_can_change_layout_func=*/{}) {}
+                    /*instruction_can_change_layout_func=*/{}) {
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    skip_reason_ = "cuDNN fused MHA requires CUDA 12 or later.";
+    return;
+#endif
+  }
 
  protected:
   size_t CountFusedAttentionCall(HloModule* module, bool is_backward = false) {

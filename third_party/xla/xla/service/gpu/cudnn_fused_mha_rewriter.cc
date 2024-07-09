@@ -1627,7 +1627,10 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
         comp->parent()->config().debug_options();
     const se::dnn::VersionInfo cudnn_version =
         GetDnnVersionInfoOrDefault(stream_executor_, cudnn_version_);
-#if !defined(GOOGLE_CUDA)
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    // CUDA needs to be >= 12.0 for cuDNN to work with all supported hardware.
+    // Some cuDNN versions work with CUDA 11, but it is impractical for us to
+    // test those combinations so just disable them.
     return false;
 #endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||

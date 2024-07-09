@@ -61,6 +61,10 @@ namespace {
 class MultiHeadedAttentionTest : public GpuCodegenTest {
  public:
   MultiHeadedAttentionTest() {
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    skip_reason_ = "cuDNN Fused MHA requires CUDA 12 or later.";
+    return;
+#endif
     stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
     // Enforce capability minor == 0 because hardware with a non-zero minor
     // number typically has insufficient shared memory for cuDNN FMHA.

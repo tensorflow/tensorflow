@@ -802,7 +802,7 @@ StreamExecutorGpuClient::Load(std::unique_ptr<PjRtExecutable> executable) {
 
 namespace {
 
-#if defined(GOOGLE_CUDA)
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
 absl::StatusOr<std::unique_ptr<se::GpuCudaMallocAsyncAllocator>>
 CreateCudaAsyncAllocator(const LocalDeviceState& device, double memory_fraction,
@@ -847,14 +847,14 @@ CreateCudaAsyncAllocator(const LocalDeviceState& device, double memory_fraction,
   return allocator;
 }
 
-#else  // defined(GOOGLE_CUDA)
+#else  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateCudaAsyncAllocator(
     const LocalDeviceState& device, double memory_fraction, bool reserve_memory,
     bool create_new_pool, bool sync_mode, bool compute_stats = true) {
   return FailedPrecondition("CUDA async allocator requires CUDA >= 11.2");
 }
 
-#endif  // defined(GOOGLE_CUDA)
+#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
 // Builds a LocalDeviceState for each GPU present.
 absl::StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
@@ -946,7 +946,7 @@ GetStreamExecutorGpuDeviceAllocator(
                             static_cast<int>(se::MemoryType::kHost));
   }
 
-#if defined(GOOGLE_CUDA)
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
   const auto& debug_options = xla::GetDebugOptionsFromFlags();
   if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
     // Add memory allocator to allocate memory buffers with persistent temp

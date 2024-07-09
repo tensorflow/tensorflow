@@ -24,7 +24,7 @@ limitations under the License.
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) && (CUDA_VERSION > 10000)
   return nullptr;
 #else
   static auto handle = []() -> void* {

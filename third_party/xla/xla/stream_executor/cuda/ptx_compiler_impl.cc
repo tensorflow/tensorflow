@@ -57,8 +57,10 @@ static std::string_view ToString(nvPTXCompileResult status) {
       return "COMPILER_INVOCATION_INCOMPLETE";
     case NVPTXCOMPILE_ERROR_UNSUPPORTED_PTX_VERSION:
       return "UNSUPPORTED_PTX_VERSION";
+#if CUDA_VERSION > 12000
     case NVPTXCOMPILE_ERROR_UNSUPPORTED_DEVSIDE_SYNC:
       return "UNSUPPORTED_DEVSIDE_SYNC";
+#endif
     default:
       return "UNKNOWN";
   }
