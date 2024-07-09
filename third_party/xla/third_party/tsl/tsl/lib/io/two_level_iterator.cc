@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tsl/lib/io/two_level_iterator.h"
 
-#include "tsl/lib/io/block.h"
-#include "tsl/lib/io/format.h"
+#include "absl/status/status.h"
 #include "tsl/lib/io/iterator.h"
-#include "tsl/lib/io/table.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

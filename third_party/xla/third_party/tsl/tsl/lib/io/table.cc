@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "tsl/lib/io/table.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tsl/lib/io/block.h"
 #include "tsl/lib/io/cache.h"
 #include "tsl/lib/io/format.h"
+#include "tsl/lib/io/iterator.h"
 #include "tsl/lib/io/table_options.h"
 #include "tsl/lib/io/two_level_iterator.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include "third_party/zlib/src/zconf.h"
+
 namespace tsl {
 namespace io {
 

@@ -17,8 +17,16 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "tsl/lib/io/inputstream_interface.h"
+#include "tsl/lib/io/zlib_compression_options.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
+#include "third_party/zlib/src/zconf.h"
 
 namespace tsl {
 namespace io {

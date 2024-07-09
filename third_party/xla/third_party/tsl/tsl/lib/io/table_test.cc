@@ -20,17 +20,23 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "tsl/lib/io/block.h"
 #include "tsl/lib/io/block_builder.h"
 #include "tsl/lib/io/format.h"
 #include "tsl/lib/io/iterator.h"
 #include "tsl/lib/io/table_builder.h"
+#include "tsl/lib/io/table_options.h"
+#include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/simple_philox.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

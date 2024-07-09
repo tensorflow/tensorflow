@@ -15,7 +15,19 @@ limitations under the License.
 
 #include "tsl/lib/io/zlib_outputbuffer.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
+#include "tsl/lib/io/zlib_compression_options.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
+#include "third_party/zlib/src/zconf.h"
+#include "third_party/zlib/src/zlib.h"
 
 namespace tsl {
 namespace io {

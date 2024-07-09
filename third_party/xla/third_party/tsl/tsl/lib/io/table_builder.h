@@ -26,9 +26,11 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "absl/status/status.h"
 #include "tsl/lib/io/table_options.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 class WritableFile;

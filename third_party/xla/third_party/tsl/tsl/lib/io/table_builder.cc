@@ -17,14 +17,15 @@ limitations under the License.
 
 #include <assert.h>
 
+#include "absl/status/status.h"
 #include "tsl/lib/hash/crc32c.h"
 #include "tsl/lib/io/block_builder.h"
 #include "tsl/lib/io/format.h"
 #include "tsl/lib/io/table_options.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {
