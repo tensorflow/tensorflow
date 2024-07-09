@@ -109,13 +109,13 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "matrix_band_part_op",
     prefix = "matrix_band_part_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
     name = "matrix_diag_op",
     prefix = "matrix_diag_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(

@@ -16,15 +16,9 @@ limitations under the License.
 // See docs in ../ops/linalg_ops.cc.
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/MatrixFunctions"  // from @eigen_archive
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

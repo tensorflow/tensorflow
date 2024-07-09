@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cmath>
 
+#include "Eigen/Core"  // from @eigen_archive
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -24,14 +26,10 @@ limitations under the License.
 #endif
 
 #include "Eigen/LU"  // from @eigen_archive
-#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/fill_functor.h"
