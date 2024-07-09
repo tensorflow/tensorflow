@@ -19,9 +19,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/conv_grad_size_util.h"
+#include "xla/client/padding.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

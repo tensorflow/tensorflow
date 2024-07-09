@@ -20,7 +20,9 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
