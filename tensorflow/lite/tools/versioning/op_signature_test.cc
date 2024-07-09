@@ -22,7 +22,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
