@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_multirun_stats_recorder.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
 namespace benchmark {
