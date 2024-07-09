@@ -230,8 +230,6 @@ void HloTestBase::SetAotFastMathDebugOptions(DebugOptions* options) {
 
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = GetDebugOptionsFromFlags();
-  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
-  debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   return debug_options;
 }

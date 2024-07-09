@@ -25,7 +25,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuInt4Test : public GpuCodegenTest {};
+class GpuInt4Test : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.add_xla_disable_hlo_passes("constant_folding");
+    return debug_options;
+  }
+};
 
 TEST_F(GpuInt4Test, TestInt4ParameterSize) {
   const std::string hlo_text = R"(
