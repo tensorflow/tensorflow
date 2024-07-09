@@ -86,8 +86,6 @@ class AnyBuffer {
 
   PrimitiveType element_type() const { return PrimitiveType(buf_->dtype); }
 
-  void* untyped_data() const { return buf_->data; }
-
   Dimensions dimensions() const { return Dimensions(buf_->dims, buf_->rank); }
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
@@ -100,6 +98,8 @@ class AnyBuffer {
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
     return absl::c_accumulate(dimensions(), int64_t{1}, std::multiplies<>());
   }
+
+  void* untyped_data() const { return buf_->data; }
 
   se::DeviceMemoryBase device_memory() const {
     return se::DeviceMemoryBase(untyped_data(), size_bytes());
@@ -124,12 +124,6 @@ class Buffer {
 
   PrimitiveType element_type() const { return dtype; }
 
-  void* untyped_data() const { return buf_->data; }
-
-  internal::NativeType<dtype>* typed_data() const {
-    return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
-  }
-
   Dimensions dimensions() const {
     return Dimensions(buf_->dims,
                       rank == internal::kDynamicRank ? buf_->rank : rank);
@@ -144,6 +138,12 @@ class Buffer {
 
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
     return absl::c_accumulate(dimensions(), int64_t{1}, std::multiplies<>());
+  }
+
+  void* untyped_data() const { return buf_->data; }
+
+  internal::NativeType<dtype>* typed_data() const {
+    return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
   }
 
   se::DeviceMemory<internal::NativeType<dtype>> device_memory() const {

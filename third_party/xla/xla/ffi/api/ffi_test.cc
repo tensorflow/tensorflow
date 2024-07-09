@@ -227,8 +227,8 @@ TEST(FfiTest, BufferArgument) {
 
   auto handler =
       Ffi::Bind().Arg<BufferR2<DataType::F32>>().To([&](auto buffer) {
-        EXPECT_EQ(buffer.data, storage.data());
-        EXPECT_EQ(buffer.dimensions.size(), 2);
+        EXPECT_EQ(buffer.typed_data(), storage.data());
+        EXPECT_EQ(buffer.dimensions().size(), 2);
         return Error::Success();
       });
   auto status = Call(*handler, call_frame);
@@ -308,8 +308,8 @@ TEST(FfiTest, TokenArgument) {
   auto call_frame = builder.Build();
 
   auto fn = [&](Token tok) {
-    EXPECT_EQ(tok.data, nullptr);
-    EXPECT_EQ(tok.dimensions.size(), 0);
+    EXPECT_EQ(tok.typed_data(), nullptr);
+    EXPECT_EQ(tok.dimensions().size(), 0);
     return ffi::Error::Success();
   };
 

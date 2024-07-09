@@ -171,7 +171,7 @@ class Handler;
 
 class Ffi {
  public:
-  // Creates and empty binding specification wich allows to define FFI handler
+  // Creates an empty binding specification which allows to define FFI handler
   // signature separately from implementation and rely on compile time type
   // checking to verify that signature matches the provided implementation.
   static Binding<> Bind();
@@ -676,7 +676,7 @@ struct AttrBinding<Attr<T, attr_name>> {
   static constexpr std::string_view name() { return attr_name; }
 };
 
-// Default attributes binding for `Dictonary` parameters.
+// Default attributes binding for `Dictionary` parameters.
 template <>
 struct AttrsBinding<Dictionary> {
   using Attrs = Dictionary;
