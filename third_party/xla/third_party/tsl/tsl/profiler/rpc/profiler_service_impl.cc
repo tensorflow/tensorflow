@@ -18,24 +18,25 @@ limitations under the License.
 #include <memory>
 
 #include "grpcpp/support/status.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_replace.h"
+#include "third_party/grpc/include/grpcpp/server_context.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/rpc/client/save_profile.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/time_utils.h"
 #include "tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
 namespace profiler {
