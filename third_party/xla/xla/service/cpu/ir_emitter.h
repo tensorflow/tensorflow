@@ -218,6 +218,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleConditional(HloInstruction* conditional) override;
   absl::Status HandleScatter(HloInstruction* scatter) override;
   absl::Status HandleAfterAll(HloInstruction* after_all) override;
+  absl::Status HandleGetDimensionSize(HloInstruction* get_size) override;
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;

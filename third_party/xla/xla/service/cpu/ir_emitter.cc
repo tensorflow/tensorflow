@@ -3652,6 +3652,10 @@ absl::Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitter::HandleGetDimensionSize(HloInstruction* get_size) {
+  return Unimplemented("GetDimensionSize should be rewritten for CPU.");
+}
+
 absl::Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   emitted_value_[add_dependency] =
