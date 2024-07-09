@@ -18,7 +18,9 @@ limitations under the License.
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 using namespace mlir;  // NOLINT
 
