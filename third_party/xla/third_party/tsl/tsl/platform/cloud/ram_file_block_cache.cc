@@ -19,7 +19,14 @@ limitations under the License.
 #include <memory>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/notification.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

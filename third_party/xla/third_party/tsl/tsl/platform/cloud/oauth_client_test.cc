@@ -17,16 +17,24 @@ limitations under the License.
 
 #include <fstream>
 
+#include "third_party/jsoncpp/include/json/reader.h"
+#include "third_party/jsoncpp/include/json/value.h"
 #include <openssl/bio.h>
+#include "third_party/openssl/boringssl/src/include/openssl/base.h"
+#include "third_party/openssl/boringssl/src/include/openssl/digest.h"
+#include "third_party/openssl/boringssl/src/include/openssl/rsa.h"
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/base64.h"
+#include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/scanner.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

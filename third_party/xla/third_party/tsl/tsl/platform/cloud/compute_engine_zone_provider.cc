@@ -17,7 +17,13 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/log.h"
+#include "tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/str_util.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 namespace tsl {
 
 namespace {

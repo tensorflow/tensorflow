@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tsl/platform/env_time.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/types.h"
+
 namespace tsl {
 
 namespace {

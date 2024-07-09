@@ -17,8 +17,28 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
+#include "tsl/platform/cloud/auth_provider.h"
+#include "tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "tsl/platform/cloud/compute_engine_zone_provider.h"
+#include "tsl/platform/cloud/expiring_lru_cache.h"
+#include "tsl/platform/cloud/gcs_dns_cache.h"
+#include "tsl/platform/cloud/gcs_throttle.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/cloud/zone_provider.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/retrying_file_system.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -39,7 +59,6 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
-#include "absl/base/macros.h"
 #include "json/json.h"
 #include "tsl/platform/cloud/curl_http_request.h"
 #include "tsl/platform/cloud/file_block_cache.h"
@@ -51,7 +70,6 @@ limitations under the License.
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringprintf.h"

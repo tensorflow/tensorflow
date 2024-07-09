@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_TIME_UTIL_H_
 
 #include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

@@ -21,8 +21,11 @@ limitations under the License.
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/cloud/now_seconds_env.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/notification.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

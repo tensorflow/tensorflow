@@ -20,6 +20,10 @@ limitations under the License.
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
 #ifdef _WIN32
 #define timegm _mkgmtime
 #endif

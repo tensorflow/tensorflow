@@ -29,9 +29,16 @@ limitations under the License.
 #include "tsl/platform/cloud/gcs_dns_cache.h"
 #include "tsl/platform/cloud/gcs_throttle.h"
 #include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/cloud/zone_provider.h"
+#include "tsl/platform/file_statistics.h"
 #include "tsl/platform/file_system.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/retrying_file_system.h"
+#include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

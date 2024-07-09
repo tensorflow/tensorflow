@@ -14,6 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tsl/platform/cloud/oauth_client.h"
+
+#include "third_party/jsoncpp/include/json/reader.h"
+#include "third_party/jsoncpp/include/json/value.h"
+#include "third_party/openssl/boringssl/src/include/openssl/base.h"
+#include "third_party/openssl/boringssl/src/include/openssl/digest.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>

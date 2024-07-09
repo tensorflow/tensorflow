@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <curl/curl.h>
+#include "third_party/curl/src/include/curl/system.h"
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

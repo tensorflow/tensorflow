@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "tsl/platform/cloud/zone_provider.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

@@ -19,7 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/cloud/curl_http_request.h"
+#include "tsl/platform/cloud/http_request.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/retrying_utils.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

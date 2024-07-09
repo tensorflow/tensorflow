@@ -17,12 +17,26 @@ limitations under the License.
 
 #include <fstream>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/cloud/auth_provider.h"
+#include "tsl/platform/cloud/file_block_cache.h"
+#include "tsl/platform/cloud/gcs_throttle.h"
+#include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/cloud/http_request_fake.h"
+#include "tsl/platform/cloud/zone_provider.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/file_statistics.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/retrying_utils.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 // Undef DeleteFile macro defined in wndows.h.
 #ifdef PLATFORM_WINDOWS
