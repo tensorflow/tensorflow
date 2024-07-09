@@ -15,16 +15,29 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_utils.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
