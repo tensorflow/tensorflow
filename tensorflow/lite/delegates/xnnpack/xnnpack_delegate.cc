@@ -31,8 +31,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
+#include "Eigen/Core"  // from @eigen_archive
+#include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/profiler.h"
