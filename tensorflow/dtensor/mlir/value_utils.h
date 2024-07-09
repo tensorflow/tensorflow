@@ -18,11 +18,14 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 
 namespace tensorflow {
