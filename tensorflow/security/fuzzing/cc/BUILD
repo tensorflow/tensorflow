@@ -21,6 +21,7 @@ tf_cc_fuzz_test(
     deps = [
         ":fuzz_domains",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -122,6 +123,7 @@ tf_cc_fuzz_test(
     deps = [
         ":fuzz_domains",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
