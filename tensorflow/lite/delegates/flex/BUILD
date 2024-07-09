@@ -355,43 +355,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "allowlisted_flex_ops_lib",
-    srcs = [
-        "allowlisted_flex_ops.cc",
-    ],
-    hdrs = [
-        "allowlisted_flex_ops.h",
-        "allowlisted_flex_ops_internal.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    features = tf_features_nolayering_check_if_ios(),
-    visibility = internal_visibility_allowlist(),
-    deps = if_mobile([
-        "//tensorflow/core:portable_tensorflow_lib_lite",
-    ]) + if_not_mobile([
-        "//tensorflow/core:framework",
-    ]),
-)
-
-tf_cc_test(
-    name = "allowlisted_flex_ops_test",
-    size = "small",
-    srcs = [
-        "allowlisted_flex_ops_test.cc",
-    ],
-    features = tf_features_nolayering_check_if_ios(),
-    deps = [
-        ":allowlisted_flex_ops_lib",
-        ":delegate",
-        "@com_google_googletest//:gtest_main",
-    ] + if_mobile([
-        "//tensorflow/core:portable_tensorflow_lib_lite",
-    ]) + if_not_mobile([
-        "//tensorflow/core:framework",
-    ]),
-)
-
 # Alias to support selective build of image ops.
 # TODO(b/163285312): Remove after tensorflow/core refactoring completed.
 cc_library(

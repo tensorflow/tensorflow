@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
-#define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
 
 #include <set>
 #include <string>
@@ -42,4 +42,4 @@ const std::set<std::string>& GetSentencePieceFlexAllowlist();
 }  // namespace flex
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
