@@ -20,6 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/util/device_name_utils.h"
