@@ -34,6 +34,7 @@ cc_library(
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
+        ":auto_sharding_proto_cc",
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
@@ -42,6 +43,7 @@ cc_library(
         ":matrix",
         ":metrics",
         ":profiling_result",
+        "//third_party/protobuf:protobuf_lite",
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
@@ -112,6 +114,7 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        "//third_party/protobuf:protobuf_lite",
         "//xla:status_macros",
         "//xla:util",
         "@com_google_absl//absl/container:btree",
@@ -219,6 +222,7 @@ cc_library(
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
+        ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
         ":auto_sharding_wrapper",
         "//xla/hlo/ir:hlo",
@@ -250,9 +254,14 @@ cc_library(
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
+        "//xla:array",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -311,11 +320,16 @@ xla_cc_binary(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
+        ":auto_sharding_option",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -382,6 +396,7 @@ xla_cc_test(
         ":auto_sharding_proto_cc",
         ":auto_sharding_solver",  # build_cleaner: keep
         ":auto_sharding_strategy",
+        "//third_party/protobuf:protobuf_lite",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",

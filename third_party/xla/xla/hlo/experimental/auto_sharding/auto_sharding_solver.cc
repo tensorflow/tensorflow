@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_set.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 
 #ifdef PLATFORM_GOOGLE
