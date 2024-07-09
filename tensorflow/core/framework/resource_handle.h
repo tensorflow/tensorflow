@@ -19,16 +19,19 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

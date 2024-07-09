@@ -20,13 +20,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/demangle.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

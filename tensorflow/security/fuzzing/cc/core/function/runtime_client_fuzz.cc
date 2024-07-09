@@ -17,7 +17,6 @@
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
@@ -30,6 +29,7 @@
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tsl/platform/status.h"
 
