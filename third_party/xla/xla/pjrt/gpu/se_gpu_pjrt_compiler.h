@@ -20,6 +20,9 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "xla/client/xla_computation.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
