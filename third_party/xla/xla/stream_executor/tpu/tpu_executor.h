@@ -95,9 +95,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
-  bool HostCallback(Stream* stream,
-                    absl::AnyInvocable<absl::Status() &&> callback) override;
-
   bool SynchronizeAllActivity() override;
 
   absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,

@@ -3263,7 +3263,6 @@ cc_library(
         "//xla/service:topk_rewriter",
         "//xla/service:transpose_folding",
         "//xla/service:tuple_simplifier",
-        "//xla/service:unique_channel_id_enforcer",
         "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",

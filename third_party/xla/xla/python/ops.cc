@@ -297,7 +297,7 @@ void BuildOpsSubmodule(nb::module_& m) {
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
-  nb::enum_<RandomAlgorithm>(ops, "RandomAlgorithm")
+  nb::enum_<RandomAlgorithm>(ops, "RandomAlgorithm", nb::is_arithmetic())
       .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
       .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
       .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
@@ -307,7 +307,8 @@ void BuildOpsSubmodule(nb::module_& m) {
       .value("SCHEDULE_LATEST", CustomCallSchedule::SCHEDULE_LATEST)
       .value("SCHEDULE_EARLIEST", CustomCallSchedule::SCHEDULE_EARLIEST);
 
-  nb::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
+  nb::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion",
+                                  nb::is_arithmetic())
       .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
       .value("API_VERSION_STATUS_RETURNING",
              CustomCallApiVersion::API_VERSION_STATUS_RETURNING)

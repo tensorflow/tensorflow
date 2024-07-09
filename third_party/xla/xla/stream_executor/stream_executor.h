@@ -252,10 +252,6 @@ class StreamExecutor {
     return absl::InternalError("Not implemented");
   }
 
-  // Enqueues on a stream a user-specified function to be run on the host.
-  virtual bool HostCallback(Stream* stream,
-                            absl::AnyInvocable<absl::Status() &&> callback) = 0;
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 
