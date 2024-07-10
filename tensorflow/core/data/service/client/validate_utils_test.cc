@@ -16,17 +16,17 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

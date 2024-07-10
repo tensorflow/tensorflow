@@ -290,6 +290,7 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = [
         ":data_transfer_visibility",
+        "//tensorflow/core/data/service/client:__pkg__",
     ],
     deps = [
         ":worker_proto_cc",
