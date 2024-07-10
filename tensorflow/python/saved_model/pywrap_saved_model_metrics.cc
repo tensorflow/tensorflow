@@ -28,6 +28,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow {
