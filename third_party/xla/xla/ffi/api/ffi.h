@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_FFI_API_FFI_H_
 #define XLA_FFI_API_FFI_H_
 
-#include <functional>
-#include <numeric>
 #ifdef XLA_FFI_FFI_H_
 #error Two different XLA FFI implementations cannot be included together. \
        See README.md for more details.
@@ -28,7 +26,9 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
