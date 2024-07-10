@@ -42,7 +42,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
                   << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
                   << ": " << status;
     LOG(ERROR) << "Contents of bad module:";
-    XLA_LOG_LINES(tsl::ERROR, ToString());
+    XLA_LOG_LINES(ERROR, ToString());
   }
 }
 

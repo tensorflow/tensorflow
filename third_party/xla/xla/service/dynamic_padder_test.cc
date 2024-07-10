@@ -351,7 +351,7 @@ ENTRY main {
 
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   TF_ASSERT_OK(TupleSimplifier().Run(module_.get()).status());
-  XLA_LOG_LINES(0, module_->ToString());
+  XLA_LOG_LINES(INFO, module_->ToString());
 
   auto* root = module_->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::Constant(), op::Tuple()));
@@ -587,7 +587,7 @@ ENTRY main {
   module_ = GetHloModule(hlo_text);
 
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
-  XLA_LOG_LINES(0, module_->ToString());
+  XLA_LOG_LINES(INFO, module_->ToString());
   auto* root = module_->entry_computation()->root_instruction();
   EXPECT_EQ(root->shape(), ShapeUtil::MakeShape(F32, {32, 216}, {true, false}));
   // Find the while loop and ensure that the dynamic dimension size was added to
@@ -697,7 +697,7 @@ ENTRY main {
           /*op_supports_dynamism_handler=*/std::move(op_supports_dynamism),
           /*custom_call_handler=*/std::move(custom_call_handler))
           .status());
-  XLA_LOG_LINES(1, module_->ToString());
+  XLA_VLOG_LINES(1, module_->ToString());
 
   for (HloComputation* computation : module_->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {

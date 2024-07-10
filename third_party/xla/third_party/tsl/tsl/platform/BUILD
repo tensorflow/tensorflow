@@ -1563,6 +1563,7 @@ tsl_cc_test(
         ":stacktrace_handler",
         ":statusor",
         ":test",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

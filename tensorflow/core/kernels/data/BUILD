@@ -1433,13 +1433,8 @@ tf_cc_test(
         ":text_line_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -1468,14 +1463,10 @@ tf_cc_test(
         ":tf_record_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 

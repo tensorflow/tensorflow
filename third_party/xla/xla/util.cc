@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
@@ -282,10 +283,11 @@ std::string HumanReadableNumTranscendentalOps(double trops,
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
-void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
-  const int orig_sev = sev;
-  if (sev == tsl::FATAL) {
-    sev = tsl::ERROR;
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno) {
+  const absl::LogSeverity orig_sev = sev;
+  if (sev == absl::LogSeverity::kFatal) {
+    sev = absl::LogSeverity::kError;
   }
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
@@ -305,7 +307,7 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
     cur = eol + 1;
   }
 
-  if (orig_sev == tsl::FATAL) {
+  if (orig_sev == absl::LogSeverity::kFatal) {
     tsl::internal::LogString(fname, lineno, orig_sev,
                              "Aborting due to errors.");
   }
