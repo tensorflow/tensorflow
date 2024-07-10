@@ -368,16 +368,6 @@ message DestructArrayResponse {}
 
 // ================ Compiler-related operations ================
 
-// Modeled after `xla::PjRtLoadedExecutable::LogicalDeviceIds`.
-//
-// TODO(hyeontaek): this XLA-specific type is temporary and will be removed when
-// `addressable_device_logical_ids()` is removed from `LoadedExecutable` or
-// moved to a type-erased proto field.
-message LogicalDeviceIds {
-  int32 replica = 1;
-  int32 partition = 2;
-}
-
 // Compiles `mlir_module` and returns a `LoadedExecutable`.
 message CompileRequest {
   xla.ifrt.Serialized program = 1;
@@ -392,13 +382,14 @@ message CompileResponse {
   // `LoadedExecutableMetadataResponse` for the rest of metadata.
   string name = 2;
   int32 num_devices = 3;
-  repeated LogicalDeviceIds addressable_device_logical_ids = 4;
   repeated int32 addressable_device_ids = 5;
   oneof fingerprint {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
   }
   fixed64 ready_future_handle = 9;
+
+  reserved 4;
 }
 
 // ================ LoadedExecutable-related operations ================

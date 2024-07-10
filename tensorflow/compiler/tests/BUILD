@@ -2112,7 +2112,6 @@ cc_library(
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:flags_headers",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -2123,8 +2122,15 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )
 

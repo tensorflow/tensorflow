@@ -992,20 +992,14 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
     EXPECT_CALL(devices[i], Id()).WillOnce(Return(DeviceId(i)));
   }
 
-  std::vector<xla::ifrt::LoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
   std::vector<xla::ifrt::Device*> addressable_devices;
   for (int i = 0; i < 4; ++i) {
-    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{i / 2, i % 2};
-    addressable_device_logical_ids.push_back(id);
     addressable_devices.push_back(&devices[i]);
   }
 
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
-  EXPECT_CALL(*executable, addressable_device_logical_ids())
-      .WillOnce(Return(absl::MakeSpan(addressable_device_logical_ids)));
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
@@ -1017,10 +1011,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   EXPECT_THAT(response, Partially(EquivToProto(R"pb(
                 name: "executable_name"
                 num_devices: 4
-                addressable_device_logical_ids { replica: 0 partition: 0 }
-                addressable_device_logical_ids { replica: 0 partition: 1 }
-                addressable_device_logical_ids { replica: 1 partition: 0 }
-                addressable_device_logical_ids { replica: 1 partition: 1 }
                 addressable_device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));
