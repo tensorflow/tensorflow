@@ -206,7 +206,7 @@ _DEFAULT_IMAGE = DockerImage(
 
 # TODO(b/338885148): Remove this once the TF containers have cuDNN 9
 _CUDNN_9_IMAGE = DockerImage(
-    image_url="gcr.io/tensorflow-sigs/build@sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545",
+    image_url="gcr.io/tensorflow-sigs/build@sha256:0a9728e258d7e0e5830d1960a65968ffdc1d138af5441e30948918e0d50ab2c7",
 )
 
 _ARM64_JAX_MULTI_PYTHON_IMAGE = DockerImage(

@@ -248,7 +248,7 @@ build:cuda_clang_official --action_env=TF_CUDA_VERSION="12"
 build:cuda_clang_official --action_env=TF_CUDNN_VERSION="8"
 build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.3"
 build:cuda_clang_official --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
+build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 build:cuda_clang_official --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
 
@@ -598,14 +598,11 @@ try-import %workspace%/.bazelrc.user
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
 
-# Ensure release_base is set on linux
-build:release_linux_base --config=release_base
-
-# Target the AVX instruction set
-build:release_linux_base --config=avx_linux
-
 # Enable support for all targets
 build:release_base --config=cpu_cross
+
+# Ensure release_base is set on linux
+build:release_linux_base --config=release_base
 
 # Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
@@ -629,8 +626,8 @@ build:release_linux_base --action_env PYTHON_BIN_PATH="/usr/bin/python3"
 build:release_linux_base --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
 build:release_linux_base --python_path="/usr/bin/python3"
 # Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_cpu_linux_base --repo_env=CC="/usr/lib/llvm-17/bin/clang"
-build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
+build:release_cpu_linux_base --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
 # Test-related settings below this point.
 test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
@@ -641,6 +638,8 @@ test:release_linux_base --test_summary=short
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
 build:release_cpu_linux --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
+# Target the AVX instruction set
+build:release_cpu_linux --config=avx_linux
 
 build:release_gpu_linux --config=release_cpu_linux
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
