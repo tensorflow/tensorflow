@@ -839,6 +839,56 @@ TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
   EXPECT_FALSE(CacheFileExists());
 }
 
+TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
+  const char* hlo = R"(
+  HloModule test, entry_computation_layout={()->(s32[], s32[])}
+    %Body (param: (s32[], s32[])) -> (s32[], s32[]) {
+      %param = (s32[], s32[]) parameter(0)
+      %i = s32[] get-tuple-element((s32[], s32[]) %param), index=1
+      %one = s32[] constant(1)
+      %i_plus_one = s32[] add(s32[] %i, s32[] %one)
+      %permute = s32[] collective-permute(%i_plus_one), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+      ROOT %tuple = (s32[], s32[]) tuple(s32[] %permute, s32[] %i_plus_one)
+    }
+    %Cond (param.1: (s32[], s32[])) -> pred[] {
+      %param.1 = (s32[], s32[]) parameter(0)
+      %i.1 = s32[] get-tuple-element((s32[], s32[]) %param.1), index=1
+      %trip_count = s32[] constant(10)
+      ROOT %done = pred[] compare(s32[] %i.1, s32[] %trip_count), direction=LT
+    }
+    ENTRY %test () -> (s32[], s32[]) {
+      %i_start = s32[] constant(0)
+      %p_start = s32[] constant(0)
+      %initial_tuple = (s32[], s32[]) tuple(s32[] %i_start, s32[] %p_start)
+      ROOT %while = (s32[], s32[]) while((s32[], s32[]) %initial_tuple), condition=%Cond, body=%Body, frontend_attributes={is_pipelined_while_loop="true"}
+    })";
+
+  const char* kExpected = R"(
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  )";
+
+  DebugOptions debug_options;
+  HloModuleConfig config;
+  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
+  config.set_debug_options(debug_options);
+  config.set_num_partitions(4);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(hlo, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(unoptimized_module)));
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(optimized_module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
