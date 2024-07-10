@@ -156,13 +156,3 @@ py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
     ],
 )
-
-alias(
-    name = "converter_error_data_proto",
-    actual = "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto",
-)
-
-alias(
-    name = "converter_error_data_proto_py",
-    actual = "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
-)
