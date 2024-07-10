@@ -2194,8 +2194,11 @@ cc_library(
 
 cc_library(
     name = "gpu_sort_rewriter",
-    srcs = if_gpu_is_configured(["gpu_sort_rewriter.cc"]),
-    hdrs = if_gpu_is_configured(["gpu_sort_rewriter.h"]),
+    srcs = if_gpu_is_configured(
+        ["gpu_sort_rewriter.cc"],
+        ["gpu_sort_rewriter_stub.cc"],
+    ),
+    hdrs = ["gpu_sort_rewriter.h"],
     deps = [
         ":cublas_cudnn",
         "//xla:comparison_util",
