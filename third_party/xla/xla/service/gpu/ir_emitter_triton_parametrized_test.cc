@@ -798,6 +798,9 @@ class TritonSoftmaxTest : public GpuCodegenTest,
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    // TODO(b/38354253): Remove once HloTestBase does not remove constant
+    // folding.
+    debug_options.clear_xla_disable_hlo_passes();
     return debug_options;
   }
 
@@ -2117,16 +2120,15 @@ TEST_P(
   const std::string hlo_text_template = R"(
 HloModule nonfusible_diamond
 max_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT max = $0[] maximum(arg_0.1, arg_1.1)
+  arg_0 = $0[] parameter(0)
+  arg_1 = $0[] parameter(1)
+  ROOT max = $0[] maximum(arg_0, arg_1)
 }
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  constant_2 = $0[] constant(0.333333343)
-  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
   param_1 = $0[127,125]{1,0} parameter(1)
-  multiply_splat = $0[127,125]{1,0} multiply(broadcast_splat, param_1)
+  constant_2 = $0[] constant(2)
+  broadcast_splat = $0[127,125]{1,0} broadcast(constant_2), dimensions={}
   multiply = $0[127,125]{1,0} multiply(param_0, broadcast_splat)
   constant_neg_inf = $0[] constant(-inf)
   reduce = $0[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation

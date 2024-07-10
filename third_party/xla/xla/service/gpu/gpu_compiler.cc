@@ -1410,8 +1410,14 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
         cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+      // Triton compilation needs normalized operations on bf16 (i.e. converted
+      // to f32).
+      add_float_normalization(pipeline);
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
+      pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+      pipeline.AddPass<HloConstantFolding>();
+      pipeline.AddPass<HloDCE>();
       pipeline.AddPass<SoftmaxRewriterTriton>(
           gpu_target_config.device_description, ShapeSizeBytesFunction());
     }

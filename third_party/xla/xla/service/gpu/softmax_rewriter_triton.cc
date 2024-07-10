@@ -242,8 +242,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return static_cast<bool>(
-        legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
+    return static_cast<bool>(IsTritonSupportedInstruction(*instr, gpu_version));
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
@@ -256,7 +255,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
       return static_cast<bool>(
-          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
+          IsTritonSupportedInstruction(*instr, gpu_version));
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands
@@ -268,7 +267,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
         (IsBroadcastOfScalarConstant(*operand_1) ||
          IsSupportedBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
-          legacy_triton::IsTritonSupportedInstruction(*instr, gpu_version));
+          IsTritonSupportedInstruction(*instr, gpu_version));
     }
   }
 
@@ -475,8 +474,8 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Root is not elementwise binary.";
   }
 
-  if (!legacy_triton::IsTritonSupportedInstruction(
-          *instr, device_info_.gpu_compute_capability())) {
+  if (!IsTritonSupportedInstruction(*instr,
+                                    device_info_.gpu_compute_capability())) {
     return "Root is not supported for Triton instruction.";
   }
 
@@ -500,9 +499,8 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Broadcast or reduce have non-default layouts.";
   }
 
-  if (CodegenDecision is_supported =
-          legacy_triton::IsTritonSupportedInstruction(
-              *reduce, device_info_.gpu_compute_capability());
+  if (CodegenDecision is_supported = IsTritonSupportedInstruction(
+          *reduce, device_info_.gpu_compute_capability());
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return is_supported;
@@ -557,14 +555,6 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
       continue;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      PrimitiveType element_ty = instr->shape().element_type();
-      // TODO(b/281980675): ensure that code generation also works well for FP8
-      // and BF16. This fails for the moment due to these data types requiring
-      // float normalization.
-      if (element_ty != F16 && element_ty != F32 && element_ty != BF16) {
-        continue;
-      }
-
       auto producer = MatchesTritonCompatibleClosedReductionDiamond(instr);
       if (std::holds_alternative<HloInstruction*>(producer)) {
         DiamondChainDescriptor diamond_chain{
