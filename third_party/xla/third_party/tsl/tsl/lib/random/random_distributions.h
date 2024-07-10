@@ -20,9 +20,11 @@ limitations under the License.
 #include <cmath>
 #include <type_traits>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/random_distributions_utils.h"
+#include "tsl/platform/bfloat16.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {

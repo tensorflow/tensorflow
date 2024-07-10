@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tsl/lib/random/exact_uniform_int.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace random {

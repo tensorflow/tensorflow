@@ -661,41 +661,28 @@ absl::StatusOr<Value> EmitScope(
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values);
 
-absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
-                                 absl::string_view libdevice_path,
-                                 const se::DeviceDescription& device_info,
-                                 const HloInstruction& hlo_reduce,
-                                 Value input) {
-  llvm::ArrayRef<int64_t> input_shape =
-      mlir::cast<TensorValue>(input).getType().getShape();
-
+absl::StatusOr<Value> EmitReduce(
+    ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_reduce,
+    absl::flat_hash_map<const TiledHloInstruction*, Value>& values,
+    absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info) {
+  const HloReduceInstruction& hlo_reduce =
+      *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
   // At the moment, we should only emit a full reduction over the last axis of
   // a single input.
   TF_RET_CHECK(hlo_reduce.operand_count() == 2);
   TF_RET_CHECK(hlo_reduce.dimensions().size() == 1);
-  TF_RET_CHECK(hlo_reduce.dimensions(0) ==
+  TF_RET_CHECK(hlo_reduce.dimensions().front() ==
                hlo_reduce.operand(0)->shape().rank() - 1);
-  const int block_row = input_shape.back();
-  const int row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
-  TF_RET_CHECK(block_row >= row_len);
 
-  const HloInstruction* operand = hlo_reduce.operand(1);
-  Value neutral;
+  const int64_t row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
+  const int64_t block_row = llvm::PowerOf2Ceil(row_len);
+  Value input = values[tiled_hlo_reduce.operand(0)];
+  Value neutral = values[tiled_hlo_reduce.operand(1)];
 
-  // We assume that the reduction value was input as a constant, or in the case
-  // of a data type affected by float normalization, a convert of a constant.
-  if (operand->opcode() == HloOpcode::kConvert) {
-    TF_RET_CHECK(operand->operand(0)->opcode() == HloOpcode::kConstant);
-    TF_RET_CHECK(operand->operand(0)->shape().element_type() == BF16);
-    TF_RET_CHECK(operand->shape().element_type() == F32);
-    TF_ASSIGN_OR_RETURN(Type dst_ty,
-                        TritonType(b, operand->shape().element_type()));
-    TF_ASSIGN_OR_RETURN(neutral, EmitConstant(b, *operand->operand(0)));
-    neutral = Cast(b, neutral, dst_ty);
-  } else {
-    TF_RET_CHECK(operand->opcode() == HloOpcode::kConstant);
-    TF_ASSIGN_OR_RETURN(neutral, EmitConstant(b, *operand));
-  }
+  llvm::ArrayRef<int64_t> input_shape =
+      mlir::cast<ShapedType>(values[tiled_hlo_reduce.operand(0)].getType())
+          .getShape();
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -709,7 +696,16 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     Value mask = b.create<ma::CmpIOp>(
         ma::CmpIPredicate::slt, Range(b, block_row),
         Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
-    input = b.create<ma::SelectOp>(mask, input, Splat(b, neutral, input_shape));
+
+    // Make the mask match the rank of the input.
+    for (int dim = 0; dim < input_shape.size() - 1; ++dim) {
+      mask = b.create<mt::ExpandDimsOp>(mask, /*axis=*/0);
+    }
+    mask = Broadcast(b, mlir::cast<TensorValue>(mask), input_shape);
+
+    input = b.create<ma::SelectOp>(
+        mask, input,
+        Broadcast(b, mlir::cast<TensorValue>(neutral), input_shape));
   }
 
   // Triton actually only performs reductions on float32 inputs, and we must
@@ -892,8 +888,7 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kReduce) {
-    return EmitReduce(b, libdevice_path, device_info, *hlo,
-                      values[tiled_hlo.operand(0)]);
+    return EmitReduce(b, tiled_hlo, values, libdevice_path, device_info);
   }
 
   if (hlo->IsElementwise()) {
@@ -973,9 +968,6 @@ absl::StatusOr<Value> EmitScope(
       TF_ASSIGN_OR_RETURN(
           result, EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
                                 values[hlo->operand(0)]));
-    } else if (hlo->opcode() == HloOpcode::kReduce) {
-      TF_ASSIGN_OR_RETURN(result, EmitReduce(b, libdevice_path, device_info,
-                                             *hlo, values[hlo->operand(0)]));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());

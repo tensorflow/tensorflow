@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/random/random_distributions.h"
+#ifndef XLA_STREAM_EXECUTOR_CUDA_NVJITLINK_SUPPORT_H_
+#define XLA_STREAM_EXECUTOR_CUDA_NVJITLINK_SUPPORT_H_
 
-#include "tsl/lib/random/philox_random.h"
-#include "tsl/platform/types.h"
+namespace stream_executor {
+// Returns true if XLA was built with libnvjitlink support. Otherwise false
+// is returned.
+bool IsLibNvJitLinkSupported();
+}  // namespace stream_executor
 
-namespace tsl {
-namespace random {
-template <>
-void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64 num_skips) {
-  // Use the O(1) PhiloxRandom::Skip instead of the default O(N) impl.
-  generator_->Skip(num_skips);
-}
-}  // namespace random
-}  // namespace tsl
+#endif  // XLA_STREAM_EXECUTOR_CUDA_NVJITLINK_SUPPORT_H_
