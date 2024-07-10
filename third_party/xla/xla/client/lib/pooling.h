@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
+#include "xla/client/padding.h"
 #include "xla/client/xla_builder.h"
 
 namespace xla {

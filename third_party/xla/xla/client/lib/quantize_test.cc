@@ -18,12 +18,14 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "xla/array2d.h"
 #include "xla/client/xla_builder.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "tsl/platform/bfloat16.h"
 
 namespace xla {
 namespace {
