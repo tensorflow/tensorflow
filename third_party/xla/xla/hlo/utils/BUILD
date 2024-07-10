@@ -46,8 +46,12 @@ xla_cc_test(
     srcs = ["hlo_live_range_test.cc"],
     deps = [
         ":hlo_live_range",
+        "//xla:comparison_util",
         "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_ordering",
@@ -55,6 +59,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -66,10 +71,15 @@ cc_library(
     srcs = ["hlo_matchers.cc"],
     hdrs = ["hlo_matchers.h"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -79,12 +89,16 @@ xla_cc_test(
     srcs = ["hlo_matchers_test.cc"],
     deps = [
         ":hlo_matchers",
+        "//xla:array",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -115,6 +129,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -154,10 +169,13 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
