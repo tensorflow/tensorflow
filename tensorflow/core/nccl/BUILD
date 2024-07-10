@@ -93,6 +93,7 @@ cc_library(
         [
             ":loose_headers",
             "//tensorflow/core:framework",
+            "//tensorflow/core/protobuf:for_core_protos_cc",
         ] + if_nccl([
             ":nccl_lib",
             "@com_google_absl//absl/memory",
