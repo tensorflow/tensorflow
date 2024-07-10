@@ -19,7 +19,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 // clang-format on
 
-#include "Python.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 
