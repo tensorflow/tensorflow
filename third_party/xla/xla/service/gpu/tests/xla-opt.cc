@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllExtensions(registry);
   registerTritonDialects(registry);  // This registers all passes as well.
-  xla::gpu::registerSparsePasses();
+  xla::gpu::RegisterSparsePasses();
   xla::gpu::RegisterPreventMmaV3LoopUnrollingPass();
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(

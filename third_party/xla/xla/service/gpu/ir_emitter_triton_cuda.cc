@@ -65,7 +65,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), block_level_parameters.num_warps,
       threadsPerWarp, block_level_parameters.num_ctas));
-  pm.addPass(createAddSparseDotEncodingPass(block_level_parameters.num_warps,
+  pm.addPass(CreateAddSparseDotEncodingPass(block_level_parameters.num_warps,
                                             threadsPerWarp,
                                             block_level_parameters.num_ctas));
   pm.addPass(mt::gpu::createTritonGPUCoalesce());
@@ -75,7 +75,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  pm.addPass(createSparseBlockedToMMAPass());
+  pm.addPass(CreateSparseBlockedToMMAPass());
   pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(
@@ -113,11 +113,11 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(createSparseLocalLoadOpToLLVMPass());
+  pm.addPass(CreateSparseLocalLoadOpToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   // The triton_gpu.sparse_dot ops need to be rewritten after
   // ModuleAxisInfoAnalysis inside convert-triton-gpu-to-llvm.
-  pm.addPass(createSparseDotOpToLLVMPass());
+  pm.addPass(CreateSparseDotOpToLLVMPass());
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
