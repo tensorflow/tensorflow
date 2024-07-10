@@ -173,14 +173,22 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
-  absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::tf2xla::v2::ConvertMlirToGraphdef(module, confs));
-  if (!graphdef_or.status().ok()) {
-    LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
+  tensorflow::FunctionLibraryDefinition flib_def(
+      tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
+  auto graph =
+      std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
+  absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
+
+  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      module, confs, &graph, &flib_def, &control_ret_nodes);
+  if (!status.ok()) {
+    LOG(ERROR) << "Export to Graph failed: " << status;
     return mlir::failure();
   }
 
-  output << tsl::LegacyUnredactedDebugString(*graphdef_or.value());
+  tensorflow::GraphDef graphdef;
+  graph->ToGraphDef(&graphdef);
+  output << tsl::LegacyUnredactedDebugString(graphdef);
   return success();
 }
 

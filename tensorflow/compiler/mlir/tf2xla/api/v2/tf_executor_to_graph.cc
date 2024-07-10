@@ -766,6 +766,10 @@ Status Exporter::Convert(mlir::ModuleOp module,
     }
   }
 
+  if (flib_def != nullptr) {
+    TF_RETURN_IF_ERROR(flib_def->AddLibrary(temp_flib_def));
+  }
+
   if (!configs.export_entry_func_to_flib) {
     if (!entry_func.has_value())
       return errors::FailedPrecondition(
@@ -782,11 +786,11 @@ Status Exporter::Convert(mlir::ModuleOp module,
     // calls), they are ignored.
     TF_RETURN_IF_ERROR(
         graph->get()->mutable_flib_def()->AddLibrary(temp_flib_def));
+  } else if (graph != nullptr) {
+    TF_RETURN_IF_ERROR(
+        graph->get()->mutable_flib_def()->AddLibrary(std::move(*flib_def)));
   }
 
-  if (flib_def != nullptr) {
-    TF_RETURN_IF_ERROR(flib_def->AddLibrary(temp_flib_def));
-  }
   return absl::OkStatus();
 }
 
