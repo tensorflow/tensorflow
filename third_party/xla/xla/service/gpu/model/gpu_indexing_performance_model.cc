@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,10 +55,58 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerReduceComputation(
+    const HloComputation* computation) {
+  int64_t flops_per_computation = 0;
+  for (const auto* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      flops_per_computation +=
+          FlopsPerReduceComputation(instr->fused_instructions_computation());
+    } else {
+      flops_per_computation += FlopsPerElement(instr);
+    }
+  }
+  return flops_per_computation;
+}
+
+int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerReduceElement(
+    const HloInstruction* reduce) {
+  auto operand_shape = reduce->operand(0)->shape();
+  auto output_shape = reduce->shape().IsArray()
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+
+  // Size of reduction dimensions.
+  int64_t reduction_factor = ShapeUtil::ElementsIn(operand_shape) /
+                             ShapeUtil::ElementsIn(output_shape);
+
+  // To reduce N elements, reduction computation will be applied N-1 times.
+  return (reduction_factor - 1) *
+         FlopsPerReduceComputation(reduce->called_computations()[0]);
+}
+
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
-    const HloInstruction* instr) const {
-  // TODO(shyshkov): Replace dependency on GpuHloCostAnalysis with independent
-  // flops calculation.
+    const HloInstruction* instr) {
+  // The estimate for reduce depends on the reduction computation, so it's
+  // harder to cache.
+  if (instr->opcode() == HloOpcode::kReduce) {
+    return FlopsPerReduceElement(instr);
+  }
+
+  std::pair<HloOpcode, PrimitiveType> key = {instr->opcode(),
+                                             instr->shape().element_type()};
+
+  {
+    absl::MutexLock lock(&flops_per_element_cache_mutex_);
+    auto it = flops_per_element_cache_.find(key);
+    if (it != flops_per_element_cache_.end()) {
+      return it->second;
+    }
+  }
+
+  // TODO(shyshkov): Consider inlining all the costs here instead of calling
+  // GpuHloCostAnalysis. Current approach with caching makes sure that this Cost
+  // Model doesn't diverge from other places that use GpuHloCostAnalysis.
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size_,
       /*per_second_rates=*/{},
@@ -66,14 +115,12 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
   TF_CHECK_OK(
       cost_analysis.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
-  int64_t num_elements = [&] {
-    if (instr->opcode() == HloOpcode::kReduce && instr->shape().IsTuple()) {
-      return ShapeUtil::ElementsInRecursive(instr->shape().tuple_shapes(0));
-    }
-    return ShapeUtil::ElementsInRecursive(instr->shape());
-  }();
+  int64_t num_elements = ShapeUtil::ElementsInRecursive(instr->shape());
+  int64_t result = cost_analysis.flop_count(*instr) / num_elements;
 
-  return cost_analysis.flop_count(*instr) / num_elements;
+  absl::MutexLock lock(&flops_per_element_cache_mutex_);
+  flops_per_element_cache_[key] = result;
+  return result;
 }
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::GetShapeSizeRecursive(

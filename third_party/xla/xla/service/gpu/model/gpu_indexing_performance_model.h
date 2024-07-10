@@ -16,22 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 
-#include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <variant>
-#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
@@ -112,8 +114,18 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
  private:
   // Returns an estimate how many FLOPs will be used to produce one element of
+  // the output of the reduction computation. For variadic computation, returns
+  // the estimate to produce one element of each output.
+  int64_t FlopsPerReduceComputation(const HloComputation* computation);
+
+  // Returns an estimate how many FLOPs will be used to produce one element of
+  // the reduction output. For variadic reduction, returns the estimate to
+  // produce one element of each output.
+  int64_t FlopsPerReduceElement(const HloInstruction* reduce);
+
+  // Returns an estimate how many FLOPs will be used to produce one element of
   // the output.
-  int64_t FlopsPerElement(const HloInstruction* instr) const;
+  int64_t FlopsPerElement(const HloInstruction* instr);
 
   int64_t GetShapeSizeRecursive(const Shape& shape) const;
 
@@ -122,6 +134,10 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   mlir::MLIRContext* mlir_context_;
+
+  absl::Mutex flops_per_element_cache_mutex_;
+  absl::flat_hash_map<std::pair<HloOpcode, PrimitiveType>, int64_t>
+      flops_per_element_cache_ ABSL_GUARDED_BY(flops_per_element_cache_mutex_);
 };
 
 }  // namespace gpu

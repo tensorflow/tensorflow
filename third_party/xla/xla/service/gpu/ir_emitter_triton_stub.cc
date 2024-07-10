@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -121,7 +122,7 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 namespace ir_emitter_triton_internal {
 
 MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
-    mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value argument_block) {
   return MakeTensorPtrOpAndBoundaryChecks();
 }
