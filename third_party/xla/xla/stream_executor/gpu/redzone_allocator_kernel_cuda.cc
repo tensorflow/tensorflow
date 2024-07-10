@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/typed_kernel_factory.h"

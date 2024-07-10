@@ -305,6 +305,7 @@ gpu_only_cc_library(
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
