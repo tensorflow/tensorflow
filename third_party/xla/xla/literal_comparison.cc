@@ -31,7 +31,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -50,7 +49,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/ml_dtypes.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
