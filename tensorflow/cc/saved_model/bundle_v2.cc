@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"

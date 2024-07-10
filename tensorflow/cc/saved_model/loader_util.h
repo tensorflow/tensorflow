@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {

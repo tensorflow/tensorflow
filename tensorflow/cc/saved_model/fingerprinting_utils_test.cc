@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
