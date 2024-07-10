@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 namespace tfg {
