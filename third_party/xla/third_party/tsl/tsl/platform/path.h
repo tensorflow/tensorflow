@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 

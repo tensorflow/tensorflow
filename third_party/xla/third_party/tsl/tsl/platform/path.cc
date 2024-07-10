@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include "absl/types/span.h"
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #else

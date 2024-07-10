@@ -26,10 +26,11 @@ limitations under the License.
 #include <locale>
 #include <unordered_map>
 
-#include "double-conversion/double-conversion.h"
-#include "tsl/platform/str_util.h"
+#include "absl/strings/strip.h"
+#include "third_party/libdoubleconversion/double-conversion/string-to-double.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/types.h"
 

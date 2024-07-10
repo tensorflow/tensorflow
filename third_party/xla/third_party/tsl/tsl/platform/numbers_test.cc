@@ -18,7 +18,9 @@ limitations under the License.
 #include <cmath>
 #include <string>
 
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace strings {
