@@ -146,11 +146,12 @@ TEST_F(IndexingMapTest, Composition_RestrictedInterval) {
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
-                          domain:
-                          d0 in [0, 5)
+                          domain:x
+                          d0 in [0, 10)
                           s0 in [0, 7)
                           s1 in [0, 2)
                           s2 in [0, 6)
+                          d0 in [0, 5)
                         )"));
 }
 
@@ -434,14 +435,14 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
 TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_FloorDivPositiveDivisorPositiveBounds) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
+      ParseAffineMap("()[s0] -> (s0)", &mlir_context_), {}, {100});
 
-  indexing_map.AddConstraint(ParseAffineExpr("d0 floordiv 8", &mlir_context_),
+  indexing_map.AddConstraint(ParseAffineExpr("s0 floordiv 8", &mlir_context_),
                              Interval{5, 11});
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
-                          (d0) -> (d0)
+                          ()[s0] -> (s0)
                           domain:
-                          d0 in [40, 96)
+                          s0 in [40, 96)
                         )"));
 }
 
@@ -480,14 +481,14 @@ TEST_F(IndexingMapTest,
 TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_MulPositiveMultiplierPositiveBounds) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
+      ParseAffineMap("()[s0] -> (s0)", &mlir_context_), {}, {100});
 
-  indexing_map.AddConstraint(ParseAffineExpr("d0 * 8", &mlir_context_),
+  indexing_map.AddConstraint(ParseAffineExpr("s0 * 8", &mlir_context_),
                              Interval{14, 33});
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
-                          (d0) -> (d0)
+                          ()[s0] -> (s0)
                           domain:
-                          d0 in [2, 5)
+                          s0 in [2, 5)
                         )"));
 }
 

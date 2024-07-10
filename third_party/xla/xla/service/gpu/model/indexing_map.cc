@@ -1035,10 +1035,24 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
     return;
   }
   if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
-    Interval& current_range = GetMutableDimensionBound(dim_expr.getPosition());
-    current_range = current_range.Intersect(range);
-    if (!current_range.IsFeasible()) ResetToKnownEmpty();
-    return;
+    // We don't modify the bound of the dimension, because it might be a
+    // launch grid dimension. The indexing map is not the source of truth for
+    // the launch grid, so eliminating a constraint on a dimension is not safe.
+    // This restriction does not apply to symbols, because they are used to
+    // generate loops from the map.
+    // Note that when we *could* reduce the size of the bound, this means that
+    // the launch grid might be too large.
+    Interval current_bound = GetMutableDimensionBound(dim_expr.getPosition());
+    Interval intersected_bound = current_bound.Intersect(range);
+    if (!intersected_bound.IsFeasible()) {
+      ResetToKnownEmpty();
+      return;
+    }
+    // If the constraint range contains the dimension range, we do not need to
+    // add it.
+    if (intersected_bound == current_bound) {
+      return;
+    }
   }
   if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
     Interval& current_range = GetMutableSymbolBound(symbol_expr.getPosition());
