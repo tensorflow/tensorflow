@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -148,6 +149,11 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 // Exposed for testing purposes only. Do not use.
 namespace ir_emitter_triton_internal {
 
+// Computes the transformation from a 1-d program_id to a tile multi-index.
+llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
+    mlir::ImplicitLocOpBuilder& b,
+    const TiledHloComputation& tiled_hlo_computation);
+
 // Used for creating Triton Load and Store ops.
 struct MakeTensorPtrOpAndBoundaryChecks {
   mt::MakeTensorPtrOp op;
@@ -158,7 +164,7 @@ struct MakeTensorPtrOpAndBoundaryChecks {
 };
 
 MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
-    mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
 }  // namespace ir_emitter_triton_internal
 

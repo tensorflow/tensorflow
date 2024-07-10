@@ -90,10 +90,10 @@ AffineExpr GetRhs(AffineExpr e) {
 
 // Rewrites summands in arbitrarily nested sums (e.g, ((a+b)+c)) by applying
 // `fn` to each one. In the example, the result is fn(a)+fn(b)+fn(c).
-AffineExpr MapSummands(AffineExpr expr,
-                       const std::function<AffineExpr(AffineExpr)>& fn) {
+template <typename Fn>
+AffineExpr MapSummands(AffineExpr expr, const Fn& fn) {
   if (expr.getKind() == AffineExprKind::Add) {
-    auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
+    auto add = mlir::cast<AffineBinaryOpExpr>(expr);
     auto lhs = MapSummands(add.getLHS(), fn);
     auto rhs = MapSummands(add.getRHS(), fn);
     if (lhs == add.getLHS() && rhs == add.getRHS()) {
@@ -105,8 +105,8 @@ AffineExpr MapSummands(AffineExpr expr,
 }
 
 // Calls `visit` for each summand in an arbitrarily nested sum.
-void VisitSummands(mlir::AffineExpr expr,
-                   const std::function<void(mlir::AffineExpr)>& visit) {
+template <typename Fn>
+void VisitSummands(mlir::AffineExpr expr, const Fn& visit) {
   if (expr.getKind() == AffineExprKind::Add) {
     VisitSummands(GetLhs(expr), visit);
     VisitSummands(GetRhs(expr), visit);
@@ -118,7 +118,8 @@ void VisitSummands(mlir::AffineExpr expr,
 class AffineExprSimplifier {
  public:
   explicit AffineExprSimplifier(RangeEvaluator* range_evaluator)
-      : range_evaluator_(range_evaluator) {}
+      : range_evaluator_(range_evaluator),
+        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())) {}
 
   // Simplifies the map as much as possible.
   mlir::AffineMap Simplify(mlir::AffineMap affine_map);
@@ -179,6 +180,7 @@ class AffineExprSimplifier {
       AffineExpr sum);
 
   RangeEvaluator* range_evaluator_;
+  AffineExpr zero_;
 };
 
 AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
@@ -191,7 +193,7 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   int64_t m = rhs.lower;
   // Can only happen in cases where it doesn't matter, return 0.
   if (m == 0) {
-    return mlir::getAffineConstantExpr(0, mod.getContext());
+    return zero_;
   }
 
   auto lhs_simplified = SimplifyOnce(mod.getLHS());
@@ -212,32 +214,33 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     return (GetLhs(lhs_simplified) % (m / *mul)) * *mul;
   }
 
-  auto zero = getAffineConstantExpr(0, mod.getContext());
   int64_t extracted_constant = 0;
   auto new_lhs = MapSummands(lhs_simplified, [&](AffineExpr expr) {
     if (auto cst = mlir::dyn_cast<AffineConstantExpr>(expr)) {
       extracted_constant += cst.getValue();
-      return zero;
+      return zero_;
     }
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul);
         multiplier && (*multiplier % m == 0)) {
-      return zero;
+      return zero_;
     }
     return expr;
   });
-  new_lhs = new_lhs + (extracted_constant % m);
+
+  if (extracted_constant % m != 0) {
+    new_lhs = new_lhs + (extracted_constant % m);
+  }
 
   auto [multiplied, multiplier_gcd, not_multiplied] = SplitSumByGcd(new_lhs);
-  mlir::AffineExpr extracted = getAffineConstantExpr(0, mod.getContext());
   if (multiplier_gcd != 1 && m % multiplier_gcd == 0 &&
       Interval{0, multiplier_gcd - 1}.Contains(
           range_evaluator_->ComputeExpressionRange(not_multiplied))) {
     // Remove everything that doesn't have a multiplier.
     new_lhs = multiplied * multiplier_gcd;
-    extracted = not_multiplied;
+    return new_lhs % mod.getRHS() + not_multiplied;
   }
 
-  return new_lhs % mod.getRHS() + extracted;
+  return new_lhs == mod.getLHS() ? mod : (new_lhs % mod.getRHS());
 }
 
 AffineExpr AffineExprSimplifier::SimplifyModDiv(AffineExpr dividend,
@@ -260,8 +263,7 @@ AffineExpr AffineExprSimplifier::SimplifyDivDiv(AffineExpr dividend,
 
 AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
                                                 int64_t divisor) {
-  AffineExpr zero = getAffineConstantExpr(0, dividend.getContext());
-  AffineExpr extracted = zero;
+  AffineExpr extracted = zero_;
   auto new_dividend = MapSummands(dividend, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       // We can extract summands whose factor is a multiple of the divisor.
@@ -269,7 +271,7 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
         int64_t factor = *multiplier / divisor;
         extracted = extracted + GetLhs(expr) * factor;
         // Remove from dividend.
-        return zero;
+        return zero_;
       }
     }
     // Not a constant multiplier, keep in dividend.
@@ -316,14 +318,17 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
     new_dividend = MapSummands(new_dividend, [&](AffineExpr summand) {
       if (auto inner_divisor =
               GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
-        return GetLhs(summand).floorDiv(*inner_divisor / *inner_divisor);
+        return GetLhs(summand);
       }
       return summand * *inner_divisor;
     });
     divisor *= *inner_divisor;
   }
 
-  return new_dividend.floorDiv(divisor) + extracted;
+  if (new_dividend != dividend) {
+    return new_dividend.floorDiv(divisor) + extracted;
+  }
+  return nullptr;
 }
 
 AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
@@ -352,7 +357,7 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     return result;
   }
 
-  return div;
+  return lhs_simplified != div.getLHS() ? lhs_simplified.floorDiv(d) : div;
 }
 
 std::optional<int64_t> AffineExprSimplifier::GetConstantRhs(
@@ -441,6 +446,10 @@ AffineExpr CanonicalizeOrder(AffineExpr in) {
 }
 
 AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
+  if (expr.getKind() == AffineExprKind::Constant) {
+    return expr;
+  }
+
   auto bounds = range_evaluator_->ComputeExpressionRange(expr);
   if (bounds.IsPoint()) {
     return getAffineConstantExpr(bounds.lower,
@@ -518,7 +527,7 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
         return expr;
       }
 
-      AffineExpr result = mlir::getAffineConstantExpr(0, expr.getContext());
+      AffineExpr result = zero_;
       for (auto expr : others) {
         result = result + expr;
       }
@@ -1015,8 +1024,7 @@ IndexingMap IndexingMap::FromTensorSizes(
 }
 
 RangeEvaluator IndexingMap::GetRangeEvaluator() const {
-  return RangeEvaluator(GetDimensionBounds(), GetSymbolBounds(),
-                        GetMLIRContext());
+  return RangeEvaluator(*this, GetMLIRContext());
 }
 
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
@@ -1138,17 +1146,9 @@ SmallVector<int64_t, 4> IndexingMap::Evaluate(
   return eval.getConstantResults();
 }
 
-RangeEvaluator::RangeEvaluator(absl::Span<const Interval> dim_ranges,
-                               absl::Span<const Interval> symbol_ranges,
+RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
                                MLIRContext* mlir_context)
-    : mlir_context_(mlir_context) {
-  for (const auto& [index, range] : llvm::enumerate(dim_ranges)) {
-    expression_ranges_cache_[getAffineDimExpr(index, mlir_context_)] = range;
-  }
-  for (const auto& [index, range] : llvm::enumerate(symbol_ranges)) {
-    expression_ranges_cache_[getAffineSymbolExpr(index, mlir_context_)] = range;
-  }
-}
+    : mlir_context_(mlir_context), indexing_map_(indexing_map) {}
 
 bool RangeEvaluator::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
   return ComputeExpressionRange(expr).lower >= 0;
@@ -1164,12 +1164,12 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
       int64_t value = mlir::cast<AffineConstantExpr>(expr).getValue();
       return Interval{value, value};
     }
-    case AffineExprKind::DimId: {
-      return expression_ranges_cache_[expr];
-    }
-    case AffineExprKind::SymbolId: {
-      return expression_ranges_cache_[expr];
-    }
+    case AffineExprKind::DimId:
+      return indexing_map_.GetDimensionBound(
+          mlir::cast<AffineDimExpr>(expr).getPosition());
+    case AffineExprKind::SymbolId:
+      return indexing_map_.GetSymbolBound(
+          mlir::cast<AffineSymbolExpr>(expr).getPosition());
     default:
       auto bound = expression_ranges_cache_.find(expr);
       if (bound != expression_ranges_cache_.end()) {
@@ -1310,8 +1310,7 @@ bool IndexingMap::Simplify() {
 
   // Simplify affine_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
-  RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
-                                 GetMLIRContext());
+  RangeEvaluator range_evaluator(*this, GetMLIRContext());
   AffineExprSimplifier simplifier(&range_evaluator);
   while (true) {
     bool did_simplify = false;
@@ -1384,8 +1383,7 @@ bool AffineExprSimplifier::SimplifyConstraintRanges(IndexingMap& map) {
 std::tuple<AffineExpr, int64_t, AffineExpr> AffineExprSimplifier::SplitSumByGcd(
     AffineExpr sum) {
   std::optional<int64_t> multiplier_gcd = std::nullopt;
-  AffineExpr zero = getAffineConstantExpr(0, sum.getContext());
-  AffineExpr no_multiplier = zero;
+  AffineExpr no_multiplier = zero_;
   VisitSummands(sum, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       if (multiplier_gcd.has_value()) {
@@ -1398,7 +1396,7 @@ std::tuple<AffineExpr, int64_t, AffineExpr> AffineExprSimplifier::SplitSumByGcd(
 
   // If nothing had a multiplier, or the GCD was 1, there's nothing to split.
   if (multiplier_gcd.value_or(1) == 1) {
-    return {zero, 1, sum};
+    return {zero_, 1, sum};
   }
 
   auto scaled = MapSummands(sum, [&](AffineExpr expr) {
@@ -1408,7 +1406,7 @@ std::tuple<AffineExpr, int64_t, AffineExpr> AffineExprSimplifier::SplitSumByGcd(
     }
     // Extract the summand.
     no_multiplier = no_multiplier + expr;
-    return zero;
+    return zero_;
   });
 
   return {scaled, *multiplier_gcd, no_multiplier};
@@ -1669,8 +1667,7 @@ SmallBitVector IndexingMap::RemoveUnusedVars() {
 }
 
 bool IndexingMap::MergeModConstraints() {
-  RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
-                                 GetMLIRContext());
+  RangeEvaluator range_evaluator(*this, GetMLIRContext());
   bool did_simplify = false;
 
   // Group constraints by LHS.

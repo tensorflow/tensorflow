@@ -306,6 +306,7 @@ cc_library(
 xla_cc_test(
     name = "gloo_collectives_test",
     srcs = ["gloo_collectives_test.cc"],
+    tags = ["nomac"],
     deps = [
         ":gloo_collectives",
         ":gloo_kv_store",
