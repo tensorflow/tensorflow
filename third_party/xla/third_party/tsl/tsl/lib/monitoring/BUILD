@@ -79,6 +79,8 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "//tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -161,11 +163,13 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         ":test_utils",
-        ":types",
         "//tsl/platform:errors",
         "//tsl/platform:status",
         "//tsl/platform:statusor",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -179,10 +183,13 @@ cc_library(
         ":metric_def",
         ":types",
         "//tsl/platform",
+        "//tsl/platform:env_time",
         "//tsl/platform:macros",
         "//tsl/platform:mutex",
         "//tsl/platform:status",
         "//tsl/platform:thread_annotations",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -198,6 +205,7 @@ cc_library(
         "//tsl/platform:statusor",
         "//tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
