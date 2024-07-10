@@ -32,8 +32,6 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/utils.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
