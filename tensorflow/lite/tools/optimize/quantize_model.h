@@ -18,10 +18,13 @@ limitations under the License.
 #include <memory>
 #include <unordered_set>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

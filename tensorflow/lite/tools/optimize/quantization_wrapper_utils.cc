@@ -19,7 +19,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {

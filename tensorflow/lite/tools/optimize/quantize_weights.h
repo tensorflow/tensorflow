@@ -23,9 +23,11 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace optimize {

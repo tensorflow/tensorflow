@@ -17,9 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {

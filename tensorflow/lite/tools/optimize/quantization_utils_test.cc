@@ -21,14 +21,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {
