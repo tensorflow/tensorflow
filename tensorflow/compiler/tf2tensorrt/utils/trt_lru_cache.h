@@ -20,6 +20,7 @@ limitations under the License.
 #include <thread>
 #include <unordered_map>
 
+#include "absl/log/check.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
