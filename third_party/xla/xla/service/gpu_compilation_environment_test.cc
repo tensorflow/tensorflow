@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
