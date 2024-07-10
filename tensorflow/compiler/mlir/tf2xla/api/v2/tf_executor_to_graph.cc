@@ -807,21 +807,14 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
       Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes));
 }
 
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def) {
-  absl::flat_hash_set<Node*> control_ret_nodes;
-  return ConvertMlirToGraph(module, configs, graph, flib_def,
-                            &control_ret_nodes);
-}
-
 absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     mlir::ModuleOp module, const GraphExportConfig& configs) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
   std::unique_ptr<Graph> graph;
-  TF_RETURN_IF_ERROR(ConvertMlirToGraph(module, configs, &graph, &flib_def));
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  TF_RETURN_IF_ERROR(ConvertMlirToGraph(module, configs, &graph, &flib_def,
+                                        &control_ret_nodes));
 
   // If the entry function is exported to flib, then no graph is constructed.
   // Construct one in that case.

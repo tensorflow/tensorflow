@@ -17,7 +17,7 @@
 import io
 import os
 
-from tensorflow.lite.toco.logging import toco_conversion_log_pb2 as _toco_conversion_log_pb2
+from tensorflow.compiler.mlir.lite.toco.logging import toco_conversion_log_pb2 as _toco_conversion_log_pb2
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.platform import resource_loader as _resource_loader
 

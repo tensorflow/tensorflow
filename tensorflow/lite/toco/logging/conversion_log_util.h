@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
+#include "tensorflow/compiler/mlir/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
 
 namespace toco {

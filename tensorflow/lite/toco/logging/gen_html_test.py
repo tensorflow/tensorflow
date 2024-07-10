@@ -17,8 +17,8 @@
 import os
 import shutil
 
+from tensorflow.compiler.mlir.lite.toco.logging import toco_conversion_log_pb2 as _toco_conversion_log_pb2
 from tensorflow.lite.toco.logging import gen_html
-from tensorflow.lite.toco.logging import toco_conversion_log_pb2 as _toco_conversion_log_pb2
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.platform import resource_loader
@@ -32,14 +32,21 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
     toco_conversion_log_after = _toco_conversion_log_pb2.TocoConversionLog()
 
     toco_conversion_log_before.op_list.extend([
-        "Conv1", "Conv2", "Identity", "Reshape", "Dense", "Dense", "CustomOp",
-        "AvgPool3D", "Softmax"
+        "Conv1",
+        "Conv2",
+        "Identity",
+        "Reshape",
+        "Dense",
+        "Dense",
+        "CustomOp",
+        "AvgPool3D",
+        "Softmax",
     ])
     toco_conversion_log_before.model_size = 9
 
-    toco_conversion_log_after.op_list.extend([
-        "Conv1", "Conv2", "Dense", "Dense", "CustomOp", "AvgPool3D", "Softmax"
-    ])
+    toco_conversion_log_after.op_list.extend(
+        ["Conv1", "Conv2", "Dense", "Dense", "CustomOp", "AvgPool3D", "Softmax"]
+    )
     toco_conversion_log_after.built_in_ops["Conv1"] = 1
     toco_conversion_log_after.built_in_ops["Conv2"] = 1
     toco_conversion_log_after.built_in_ops["Dense"] = 2
@@ -51,17 +58,24 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
     export_path = os.path.join(self.get_temp_dir(), "generated.html")
     html_generator = gen_html.HTMLGenerator(
         html_template_path=resource_loader.get_path_to_datafile(
-            "template.html"),
-        export_report_path=export_path)
+            "template.html"
+        ),
+        export_report_path=export_path,
+    )
 
-    html_generator.generate(toco_conversion_log_before,
-                            toco_conversion_log_after, True,
-                            "digraph  {a -> b}", "digraph  {a -> b}", "",
-                            "/path/to/flatbuffer")
+    html_generator.generate(
+        toco_conversion_log_before,
+        toco_conversion_log_after,
+        True,
+        "digraph  {a -> b}",
+        "digraph  {a -> b}",
+        "",
+        "/path/to/flatbuffer",
+    )
 
     with _file_io.FileIO(export_path, "r") as f_export, _file_io.FileIO(
-        resource_loader.get_path_to_datafile("testdata/generated.html"),
-        "r") as f_expect:
+        resource_loader.get_path_to_datafile("testdata/generated.html"), "r"
+    ) as f_expect:
       expected = f_expect.read()
       exported = f_export.read()
       self.assertEqual(exported, expected)
@@ -70,13 +84,17 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
     # Copies all required data files into a temporary folder for testing.
     export_path = self.get_temp_dir()
     toco_log_before_path = resource_loader.get_path_to_datafile(
-        "testdata/toco_log_before.pb")
+        "testdata/toco_log_before.pb"
+    )
     toco_log_after_path = resource_loader.get_path_to_datafile(
-        "testdata/toco_log_after.pb")
+        "testdata/toco_log_after.pb"
+    )
     dot_before = resource_loader.get_path_to_datafile(
-        "testdata/toco_tf_graph.dot")
+        "testdata/toco_tf_graph.dot"
+    )
     dot_after = resource_loader.get_path_to_datafile(
-        "testdata/toco_tflite_graph.dot")
+        "testdata/toco_tflite_graph.dot"
+    )
     shutil.copy(toco_log_before_path, export_path)
     shutil.copy(toco_log_after_path, export_path)
     shutil.copy(dot_before, export_path)
@@ -88,25 +106,26 @@ class GenHtmlTest(test_util.TensorFlowTestCase):
     result_html = os.path.join(export_path, "toco_conversion_summary.html")
 
     with _file_io.FileIO(result_html, "r") as f_export, _file_io.FileIO(
-        resource_loader.get_path_to_datafile("testdata/generated.html"),
-        "r") as f_expect:
+        resource_loader.get_path_to_datafile("testdata/generated.html"), "r"
+    ) as f_expect:
       expected = f_expect.read()
       exported = f_export.read()
       self.assertEqual(exported, expected)
 
   def test_get_input_type_from_signature(self):
-    op_signatures = [
-        ("INPUT:[1,73,73,160]::float::[64,1,1,160]::float::[64]::float::"
-         "OUTPUT:[1,73,73,64]::float::NAME:Conv::VERSION:1")
-    ]
-    expect_input_types = [
-        ("shape:[1,73,73,160],type:float,shape:[64,1,1,160],type:float,"
-         "shape:[64],type:float")
-    ]
+    op_signatures = [(
+        "INPUT:[1,73,73,160]::float::[64,1,1,160]::float::[64]::float::"
+        "OUTPUT:[1,73,73,64]::float::NAME:Conv::VERSION:1"
+    )]
+    expect_input_types = [(
+        "shape:[1,73,73,160],type:float,shape:[64,1,1,160],type:float,"
+        "shape:[64],type:float"
+    )]
     for i in range(len(op_signatures)):
       self.assertEqual(
           gen_html.get_input_type_from_signature(op_signatures[i]),
-          expect_input_types[i])
+          expect_input_types[i],
+      )
 
 
 if __name__ == "__main__":

@@ -1,27 +1,14 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-tf_proto_library(
-    name = "toco_conversion_log_proto",
-    srcs = ["toco_conversion_log.proto"],
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -31,7 +18,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":toco_conversion_log_proto_cc",
+        "//tensorflow/compiler/mlir/lite/toco/logging:toco_conversion_log_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:version",
         "//tensorflow/lite/toco:model",
@@ -75,7 +62,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":toco_conversion_log_proto_py",
+        "//tensorflow/compiler/mlir/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:resource_loader",
     ],
@@ -96,20 +83,11 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":gen_html",
-        ":toco_conversion_log_proto_py",
         #internal proto upb dep
+        "//tensorflow/compiler/mlir/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "toco_conversion_log_proto_py",
-#     api_version = 2,
-#     visibility = ["//visibility:public"],
-#     deps = [":toco_conversion_log_proto"],
-# )
-# copybara:uncomment_end

@@ -203,6 +203,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/lite/toco/logging:toco_conversion_log_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -220,7 +221,6 @@ cc_library(
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/lite/toco/logging:conversion_log_util",
-        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

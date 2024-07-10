@@ -1184,6 +1184,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         TF_RET_CHECK(proto.called_computation_ids_size() == 2)
             << "While should have 2 called computation but has "
             << proto.called_computation_ids_size();
+        computation_map.at(proto.called_computation_ids(0))
+            ->SetWhileCallInstruction(instruction.get());
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
