@@ -17,18 +17,23 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
-#include "xla/debug_options_flags.h"
-#include "xla/service/dump.h"
-#include "xla/service/hlo_graph_dumper.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/lib/strings/proto_serialization.h"
-#include "tsl/platform/env.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

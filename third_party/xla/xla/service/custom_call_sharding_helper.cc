@@ -21,7 +21,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

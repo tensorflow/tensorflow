@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 
