@@ -15,18 +15,30 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "Eigen/Core"  // from @eigen_archive
+#include "third_party/protobuf/io/zero_copy_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 

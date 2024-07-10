@@ -19,18 +19,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 #define NUM_DEVS 3

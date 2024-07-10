@@ -17,6 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 class CollectiveParamResolverDistributed;
