@@ -661,41 +661,28 @@ absl::StatusOr<Value> EmitScope(
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values);
 
-absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
-                                 absl::string_view libdevice_path,
-                                 const se::DeviceDescription& device_info,
-                                 const HloInstruction& hlo_reduce,
-                                 Value input) {
-  llvm::ArrayRef<int64_t> input_shape =
-      mlir::cast<TensorValue>(input).getType().getShape();
-
+absl::StatusOr<Value> EmitReduce(
+    ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_reduce,
+    absl::flat_hash_map<const TiledHloInstruction*, Value>& values,
+    absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info) {
+  const HloReduceInstruction& hlo_reduce =
+      *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
   // At the moment, we should only emit a full reduction over the last axis of
   // a single input.
   TF_RET_CHECK(hlo_reduce.operand_count() == 2);
   TF_RET_CHECK(hlo_reduce.dimensions().size() == 1);
-  TF_RET_CHECK(hlo_reduce.dimensions(0) ==
+  TF_RET_CHECK(hlo_reduce.dimensions().front() ==
                hlo_reduce.operand(0)->shape().rank() - 1);
-  const int block_row = input_shape.back();
-  const int row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
-  TF_RET_CHECK(block_row >= row_len);
 
-  const HloInstruction* operand = hlo_reduce.operand(1);
-  Value neutral;
+  const int64_t row_len = hlo_reduce.operand(0)->shape().dimensions_minor(0);
+  const int64_t block_row = llvm::PowerOf2Ceil(row_len);
+  Value input = values[tiled_hlo_reduce.operand(0)];
+  Value neutral = values[tiled_hlo_reduce.operand(1)];
 
-  // We assume that the reduction value was input as a constant, or in the case
-  // of a data type affected by float normalization, a convert of a constant.
-  if (operand->opcode() == HloOpcode::kConvert) {
-    TF_RET_CHECK(operand->operand(0)->opcode() == HloOpcode::kConstant);
-    TF_RET_CHECK(operand->operand(0)->shape().element_type() == BF16);
-    TF_RET_CHECK(operand->shape().element_type() == F32);
-    TF_ASSIGN_OR_RETURN(Type dst_ty,
-                        TritonType(b, operand->shape().element_type()));
-    TF_ASSIGN_OR_RETURN(neutral, EmitConstant(b, *operand->operand(0)));
-    neutral = Cast(b, neutral, dst_ty);
-  } else {
-    TF_RET_CHECK(operand->opcode() == HloOpcode::kConstant);
-    TF_ASSIGN_OR_RETURN(neutral, EmitConstant(b, *operand));
-  }
+  llvm::ArrayRef<int64_t> input_shape =
+      mlir::cast<ShapedType>(values[tiled_hlo_reduce.operand(0)].getType())
+          .getShape();
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -709,7 +696,16 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     Value mask = b.create<ma::CmpIOp>(
         ma::CmpIPredicate::slt, Range(b, block_row),
         Splat(b, CreateConst(b, b.getI32Type(), row_len), block_row));
-    input = b.create<ma::SelectOp>(mask, input, Splat(b, neutral, input_shape));
+
+    // Make the mask match the rank of the input.
+    for (int dim = 0; dim < input_shape.size() - 1; ++dim) {
+      mask = b.create<mt::ExpandDimsOp>(mask, /*axis=*/0);
+    }
+    mask = Broadcast(b, mlir::cast<TensorValue>(mask), input_shape);
+
+    input = b.create<ma::SelectOp>(
+        mask, input,
+        Broadcast(b, mlir::cast<TensorValue>(neutral), input_shape));
   }
 
   // Triton actually only performs reductions on float32 inputs, and we must
@@ -869,13 +865,14 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
-    mlir::triton::FuncOp fn, Value pid,
+    mlir::triton::FuncOp fn, ValueRange tile_multi_index,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
 
   if (fusion->IsUserOf(tiled_hlo.hlo())) {
     auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-        b, pid, tiled_hlo, fn.getArgument(fusion->operand_index(hlo)));
+        b, tile_multi_index, tiled_hlo,
+        fn.getArgument(fusion->operand_index(hlo)));
 
     return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
   }
@@ -892,8 +889,7 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kReduce) {
-    return EmitReduce(b, libdevice_path, device_info, *hlo,
-                      values[tiled_hlo.operand(0)]);
+    return EmitReduce(b, tiled_hlo, values, libdevice_path, device_info);
   }
 
   if (hlo->IsElementwise()) {
@@ -927,13 +923,14 @@ absl::StatusOr<Value> EmitTiledScope(
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
-    Value pid) {
+    ValueRange tile_multi_index) {
   absl::flat_hash_map<const TiledHloInstruction*, Value> values;
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
-    TF_ASSIGN_OR_RETURN(Value result, EmitTiledHloInstruction(
-                                          b, libdevice_path, device_info,
-                                          fusion, *tiled_hlo, fn, pid, values));
+    TF_ASSIGN_OR_RETURN(
+        Value result,
+        EmitTiledHloInstruction(b, libdevice_path, device_info, fusion,
+                                *tiled_hlo, fn, tile_multi_index, values));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second)
         << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
@@ -973,9 +970,6 @@ absl::StatusOr<Value> EmitScope(
       TF_ASSIGN_OR_RETURN(
           result, EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
                                 values[hlo->operand(0)]));
-    } else if (hlo->opcode() == HloOpcode::kReduce) {
-      TF_ASSIGN_OR_RETURN(result, EmitReduce(b, libdevice_path, device_info,
-                                             *hlo, values[hlo->operand(0)]));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
@@ -2462,8 +2456,9 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   return absl::OkStatus();
 }
 
-// Computes the base pointer offset for the given pid and shape.
-Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
+// Computes the base pointer offset for the given tile multi-index and hlo shape
+// taking into account the physical layout of the hlo buffer.
+Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, ValueRange tile_multi_index,
                            const TiledHloInstruction& tiled_hlo) {
   const Shape& shape = tiled_hlo.hlo()->shape();
   Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
@@ -2472,21 +2467,43 @@ Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
   // Bitcast map gives an indexing map from linear index to the parameter shape
   // index respecting physical layout of the memory.
   auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
-  auto compose_indexing_maps = ComposeIndexingMaps(
-      tiled_hlo.block_id_to_tile_offsets_indexing(), bitcast_map);
+  auto compose_indexing_maps =
+      ComposeIndexingMaps(tiled_hlo.tile_offsets_indexing(), bitcast_map);
   compose_indexing_maps.Simplify();
 
   return b.create<ma::IndexCastUIOp>(
       b.getI64Type(), mlir_converter::ApplyIndexing(compose_indexing_maps,
-                                                    /*dims=*/pid,
+                                                    /*dims=*/tile_multi_index,
                                                     /*symbols=*/{}, b)[0]);
 }
 
 namespace ir_emitter_triton_internal {
 
+SmallVector<Value, 3> ComputeDelinearizedTileIndex(
+    ImplicitLocOpBuilder& b, const TiledHloComputation& tiled_hlo_computation) {
+  Value pid = b.create<ma::IndexCastUIOp>(
+      b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
+
+  // Delinearize the block id.
+  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, b.getContext());
+  auto tile_exprs =
+      DelinearizeIndex(tiled_hlo_computation.num_output_tiles_per_dim(),
+                       program_id, b.getContext());
+
+  IndexingMap program_id_to_root_tile_offset = IndexingMap::FromTensorSizes(
+      mlir::AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, tile_exprs,
+                           b.getContext()),
+      /*dim_upper_bounds=*/{tiled_hlo_computation.num_output_tiles()},
+      /*symbol_upper_bounds=*/{});
+
+  return mlir_converter::ApplyIndexing(program_id_to_root_tile_offset,
+                                       /*dims=*/pid,
+                                       /*symbols=*/{}, b);
+}
+
 MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
-    ImplicitLocOpBuilder& b, Value pid, const TiledHloInstruction& tiled_hlo,
-    Value argument_block) {
+    ImplicitLocOpBuilder& b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo, Value argument_block) {
   llvm::SmallVector<Value> sizes;
   llvm::SmallVector<Value> strides;
   llvm::SmallVector<Value> offsets;
@@ -2546,7 +2563,7 @@ MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
 
   // Manually compute pointer offset to avoid materialized fully parallel
   // dimensions in the tile. Current codegen tried to avoid size-1 dims.
-  Value ptr_offset = ComputeBasePtrOffset(b, pid, tiled_hlo);
+  Value ptr_offset = ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo);
   auto tile_ptr = AddPtr(b, argument_block, ptr_offset);
 
   return MakeTensorPtrOpAndBoundaryChecks{b.create<mt::MakeTensorPtrOp>(
@@ -2583,19 +2600,23 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
 
-  Value pid = b.create<ma::IndexCastUIOp>(
-      b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
-
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
                           block_level_parameters.output_tile_sizes));
-  TF_ASSIGN_OR_RETURN(Value result,
-                      EmitTiledScope(b, libdevice_path, device_info, fusion,
-                                     tiled_hlo_computation, fn, pid));
+
+  SmallVector<Value, 3> tile_multi_index =
+      ir_emitter_triton_internal::ComputeDelinearizedTileIndex(
+          b, tiled_hlo_computation);
+
+  TF_ASSIGN_OR_RETURN(
+      Value result,
+      EmitTiledScope(b, libdevice_path, device_info, fusion,
+                     tiled_hlo_computation, fn, tile_multi_index));
 
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
   auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-      b, pid, tiled_hlo, fn.getArgument(computation->num_parameters()));
+      b, tile_multi_index, tiled_hlo,
+      fn.getArgument(computation->num_parameters()));
   b.create<mt::StoreOp>(make_tensor.op, result, make_tensor.boundary_checks,
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
 

@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -69,15 +70,25 @@ namespace {
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 
-// Computes indexing map from program id into the tile offset for the given
-// shape and tile sizes.
-IndexingMap ComputeBlockIdToOutputTileIndexing(
-    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> tile_sizes,
-    mlir::MLIRContext* mlir_context) {
+struct OutputTilingInfo {
+  // The number of output tiles for each dimension.
+  llvm::SmallVector<int64_t> num_output_tiles_per_dim;
+
+  // An indexing map from a tile multi-index to tile offsets of the form:
+  //   `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`
+  // where (d0, d1, ...) is the tile multi-index. The number of dimensions in
+  // the multi-index is equal to the number of elements in
+  // `num_output_tiles_per_dim`.
+  IndexingMap output_tile_offset_indexing;
+};
+
+OutputTilingInfo ComputeOutputTilingInfo(absl::Span<const int64_t> dimensions,
+                                         absl::Span<const int64_t> tile_sizes,
+                                         mlir::MLIRContext* mlir_context) {
   CHECK_EQ(dimensions.size(), tile_sizes.size());  // Crash OK
 
   int64_t num_tiles = 1;
-  std::vector<int64_t> outer_loop_bounds;
+  llvm::SmallVector<int64_t> outer_loop_bounds;
   outer_loop_bounds.reserve(dimensions.size());
   for (auto [dim_size, tile_size] : llvm::zip(dimensions, tile_sizes)) {
     int64_t num_tiles_per_dim = (dim_size + tile_size - 1) / tile_size;
@@ -86,59 +97,56 @@ IndexingMap ComputeBlockIdToOutputTileIndexing(
     outer_loop_bounds.push_back(num_tiles_per_dim);
   }
 
-  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
+  llvm::SmallVector<AffineExpr> tiled_dims;
+  tiled_dims.reserve(dimensions.size());
 
-  // Delinearize the block id.
-  auto tile_exprs =
-      DelinearizeIndex(outer_loop_bounds, program_id, mlir_context);
-
-  // Scale each index by the tile size to produce tile offset.
-  for (auto [tile_expr, tile_size] : llvm::zip(tile_exprs, tile_sizes)) {
-    tile_expr = tile_expr * tile_size;
+  for (auto [dim_id, tile_size] : llvm::enumerate(tile_sizes)) {
+    tiled_dims.push_back(tile_size *
+                         mlir::getAffineDimExpr(dim_id, mlir_context));
   }
 
-  return IndexingMap::FromTensorSizes(
+  IndexingMap output_tile_offset_indexing = IndexingMap::FromTensorSizes(
       mlir::AffineMap::get(
-          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
-      /*dim_upper_bounds=*/{num_tiles}, /*symbol_upper_bounds=*/{});
+          /*dimCount=*/dimensions.size(), /*symbolCount=*/0, tiled_dims,
+          mlir_context),
+      /*dim_upper_bounds=*/outer_loop_bounds, /*symbol_upper_bounds=*/{});
+  return {outer_loop_bounds, output_tile_offset_indexing};
 }
 
-absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
+absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
     const SymbolicTiledHloInstruction& tiled_hlo,
-    const IndexingMap& block_id_to_root_tile_offset,
+    const IndexingMap& output_tile_offset_indexing,
     mlir::MLIRContext* mlir_context) {
-  IndexingMap block_id_to_tile_offset_indexing = ComposeIndexingMaps(
-      block_id_to_root_tile_offset, tiled_hlo.indexing_map());
+  IndexingMap tile_offset_indexing = ComposeIndexingMaps(
+      output_tile_offset_indexing, tiled_hlo.indexing_map());
 
   // A symbol in an indexing map means that to produce on element of output, we
   // need to read all elements of input in the symbol range. Since this function
   // computes start of the tile, we need to substitute each symbol with its
   // lower bound value. We assume here the iteration order is normalized.
   // TODO(b/330906085): Support cases when tile offsets are not 0.
-  if (absl::c_any_of(block_id_to_tile_offset_indexing.GetSymbolBounds(),
+  if (absl::c_any_of(tile_offset_indexing.GetSymbolBounds(),
                      [](const Interval& symbol_bound) {
                        return symbol_bound.lower != 0;
                      })) {
     return absl::FailedPreconditionError(
         absl::StrCat("Symbol lower bound is not zero. ",
-                     block_id_to_tile_offset_indexing.ToString()));
+                     tiled_hlo.indexing_map().ToString()));
   }
 
   std::vector<AffineExpr> symbol_lower_bounds(
-      block_id_to_tile_offset_indexing.GetSymbolCount(),
+      tile_offset_indexing.GetSymbolCount(),
       mlir::getAffineConstantExpr(0, mlir_context));
 
   mlir::AffineMap simplified_affine_map =
-      block_id_to_tile_offset_indexing.GetAffineMap().replaceDimsAndSymbols(
+      tile_offset_indexing.GetAffineMap().replaceDimsAndSymbols(
           /*dimReplacements=*/{}, symbol_lower_bounds,
-          block_id_to_tile_offset_indexing.GetDimVarsCount(),
-          /*numResultSyms=*/
-          block_id_to_tile_offset_indexing.GetRangeVarsCount());
+          tile_offset_indexing.GetDimVarsCount(),
+          /*numResultSyms=*/tile_offset_indexing.GetRangeVarsCount());
 
   IndexingMap simplified_indexing_map = IndexingMap{
-      simplified_affine_map, block_id_to_tile_offset_indexing.GetDimVars(),
-      block_id_to_tile_offset_indexing.GetRangeVars(),
-      block_id_to_tile_offset_indexing.GetRTVars()};
+      simplified_affine_map, tile_offset_indexing.GetDimVars(),
+      tile_offset_indexing.GetRangeVars(), tile_offset_indexing.GetRTVars()};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
@@ -426,11 +434,8 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     }
   }
 
-  IndexingMap block_id_to_root_tile_offset = ComputeBlockIdToOutputTileIndexing(
+  OutputTilingInfo output_tiling_info = ComputeOutputTilingInfo(
       GetRoot()->hlo()->shape().dimensions(), tile_parameters, context_);
-
-  int64_t num_output_tiles =
-      block_id_to_root_tile_offset.GetDimensionBound(0).GetLoopTripCount();
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
@@ -448,15 +453,16 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
         symbolic_tiled_hlo->TileStrides(tile_parameters);
 
     TF_ASSIGN_OR_RETURN(
-        IndexingMap block_id_to_block_offset_indexing,
-        ComputeBlockIdToTileOffsetIndexing(
-            *symbolic_tiled_hlo, block_id_to_root_tile_offset, context_));
+        IndexingMap tile_offset_indexing,
+        ComputeTileOffsetIndexing(
+            *symbolic_tiled_hlo, output_tiling_info.output_tile_offset_indexing,
+            context_));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
-                        TiledHloInstruction::Create(
-                            symbolic_tiled_hlo->hlo(), std::move(tile_sizes),
-                            std::move(tile_strides),
-                            std::move(block_id_to_block_offset_indexing)));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<TiledHloInstruction> tiled_hlo_holder,
+        TiledHloInstruction::Create(
+            symbolic_tiled_hlo->hlo(), std::move(tile_sizes),
+            std::move(tile_strides), std::move(tile_offset_indexing)));
 
     auto [tiled_hlo, inserted] =
         tiled_hlo_instructions_set.Insert(std::move(tiled_hlo_holder));
@@ -470,9 +476,9 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       }
     }
   }
-
   return TiledHloComputation::FromSortedTiledHloInstructions(
-      tiled_hlo_instructions_set.ExtractData(), num_output_tiles);
+      tiled_hlo_instructions_set.ExtractData(),
+      output_tiling_info.num_output_tiles_per_dim);
 }
 
 std::string SymbolicTileAnalysis::ToString(

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -39,7 +40,7 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>>
 TiledHloInstruction::Create(const HloInstruction* hlo,
                             std::vector<int64_t> tile_sizes,
                             std::vector<int64_t> tile_strides,
-                            IndexingMap block_id_to_tile_offsets_indexing) {
+                            IndexingMap tile_offsets_indexing) {
   int rank = hlo->shape().rank();
 
   if (tile_sizes.size() != rank) {
@@ -56,27 +57,16 @@ TiledHloInstruction::Create(const HloInstruction* hlo,
                      tile_strides.size(), ", hlo = ", hlo->ToString()));
   }
 
-  if (block_id_to_tile_offsets_indexing.GetDimensionCount() != 1 ||
-      block_id_to_tile_offsets_indexing.GetSymbolCount() != 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "block_id_to_tile_offsets_indexing must have 1 dim and 0 symbols. "
-        "block_id_to_tile_offsets_indexing = ",
-        block_id_to_tile_offsets_indexing.ToString()));
-  }
-
-  if (block_id_to_tile_offsets_indexing.GetAffineMap().getNumResults() !=
-      rank) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "block_id_to_tile_offsets_indexing must have the same number of "
-        "results as the rank of the hlo shape. "
-        "block_id_to_tile_offsets_indexing = ",
-        block_id_to_tile_offsets_indexing.ToString(),
-        ", hlo = ", hlo->ToString()));
+  if (tile_offsets_indexing.GetAffineMap().getNumResults() != rank) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "tile_offsets_indexing must have the same number of results as the "
+        "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
+        tile_offsets_indexing.ToString(), hlo->ToString()));
   }
 
   return absl::WrapUnique(new TiledHloInstruction(
       hlo, std::move(tile_sizes), std::move(tile_strides),
-      std::move(block_id_to_tile_offsets_indexing)));
+      std::move(tile_offsets_indexing)));
 }
 
 std::string TiledHloInstruction::ToString() const {
@@ -84,8 +74,7 @@ std::string TiledHloInstruction::ToString() const {
   ss << "\thlo: " << hlo_->ToString() << "\n";
   ss << "\ttile_sizes: (" << absl::StrJoin(tile_sizes_, ", ") << ")\n";
   ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
-  ss << "\tblock_id_to_tile_offsets_indexing: "
-     << block_id_to_tile_offsets_indexing_;
+  ss << "\ttile_offsets_indexing: " << tile_offsets_indexing_;
   return ss.str();
 }
 

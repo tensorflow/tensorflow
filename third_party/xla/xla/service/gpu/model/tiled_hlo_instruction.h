@@ -33,21 +33,21 @@ namespace gpu {
 //
 // The class contains information required to emit this instruction in
 // block-level codegen. Tile sizes and strides are constants and do not depend
-// on the block id. Tile offsets are computed using an indexing map of form:
-// `(block_id) -> (tile_offset0, tile_offset1, ...)`.
+// on the multidimensional tile index. Tile offsets are computed using an
+// indexing map of the form:
+//   `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`
+// where (d0, d1, ...) is the tile multi-index.
 class TiledHloInstruction {
  public:
   // Creates an instance of TiledHloInstruction. Returns an error if any of the
   // following preconditions is not met:
   // * Number of tile sizes, strides should match HLO shape rank.
-  // * Number of result of `block_id_to_tile_offsets_indexing` should match HLO
-  //   shape rank.
-  // * `block_id_to_tile_offsets_indexing` should have only 1 dimension and 0
-  //   symbols.
+  // * Number of results of `tile_offsets_indexing` should match HLO shape rank.
+  // * `tile_offsets_indexing` should have the number of dimensions equal to the
+  //   rank of the output tile and 0 symbols.
   static absl::StatusOr<std::unique_ptr<TiledHloInstruction>> Create(
       const HloInstruction* hlo, std::vector<int64_t> tile_sizes,
-      std::vector<int64_t> tile_strides,
-      IndexingMap block_id_to_tile_offsets_indexing);
+      std::vector<int64_t> tile_strides, IndexingMap tile_offsets_indexing);
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
@@ -60,11 +60,12 @@ class TiledHloInstruction {
   // of the output shape.
   const std::vector<int64_t>& tile_strides() const { return tile_strides_; }
 
-  // Returns the indexing map from block_id to tile offsets. The map has a form
-  // of `(block_id) -> (tile_offset0, tile_offset1, ...)`. The number of tile
-  // offsets is equal to the rank of the output shape.
-  const IndexingMap& block_id_to_tile_offsets_indexing() const {
-    return block_id_to_tile_offsets_indexing_;
+  // Returns the indexing map from tile multi-index to tile offsets. The map has
+  // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number
+  // of input dimensions is equal to the rank of output tile of the computation.
+  // The number of tile offsets is equal to the rank of the tiled hlo.
+  const IndexingMap& tile_offsets_indexing() const {
+    return tile_offsets_indexing_;
   }
 
   const TiledHloInstruction* operand(int64_t operand_id) const {
@@ -91,12 +92,11 @@ class TiledHloInstruction {
   TiledHloInstruction(const HloInstruction* hlo,
                       std::vector<int64_t> tile_sizes,
                       std::vector<int64_t> tile_strides,
-                      IndexingMap block_id_to_tile_offsets_indexing)
+                      IndexingMap tile_offsets_indexing)
       : hlo_(hlo),
         tile_sizes_(std::move(tile_sizes)),
         tile_strides_(std::move(tile_strides)),
-        block_id_to_tile_offsets_indexing_(
-            std::move(block_id_to_tile_offsets_indexing)) {}
+        tile_offsets_indexing_(std::move(tile_offsets_indexing)) {}
 
   // Pointer to the original HLO instruction.
   const HloInstruction* hlo_;
@@ -105,8 +105,8 @@ class TiledHloInstruction {
   std::vector<int64_t> tile_sizes_;
   std::vector<int64_t> tile_strides_;
 
-  // Indexing map from block_id to tile offsets.
-  IndexingMap block_id_to_tile_offsets_indexing_;
+  // Indexing map for tile offsets.
+  IndexingMap tile_offsets_indexing_;
 
   // Operands of the instruction in the tiled computation graph.
   std::vector<TiledHloInstruction*> operands_;
@@ -116,8 +116,7 @@ inline bool operator==(const TiledHloInstruction& lhs,
                        const TiledHloInstruction& rhs) {
   return lhs.hlo() == rhs.hlo() && lhs.tile_sizes() == rhs.tile_sizes() &&
          lhs.tile_strides() == rhs.tile_strides() &&
-         lhs.block_id_to_tile_offsets_indexing() ==
-             rhs.block_id_to_tile_offsets_indexing();
+         lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
 }
 
 inline bool operator!=(const TiledHloInstruction& lhs,
@@ -130,7 +129,7 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   return H::combine(std::move(h), tiled_hlo_instruction.hlo(),
                     tiled_hlo_instruction.tile_sizes(),
                     tiled_hlo_instruction.tile_strides(),
-                    tiled_hlo_instruction.block_id_to_tile_offsets_indexing());
+                    tiled_hlo_instruction.tile_offsets_indexing());
 }
 
 }  // namespace gpu

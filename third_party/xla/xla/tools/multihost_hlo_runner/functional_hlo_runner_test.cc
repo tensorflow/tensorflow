@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
