@@ -555,11 +555,10 @@ void DeriveLinesForXlaCpuOps(XPlane* host_trace) {
         xla_cpu_ops.ExpandOrAddEvent(
             *plane_builder.GetOrCreateEventMetadata(*hlo_module_name),
             event.GetTimespan(), std::nullopt);
-      }
-
-      if (framework_op_name.has_value()) {
-        ProcessTfOpEvent(*framework_op_name, event.GetTimespan(), std::nullopt,
-                         plane_builder, tf_name_scope, tf_ops);
+        if (framework_op_name.has_value()) {
+          ProcessTfOpEvent(*framework_op_name, event.GetTimespan(),
+                           std::nullopt, plane_builder, tf_name_scope, tf_ops);
+        }
       }
     });
   });

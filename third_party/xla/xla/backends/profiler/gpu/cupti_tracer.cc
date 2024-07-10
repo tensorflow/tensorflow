@@ -932,9 +932,9 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
 
 absl::Span<const uint32_t> GetCudaGraphTracingResourceCbids() {
 #if CUDA_VERSION >= 11070
-  constexpr uint32_t res_cbids[] = {CUPTI_CBID_RESOURCE_GRAPH_CREATED,
-                                    CUPTI_CBID_RESOURCE_GRAPH_CLONED,
-                                    CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED};
+  static constexpr uint32_t res_cbids[] = {
+      CUPTI_CBID_RESOURCE_GRAPH_CREATED, CUPTI_CBID_RESOURCE_GRAPH_CLONED,
+      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED};
   return absl::MakeSpan(res_cbids);
 #else
   return absl::Span<const uint32_t>();

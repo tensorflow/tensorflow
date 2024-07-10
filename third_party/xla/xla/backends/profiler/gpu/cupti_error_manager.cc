@@ -167,6 +167,10 @@ CUptiResult CuptiErrorManager::EnableCallback(uint32_t enable,
                          0 /* DISABLE */, subscriber, domain, callback_id);
       RegisterUndoFunction(f);
     }
+  } else {
+    LOG(ERROR) << "cupti" << __func__
+               << ": error with domain:" << static_cast<int>(domain)
+               << " and callback_id:" << static_cast<int>(callback_id);
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;

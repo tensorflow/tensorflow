@@ -605,6 +605,7 @@ absl::Status RunSPMDPasses(
     if (hlo_module->config()
             .debug_options()
             .xla_gpu_unsafe_pipelined_loop_annotator()) {
+      spmd_pipeline.AddPass<WhileLoopTripCountAnnotator>();
       spmd_pipeline.AddPass<CollectivePermuteValidIterationAnnotator>();
     }
     return spmd_pipeline.Run(hlo_module).status();

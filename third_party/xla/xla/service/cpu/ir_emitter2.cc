@@ -449,7 +449,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
                  se::ThreadDim()});
 }
 
-// Emits a host kernel for the given select-and-scatter instruction.
 absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
@@ -466,6 +465,31 @@ IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
   return kernels_.emplace_back(
       KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
                  se::ThreadDim()});
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo>
+IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
+  if (llvm_ir::CanUpdateDynamicSliceInPlace(const_cast<HloInstruction*>(instr),
+                                            nested_ir_emitter_->assignment())) {
+    VLOG(2) << "Emit in-place dynamic-update-slice kernel: " << instr->name();
+
+    TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                        EmitKernelPrototype(instr));
+
+    llvm::IRBuilder<> b(module_->getContext());
+    b.SetInsertPoint(
+        kernel_prototype.function->getEntryBlock().getTerminator());
+
+    TF_RETURN_IF_ERROR(llvm_ir::EmitDynamicUpdateSliceInPlace(
+        kernel_prototype.arguments, kernel_prototype.results.front(),
+        llvm_ir::IrName(instr, "in_place"), &b));
+
+    return kernels_.emplace_back(
+        KernelInfo{kernel_prototype.function->getName().str(), se::BlockDim(),
+                   se::ThreadDim()});
+  }
+
+  return EmitElementalHostKernel(instr);
 }
 
 //===----------------------------------------------------------------------===//

@@ -152,6 +152,12 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitSelectAndScatterThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitSliceThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitDynamicUpdateSliceThunk(
+      const HloInstruction* instruction);
+
   // Returns the list of buffer allocation slices assigned to the given
   // instruction that will be passed to the host kernel as arguments: a
   // flattened list of all the leaf buffers for all operands and result. We do
