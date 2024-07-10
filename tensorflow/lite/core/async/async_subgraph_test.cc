@@ -20,9 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/types.h"
-#include "tensorflow/lite/core/async/interop/attribute_map_internal.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
 #include "tensorflow/lite/core/async/testing/mock_async_kernel.h"

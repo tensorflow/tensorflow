@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/resource/cache_buffer.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
