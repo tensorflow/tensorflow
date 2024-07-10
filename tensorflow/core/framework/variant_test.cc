@@ -16,6 +16,16 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 
 #include <cstddef>
+
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #if defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
@@ -24,10 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
