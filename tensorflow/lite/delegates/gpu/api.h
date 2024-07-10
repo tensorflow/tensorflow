@@ -38,6 +38,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "third_party/GL/gl/include/GLES2/gl2.h"
+#include "third_party/GL/gl/include/GLES3/gl31.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include <CL/cl.h>
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "vulkan/vulkan.h"  // from @vulkan_headers
+#include "vulkan/vulkan_core.h"  // from @vulkan_headers
 
 #define GL_NO_PROTOTYPES
 #define EGL_NO_PROTOTYPES

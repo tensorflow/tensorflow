@@ -235,6 +235,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:portable",
+        "//third_party/GL:GLES2_headers",
+        "//third_party/GL:GLES3_headers",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@opencl_headers",

@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <variant>
 
+#include "third_party/GL/gl/include/GLES2/gl2.h"
+#include "third_party/GL/gl/include/GLES3/gl31.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
+
 namespace tflite {
 namespace gpu {
 namespace {
