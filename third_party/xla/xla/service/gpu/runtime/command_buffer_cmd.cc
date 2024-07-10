@@ -1293,6 +1293,190 @@ FusedMHACmd::BufferUsageVector FusedMHACmd::buffers() {
 }
 
 //===----------------------------------------------------------------------===//
+// FusedMHABackwardCmd
+//===----------------------------------------------------------------------===//
+
+FusedMHABackwardCmd::FusedMHABackwardCmd(
+    ExecutionStreamId execution_stream_id, GpufMHABackwardConfig config,
+    BufferAllocation::Slice bmm1_grad_gemm1_rhs,
+    BufferAllocation::Slice bmm1_grad_gemm2_rhs,
+    BufferAllocation::Slice bmm2_grad_gemm1_lhs,
+    BufferAllocation::Slice bmm2_grad_gemm2_rhs,
+    BufferAllocation::Slice d_output, BufferAllocation::Slice scratch,
+    BufferAllocation::Slice d_bmm1_lhs, BufferAllocation::Slice d_bmm1_rhs,
+    BufferAllocation::Slice d_bmm2_rhs, BufferAllocation::Slice d_s,
+    BufferAllocation::Slice d_bias, BufferAllocation::Slice fwd_output,
+    BufferAllocation::Slice bias, BufferAllocation::Slice seqlen_q,
+    BufferAllocation::Slice seqlen_k)
+    : TracedCommandBufferCmd(CommandBufferCmdType::kFusedMHABackwardCmd,
+                             execution_stream_id),
+      config_(std::move(config)),
+      bmm1_grad_gemm1_rhs_buffer_(bmm1_grad_gemm1_rhs),
+      bmm1_grad_gemm2_rhs_buffer_(bmm1_grad_gemm2_rhs),
+      bmm2_grad_gemm1_lhs_buffer_(bmm2_grad_gemm1_lhs),
+      bmm2_grad_gemm2_rhs_buffer_(bmm2_grad_gemm2_rhs),
+      d_output_buffer_(d_output),
+      scratch_buffer_(scratch),
+      d_bmm1_lhs_buffer_(d_bmm1_lhs),
+      d_bmm1_rhs_buffer_(d_bmm1_rhs),
+      d_bmm2_rhs_buffer_(d_bmm2_rhs),
+      d_s_buffer_(d_s),
+      d_bias_buffer_(d_bias),
+      fwd_output_buffer_(fwd_output),
+      bias_buffer_(bias),
+      seqlen_q_buffer_(seqlen_q),
+      seqlen_k_buffer_(seqlen_k) {}
+
+FusedMultiHeadedAttentionBackwardRunner& FusedMHABackwardCmd::GetOrCreateRunner(
+    const stream_executor::Stream* stream) {
+  absl::MutexLock lock(&mutex_);
+  auto it = runner_cache_.find(stream);
+  if (it == runner_cache_.end()) {
+    it = runner_cache_
+             .insert({stream,
+                      std::make_unique<FusedMultiHeadedAttentionBackwardRunner>(
+                          config_)})
+             .first;
+  }
+  return *it->second;
+}
+
+absl::Status FusedMHABackwardCmd::Initialize(
+    const Thunk::InitializeParams& params, StateManager& state) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>* lazy_runner =
+      GetOrCreateRunner(params.command_buffer_trace_stream)
+          .AsFusedMHABackwardRunner();
+  TF_ASSIGN_OR_RETURN(auto config, config_.AsDnnFusedMHABackwardOpConfig());
+  return lazy_runner
+      ->GetOrCreateRunner(config, params.command_buffer_trace_stream)
+      .status();
+}
+
+absl::Status FusedMHABackwardCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHABackwardOp>* lazy_runner =
+      GetOrCreateRunner(execute_params.command_buffer_trace_stream)
+          .AsFusedMHABackwardRunner();
+  CHECK(lazy_runner)
+      << "FusedMHABackward lazy runner cache should have been populated";
+
+  const auto& buffer_allocations = *execute_params.buffer_allocations;
+  se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer =
+      buffer_allocations.GetDeviceAddress(bmm1_grad_gemm1_rhs_buffer_);
+
+  se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer =
+      buffer_allocations.GetDeviceAddress(bmm1_grad_gemm2_rhs_buffer_);
+
+  se::DeviceMemoryBase bmm2_grad_gemm1_lhs_buffer =
+      buffer_allocations.GetDeviceAddress(bmm2_grad_gemm1_lhs_buffer_);
+
+  se::DeviceMemoryBase bmm2_grad_gemm2_rhs_buffer =
+      buffer_allocations.GetDeviceAddress(bmm2_grad_gemm2_rhs_buffer_);
+
+  se::DeviceMemoryBase d_output_buffer =
+      buffer_allocations.GetDeviceAddress(d_output_buffer_);
+
+  se::DeviceMemoryBase scratch_buffer =
+      buffer_allocations.GetDeviceAddress(scratch_buffer_);
+
+  se::DeviceMemoryBase d_bmm1_lhs_buffer =
+      buffer_allocations.GetDeviceAddress(d_bmm1_lhs_buffer_);
+
+  se::DeviceMemoryBase d_bmm1_rhs_buffer =
+      buffer_allocations.GetDeviceAddress(d_bmm1_rhs_buffer_);
+
+  se::DeviceMemoryBase d_bmm2_rhs_buffer =
+      buffer_allocations.GetDeviceAddress(d_bmm2_rhs_buffer_);
+
+  std::optional<se::DeviceMemoryBase> d_s_buffer =
+      AssignBufferIfNotNull(buffer_allocations, d_s_buffer_);
+  std::optional<se::DeviceMemoryBase> d_bias_buffer =
+      AssignBufferIfNotNull(buffer_allocations, d_bias_buffer_);
+  std::optional<se::DeviceMemoryBase> fwd_output_buffer =
+      AssignBufferIfNotNull(buffer_allocations, fwd_output_buffer_);
+  std::optional<se::DeviceMemoryBase> bias_buffer =
+      AssignBufferIfNotNull(buffer_allocations, bias_buffer_);
+  std::optional<se::DeviceMemoryBase> seqlen_q_buffer =
+      AssignBufferIfNotNull(buffer_allocations, seqlen_q_buffer_);
+  std::optional<se::DeviceMemoryBase> seqlen_k_buffer =
+      AssignBufferIfNotNull(buffer_allocations, seqlen_k_buffer_);
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+  VLOG(5) << "FusedMHABackwardCmd with execution_scope_id: "
+          << execution_scope_id.value();
+  VLOG(5) << "bmm1_grad_gemm1_rhs_buffer"
+          << bmm1_grad_gemm1_rhs_buffer_.ToString();
+  VLOG(5) << "bmm1_grad_gemm2_rhs_buffer"
+          << bmm1_grad_gemm2_rhs_buffer_.ToString();
+  VLOG(5) << "bmm2_grad_gemm1_lhs_buffer"
+          << bmm2_grad_gemm1_lhs_buffer_.ToString();
+  VLOG(5) << "bmm2_grad_gemm2_rhs_buffer"
+          << bmm2_grad_gemm2_rhs_buffer_.ToString();
+  VLOG(5) << "d_output_buffer" << d_output_buffer_.ToString();
+  VLOG(5) << "scratch_buffer" << scratch_buffer_.ToString();
+  VLOG(5) << "d_bmm1_lhs_buffer" << d_bmm1_lhs_buffer_.ToString();
+  VLOG(5) << "d_bmm1_rhs_buffer" << d_bmm1_rhs_buffer_.ToString();
+  VLOG(5) << "d_bmm2_rhs_buffer" << d_bmm2_rhs_buffer_.ToString();
+  VLOG(5) << "d_s_buffer" << d_s_buffer_.ToString();
+  VLOG(5) << "d_bias_buffer" << d_bias_buffer_.ToString();
+  VLOG(5) << "fwd_output_buffer" << fwd_output_buffer_.ToString();
+  VLOG(5) << "bias_buffer" << bias_buffer_.ToString();
+  VLOG(5) << "seqlen_q_buffer" << seqlen_q_buffer_.ToString();
+  VLOG(5) << "seqlen_k_buffer" << seqlen_k_buffer_.ToString();
+
+  RunFusedMHABackwardOptions opts;
+  opts.runner_cache =
+      &GetOrCreateRunner(execute_params.command_buffer_trace_stream);
+  return AddTracedCommandBuffer(
+      execute_params, record_params, command_buffer, [&](se::Stream* stream) {
+        return RunGpuFMHABackward(
+            config_, bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
+            bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
+            d_output_buffer, scratch_buffer, d_bmm1_lhs_buffer,
+            d_bmm1_rhs_buffer, d_bmm2_rhs_buffer, d_s_buffer, d_bias_buffer,
+            fwd_output_buffer, bias_buffer, seqlen_q_buffer, seqlen_k_buffer,
+            stream, opts);
+      });
+}
+
+FusedMHABackwardCmd::BufferUsageVector FusedMHABackwardCmd::buffers() {
+  BufferUsageVector buffer_usage;
+  buffer_usage.reserve(15);
+
+  buffer_usage.push_back({bmm1_grad_gemm1_rhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({bmm1_grad_gemm2_rhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({bmm2_grad_gemm1_lhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({bmm2_grad_gemm2_rhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({d_output_buffer_, MemoryAccess::kWrite});
+  buffer_usage.push_back({scratch_buffer_, MemoryAccess::kWrite});
+  buffer_usage.push_back({d_bmm1_lhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({d_bmm1_rhs_buffer_, MemoryAccess::kRead});
+  buffer_usage.push_back({d_bmm2_rhs_buffer_, MemoryAccess::kRead});
+
+  if (d_s_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({d_s_buffer_, MemoryAccess::kRead});
+  };
+  if (d_bias_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({d_bias_buffer_, MemoryAccess::kRead});
+  };
+  if (fwd_output_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({fwd_output_buffer_, MemoryAccess::kRead});
+  };
+  if (bias_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({bias_buffer_, MemoryAccess::kRead});
+  };
+  if (seqlen_q_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({seqlen_q_buffer_, MemoryAccess::kRead});
+  };
+  if (seqlen_k_buffer_.allocation() != nullptr) {
+    buffer_usage.push_back({seqlen_k_buffer_, MemoryAccess::kRead});
+  };
+
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
 // CublasLtCmd
 //===----------------------------------------------------------------------===//
 

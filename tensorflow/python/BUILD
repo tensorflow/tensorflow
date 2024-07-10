@@ -1365,10 +1365,18 @@ tf_python_pybind_extension(
     features = ["-layering_check"],
     deps = [
         ":pywrap_densor_device_headers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",

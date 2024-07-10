@@ -133,8 +133,8 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   }
 
   if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
-      IsFwdCustomCallTofMHA(*hlo)) {
-    VLOG(3) << "Recording FusedMHAForward, target " << hlo->custom_call_target()
+      IsCustomCallTofMHA(*hlo)) {
+    VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
             << " into command buffer.";
     return true;
   }

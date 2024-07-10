@@ -165,6 +165,7 @@ class Thunk {
     kTriangularSolve,
     kWhile,
     kFusedMHA,
+    kFusedMHABackward,
     kWaitForStreams,
     kCuDnn
   };

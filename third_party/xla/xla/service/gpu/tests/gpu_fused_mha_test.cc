@@ -134,7 +134,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     EXPECT_TRUE(
         LiteralTestUtil::Near(expected_result, actual_result, mha_error_spec_));
 
-    // Run FusedMHA through command buffer
+    // Run FusedMHA/FuseMHABackward thunk through command buffer
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.set_xla_gpu_graph_min_graph_size(1);
