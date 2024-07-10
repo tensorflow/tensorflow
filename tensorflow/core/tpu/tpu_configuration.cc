@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_configuration.h"
 
+#include "tensorflow/core/framework/resource_mgr.h"
+
 namespace tensorflow {
 
 namespace {

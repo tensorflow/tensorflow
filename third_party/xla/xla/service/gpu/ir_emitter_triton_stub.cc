@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {

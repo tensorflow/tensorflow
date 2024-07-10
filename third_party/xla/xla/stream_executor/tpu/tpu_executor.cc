@@ -28,6 +28,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace tpu {

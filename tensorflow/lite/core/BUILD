@@ -175,6 +175,7 @@ cc_library(
         ":signature_runner",
         ":subgraph",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
