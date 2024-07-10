@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bfloat16.h"
 
 #include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace tensorflow {
 

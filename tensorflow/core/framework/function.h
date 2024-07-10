@@ -24,8 +24,22 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/base/attributes.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -48,9 +62,15 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"

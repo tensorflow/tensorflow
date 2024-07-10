@@ -18,16 +18,20 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
