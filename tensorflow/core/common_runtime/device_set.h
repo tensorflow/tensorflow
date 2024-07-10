@@ -21,10 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
