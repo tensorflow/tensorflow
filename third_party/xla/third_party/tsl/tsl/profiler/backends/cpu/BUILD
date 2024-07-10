@@ -150,6 +150,7 @@ cc_library(
         "//tsl/profiler/lib:context_types_hdrs",
         "//tsl/profiler/lib:profiler_interface",
         "//tsl/profiler/lib:traceme_encode",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
         "//tsl/profiler/utils:time_utils",
         "//tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/log",
