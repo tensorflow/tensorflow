@@ -19,12 +19,22 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "third_party/grpc/include/grpcpp/client_context.h"
+#include "third_party/grpc/include/grpcpp/create_channel.h"
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
+#include "third_party/grpc/include/grpcpp/support/channel_arguments.h"
+#include "third_party/grpc/include/grpcpp/support/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
+#include "tsl/profiler/protobuf/profiler_analysis.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {

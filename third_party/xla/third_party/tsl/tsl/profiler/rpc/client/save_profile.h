@@ -19,6 +19,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
