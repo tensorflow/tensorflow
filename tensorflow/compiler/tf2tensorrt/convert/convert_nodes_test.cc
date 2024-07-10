@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
-
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -24,8 +22,6 @@ limitations under the License.
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-
-#include "absl/time/civil_time.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
