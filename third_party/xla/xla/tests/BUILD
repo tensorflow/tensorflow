@@ -329,8 +329,9 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//xla:types",
-        "//xla:util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
@@ -881,9 +882,10 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
-        ":test_utils",
         ":xla_internal_test_main",
+        "//xla:error_spec",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -902,9 +904,10 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
-        ":test_utils",
         ":xla_internal_test_main",
+        "//xla:error_spec",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1448,6 +1451,8 @@ xla_test(
         ":xla_internal_test_main",
         "//xla:test",
         "//xla/client:xla_builder",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1941,12 +1946,11 @@ xla_test(
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
-        "//xla/client:local_client",
+        "//xla:error_spec",
         "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:test",
+        "//xla/service",
     ],
 )
 
@@ -2348,10 +2352,9 @@ xla_test(
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
-        ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
-        "//xla/client:local_client",
+        "//xla:error_spec",
         "//xla/client:xla_builder",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
