@@ -1805,6 +1805,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service:algorithm_util",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:numeric_options",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/algorithm:container",

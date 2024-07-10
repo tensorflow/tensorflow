@@ -548,6 +548,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_blas_lt",
@@ -579,6 +580,7 @@ cc_library(
         # keep sorted
         "//xla:types",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform",
@@ -600,6 +602,7 @@ cc_library(
         ":hipblas_lt_header",
         ":rocblas_plugin",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",

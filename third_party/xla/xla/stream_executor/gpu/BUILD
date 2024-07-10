@@ -662,6 +662,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service:algorithm_util",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:host_or_device_scalar",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",

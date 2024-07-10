@@ -78,23 +78,14 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-# These are the headers for default StreamExecutor plugins.
-filegroup(
-    name = "stream_executor_plugin_headers",
-    srcs = [
-        "blas.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 cc_library(
     name = "stream_executor",
     hdrs = [
         ":stream_executor_api_headers",
-        ":stream_executor_plugin_headers",
     ],
     deps = [
         ":allocator_stats",
+        ":blas",
         ":command_buffer",
         ":data_type",
         ":device_description_proto_cc",

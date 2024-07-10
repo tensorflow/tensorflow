@@ -153,6 +153,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:event",
         "//xla/stream_executor:host_memory_allocation",
         "//xla/stream_executor:kernel_spec",

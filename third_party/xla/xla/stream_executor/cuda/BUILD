@@ -239,6 +239,7 @@ cuda_only_cc_library(
     deps = [
         "//xla:types",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/base:core_headers",
@@ -274,6 +275,7 @@ cuda_only_cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:numeric_options",
@@ -318,6 +320,7 @@ cuda_only_cc_library(
     hdrs = ["cuda_blas_utils.h"],
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/tsl/cuda:cublas",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -483,6 +486,7 @@ cuda_only_cc_library(
     hdrs = ["cuda_stream.h"],
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor/gpu:gpu_stream",
     ],
 )
@@ -632,6 +636,7 @@ cuda_only_cc_library(
         ":cuda_platform_id",
         ":cuda_runtime",  # buildcleaner: keep
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:event",
