@@ -89,6 +89,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
+    debug_options.clear_xla_gpu_enable_command_buffer();
     return debug_options;
   }
 
@@ -132,6 +133,18 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
 
     EXPECT_TRUE(
         LiteralTestUtil::Near(expected_result, actual_result, mha_error_spec_));
+
+    // Run FusedMHA through command buffer
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_cmd_buffer_module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    test_cmd_buffer_module->mutable_config().set_debug_options(debug_options);
+    const Literal cmd_buffer_actual_result =
+        ExecuteAndTransfer(std::move(test_cmd_buffer_module), literals);
+    EXPECT_TRUE(LiteralTestUtil::Near(expected_result, cmd_buffer_actual_result,
+                                      mha_error_spec_));
   }
 
   void VerifyBackwardDeterminism(absl::string_view hlo_string,

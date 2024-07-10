@@ -53,6 +53,19 @@ class FusedMHAThunk : public Thunk {
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
 
+  BufferAllocation::Slice lhs_bmm1_buffer() const { return lhs_bmm1_buffer_; }
+  BufferAllocation::Slice rhs_bmm1_buffer() const { return rhs_bmm1_buffer_; }
+  BufferAllocation::Slice rhs_bmm2_buffer() const { return rhs_bmm2_buffer_; }
+  BufferAllocation::Slice output_buffer() const { return output_buffer_; }
+  BufferAllocation::Slice scratch_buffer() const { return scratch_buffer_; }
+  BufferAllocation::Slice bias_buffer() const { return bias_buffer_; }
+  BufferAllocation::Slice activation_buffer() const {
+    return activation_buffer_;
+  }
+  BufferAllocation::Slice seqlen_q_buffer() const { return seqlen_q_buffer_; }
+  BufferAllocation::Slice seqlen_k_buffer() const { return seqlen_k_buffer_; }
+
+  GpufMHAConfig config() const { return config_; }
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

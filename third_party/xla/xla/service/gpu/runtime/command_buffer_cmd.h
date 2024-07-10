@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_fused_mha_runner.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -80,6 +81,8 @@ namespace xla::gpu {
   V(kReduceScatter, "ReduceScatterCmd")                  \
   V(kAllGatherCmd, "AllGatherCmd")                       \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")   \
+  V(kFusedMHACmd, "FusedMHACmd")                         \
+  V(kFusedMHABackwardCmd, "FusedMHABackwardCmd")         \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
 
@@ -777,6 +780,54 @@ class GemmCmd : public TracedCommandBufferCmd {
   const BufferAllocation::Slice workspace_;
   // Whether to run deterministically.
   const bool deterministic_;
+};
+
+//===----------------------------------------------------------------------===//
+// FusedMHACmd
+//===----------------------------------------------------------------------===//
+
+class FusedMHACmd : public TracedCommandBufferCmd {
+ public:
+  FusedMHACmd(ExecutionStreamId execution_stream_id, GpufMHAConfig config,
+              BufferAllocation::Slice lhs_bmm1,
+              BufferAllocation::Slice rhs_bmm1,
+              BufferAllocation::Slice rhs_bmm2, BufferAllocation::Slice output,
+              BufferAllocation::Slice scratch, BufferAllocation::Slice mask,
+              BufferAllocation::Slice bias, BufferAllocation::Slice activation,
+              BufferAllocation::Slice seqlen_q,
+              BufferAllocation::Slice seqlen_k);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  FusedMultiHeadedAttentionRunner& GetOrCreateRunner(
+      const stream_executor::Stream* stream);
+
+  const GpufMHAConfig config_;
+  BufferAllocation::Slice lhs_bmm1_buffer_;
+  BufferAllocation::Slice rhs_bmm1_buffer_;
+  BufferAllocation::Slice rhs_bmm2_buffer_;
+  BufferAllocation::Slice output_buffer_;
+  BufferAllocation::Slice scratch_buffer_;
+  BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice activation_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
+
+  // FusedMHA config
+  absl::Mutex mutex_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<FusedMultiHeadedAttentionRunner>>
+      runner_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
 //===----------------------------------------------------------------------===//

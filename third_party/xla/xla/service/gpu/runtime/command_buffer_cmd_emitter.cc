@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
+#include "xla/service/gpu/runtime/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
@@ -139,6 +140,15 @@ static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
       thunk.aux_buffer(), thunk.a_scale_buffer(), thunk.b_scale_buffer(),
       thunk.c_scale_buffer(), thunk.d_scale_buffer(), thunk.d_amax_buffer(),
       thunk.workspace().value());
+}
+
+static absl::StatusOr<Command> Convert(const FusedMHAThunk& thunk) {
+  return std::make_unique<FusedMHACmd>(
+      thunk.execution_stream_id(), thunk.config(), thunk.lhs_bmm1_buffer(),
+      thunk.rhs_bmm1_buffer(), thunk.rhs_bmm2_buffer(), thunk.output_buffer(),
+      thunk.scratch_buffer(), BufferAllocation::Slice(), thunk.bias_buffer(),
+      thunk.activation_buffer(), thunk.seqlen_q_buffer(),
+      thunk.seqlen_k_buffer());
 }
 
 static absl::StatusOr<Command> Convert(
@@ -253,6 +263,8 @@ static absl::Status AppendCommands(
       return append(Convert<CustomCallThunk>(thunk));
     case Thunk::Kind::kCustomKernel:
       return append(Convert<CustomKernelThunk>(thunk));
+    case Thunk::Kind::kFusedMHA:
+      return append(Convert<FusedMHAThunk>(thunk));
     case Thunk::Kind::kKernel:
       return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kGemm:
