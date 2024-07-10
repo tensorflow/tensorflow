@@ -26,6 +26,7 @@ limitations under the License.
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/time_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 
