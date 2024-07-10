@@ -19,11 +19,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tsl/lib/io/inputstream_interface.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/snappy.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {

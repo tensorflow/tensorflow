@@ -13,16 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tsl/platform/snappy.h"
+
 #include <memory>
 
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/lib/io/inputbuffer.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tsl/lib/io/random_inputstream.h"
 #include "tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "tsl/lib/io/snappy/snappy_inputstream.h"
 #include "tsl/lib/io/snappy/snappy_outputbuffer.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
