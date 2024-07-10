@@ -317,6 +317,7 @@ cc_library(
         "//tensorflow/lite/core:__subpackages__",
     ],
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -335,8 +336,8 @@ cc_test(
     deps = [
         ":framework",
         ":signature_runner",
+        "//tensorflow/lite:model_builder",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -371,8 +372,6 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
