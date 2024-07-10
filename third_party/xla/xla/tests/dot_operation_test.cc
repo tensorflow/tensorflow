@@ -2309,6 +2309,22 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+XLA_TEST_F(DotOperationTextTest, MixedPrecisionDotLowPrecisionOutput) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MixedPrecisionDotLowPrecisionOutput
+
+ENTRY main {
+  p0 = f16[5,5]{1,0} parameter(0)
+  p1 = f32[5,1]{0,1} parameter(1)
+  ROOT dot = f16[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 // This benchmark is to show the performance impact of the following
 // transformation:
 //   dot(reshape(transpose(A)), Const) ==>

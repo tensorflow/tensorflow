@@ -475,8 +475,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
 
-  pipeline.AddPass<OperandUpcaster>();
   pipeline.AddPass<ResultCaster>();
+  pipeline.AddPass<OperandUpcaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();

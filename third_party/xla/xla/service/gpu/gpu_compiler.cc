@@ -643,8 +643,8 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DotDimensionSorter>();
   pipeline.AddPass<DotDecomposer>();
 
-  pipeline.AddPass<OperandUpcaster>(upcaster_filter);
   pipeline.AddPass<ResultCaster>(upcaster_filter);
+  pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
   // Add the DotOperandConverter after any potential upcasts done as part of
   // the OperandUpcaster, so that the DotOperandConverter becomes a no-op.

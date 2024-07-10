@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
@@ -57,7 +58,11 @@ bool ResultCaster::InstructionMatchesPattern(HloInstruction* instruction) {
     return false;
   }
   const Shape& inferred_shape = status_or_inferred_shape.value().value();
-  return inferred_shape.element_type() != instruction->shape().element_type();
+  // Do not downcast to a lower precision type!
+  return inferred_shape.element_type() != instruction->shape().element_type() &&
+         ShapeUtil::HigherPrecisionElementType(inferred_shape,
+                                               instruction->shape()) ==
+             inferred_shape.element_type();
 }
 
 absl::StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
