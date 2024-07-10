@@ -21,20 +21,20 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "xla/client/lib/comparators.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
-#include "xla/protobuf_util.h"
-#include "xla/service/shape_inference.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
