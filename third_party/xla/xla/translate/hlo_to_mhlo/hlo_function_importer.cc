@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/translate/hlo_to_mhlo/custom_call_importer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -829,7 +830,12 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return nullptr;
     }
     case HloOpcode::kConstant: {
-      const Literal& literal = instruction->literal();
+      auto constant = Cast<HloConstantInstruction>(instruction);
+      TF_RET_CHECK(constant->HasLiteral())
+          << "HloConstantInstruction " << instruction->name()
+          << " has no literal set";
+
+      const Literal& literal = constant->literal();
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
