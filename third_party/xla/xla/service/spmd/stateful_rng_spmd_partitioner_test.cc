@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/rng_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {

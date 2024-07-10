@@ -11,6 +11,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
+load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
 )
@@ -426,6 +430,8 @@ gpu_only_cc_library(
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+    ]) + if_sycl_is_configured([
+        "@local_config_sycl//sycl:sycl_headers",
     ]),
 )
 

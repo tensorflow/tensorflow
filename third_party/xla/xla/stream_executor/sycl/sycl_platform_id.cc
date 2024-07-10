@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_GENAI_GENAI_OPS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_GENAI_GENAI_OPS_H_
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/mutable_op_resolver.h"
+#include "xla/stream_executor/platform.h"
 
-namespace tflite {
-namespace ops {
-namespace custom {
+namespace stream_executor {
+namespace sycl {
 
-TfLiteRegistration* Register_KV_CACHE();
-TfLiteRegistration* Register_SDPA();
+PLATFORM_DEFINE_ID(kSyclPlatformId);
 
-extern "C" void GenAIOpsRegisterer(::tflite::MutableOpResolver* resolver);
-
-}  // namespace custom
-}  // namespace ops
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_GENAI_GENAI_OPS_H_
+}  // namespace sycl
+}  // namespace stream_executor
