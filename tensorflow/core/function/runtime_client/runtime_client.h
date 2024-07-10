@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
