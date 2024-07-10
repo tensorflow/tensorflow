@@ -65,15 +65,6 @@ TEST(AsyncValueRefTest, MakeAvailableStatusOr) {
   EXPECT_EQ(**value, 42);
 }
 
-TEST(AsyncValueRefTest, ImplicitValueConversion) {
-  auto payload = []() -> AsyncValueRef<WrappedInt32> {
-    return WrappedInt32{42};
-  }();
-
-  EXPECT_TRUE(payload.IsConcrete());
-  EXPECT_EQ(payload->value(), 42);
-}
-
 TEST(AsyncValueRefTest, ImplicitStatusConversion) {
   auto error = []() -> AsyncValueRef<WrappedInt32> {
     return absl::InternalError("Error");
@@ -82,44 +73,6 @@ TEST(AsyncValueRefTest, ImplicitStatusConversion) {
   EXPECT_TRUE(error.IsAvailable());
   EXPECT_TRUE(error.IsError());
   EXPECT_EQ(error.GetError(), absl::InternalError("Error"));
-}
-
-TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusPayload) {
-  auto status = []() -> absl::StatusOr<absl::Status> {
-    return absl::InternalError("Error");
-  }();
-
-  auto error = []() -> AsyncValueRef<absl::Status> {
-    return absl::InternalError("Error");
-  }();
-
-  // Check that AsyncValueRef<absl::Status> behavior is consistent with
-  // absl::StatusOr<absl::Status> for implicit error conversion.
-
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(*status, absl::InternalError("Error"));
-
-  EXPECT_TRUE(error.IsConcrete());
-  EXPECT_EQ(error.get(), absl::InternalError("Error"));
-}
-
-TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusOrPayload) {
-  auto status = []() -> absl::StatusOr<absl::StatusOr<int32_t>> {
-    return absl::StatusOr<int32_t>(absl::InternalError("Error"));
-  }();
-
-  auto error = []() -> AsyncValueRef<absl::StatusOr<int32_t>> {
-    return absl::StatusOr<int32_t>(absl::InternalError("Error"));
-  }();
-
-  // Check that AsyncValueRef<absl::StatusOr<T>> behavior is consistent with
-  // absl::StatusOr<absl::StatusOr<T>> for implicit error conversion.
-
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(status->status(), absl::InternalError("Error"));
-
-  EXPECT_TRUE(error.IsConcrete());
-  EXPECT_EQ(error->status(), absl::InternalError("Error"));
 }
 
 TEST(AsyncValueRefTest, ImplicitStatusConversionWithStatusOrPayloadAndStatus) {

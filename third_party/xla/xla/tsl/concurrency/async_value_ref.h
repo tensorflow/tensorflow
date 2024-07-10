@@ -102,18 +102,9 @@ class AsyncValueRef {
   // Support implicit construction from nullptr to empty async value ref.
   AsyncValueRef(std::nullptr_t) {}  // NOLINT
 
-  // Support implicit construction from immediate value. We use std::enable_if_t
-  // trick as a work around the GCC compilation bug: if type `T` is an abstract
-  // type (type with pure virtual methods), then GCC fails to compile the
-  // template. This is fixed in GCC 11.
-  template <typename V, std::enable_if_t<std::is_same_v<T, V>>* = nullptr>
-  AsyncValueRef(V value)  // NOLINT
-      : AsyncValueRef(MakeAvailableAsyncValueRef<T>(std::move(value))) {}
-
-  // Support implicit construction from immediate Status error convertible to
-  // absl::Status (only if payload type is not absl::Status, otherwise we
-  // always pass absl::Status to payload constructor for consistency with
-  // absl::StatusOr<absl::Status>).
+  // Support implicit construction from immediate `Status` error convertible to
+  // `absl::Status` (only if payload type is not `absl::Status`, because
+  // otherwise it is ambiguous, is it an error or a concrete payload).
   template <typename Status,
             std::enable_if_t<std::is_convertible_v<Status, absl::Status> &&
                              !std::is_same_v<T, absl::Status>>* = nullptr>
