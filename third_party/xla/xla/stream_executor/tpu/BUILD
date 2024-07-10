@@ -101,7 +101,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -373,6 +372,7 @@ cc_library(
         ":tpu_api",
         ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
+        "//xla:executable_run_options",
         "//xla/service",
         "//xla/service:backend",
         "//xla/service:stream_pool",
@@ -479,7 +479,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:macros",
     ],
 )

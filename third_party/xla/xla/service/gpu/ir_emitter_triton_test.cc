@@ -5693,6 +5693,34 @@ CHECK:        }
 )"));
 }
 
+TEST_F(TritonTest, TestGenericEmitterWithReductonAndMultidimensionalTile) {
+  const std::string kHloText = R"(
+HloModule t
+max {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(Arg_0, Arg_1)
+}
+
+triton_reduction_computation {
+  parameter_0 = f32[4,12,125,127]{3,2,1,0} parameter(0)
+  constant_0 = f32[] constant(-inf)
+  ROOT reduce = f32[4,12,125]{2,1,0} reduce(parameter_0, constant_0), dimensions={3}, to_apply=max
+}
+
+ENTRY main {
+  param_0 = f32[4,12,125,127]{3,2,1,0} parameter(0)
+  ROOT triton_reduce = f32[4,12,125]{2,1,0} fusion(param_0),
+    kind=kCustom, calls=triton_reduction_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["2","5","16"],"num_warps":"4"}}}
+})";
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 TEST_F(TritonTest, TestSoftMaxWithTileElementsNotAllContiguous) {
   const std::string kHloText = R"(
 HloModule m
