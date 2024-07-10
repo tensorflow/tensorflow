@@ -17,12 +17,12 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
-#include "tsl/lib/gtl/inlined_vector.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {
