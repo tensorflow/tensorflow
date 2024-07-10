@@ -148,11 +148,6 @@ class PyLoadedExecutable {
     return ifrt_loaded_executable_;
   }
 
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-  addressable_device_logical_ids() const {
-    return ifrt_loaded_executable_->addressable_device_logical_ids();
-  }
-
   std::vector<nb_class_ptr<PyDevice>> AddressableDevices() const;
 
   int64_t SizeOfGeneratedCodeInBytes() const {

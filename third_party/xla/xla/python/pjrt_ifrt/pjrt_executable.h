@@ -295,11 +295,6 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->IsDeleted();
   }
 
-  absl::Span<const LoadedExecutable::LogicalDeviceIds>
-  addressable_device_logical_ids() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->addressable_device_logical_ids();
-  }
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
     return addressable_devices_;

@@ -18,8 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

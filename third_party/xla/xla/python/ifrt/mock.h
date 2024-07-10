@@ -292,8 +292,6 @@ class MockLoadedExecutable
               (final));
   MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
-  MOCK_METHOD(absl::Span<const LogicalDeviceIds>,
-              addressable_device_logical_ids, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
 
