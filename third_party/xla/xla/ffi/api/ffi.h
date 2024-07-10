@@ -43,10 +43,6 @@ limitations under the License.
 #include "xla/ffi/api/api.h"
 // IWYU pragma: end_exports
 
-// TODO(ezhulenev): This is a temporary hack to be able to compile JAX with old
-// and new XLA:FFI in OSS.
-#define XLA_FFI_LAZY_DECODED_BUFFER 1
-
 namespace xla::ffi {
 
 enum class DataType : uint8_t {
