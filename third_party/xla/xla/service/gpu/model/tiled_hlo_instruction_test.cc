@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -31,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::HasSubstr;
 
 class TiledHloInstructionTest : public HloTestBase {
  public:
@@ -48,21 +49,19 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
-  EXPECT_THAT(
-      TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16},
-                                  /*tile_strides=*/{1, 1},
-                                  block_id_to_tile_offsets_indexing)
-          .status()
-          .message(),
-      ::testing::HasSubstr("Number of tile sizes must be equal to the rank"));
+  EXPECT_THAT(TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16},
+                                          /*tile_strides=*/{1, 1},
+                                          block_id_to_tile_offsets_indexing)
+                  .status()
+                  .message(),
+              HasSubstr("Number of tile sizes must be equal to the rank"));
 
-  EXPECT_THAT(
-      TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
-                                  /*tile_strides=*/{1, 1, 1},
-                                  block_id_to_tile_offsets_indexing)
-          .status()
-          .message(),
-      ::testing::HasSubstr("Number of tile strides must be equal to the rank"));
+  EXPECT_THAT(TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
+                                          /*tile_strides=*/{1, 1, 1},
+                                          block_id_to_tile_offsets_indexing)
+                  .status()
+                  .message(),
+              HasSubstr("Number of tile strides must be equal to the rank"));
 }
 
 TEST_F(TiledHloInstructionTest,
@@ -71,31 +70,19 @@ TEST_F(TiledHloInstructionTest,
       /*parameter_number=*/0,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
-  IndexingMap block_id_to_tile_offsets_indexing1 = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0 floordiv 16)", &mlir_context_),
-      /*dim_upper_bounds=*/{8},
+  IndexingMap tile_offsets_indexing1 = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1) -> (2 * d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{2, 4},
       /*symbol_upper_bounds=*/{});
 
   EXPECT_THAT(
       TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
                                   /*tile_strides=*/{1, 1},
-                                  block_id_to_tile_offsets_indexing1)
+                                  tile_offsets_indexing1)
           .status()
           .message(),
-      ::testing::HasSubstr(
+      HasSubstr(
           "must have the same number of results as the rank of the hlo shape"));
-
-  IndexingMap block_id_to_tile_offsets_indexing2 = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0)[s0] -> (d0 + s0, d0 floordiv 16)", &mlir_context_),
-      /*dim_upper_bounds=*/{8},
-      /*symbol_upper_bounds=*/{8});
-
-  EXPECT_THAT(TiledHloInstruction::Create(hlo.get(), /*tile_sizes=*/{16, 16},
-                                          /*tile_strides=*/{1, 1},
-                                          block_id_to_tile_offsets_indexing2)
-                  .status()
-                  .message(),
-              ::testing::HasSubstr("must have 1 dim and 0 symbols"));
 }
 
 }  // namespace
