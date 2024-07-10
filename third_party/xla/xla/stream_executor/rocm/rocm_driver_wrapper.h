@@ -23,6 +23,7 @@ limitations under the License.
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 
 #include "rocm/include/hip/hip_runtime.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
@@ -173,6 +174,19 @@ namespace wrap {
   __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
+#if TF_ROCM_VERSION >= 60200
+
+// clang-format off
+#define HIP_ROUTINE_EACH_62(__macro)            \
+  __macro(hipGetFuncBySymbol)                   \
+  __macro(hipStreamBeginCaptureToGraph)
+// clang-format on
+
+HIP_ROUTINE_EACH_62(STREAM_EXECUTOR_HIP_WRAP)
+
+#undef HIP_ROUTINE_EACH_62
+#endif  // TF_ROCM_VERSION >= 60200
 
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP

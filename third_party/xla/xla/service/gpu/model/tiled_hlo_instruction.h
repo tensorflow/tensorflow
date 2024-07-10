@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
@@ -46,19 +48,22 @@ class TiledHloInstruction {
   // * `tile_offsets_indexing` should have the number of dimensions equal to the
   //   rank of the output tile and 0 symbols.
   static absl::StatusOr<std::unique_ptr<TiledHloInstruction>> Create(
-      const HloInstruction* hlo, std::vector<int64_t> tile_sizes,
-      std::vector<int64_t> tile_strides, IndexingMap tile_offsets_indexing);
+      const HloInstruction* hlo, llvm::SmallVector<int64_t> tile_sizes,
+      llvm::SmallVector<int64_t> tile_strides,
+      IndexingMap tile_offsets_indexing);
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
 
   // Returns the tile sizes. The number of tile sizes is equal to the rank of
   // the output shape.
-  const std::vector<int64_t>& tile_sizes() const { return tile_sizes_; }
+  const llvm::SmallVector<int64_t>& tile_sizes() const { return tile_sizes_; }
 
   // Returns the tile strides. The number of tile strides is equal to the rank
   // of the output shape.
-  const std::vector<int64_t>& tile_strides() const { return tile_strides_; }
+  const llvm::SmallVector<int64_t>& tile_strides() const {
+    return tile_strides_;
+  }
 
   // Returns the indexing map from tile multi-index to tile offsets. The map has
   // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number
@@ -90,8 +95,8 @@ class TiledHloInstruction {
 
  private:
   TiledHloInstruction(const HloInstruction* hlo,
-                      std::vector<int64_t> tile_sizes,
-                      std::vector<int64_t> tile_strides,
+                      llvm::SmallVector<int64_t> tile_sizes,
+                      llvm::SmallVector<int64_t> tile_strides,
                       IndexingMap tile_offsets_indexing)
       : hlo_(hlo),
         tile_sizes_(std::move(tile_sizes)),
@@ -102,8 +107,8 @@ class TiledHloInstruction {
   const HloInstruction* hlo_;
 
   // Tile sizes and strides.
-  std::vector<int64_t> tile_sizes_;
-  std::vector<int64_t> tile_strides_;
+  llvm::SmallVector<int64_t> tile_sizes_;
+  llvm::SmallVector<int64_t> tile_strides_;
 
   // Indexing map for tile offsets.
   IndexingMap tile_offsets_indexing_;
@@ -126,10 +131,14 @@ inline bool operator!=(const TiledHloInstruction& lhs,
 
 template <typename H>
 H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
-  return H::combine(std::move(h), tiled_hlo_instruction.hlo(),
-                    tiled_hlo_instruction.tile_sizes(),
-                    tiled_hlo_instruction.tile_strides(),
-                    tiled_hlo_instruction.tile_offsets_indexing());
+  // There is no default hash implementation for llvm::SmallVector neither in
+  // AbslHashValue nor in llvm::hash_value. We can use the available hash
+  // implementation for absl::Span instread.
+  return H::combine(
+      std::move(h), tiled_hlo_instruction.hlo(),
+      absl::Span<int64_t const>(tiled_hlo_instruction.tile_sizes()),
+      absl::Span<int64_t const>(tiled_hlo_instruction.tile_strides()),
+      tiled_hlo_instruction.tile_offsets_indexing());
 }
 
 }  // namespace gpu

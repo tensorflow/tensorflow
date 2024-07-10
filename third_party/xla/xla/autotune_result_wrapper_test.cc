@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"

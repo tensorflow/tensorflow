@@ -28,6 +28,7 @@ std::unique_ptr<mlir::Pass> CreateAddSparseDotEncodingPass(
 std::unique_ptr<mlir::Pass> CreateSparseBlockedToMMAPass();
 std::unique_ptr<mlir::Pass> CreateSparseLocalLoadOpToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateSparseDotOpToLLVMPass();
+std::unique_ptr<mlir::Pass> CreateSparseWGMMAOpToLLVMPass();
 
 void RegisterSparsePasses();
 

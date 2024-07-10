@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "tsl/lib/strings/proto_serialization.h"
 

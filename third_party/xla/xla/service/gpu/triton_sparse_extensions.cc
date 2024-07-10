@@ -44,8 +44,12 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/PTXAsmFormat.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -836,15 +840,126 @@ class SparseDotOpToLLVMPass
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ConversionTarget target(*context);
-    target.addLegalDialect<LLVM::LLVMDialect, mlir::gpu::GPUDialect,
+    target.addLegalDialect<LLVM::LLVMDialect, NVVM::NVVMDialect,
                            arith::ArithDialect, triton::nvgpu::NVGPUDialect>();
     target.addIllegalOp<triton::gpu::SparseDotOp>();
+    target.addIllegalDialect<mlir::gpu::GPUDialect>();
     mlir::LowerToLLVMOptions option(context);
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
-    auto pattern = std::make_unique<SparseDotOpConversion>(typeConverter);
-    RewritePatternSet patterns(context, std::move(pattern));
+    RewritePatternSet patterns(context);
+    patterns.add<SparseDotOpConversion>(typeConverter);
+    populateGpuToNVVMConversionPatterns(typeConverter, patterns);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SparseLocalLoadOpToLLVMPass)
+};
+
+namespace ttn = mlir::triton::nvgpu;
+using ttn::OperandsAndConstraints;
+
+class SparseWGMMAOpPattern : public OpRewritePattern<ttn::SparseWGMMAOp> {
+ public:
+  using OpRewritePattern<ttn::SparseWGMMAOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ttn::SparseWGMMAOp op,
+                                PatternRewriter &rewriter) const override {
+    return rewriteAsPtxAsm(op, rewriter, getPtxAsm(op),
+                           getOperandsAndConstraints(op),
+                           getOutputConstraints(op));
+  }
+
+  std::vector<std::string> getOutputConstraints(ttn::SparseWGMMAOp op) const {
+    auto outputStructType = cast<LLVM::LLVMStructType>(op.getType());
+    uint32_t numOutputRegs = outputStructType.getBody().size();
+    std::string output =
+        outputStructType.getBody().front().isF32() ? "=f" : "=r";
+    return std::vector<std::string>(numOutputRegs, output);
+  }
+
+  OperandsAndConstraints getOperandsAndConstraints(
+      ttn::SparseWGMMAOp op) const {
+    return {{op.getOpC(), "0"},
+            {op.getOpA(), "l"},
+            {op.getOpB(), "l"},
+            {op.getMetaA(), "r"}};
+  }
+
+  std::string getPtxAsm(ttn::SparseWGMMAOp op) const {
+    auto m = op.getM();
+    auto n = op.getN();
+    auto k = op.getK();
+    auto eltTypeC = op.getEltTypeC();
+    auto eltTypeA = op.getEltTypeA();
+    auto eltTypeB = op.getEltTypeB();
+    auto layoutA = op.getLayoutA();
+    auto layoutB = op.getLayoutB();
+
+    // Only f16/bf16 variant is supported.
+    using WGMMAEltType = ttn::WGMMAEltType;
+    [[maybe_unused]] bool supported =
+        eltTypeC == WGMMAEltType::f32 &&
+        ((eltTypeA == WGMMAEltType::f16 && eltTypeB == WGMMAEltType::f16) ||
+         (eltTypeA == WGMMAEltType::bf16 && eltTypeB == WGMMAEltType::bf16)) &&
+        (m == 64 && 8 <= n && n <= 256 && n % 8 == 0 && k == 32);
+    assert(supported && "Sparse WGMMA type or shape is not supported");
+
+    // Operands
+    uint32_t asmOpIdx = 0;
+    std::string args = "";
+
+    // Output and operand C
+    uint32_t numCRegs =
+        cast<LLVM::LLVMStructType>(op.getType()).getBody().size();
+    args += "{";
+    for (uint32_t i = 0; i < numCRegs; ++i) {
+      args += "$" + std::to_string(asmOpIdx++) + (i == numCRegs - 1 ? "" : ",");
+    }
+    args += "}, ";
+    asmOpIdx += numCRegs;
+
+    // Operands A and B (must be `desc`)
+    args += "$" + std::to_string(asmOpIdx++) + ", ";
+    args += "$" + std::to_string(asmOpIdx++) + ", ";
+
+    // Metadata for A
+    args += "$" + std::to_string(asmOpIdx++) + ", 0, ";
+
+    // `scale-d`, `imm-scale-a`, and `imm-scale-b` are 1 by default
+    args += "1, 1, 1";
+
+    // `trans-a` and `trans-b`
+    using WGMMALayout = ttn::WGMMALayout;
+    args += ", " + std::to_string(layoutA == WGMMALayout::col);
+    args += ", " + std::to_string(layoutB == WGMMALayout::row);
+
+    auto ptxAsm =
+        "wgmma.mma_async.sp.sync.aligned"
+        ".m" +
+        std::to_string(m) + "n" + std::to_string(n) + "k" + std::to_string(k) +
+        "." + stringifyEnum(eltTypeC).str() + "." +
+        stringifyEnum(eltTypeA).str() + "." + stringifyEnum(eltTypeB).str() +
+        " " + args + ";";
+    return ptxAsm;
+  }
+};
+
+class SparseWGMMAOpToLLVMPass
+    : public PassWrapper<SparseWGMMAOpToLLVMPass, OperationPass<ModuleOp>> {
+ public:
+  SparseWGMMAOpToLLVMPass() = default;
+
+  StringRef getArgument() const override { return "sparse-wgmma-to-llvm"; }
+
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    auto pattern = std::make_unique<SparseWGMMAOpPattern>(context);
+    RewritePatternSet patterns(context, std::move(pattern));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -872,9 +987,14 @@ std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseDotOpToLLVMPass() {
   return std::make_unique<SparseDotOpToLLVMPass>();
 }
 
+std::unique_ptr<mlir::Pass> xla::gpu::CreateSparseWGMMAOpToLLVMPass() {
+  return std::make_unique<SparseWGMMAOpToLLVMPass>();
+}
+
 void xla::gpu::RegisterSparsePasses() {
   registerPass([] { return std::make_unique<AddSparseEncodingPass>(); });
   registerPass(CreateSparseBlockedToMMAPass);
   registerPass(CreateSparseLocalLoadOpToLLVMPass);
   registerPass(CreateSparseDotOpToLLVMPass);
+  registerPass(CreateSparseWGMMAOpToLLVMPass);
 }
