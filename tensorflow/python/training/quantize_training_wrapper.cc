@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/common_runtime/quantize_training.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
