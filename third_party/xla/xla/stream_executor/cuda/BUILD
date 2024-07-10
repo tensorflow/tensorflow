@@ -52,6 +52,21 @@ config_setting(
     },
 )
 
+bool_flag(
+    name = "enable_libnvjitlink_support",
+    build_setting_default = if_google(
+        True,
+        oss_value = False,
+    ),
+)
+
+config_setting(
+    name = "libnvjitlink_support_enabled",
+    flag_values = {
+        ":enable_libnvjitlink_support": "True",
+    },
+)
+
 cc_library(
     name = "cuda_platform_id",
     srcs = ["cuda_platform_id.cc"],
@@ -564,6 +579,100 @@ xla_cc_test(
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "nvjitlink_support",
+    srcs = ["nvjitlink_support.cc"],
+    hdrs = ["nvjitlink_support.h"],
+    local_defines = select({
+        ":libnvjitlink_support_enabled": [
+            "LIBNVJITLINK_SUPPORT=true",
+        ],
+        "//conditions:default": [
+            "LIBNVJITLINK_SUPPORT=false",
+        ],
+    }),
+)
+
+cc_library(
+    name = "nvjitlink_stub",
+    srcs = [
+        "nvjitlink.h",
+        "nvjitlink_stub.cc",
+    ],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "nvjitlink_impl",
+    srcs = [
+        "nvjitlink.h",
+        "nvjitlink_impl.cc",
+    ],
+    tags = ["manual"],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:nvjitlink",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "nvjitlink",
+    hdrs = [
+        "nvjitlink.h",
+    ],
+    deps = select({
+        ":libnvjitlink_support_enabled": [":nvjitlink_impl"],
+        "//conditions:default": [":nvjitlink_stub"],
+    }) + [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "nvjitlink_test",
+    srcs = ["nvjitlink_test.cc"],
+    args = if_google([
+        # nvjitlink allocates memory and only keeps a pointer past the usual offest of 1024 bytes;
+        # so we need to increase the max pointer offset. -1 means no limit.
+        # This is only relevant for Google's HeapLeakChecker. The newer Leak sanitizer doesn't
+        # have this issue.
+        "--heap_check_max_pointer_offset=-1",
+    ]),
+    deps = [
+        ":nvjitlink",
+        ":nvjitlink_support",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
