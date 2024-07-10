@@ -71,6 +71,8 @@ bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
 // Check if input type supports AMX on CPU when oneDNN is enabled
 bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
 
+bool IsAVXConvertSupportedByOneDNNOnThisCPU();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_UTIL_H_

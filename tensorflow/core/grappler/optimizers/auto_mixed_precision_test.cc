@@ -132,7 +132,10 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 
       bool is_fp16_enabled_on_cpu = false;
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-      is_fp16_enabled_on_cpu = IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF);
+      // oneDNN supports FP16 on some platforms by converting to and from FP32
+      is_fp16_enabled_on_cpu =
+          IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF) ||
+          IsAVXConvertSupportedByOneDNNOnThisCPU();
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
       if (!IsMKLEnabled() || !is_fp16_enabled_on_cpu) {
         GTEST_SKIP() << "This device doesn't support FP16";
