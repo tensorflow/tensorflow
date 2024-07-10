@@ -38,8 +38,8 @@ namespace gpu {
 // Generic loop fusion. Lowers to LLVM via MLIR.
 class MlirScatterFusion : public MlirFusionEmitterBase {
  public:
-  explicit MlirScatterFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
+  explicit MlirScatterFusion(const HloFusionAnalysis& analysis);
+
   LaunchDimensions launch_dimensions() const override;
 
   static bool IsSupported(const HloFusionAnalysis& analysis);

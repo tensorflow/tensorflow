@@ -38,8 +38,9 @@ TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
       %p1 = f32[] parameter(1)
       %p2 = f32[] parameter(2)
       %p3 = f32[] parameter(3)
-      ROOT %tuple = (f32[], f32[]) tuple(f32[] %p2, f32[] %p3)
+      ROOT %tuple = (f32[], f32[]) tuple(f32[] %p0, f32[] %p1)
     }
+
     scatter {
       %operand0 = f32[300,200] parameter(0)
       %operand1 = f32[300,200] parameter(1)

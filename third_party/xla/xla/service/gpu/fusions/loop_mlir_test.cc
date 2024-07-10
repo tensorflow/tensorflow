@@ -56,7 +56,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 15000) mod 100,
     ((bl_x * 128 + chunk_id * 129024 + th_x) floordiv 75) mod 200,
-    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
+    ((bl_x * 128 + chunk_id * 129024 + th_x) mod 75) * 4 + unroll_id
   )
   domain:
   th_x in [0, 128)
@@ -67,7 +67,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   bl_z in [0, 1)
   chunk_id in [0, 12)
   unroll_id in [0, 4)
-  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999997)
+  th_x + bl_x * 128 + chunk_id * 129024 in [0, 1500000)
 )"));
 }
 

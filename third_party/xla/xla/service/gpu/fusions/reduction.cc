@@ -1295,6 +1295,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
   }();
 
   AddGroupIdConstraint(map, root_index, groups_);
+  map.Simplify();
   return map;
 }
 
@@ -1321,6 +1322,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
       GetBitcastMap(tiling_.GetXlaShape(),
                     hero.operand(hero_operand_index)->shape(), ctx));
   AddGroupIdConstraint(map, root_index, groups_);
+  map.Simplify();
   return map;
 }
 
