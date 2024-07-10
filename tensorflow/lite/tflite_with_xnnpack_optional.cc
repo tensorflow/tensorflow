@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/macros.h"
 
 #ifdef TFLITE_BUILD_WITH_XNNPACK_DELEGATE
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
