@@ -19,22 +19,20 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/abstract_context.h"
-#include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/graph_function.h"
-#include "tensorflow/c/eager/immediate_execution_context.h"
-#include "tensorflow/c/eager/tfe_context_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/cc/experimental/libexport/load.h"
 #include "tensorflow/cc/experimental/libtf/function.h"
 #include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tsl/platform/status.h"
 
 namespace tf {
 namespace libtf {
