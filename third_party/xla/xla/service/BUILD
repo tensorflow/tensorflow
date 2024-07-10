@@ -8150,6 +8150,7 @@ xla_cc_test(
         ":compilation_environments",
         ":gpu_compilation_environment",
         "//xla:parse_flags_from_env",
+        "//xla:xla_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
