@@ -30,8 +30,9 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla::gpu {
