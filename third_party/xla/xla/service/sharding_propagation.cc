@@ -1502,7 +1502,12 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         if (!unspec_dims.empty()) {
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
-        } else if (!instruction->operand(0)->has_sharding()) {
+        } else if (!instruction->operand(0)->has_sharding() &&
+                   instruction->operand(0)->user_count() == 1) {
+          // If instruction->operand(0) has sharding, we cannot overwrite it. If
+          // instruction->operand(0) has more than one user, we cannot overwrite
+          // it since other users can also propagate shardings to
+          // instruction->operand(0).
           instruction->mutable_operand(0)->set_sharding(
               instruction->sharding());
         }
