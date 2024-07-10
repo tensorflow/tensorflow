@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/literal.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
