@@ -133,6 +133,7 @@ add_definitions(${LLVM_DEFINITIONS})
 # StableHLO configuration
 #-------------------------------------------------------------------------------
 
+set(STABLEHLO_ENABLE_BINDINGS_PYTHON ${MHLO_ENABLE_BINDINGS_PYTHON})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/stablehlo)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/stablehlo)
 set(LLVM_TABLEGEN_FLAGS -I ${MLIR_HLO_SOURCE_DIR}/stablehlo)
