@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -29,21 +30,27 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/threadpool_options.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/public/session.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
 
 namespace mlir {
 namespace tf_saved_model {
