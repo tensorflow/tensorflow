@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
 
+#include <cassert>
 #include <functional>
 #include <initializer_list>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace optimize {
@@ -32,7 +34,7 @@ struct DerivedScale {
   // MSVC2015 version 14.0 and below doesn't support struct initialization with
   // initializer lists so emulate the behavior using a float initializer list.
 #if _MSC_VER <= 1900
-  DerivedScale() {}
+  DerivedScale() = default;
   // Construct this object with a list of initializer lists. All list elements
   // are cast to float values to avoid ambiguous construction of a union-style
   // object that could take either std::initializer_list<float> or
@@ -152,4 +154,4 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant,
 }  // namespace optimize
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_

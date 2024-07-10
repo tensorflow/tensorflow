@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/operator_property.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
 
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include <cmath>
+
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace optimize {
